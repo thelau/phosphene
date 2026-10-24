@@ -26,6 +26,9 @@ CANDIDATE_MODELS = [
     "runway/gen-4-image",
 ]
 
+# Auto only chooses among models that have earned it (keep rate: 2.1 ~23%, Pro ~15%, everything else <=9%).
+AUTO_MODELS = ["google/nano-banana-2.1", "google/nano-banana-pro"]
+
 
 def plate_status(st: dict, filename: str) -> str:
     if filename in st.get("trashed", []):
@@ -55,9 +58,9 @@ def pick_model(st: dict, explore: float = 0.35) -> str:
     """Epsilon-greedy over smoothed score; exploration favors under-sampled models."""
     stats = model_stats(st)
     if random.random() < explore:
-        weights = [1.0 / (1 + stats[m]["n"]) for m in CANDIDATE_MODELS]
-        return random.choices(CANDIDATE_MODELS, weights=weights, k=1)[0]
-    return max(CANDIDATE_MODELS, key=lambda m: stats[m]["score"])
+        weights = [1.0 / (1 + stats[m]["n"]) for m in AUTO_MODELS]
+        return random.choices(AUTO_MODELS, weights=weights, k=1)[0]
+    return max(AUTO_MODELS, key=lambda m: stats[m]["score"])
 
 
 def taste_brief(st: dict, titles: dict, prompts: dict, k_pos: int = 6, k_neg: int = 14) -> dict:
