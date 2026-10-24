@@ -83,6 +83,39 @@ def test_dev_restarts_a_killed_server_and_survives_a_crash_loop(tmp_path, monkey
     assert len(started) == 2                # initial start + one respawn; the instant crash is not retried in a loop
 
 
+def test_dev_restarts_once_for_several_quick_saves(monkeypatch):
+    """Three files saved one after another (an edit session) must cause a single restart, not three."""
+    from pathlib import Path as P_
+    a, b, c = P_("a.py"), P_("b.py"), P_("c.py")
+    snaps = iter([{}, {a: 1}, {a: 1, b: 2}, {a: 1, b: 2, c: 3}, {a: 1, b: 2, c: 3}])
+    last = {}
+
+    def snapshot():
+        nonlocal last
+        last = next(snaps, last)
+        return last
+
+    class P:
+        returncode = None
+        def poll(self): return None
+        def send_signal(self, s): pass
+        def wait(self, t): pass
+        def kill(self): pass
+
+    started = []
+    monkeypatch.setattr(dev, "start", lambda: started.append(1) or P())
+    monkeypatch.setattr(dev, "snapshot", snapshot)
+    ticks = []
+
+    def fake_sleep(s):
+        ticks.append(1)
+        if len(ticks) > 12:
+            raise KeyboardInterrupt
+    monkeypatch.setattr(dev.time, "sleep", fake_sleep)
+    dev.main()
+    assert len(started) == 2                 # the first start + exactly one restart
+
+
 # ---------- bench.run_one (fake Krea) ----------
 
 def png(color):

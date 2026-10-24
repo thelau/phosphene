@@ -47,6 +47,12 @@ def main() -> None:
                     waiting_for_edit = True
             now = snapshot()
             if now != seen:
+                while True:  # wait until the files stop changing: several saves in a row mean one restart
+                    time.sleep(0.6)
+                    again = snapshot()
+                    if again == now:
+                        break
+                    now = again
                 changed = [p.name for p in now if now[p] != seen.get(p)]
                 print(f"[dev] {', '.join(changed)} changed -> restarting", flush=True)
                 if proc.poll() is None:

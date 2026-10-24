@@ -870,4 +870,9 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8765"))
     server = QuietServer(("127.0.0.1", port), StudioHandler)
     print(f"Studio running at http://localhost:{port}")
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:  # Ctrl-C, or dev.py restarting us: exit quietly
+        pass
+    finally:
+        server.server_close()
