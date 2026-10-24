@@ -82,15 +82,32 @@ def _migrate_qa_cache() -> None:
 _migrate_qa_cache()
 
 
+QA_LOCK = threading.Lock()
+_QA_LAST_FLUSH = 0.0
+
+
+def _flush_qa_cache() -> None:
+    tmp = QA_CACHE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(QA_CACHE))
+    os.replace(tmp, QA_CACHE_FILE)  # atomic: a reader never sees a half-written file
+
+
 def get_cached_qa(path: Path) -> dict:
+    global _QA_LAST_FLUSH
     key = _plate_key(path)
-    if key not in QA_CACHE:
-        QA_CACHE[key] = evaluate_plate_qa(path)
-        try:
-            QA_CACHE_FILE.write_text(json.dumps(QA_CACHE, indent=2))
-        except Exception:
-            pass
-    return QA_CACHE[key]
+    if key in QA_CACHE:
+        return QA_CACHE[key]
+    with QA_LOCK:  # each plate is evaluated once, even when several requests ask at the same time
+        if key not in QA_CACHE:
+            QA_CACHE[key] = evaluate_plate_qa(path)
+            if time.time() - _QA_LAST_FLUSH > 5:  # throttle: not a full rewrite per plate
+                _QA_LAST_FLUSH = time.time()
+                try:
+                    _flush_qa_cache()
+                except Exception:
+                    pass
+        return QA_CACHE[key]
+
 
 DEFAULT_TITLES = {
     "01_glass_card.jpg": "Frosted Glass Pass",
