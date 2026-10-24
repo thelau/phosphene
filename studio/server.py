@@ -138,6 +138,15 @@ DEFAULT_MODELS = {
     "34_ochre_sandstone_monolith.jpg": "krea/krea-3",
 }
 
+def build_full_prompt(raw_prompt: str) -> str:
+    return (
+        f"{raw_prompt}. 9:16 vertical frame. "
+        f"At the EXACT DEAD-CENTER (50% horizontal, 50% vertical) of the 9:16 frame at ~18% frame width "
+        f"(matching the exact circular orbital logo SHAPE and position of the reference guide image) is the SINGLE circular mark, "
+        f"physically integrated into the scene's exact perspective, lighting, and medium (whether 3D extruded sculpture, CAD wireframe, isometric object, nature formation, UI, or apparel — never a flat 2D sticker pasted over an unrelated angle, and no extra outer rings)."
+    )
+
+
 def _read_secret_key() -> str:
     try:
         return json.loads(SECRETS_FILE.read_text()).get("kimi_api_key", "")
@@ -427,7 +436,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "prompt": prompts.get(p.name, titles.get(p.name, "")),
                     "model": models.get(p.name, "google/nano-banana-pro"),
                     "trashed": p.name in trashed_set,
-                    "decision": st.get("decisions", {}).get(p.name),
                     "qa_passed": qa["qa_passed"],
                     "qa_score": qa["qa_score"],
                     "qa_issues": qa.get("issues", []),
@@ -499,19 +507,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(e)}, 500)
             return
 
-        if parsed.path == "/api/decide":
-            filename = body.get("filename", "")
-            decision = body.get("decision")  # "approved" | "rejected" | None (clear)
-            st = load_state()
-            decisions = st.setdefault("decisions", {})
-            if decision in ("approved", "rejected"):
-                decisions[filename] = decision
-            else:
-                decisions.pop(filename, None)
-            save_state(st)
-            self.send_json({"ok": True})
-            return
-
         if parsed.path == "/api/invent-variation":
             filename = body.get("filename", "")
             st = load_state()
@@ -551,12 +546,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 print(f"[TASTE] auto-picked model {model}", flush=True)
             after_filename = body.get("after_filename")
 
-            full_prompt = (
-                f"{raw_prompt}. 9:16 vertical frame. "
-                f"At the EXACT DEAD-CENTER (50% horizontal, 50% vertical) of the 9:16 frame at ~18% frame width "
-                f"(matching the exact circular orbital logo SHAPE and position of the reference guide image) is the SINGLE circular mark, "
-                f"physically integrated into the scene's exact perspective, lighting, and medium (whether 3D extruded sculpture, CAD wireframe, isometric object, nature formation, UI, or apparel — never a flat 2D sticker pasted over an unrelated angle, and no extra outer rings)."
-            )
+            full_prompt = build_full_prompt(raw_prompt)
             try:
                 img_bytes = generate_plate_via_krea_mcp(prompt=full_prompt, guide_type=guide_type, model=model)
                 im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
@@ -593,6 +583,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     trashed_list = set(st.get("trashed", []))
                     trashed_list.add(filename)
                     st["trashed"] = sorted(trashed_list)
+                    st["qa_failed"] = sorted(set(st.get("qa_failed", [])) | {filename})
 
                 cur_order = [p.name for p in ordered_plate_files(st)]
                 if filename in cur_order:

@@ -2,14 +2,15 @@
 Learn from curation history: which plates were approved, kept, rejected or trashed,
 and which models / prompts they came from.
 
-Signals (weights): approved +2, kept (not trashed, no decision) +0.5, trashed -1, rejected -2.
-Plates auto-trashed by logo QA are indistinguishable from manual trash, so they count as trash.
+Signals: kept (in the grid) = liked, trashed = disliked / doesn't work. Plates the logo QA auto-trashed
+(state["qa_failed"], and still in trash) say the model can't lock the logo, which is a weaker negative and
+no taste signal for prompts. Restoring a plate from trash makes it "kept".
 """
 
 import random
 import re
 
-WEIGHTS = {"approved": 2.0, "kept": 0.5, "trashed": -1.0, "rejected": -2.0}
+WEIGHTS = {"kept": 1.0, "trashed": -1.0, "qa_failed": -0.5}
 
 # Models that accept a reference image (the center-locked logo guide). Order is the UI order.
 CANDIDATE_MODELS = [
@@ -27,25 +28,22 @@ CANDIDATE_MODELS = [
 
 
 def plate_status(st: dict, filename: str) -> str:
-    decision = st.get("decisions", {}).get(filename)
-    if decision in ("approved", "rejected"):
-        return decision
     if filename in st.get("trashed", []):
-        return "trashed"
+        return "qa_failed" if filename in st.get("qa_failed", []) else "trashed"
     return "kept"
 
 
 def model_stats(st: dict) -> dict:
     """Per model: counts per status, n, and a smoothed mean score in [-2, 2]."""
-    stats = {m: {"n": 0, "approved": 0, "kept": 0, "trashed": 0, "rejected": 0} for m in CANDIDATE_MODELS}
+    stats = {m: {"n": 0, "kept": 0, "trashed": 0, "qa_failed": 0} for m in CANDIDATE_MODELS}
     for filename, model in st.get("models", {}).items():
-        s = stats.setdefault(model, {"n": 0, "approved": 0, "kept": 0, "trashed": 0, "rejected": 0})
+        s = stats.setdefault(model, {"n": 0, "kept": 0, "trashed": 0, "qa_failed": 0})
         s["n"] += 1
         s[plate_status(st, filename)] += 1
     for s in stats.values():
         total = sum(WEIGHTS[k] * s[k] for k in WEIGHTS)
         s["score"] = round(total / (s["n"] + 3), 3)  # +3 pseudo-observations at 0 shrinks small samples
-        s["keep_rate"] = round((s["approved"] + s["kept"]) / s["n"], 3) if s["n"] else None
+        s["keep_rate"] = round(s["kept"] / s["n"], 3) if s["n"] else None
     return stats
 
 
@@ -64,14 +62,12 @@ def taste_brief(st: dict, titles: dict, prompts: dict, k_pos: int = 6, k_neg: in
     for filename in prompts:
         status = plate_status(st, filename)
         entry = (titles.get(filename, filename), prompts[filename])
-        if status == "approved":
-            pos.insert(0, entry)
-        elif status == "kept":
+        if status == "kept":
             pos.append(entry)
-        else:
-            neg.append((status, entry[0]))
-    neg.sort(key=lambda x: 0 if x[0] == "rejected" else 1)
-    return {"liked": pos[:k_pos], "disliked": [t for _, t in neg[:k_neg]]}
+        elif status == "trashed":
+            neg.append(entry[0])
+    # newest first: recent taste matters most
+    return {"liked": pos[-k_pos:][::-1], "disliked": neg[-k_neg:][::-1]}
 
 
 _STOP = set(
