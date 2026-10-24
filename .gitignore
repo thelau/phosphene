@@ -1,0 +1,9 @@
+.DS_Store
+__pycache__/
+*.pyc
+studio/.secrets.json
+studio/qa_cache.json
+outputs/*.mp4
+outputs/_tmp_export_frames/
+assets/ai-plates-backups/
+assets/ai-plates-rejected/
