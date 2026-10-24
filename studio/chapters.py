@@ -191,6 +191,32 @@ WORLDS = [
         "marks": ["a construction-circle diagram that resolves into the mark", "the intersection of tangent arcs", "a scribed groove catching light", "an X-ray glow", "the circular field of an instrument"],
     },
     {
+        "name": "Orbital & Radial",
+        "weight": 2.5,
+        "brief": "The mark is an orbit, so find orbits and radial structure in the real world: eclipses, star trails, apertures, lenses, grooves, turbines, mechanisms, whirlpools. Calm symmetric compositions with one still center and energy around it. Hyper-real, photographed with scale and awe.",
+        "palette": "dark register: space black with copper, amber or ice-blue light; light register: bone and silver with graphite and one cobalt accent",
+        "applications": [
+            "a total solar eclipse corona over a dark horizon", "star trails circling a pole over a dark landscape", "a planet's limb glowing at the edge of space", "a lens flare ring across a dark frame",
+            "a telescope primary mirror reflecting a tiny sky", "a lighthouse Fresnel lens glowing at dusk", "a crescent moon rising over a calm sea", "a vinyl record groove at macro with a single light reflection",
+            "a turbine fan seen head-on", "a camera iris aperture half closed", "a watch escapement and balance wheel", "a gyroscope spinning on a dark surface",
+            "a drain vortex in a white basin", "milk stirred into black tea forming a spiral galaxy", "an orrery of brass rings", "a satellite dish seen from directly below",
+        ],
+        "marks": ["the eclipse's ring of light", "the aperture opening", "the groove's reflection circle", "a planet's ring", "the hole at the iris of a mechanism", "the vortex center"],
+    },
+    {
+        "name": "Micro & Mineral",
+        "weight": 2.5,
+        "brief": "The very small and the very old: biology under the microscope, minerals and stone cross-sections. Concentric and radial natural patterns with a still center. Macro photography and dark-field microscopy, tactile and quiet.",
+        "palette": "dark register: black with luminous amber, teal or violet light; light register: bone, pale stone and graphite with one mineral accent",
+        "applications": [
+            "a human eye iris in extreme macro", "a petri dish with colonies growing in a ring", "pollen grains on a dark surface at macro", "mycelium spreading radially across dark soil",
+            "a cell dividing under dark-field microscopy", "a geode cross-section with crystal rings", "marble veining swirling around a hole", "tree rings in a polished cross-section",
+            "a polished agate slice with concentric bands", "a radiolarian under a microscope", "a salt flat polygon pattern with a round puddle", "obsidian volcanic glass reflecting a window",
+            "a dandelion seed head backlit", "a nautilus shell in cross-section", "frost ringing a leaf", "a slice of citrus with radial segments in backlight",
+        ],
+        "marks": ["the iris and pupil", "concentric mineral bands", "a colony ring in a petri dish", "a crystal-lined hollow", "tree rings", "the seed head's center"],
+    },
+    {
         "name": "Matter & Elements",
         "weight": 3.0,
         "brief": "Matter in motion, photographed like a physicist-artist: fluids, magnetism, smoke, fire, water, light and dust. The mark is never added; it emerges from the physics (a vortex, a void, a ring of ripples, field lines, a smoke ring, an interference ring). Macro or large-scale, hyper-real, dramatic, quiet.",
@@ -202,7 +228,7 @@ WORLDS = [
             "foam and bubbles on dark liquid", "lightning branching across a night sky", "a plasma globe's glowing filaments", "a milk-drop crown frozen against black",
             "two paints mixing in a clear tank", "mercury beads rolling together", "frost crystals growing across black glass", "a wave curling backlit at dawn",
             "magma crust cracking with orange light beneath", "a candle flame's blue core in darkness", "a smoke ring drifting in a spotlight", "wet sand ripples at low tide in low sun",
-            "a prism splitting a beam into a spectrum on a wall", "water caustics over a pale wall", "powdered pigment exploding in the air",
+            "a prism splitting a beam into a spectrum on a wall", "a whirlpool seen from directly above", "a tornado funnel seen from above in a dark field", "wind rippling tall grass in a circle", "a single drop hitting still water at macro", "lava lamp wax rising in warm light", "a vortex of leaves in autumn light", "water caustics over a pale wall", "powdered pigment exploding in the air",
         ],
         "marks": [
             "the vortex or void at the center of the flow", "a ring of ripples", "magnetic field lines", "a smoke ring or the negative space in the smoke", "a bubble film's interference ring",

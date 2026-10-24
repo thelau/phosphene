@@ -49,8 +49,6 @@ SCENES = [
 DEFAULT_BENCH_MODELS = [
     "google/nano-banana-2.1",
     "google/nano-banana-pro",
-    "openai/gpt-image-2.5-flare",
-    "openai/gpt-image-2.5-sunburst",
 ]
 
 lock = threading.Lock()
