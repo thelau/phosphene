@@ -77,6 +77,7 @@ def run_one(job):
         if not qa["qa_passed"]:
             st["trashed"] = sorted(set(st.get("trashed", [])) | {filename})
             st["qa_failed"] = sorted(set(st.get("qa_failed", [])) | {filename})
+            st.setdefault("trashed_at", {})[filename] = __import__("time").time()
         order = [p.name for p in server.ordered_plate_files(st)]
         st["order"] = [f for f in order if f != filename] + [filename]
         server.save_state(st)

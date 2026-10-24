@@ -461,6 +461,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "prompt": prompts.get(p.name, titles.get(p.name, "")),
                     "model": models.get(p.name, "google/nano-banana-pro"),
                     "trashed": p.name in trashed_set,
+                    "trashed_at": st.get("trashed_at", {}).get(p.name),
                     "tone": cached_tone(p),
                     "twin_of": st.get("twin_of", {}).get(p.name),
                     "has_twin": p.name in st.get("twin_of", {}).values(),
@@ -588,6 +589,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     trashed_list = set(st.get("trashed", []))
                     trashed_list.add(filename)
                     st["trashed"] = sorted(trashed_list)
+                    st.setdefault("trashed_at", {})[filename] = time.time()
                     st["qa_failed"] = sorted(set(st.get("qa_failed", [])) | {filename})
 
                 cur_order = [p.name for p in ordered_plate_files(st)]
@@ -651,6 +653,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 st.setdefault("twin_of", {})[filename] = src_name
                 if not qa["qa_passed"]:
                     st["trashed"] = sorted(set(st.get("trashed", [])) | {filename})
+                    st.setdefault("trashed_at", {})[filename] = time.time()
                     st["qa_failed"] = sorted(set(st.get("qa_failed", [])) | {filename})
                 save_state(st)
                 print(f"[TWIN] {src_name} -> {filename} ({target}, {model}) qa={qa['qa_passed']}", flush=True)
@@ -668,8 +671,13 @@ class StudioHandler(SimpleHTTPRequestHandler):
             group = {filename} | {t for t, o in twin_of.items() if o == filename}  # trashing an original takes its twins along
             if trashed:
                 cur |= group
+                now = time.time()
+                for f in group:
+                    st.setdefault("trashed_at", {})[f] = now
             else:
                 cur -= group
+                for f in group:
+                    st.get("trashed_at", {}).pop(f, None)
             st["trashed"] = sorted(cur)
             save_state(st)
             self.send_json({"ok": True})
