@@ -26,6 +26,7 @@ from PIL import Image
 
 import chapters
 import critic
+import cutplan
 import diversity
 import taste
 
@@ -550,6 +551,34 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     return flat
 
 
+def write_export_frames(files, tmp_dir: Path, total_frames: int, frames_per_cut: float, invert_mode: str = "off", zoom_mode: str = "off", zoom_amount: float = 0.6) -> int:
+    """Writes f_0000.jpg ... for the export. Plain cuts reuse the encoded bytes; zoom needs a render per frame."""
+    base = [Image.open(p).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS) for p in files]
+    flipped = {}  # plate index -> inverted copy, built on demand
+
+    def encode(im) -> bytes:
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=92)
+        return buf.getvalue()
+
+    cache: dict = {}
+    for f in range(total_frames):
+        plan = cutplan.frame_plan(f, frames_per_cut, len(base), invert_mode)
+        scale = cutplan.zoom_scale(zoom_mode, zoom_amount, plan["cut"], plan["p"])
+        img = base[plan["plate"]]
+        if plan["inverted"]:
+            if plan["plate"] not in flipped:
+                flipped[plan["plate"]] = cutplan.inverted(img, invert_mode)
+            img = flipped[plan["plate"]]
+        if scale > 1.0005:
+            data = encode(cutplan.zoomed(img, scale))
+        else:
+            key = (plan["plate"], plan["inverted"])
+            data = cache.get(key) or cache.setdefault(key, encode(img))
+        (tmp_dir / f"f_{f:04d}.jpg").write_bytes(data)
+    return total_frames
+
+
 class StudioHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT_DIR), **kwargs)
@@ -900,15 +929,10 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 shutil.rmtree(tmp_dir)
             tmp_dir.mkdir(parents=True, exist_ok=True)
 
-            # Encode each plate once, then write the same bytes for every frame it covers.
-            encoded = []
-            for p in active_files:
-                buf = io.BytesIO()
-                Image.open(p).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS).save(buf, "JPEG", quality=92)
-                encoded.append(buf.getvalue())
-            for f_idx in range(total_frames):
-                plate_idx = int(f_idx / frames_per_cut) % len(encoded)
-                (tmp_dir / f"f_{f_idx:04d}.jpg").write_bytes(encoded[plate_idx])
+            invert_mode = body.get("invert_mode", "off") if body.get("invert_mode") in cutplan.INVERT_MODES else "off"
+            zoom_mode = body.get("zoom_mode", "off") if body.get("zoom_mode") in cutplan.ZOOM_MODES else "off"
+            zoom_amount = max(0.0, min(10.0, float(body.get("zoom_amount", 0.6))))
+            write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount)
 
             out_mp4 = OUTPUTS_DIR / "Demo-curated-matchcut.mp4"
             audio_files = list((ROOT_DIR / "music").glob("*.mp3")) + list((ROOT_DIR / "music").glob("*.wav"))

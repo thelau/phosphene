@@ -256,6 +256,7 @@
       stageVideo.pause();
       stageVideo.style.display = 'none';
       stageImg.style.display = 'block';
+      clearFx();
       const p = plates.find(x => x.filename === filename);
       if (p) {
         stageImg.src = p.url;
@@ -266,19 +267,68 @@
       }
     }
 
+    // ---- what is on screen when (mirrored in studio/cutplan.py; tests keep the two in step) ----
+    // A "cut" is one hold of framesPerCut frames. With invert on, every image takes two cuts: normal, then inverted.
+    function planAt(cutPos, nPlates, invertMode) {
+      const cut = Math.floor(cutPos);
+      const p = cutPos - cut;
+      const paired = invertMode === 'mono' || invertMode === 'colour';
+      return { cut, p, plate: (paired ? Math.floor(cut / 2) : cut) % nPlates, inverted: paired && cut % 2 === 1 };
+    }
+    function zoomScale(mode, amountPct, cut, p) {
+      const a = amountPct / 100;
+      if (mode === 'out') return 1 + a * (1 - p);
+      if (mode === 'in') return 1 + a * p;
+      if (mode === 'alternate') return cut % 2 === 0 ? 1 + a * (1 - p) : 1 + a * p;
+      return 1;
+    }
+    function fxSettings() {
+      return {
+        invert: document.getElementById('invertSelect').value,
+        zoom: document.getElementById('zoomSelect').value,
+        amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
+      };
+    }
+    function clearFx() {
+      const img = document.getElementById('stageImg');
+      img.style.transform = '';
+      img.style.filter = '';
+    }
+    function applyFx(plan, fx) {
+      const img = document.getElementById('stageImg');
+      const s = zoomScale(fx.zoom, fx.amount, plan.cut, plan.p);
+      img.style.transform = s > 1.0005 ? `scale(${s.toFixed(5)})` : '';
+      img.style.filter = plan.inverted ? (fx.invert === 'mono' ? 'invert(1) grayscale(1)' : 'invert(1)') : '';
+    }
+    function updateFx() {
+      saveSettings();
+      document.getElementById('zoomAmtVal').textContent = `${parseFloat(document.getElementById('zoomAmt').value).toFixed(1)}%`;
+      document.getElementById('zoomAmt').disabled = document.getElementById('zoomSelect').value === 'off';
+      if (!isPlaying) clearFx();
+    }
+
+    let cutPos = 0;
+    let lastTick = 0;
     function restartLoop() {
       if (timer) clearInterval(timer);
-      const intervalMs = Math.max(16, Math.round((framesPerCut / 30) * 1000));
+      lastTick = performance.now();
       timer = setInterval(() => {
+        const now = performance.now();
+        const dt = now - lastTick;
+        lastTick = now;
         if (!isPlaying) return;
         const active = activePlates();
-        if (!active.length) return;
-        currentIdx = (currentIdx + 1) % active.length;
         const stageImg = document.getElementById('stageImg');
-        if (stageImg.style.display !== 'none') {
-          stageImg.src = active[currentIdx].url;
-        }
-      }, intervalMs);
+        if (!active.length || stageImg.style.display === 'none') return;
+        const cutMs = Math.max(16, (framesPerCut / 30) * 1000);
+        cutPos += dt / cutMs;
+        const fx = fxSettings();
+        const plan = planAt(cutPos, active.length, fx.invert);
+        currentIdx = plan.plate;
+        const url = active[plan.plate].url;
+        if (stageImg.getAttribute('src') !== url) stageImg.src = url;
+        applyFx(plan, fx);
+      }, 16);
     }
 
     function togglePlay() {
@@ -288,6 +338,7 @@
       stageVideo.style.display = 'none';
       stageImg.style.display = 'block';
       isPlaying = !isPlaying;
+      if (isPlaying) { cutPos = 0; lastTick = performance.now(); } else { clearFx(); }
       document.getElementById('playBtn').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
     }
 
@@ -296,7 +347,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['bpmSlider', 'multSelect', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['bpmSlider', 'multSelect', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -688,6 +739,9 @@
           body: JSON.stringify({
             bpm: parseInt(document.getElementById('bpmSlider').value, 10),
             multiple: parseFloat(document.getElementById('multSelect').value),
+            invert_mode: document.getElementById('invertSelect').value,
+            zoom_mode: document.getElementById('zoomSelect').value,
+            zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
             total_seconds: 10
           })
         });
@@ -708,6 +762,7 @@
     }
 
     restoreSettings();
+    updateFx();
     updateTempo();
     ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'].forEach(id => document.getElementById(id).addEventListener('change', saveSettings));
     document.getElementById('worldSelect').addEventListener('change', () => { document.getElementById('directionInput').value = ''; saveSettings(); updateDirectionHint(); });
@@ -772,4 +827,5 @@ Object.assign(window, {
   toggleTwinSel,
   twinSelectAll,
   updateTempo,
+  updateFx,
 });

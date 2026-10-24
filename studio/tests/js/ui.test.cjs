@@ -358,3 +358,76 @@ test('the page entry is a module with a stylesheet, and markup has no inline scr
   assert.match(html, /<link rel="stylesheet" href="\/src\/style.css"/);
   assert.doesNotMatch(html, /<style>/);
 });
+
+// ---------- cut plan, zoom and invert (same vectors as tests/test_cutplan.py) ----------
+
+const PLAN_VECTORS = [
+  [0.0, 3, 'off', 0, 0, false], [1.2, 3, 'off', 1, 1, false], [3.9, 3, 'off', 3, 0, false],
+  [0.0, 3, 'mono', 0, 0, false], [1.0, 3, 'mono', 1, 0, true], [2.5, 3, 'colour', 2, 1, false],
+  [3.5, 3, 'colour', 3, 1, true], [6.0, 3, 'mono', 6, 0, false],
+];
+const ZOOM_VECTORS = [
+  ['off', 5, 0, 0.5, 1.0], ['out', 1, 0, 0.0, 1.01], ['out', 1, 0, 1.0, 1.0], ['in', 1, 0, 0.0, 1.0], ['in', 1, 0, 1.0, 1.01],
+  ['alternate', 2, 0, 0.0, 1.02], ['alternate', 2, 1, 0.0, 1.0], ['alternate', 2, 1, 1.0, 1.02], ['out', 0.6, 4, 0.5, 1.003],
+];
+
+test('planAt matches the server plan vectors', () => {
+  const { run } = load({ routes: baseRoutes() });
+  for (const [pos, n, inv, cut, plate, flipped] of PLAN_VECTORS) {
+    const r = run(`planAt(${pos}, ${n}, '${inv}')`);
+    assert.deepEqual([r.cut, r.plate, r.inverted], [cut, plate, flipped], `${pos} ${inv}`);
+  }
+});
+
+test('zoomScale matches the server zoom vectors', () => {
+  const { run } = load({ routes: baseRoutes() });
+  for (const [mode, amt, cut, p, expected] of ZOOM_VECTORS) {
+    assert.ok(Math.abs(run(`zoomScale('${mode}', ${amt}, ${cut}, ${p})`) - expected) < 1e-9, `${mode} ${amt} ${cut} ${p}`);
+  }
+});
+
+test('updateFx shows the amount, disables it when zoom is off, and remembers the choice', () => {
+  const { run, $, store } = load({ routes: baseRoutes() });
+  $('zoomSelect').value = 'out'; $('zoomAmt').value = '1.5'; $('invertSelect').value = 'mono';
+  run('updateFx()');
+  assert.equal($('zoomAmtVal').textContent, '1.5%');
+  assert.equal($('zoomAmt').disabled, false);
+  const saved = JSON.parse(store.studioSettings);
+  assert.deepEqual([saved.zoomSelect, saved.zoomAmt, saved.invertSelect], ['out', '1.5', 'mono']);
+  $('zoomSelect').value = 'off';
+  run('updateFx()');
+  assert.equal($('zoomAmt').disabled, true);
+});
+
+test('applyFx sets scale and the invert filter on the stage image', () => {
+  const { run, $ } = load({ routes: baseRoutes() });
+  run(`applyFx({cut:0, p:0, inverted:true}, {invert:'mono', zoom:'out', amount:2})`);
+  assert.equal($('stageImg').style.transform, 'scale(1.02000)');
+  assert.equal($('stageImg').style.filter, 'invert(1) grayscale(1)');
+  run(`applyFx({cut:1, p:0.5, inverted:true}, {invert:'colour', zoom:'off', amount:2})`);
+  assert.equal($('stageImg').style.transform, '');
+  assert.equal($('stageImg').style.filter, 'invert(1)');
+  run(`applyFx({cut:2, p:0.5, inverted:false}, {invert:'colour', zoom:'in', amount:2})`);
+  assert.equal($('stageImg').style.filter, '');
+  run('clearFx()');
+  assert.equal($('stageImg').style.transform, '');
+});
+
+test('the preview loop alternates image and inverted image, then moves on', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: [{ filename: 'a', url: '/p/a', trashed: false }, { filename: 'b', url: '/p/b', trashed: false }] };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('stageImg').style.display = 'block';
+  h.$('invertSelect').value = 'mono';
+  h.$('zoomSelect').value = 'off';
+  h.run('framesPerCut = 3; isPlaying = true; cutPos = 0');
+  const tick = h.timers.intervals[h.timers.intervals.length - 1].fn;
+  const seen = [];
+  // drive time by hand: each tick advances exactly one cut (100ms at 3 frames / 30fps)
+  h.ctx.performance.now = (() => { let t = 0; return () => (t += 100); })();
+  h.run('lastTick = performance.now()');
+  for (let i = 0; i < 4; i++) { tick(); seen.push([h.$('stageImg').src, h.$('stageImg').style.filter]); }
+  assert.deepEqual(seen.map(s => s[1]), ['invert(1) grayscale(1)', '', 'invert(1) grayscale(1)', '']);
+  assert.deepEqual(seen.map(s => s[0]), ['/p/a', '/p/b', '/p/b', '/p/a']);
+});

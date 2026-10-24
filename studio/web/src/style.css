@@ -185,6 +185,7 @@
     #loader .spin { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--orange); animation: spin 0.8s linear infinite; }
     #loader .msg { font-size: 12px; color: var(--muted); }
     @keyframes spin { to { transform: rotate(360deg); } }
+    #stageImg { transform-origin: 50% 50%; will-change: transform, filter; }
     .stage img, .stage video {
       width: 100%;
       height: 100%;

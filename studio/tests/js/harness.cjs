@@ -13,6 +13,8 @@ class El {
   addEventListener(ev, fn) { (this.listeners[ev] ||= []).push(fn); }
   fire(ev) { (this.listeners[ev] || []).forEach(fn => fn({ target: this })); }
   focus() {} remove() {} click() {}
+  getAttribute(n) { return this[n] ?? null; }
+  setAttribute(n, v) { this[n] = v; }
   querySelectorAll() { return []; }
   querySelector() { return null; }
   appendChild(c) { (this.options ||= []).push(c); return c; }
@@ -44,6 +46,7 @@ function load({ routes = {}, storage = {} } = {}) {
     setTimeout: (fn, ms) => { timers.timeouts.push({ fn, ms }); return timers.timeouts.length; },
     clearTimeout: () => {},
     requestAnimationFrame: fn => fn(),
+    performance: { now: () => Date.now() },
     CSS: { escape: s => s },
     Promise, JSON, Math, Date, parseInt, parseFloat, Number, String, Array, Object, Set, Map, Error,
     fetch: async (url, opts = {}) => {

@@ -33,6 +33,8 @@ Done:
 2. Diversity (`studio/diversity.py`): no fixed categories; each shot is a random combo of subject/material/setting/light/camera/logo/palette, recent values avoided, near-duplicate prompts dropped (Jaccard novelty).
 3. Tempo: BPM slider + cuts-per-beat multiple in preview and export; music is time-stretched from 136 BPM.
 
+4. Player effects (`studio/cutplan.py`, mirrored by `planAt`/`zoomScale` in `studio/web/src/app.js`; tests share vectors): Invert (every image followed by an inverted grey/colour copy, as in Soiltone) and Zoom (slow in/out inside each cut, as in Moverunion: measured ~0.15-0.45% zoom OUT over a 5-frame cut). Both apply to preview and export.
+
 Quality reference: `inspiration/soiltone-inspo.mp4` — 8s, ~48 cuts, each scene shown as a color/mono twin pair, one hero subject, logo crisp at dead-center. Twins are made with the 🌗 Twin button. Quality bar lives in `QUALITY_BAR` in `server.py`.
 
 Caveat: the 223 plates trashed before `qa_failed` existed can't be told apart (manual vs QA), so older model scores are noisy.
