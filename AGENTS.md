@@ -27,6 +27,11 @@ Needs Pillow and ffmpeg at `/opt/homebrew/bin/ffmpeg`. The user runs the server 
 - Use `AGENTS.md` for agent instructions; do not add a `CLAUDE.md`.
 
 ## Roadmap
-1. Feed approved/rejected/trashed history back into prompt generation; track per-model approval rate; try more Krea models.
-2. More prompt diversity (rotate material/setting/lighting/camera axes, reject near-duplicates of past prompts).
-3. Tempo (BPM) selector for export, in addition to the frames-per-cut multiple.
+Done:
+1. Taste loop (`studio/taste.py`): ❤ approve button, liked/disliked brief injected into prompt generation, per-model scorecard in Settings, "Auto" model that exploits/explores by score. Added Ideogram 4.5, Luma UNI-1, Meta Muse, Runway Gen-4 (all take the logo guide image).
+2. Diversity (`studio/diversity.py`): no fixed categories; each shot is a random combo of subject/material/setting/light/camera/logo/palette, recent values avoided, near-duplicate prompts dropped (Jaccard novelty).
+3. Tempo: BPM slider + cuts-per-beat multiple in preview and export; music is time-stretched from 136 BPM.
+
+Quality reference: `inspiration/soiltone-inspo.mp4` — 8s, ~48 cuts, each scene shown as a color/mono twin pair, one hero subject, logo crisp at dead-center. "Pairs" generates the twin. Quality bar lives in `QUALITY_BAR` in `server.py`.
+
+Caveat: trashed = manual trash OR logo-QA auto-trash; most trash so far is QA failures, so model scores mostly reflect logo-lock reliability until you approve more plates.
