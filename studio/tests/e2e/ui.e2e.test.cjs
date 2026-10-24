@@ -174,7 +174,7 @@ test('generate: controls lock, progress shows per image, direction clears afterw
   assert.match(await text('#statusText'), /Fog & Vapor/);
   await shot('06-rendering');
   await page.waitForFunction(() => /Done — 4 added/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
-  for (const id of ['#worldSelect', '#directionInput', '#batchCountSelect', '#generateBtn']) assert.equal(await page.locator(id).isDisabled(), false, `${id} unlocked`);
+  for (const id of ['#worldSelect', '#directionInput', '#batchCountSelect', '#generateBtn']) await enabled(id);
   assert.equal(await page.inputValue('#directionInput'), '');
   assert.equal(await page.locator('#statusText .slot.ok').count(), 4);
   await page.waitForFunction(() => document.getElementById('tabSelection').textContent.includes('(7)'));
@@ -247,6 +247,7 @@ test('narrow window: the header wraps without squeezing the Generate button', { 
 
 const names = async () => page.locator('.card').evaluateAll(els => els.map(e => e.dataset.filename));
 const seg = async () => page.locator('#orderSeg button').evaluateAll(els => els.map(e => ({ text: e.textContent.trim(), on: e.classList.contains('on') })));
+const enabled = async sel => { await page.waitForFunction(q => !document.querySelector(q).disabled, sel); };      // unlocking follows the status text by a moment
 const clickSeg = async label => { await page.locator('#orderSeg button', { hasText: label }).click(); };
 const aiSetup = (summary = 'Hook on k2, lands on k1.') => st => { st.sequences[0].order = ['k3', 'k1', 'k2', 't1', 't2', 't3', 't4']; addAi(st, ['k2', 'k3', 'k1'], { summary }); st.active = 's1'; };
 
@@ -377,7 +378,7 @@ test('AI order: panel, note, live progress, and the Manual order stays exactly a
   assert.equal(await page.locator('#statusText .slot').count(), 4);
   await shot('16-ai-progress');
   await page.waitForFunction(() => /Done — AI: Opens on k3/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
-  assert.equal(await page.locator('#aiBtn').isDisabled(), false);
+  await enabled('#aiBtn');
   assert.equal(await page.locator('#statusText .slot.ok').count(), 4);
   const body = api.state.jobs[0].body;
   assert.deepEqual([body.direction, body.length, 'first' in body, 'last' in body], ['end on the blue one', null, false, false]);
@@ -422,7 +423,7 @@ test('AI order: while it works nothing that changes the selection can run', { sk
   await page.click('#tabSelection');
   await page.waitForFunction(() => /Done — AI/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   // everything is back
-  for (const id of ['#generateBtn', '#worldSelect', '#aiBtn', '#exportBtn']) assert.equal(await page.locator(id).isDisabled(), false, `${id} unlocked`);
+  for (const id of ['#generateBtn', '#worldSelect', '#aiBtn', '#exportBtn']) await enabled(id);
   assert.equal(await page.locator('body.ai-running').count(), 0);
   await page.locator('.card[data-filename="k1"]').hover();
   await page.locator('.card[data-filename="k1"] .trash-btn').click();
@@ -436,7 +437,7 @@ test('AI order: it cannot start while images are being generated', { skip }, asy
   await page.waitForSelector('#statusText .slot');
   assert.equal(await page.locator('#aiBtn').isDisabled(), true);
   await page.waitForFunction(() => /Done — 4 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
-  assert.equal(await page.locator('#aiBtn').isDisabled(), false);
+  await enabled('#aiBtn');
   assert.equal(api.state.calls.filter(c => c.path === '/api/order-ai').length, 0);
   await ctx.close();
 });
@@ -502,8 +503,8 @@ test('AI order: a failure is reported and everything unlocks', { skip }, async (
   await page.click('#aiBtn');
   await page.click('#aiGo');
   await page.waitForFunction(() => /AI order failed: Kimi exploded/.test(document.getElementById('statusText').textContent), null, { timeout: 10000 });
-  assert.equal(await page.locator('#aiBtn').isDisabled(), false);
-  assert.equal(await page.locator('#generateBtn').isDisabled(), false);
+  await enabled('#aiBtn');
+  await enabled('#generateBtn');
   assert.equal((await seg()).length, 1);
   await ctx.close();
 });

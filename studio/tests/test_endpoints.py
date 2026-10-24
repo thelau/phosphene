@@ -35,6 +35,10 @@ def live(srv, monkeypatch):
         calls["kimi"].append(prompt)
         return json.dumps(shots)
     monkeypatch.setattr(srv, "call_kimi_llm", fake_kimi)
+    # Jobs live in a module-level dict: never let one test's background job leak into the next. By default a started job finishes instantly.
+    srv.AI_JOBS.clear()
+    real_job = srv.run_ai_order_job
+    monkeypatch.setattr(srv, "run_ai_order_job", lambda job_id, *a, **k: srv.AI_JOBS[job_id].update(done=True, step=4, stage="Done"))
     st = srv.load_state()
     st["kimi_api_key"] = "sk-test"
     srv.save_state(st)
@@ -54,9 +58,11 @@ def live(srv, monkeypatch):
         c.close()
         return r.status, data
     call.calls = calls
+    call.real_job = real_job
     yield call
     httpd.shutdown()
     httpd.server_close()
+    srv.AI_JOBS.clear()
 
 
 GET_ENDPOINTS = ["/api/state", "/api/worlds", "/api/stats", "/api/version"]
@@ -135,6 +141,7 @@ def test_ai_order_job_runs_through_the_real_server_and_locks_changes_meanwhile(l
         gate.wait(5)
         return real(*a, **k)
     monkeypatch.setattr(srv, "build_ai_order", slow)
+    monkeypatch.setattr(srv, "run_ai_order_job", live.real_job)                             # this test wants the real background job
     monkeypatch.setattr(srv, "call_kimi_llm", lambda *a, **k: "{}")
     status, start = live("POST", "/api/order-ai", {"length": None})
     assert status == 200 and start["ok"] and len(start["steps"]) == 4
