@@ -155,28 +155,10 @@
 
     // ---- trash: select, delete selected, empty ----
     // ---- AI order ----
-    const aiPins = { first: null, last: null };
-    function pinCard(e, filename) {
-      e.stopPropagation();
-      const slot = e.shiftKey ? 'last' : 'first';
-      const other = slot === 'first' ? 'last' : 'first';
-      aiPins[slot] = aiPins[slot] === filename ? null : filename;
-      if (aiPins[other] === filename) aiPins[other] = null;
-      renderAiPins();
-      renderGrid();
-    }
-    function renderAiPins() {
-      const title = f => { const p = plates.find(x => x.filename === f); return p ? p.title : f; };
-      const el = document.getElementById('aiPins');
-      el.textContent = (aiPins.first || aiPins.last)
-        ? `Pinned: ${aiPins.first ? `opener “${title(aiPins.first)}”` : 'no opener'} · ${aiPins.last ? `closer “${title(aiPins.last)}”` : 'no closer'}`
-        : 'No pins. Hover a card and press 📌 to pin the opener (Shift-click: the closer). Otherwise the AI picks them.';
-    }
     function toggleAiPanel(e) {
       if (e) e.stopPropagation();
       const panel = document.getElementById('aiPanel');
       panel.hidden = !panel.hidden;
-      if (!panel.hidden) renderAiPins();
     }
     document.addEventListener('click', () => { const p = document.getElementById('aiPanel'); if (p) p.hidden = true; });
 
@@ -195,7 +177,6 @@
       const body = {
         length: parseInt(document.getElementById('aiLength').value, 10) || null,
         direction: document.getElementById('aiDirection').value.trim(),
-        first: aiPins.first, last: aiPins.last,
       };
       document.getElementById('aiPanel').hidden = true;
       const start = await (await fetch('/api/order-ai', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) })).json();
@@ -246,7 +227,8 @@
       const cur = sequences.find(q => q.id === activeSeq);
       const summary = cur && cur.kind === 'ai' && cur.summary ? cur.summary : '';
       document.getElementById('seqSummary').textContent = summary;
-      document.getElementById('aiNote').hidden = !summary || showTrash;
+      document.getElementById('aiNote').hidden = !(cur && cur.kind === 'ai') || showTrash;
+      document.getElementById('makeManual').disabled = aiRunning;
       document.getElementById('resetAi').hidden = !(cur && cur.kind === 'ai' && cur.edited);
       document.getElementById('aiBtn').textContent = ai ? '↻ Redo with AI…' : '✨ Order with AI…';
       document.getElementById('seqBox').hidden = showTrash;
@@ -264,6 +246,12 @@
       return ok;
     }
     function resetAi() { return blockedByAi() ? undefined : seqCall({ action: 'reset' }); }
+    async function makeManual() {
+      if (blockedByAi()) return;
+      if (!(await askConfirm('Replace your Manual order?', "Your current Manual order is replaced by a copy of this AI order, including any changes you made to it. The AI order stays as it is. This can't be undone.", 'Replace Manual'))) return;
+      if (await seqCall({ action: 'make_manual' })) setStatus('Your Manual order is now a copy of the AI order.');
+    }
+    function includeAll() { return blockedByAi() ? undefined : seqCall({ action: 'include_all' }); }
 
     let trashSel = new Set();
     let lastSel = null;
@@ -354,7 +342,7 @@
       const visible = visiblePlates();
 
       const cutOff = showTrash ? null : activeCutOff();
-      grid.innerHTML = visible.map((p, i) => `${cutOff && i === cutOff && i < visible.length ? `<div class="edit-divider">left out of this edit (${visible.length - cutOff})</div>` : ''}
+      grid.innerHTML = visible.map((p, i) => `${cutOff && i === cutOff && i < visible.length ? `<div class="edit-divider">left out of this edit (${visible.length - cutOff}) <button onclick="includeAll()">Include them all</button></div>` : ''}
         <div class="card"
              id="card-${CSS.escape(p.filename)}"
              draggable="${!showTrash}"
@@ -371,8 +359,7 @@
             <div class="card-actions">
               ${p.trashed
                 ? `<button class="action-btn" onclick="setTrash(event, '${p.filename}', false)">↩️ Restore</button>`
-                : `<button class="action-btn" title="Pin as opener for the AI order (Shift-click: closer)" onclick="pinCard(event, '${p.filename}')">📌</button>
-                   <button class="action-btn trash-btn" title="Move to trash" onclick="setTrash(event, '${p.filename}', true)">🗑️</button>`
+                : `<button class="action-btn trash-btn" title="Move to trash" onclick="setTrash(event, '${p.filename}', true)">🗑️</button>`
               }
             </div>
             <div class="prompt-overlay" id="overlay-${CSS.escape(p.filename)}" onclick="togglePromptOverlay(event, '${p.filename}')">
@@ -386,7 +373,6 @@
               <div class="card-title-row">#${String(i + 1).padStart(2, '0')} · ${escapeHtml(p.title)}</div>
               <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
                 <span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>
-                ${aiPins.first === p.filename ? '<span class="card-model-badge pin-badge">📌 opener</span>' : ''}${aiPins.last === p.filename ? '<span class="card-model-badge pin-badge">📌 closer</span>' : ''}
 
                 ${p.critic ? `<span class="card-model-badge" title="${escapeHtml(p.critic.reason)}">AI ${p.critic.mean}</span>` : ''}
                 ${p.trash_reason ? `<span class="card-model-badge" style="background:rgba(244,63,94,0.22);border-color:rgba(244,63,94,0.5);color:#fda4af;" title="${escapeHtml(p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
@@ -898,8 +884,9 @@
 
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
+  includeAll,
+  makeManual,
   resetAi,
-  pinCard,
   startAiOrder,
   toggleAiPanel,
   switchSequence,

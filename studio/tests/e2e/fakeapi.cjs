@@ -80,6 +80,8 @@ function start(state = makeState()) {
       case '/api/sequence': {
         if (body.action === 'activate' && seqOf(state, body.id)) { state.active = body.id; return send({ ok: true }); }
         if (body.action === 'reset') { const ai = state.sequences.find(q => q.kind === 'ai'); if (ai) { ai.order = [...ai.original]; return send({ ok: true }); } }
+        if (body.action === 'make_manual') { const ai = state.sequences.find(q => q.kind === 'ai'); const m = state.sequences.find(q => q.kind === 'manual'); if (ai && m) { m.order = [...ai.order]; m.cut_off = ai.cut_off; state.active = m.id; return send({ ok: true }); } }
+        if (body.action === 'include_all') { const a = activeSeq(state); if (a && a.cut_off) { a.cut_off = null; return send({ ok: true }); } }
         return send({ ok: false, error: 'Could not do that.' }, 400);
       }
       case '/api/trash': {
@@ -99,8 +101,6 @@ function start(state = makeState()) {
           for (let i = 0; i < 4; i++) { job.step = i; job.stage = names[i]; await sleep(state.delays.ai / 4); }
           if (state.aiFail) { job.done = true; job.error = state.aiFail; return; }
           let order = shown.slice().reverse();
-          if (body.first) order = [body.first, ...order.filter(n => n !== body.first)];
-          if (body.last) order = [...order.filter(n => n !== body.last), body.last];
           const rest = state.plates.map(p => p.filename).filter(n => !order.includes(n));
           const n = body.length && body.length < order.length ? body.length : null;
           const seq = addAi(state, [...order, ...rest], { summary: `Opens on ${order[0]}, lands on ${order[order.length - 1]}.`, cut_off: n });

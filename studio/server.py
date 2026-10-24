@@ -516,7 +516,7 @@ AI_JOBS: dict = {}
 AI_STEPS = ["Reading the images", "Writing the edit brief", "Cutting the edit", "Reviewing the cuts"]
 
 
-def build_ai_order(st: dict, call_llm, api_key: str, model: str, length: int | None = None, direction: str = "", pins: dict | None = None,
+def build_ai_order(st: dict, call_llm, api_key: str, model: str, length: int | None = None, direction: str = "",
                    progress=lambda step, note="": None) -> dict:
     """Works out an AI edit of the images currently shown (does not touch the state). Kimi writes the brief; editor.py cuts the order."""
     trashed = set(st.get("trashed", []))
@@ -536,7 +536,7 @@ def build_ai_order(st: dict, call_llm, api_key: str, model: str, length: int | N
         print(f"[EDIT] brief failed, using measurements only: {e!r}", flush=True)
         brief, note = {}, "Kimi was unavailable, so this edit uses measurements only. "
     progress(2, "choosing the order")
-    result = editor.order_images(items, brief, pins or {}, length)
+    result = editor.order_images(items, brief, length)
     progress(3, "writing the summary")
     titles = {**DEFAULT_TITLES, **st.get("titles", {})}
     return {"result": result, "summary": note + editor.summarize(titles, result, brief.get("summary"))}
@@ -559,7 +559,7 @@ def add_ai_sequence(st: dict, built: dict) -> dict:
                             cut_off=len(result["names"]) if result["left_out"] else None, cuts=result["cuts"])
 
 
-def run_ai_order_job(job_id: str, length, direction: str, pins: dict) -> None:
+def run_ai_order_job(job_id: str, length, direction: str) -> None:
     job = AI_JOBS[job_id]
     try:
         st = load_state()
@@ -567,7 +567,7 @@ def run_ai_order_job(job_id: str, length, direction: str, pins: dict) -> None:
 
         def progress(step, note=""):
             job.update(step=step, stage=AI_STEPS[step], note=note)
-        built = build_ai_order(st, call_kimi_llm, key, model, length, direction, pins, progress)
+        built = build_ai_order(st, call_kimi_llm, key, model, length, direction, progress)
         with STATE_LOCK:
             fresh = load_state()
             seq = add_ai_sequence(fresh, built)
@@ -820,10 +820,9 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 length = int(body.get("length") or 0) or None
             except (TypeError, ValueError):
                 length = None
-            pins = {k: body.get(k) for k in ("first", "last") if body.get(k)}
             job_id = f"job{int(time.time() * 1000)}"
             AI_JOBS[job_id] = {"done": False, "step": 0, "steps": len(AI_STEPS), "stage": AI_STEPS[0], "note": ""}
-            threading.Thread(target=run_ai_order_job, args=(job_id, length, str(body.get("direction", ""))[:300], pins), daemon=True).start()
+            threading.Thread(target=run_ai_order_job, args=(job_id, length, str(body.get("direction", ""))[:300]), daemon=True).start()
             self.send_json({"ok": True, "job": job_id, "steps": AI_STEPS})
             return
 
@@ -831,7 +830,13 @@ class StudioHandler(SimpleHTTPRequestHandler):
             with STATE_LOCK:
                 st = load_state()
                 action = body.get("action")
-                ok = sequences.activate(st, body.get("id", "")) if action == "activate" else (sequences.reset_ai(st) if action == "reset" else False)
+                handlers = {
+                    "activate": lambda: sequences.activate(st, body.get("id", "")),
+                    "reset": lambda: sequences.reset_ai(st),
+                    "make_manual": lambda: sequences.make_manual(st),
+                    "include_all": lambda: sequences.include_all(st),
+                }
+                ok = handlers[action]() if action in handlers else False
                 if ok:
                     save_state(st)
             self.send_json({"ok": ok} if ok else {"ok": False, "error": "Could not do that."}, 200 if ok else 400)

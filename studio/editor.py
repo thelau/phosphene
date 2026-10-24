@@ -75,21 +75,21 @@ def pick_subset(items: list, n: int, forced: list) -> list:
     return chosen
 
 
-def order_images(items: list, brief: dict | None = None, pins: dict | None = None, length: int | None = None, beam: int = 24) -> dict:
+def order_images(items: list, brief: dict | None = None, length: int | None = None, beam: int = 24) -> dict:
     """
-    items: [{"name", "f": features, "world"}]. brief: {opener, closer, peaks, weights} (names). pins: {"first": name, "last": name}.
+    items: [{"name", "f": features, "world"}]. brief: {opener, closer, peaks, weights} (names).
     Returns {"names": [...], "cuts": [{from, to, kind, reason}], "left_out": [...]} - `names` is the edit, `left_out` the rest.
     """
-    brief, pins = brief or {}, pins or {}
+    brief = brief or {}
     w = {**DEFAULT_WEIGHTS, **{k: float(v) for k, v in (brief.get("weights") or {}).items() if k in DEFAULT_WEIGHTS}}
     index = {it["name"]: i for i, it in enumerate(items)}
     if not items:
         return {"names": [], "cuts": [], "left_out": []}
     by_impact = sorted(range(len(items)), key=lambda i: (-F.impact(items[i]["f"]), i))
-    first = index.get(pins.get("first")) if pins.get("first") in index else index.get(brief.get("opener"))
+    first = index.get(brief.get("opener"))
     if first is None:
         first = by_impact[0]
-    last = index.get(pins.get("last")) if pins.get("last") in index else index.get(brief.get("closer"))
+    last = index.get(brief.get("closer"))
     if last is None or last == first:
         last = next((i for i in by_impact if i != first), None) if len(items) > 1 else None
     peaks = [index[n] for n in brief.get("peaks", []) if n in index and index[n] not in (first, last)][:4]

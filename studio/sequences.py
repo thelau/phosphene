@@ -113,6 +113,26 @@ def reset_ai(st: dict) -> bool:
     return True
 
 
+def make_manual(st: dict) -> bool:
+    """Replace the Manual order with a copy of the AI order as it is now (including your drags and its best-N cut). The AI order stays."""
+    a, m = ai(st), manual(st)
+    if not a or not m:
+        return False
+    m["order"] = list(a["order"])
+    m["cut_off"] = a.get("cut_off")
+    st["active_sequence"] = m["id"]
+    return True
+
+
+def include_all(st: dict) -> bool:
+    """Put every image back in the edit of the order you are looking at (clears a best-N cut)."""
+    seq = active(st)
+    if not seq or not seq.get("cut_off"):
+        return False
+    seq["cut_off"] = None
+    return True
+
+
 def is_edited(seq: dict) -> bool:
     return seq["kind"] == "ai" and seq["order"] != seq.get("original", seq["order"])
 

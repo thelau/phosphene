@@ -359,39 +359,31 @@ test('orders: the tools sit on the right of the gallery bar, where the trash but
   await ctx.close();
 });
 
-test('AI order: panel, pins, live progress, and the Manual order stays exactly as it was', { skip }, async () => {
+test('AI order: panel, note, live progress, and the Manual order stays exactly as it was', { skip }, async () => {
   const ctx = await fresh({ delays: { ai: 2000 } });
   assert.deepEqual(await names(), ['k1', 'k2', 'k3']);
   await page.click('#aiBtn');
   await page.waitForSelector('#aiPanel:not([hidden])');
-  assert.match(await text('#aiPins'), /No pins/);
   await shot('15-ai-panel');
   await page.click('#aiBtn');
   assert.equal(await page.locator('#aiPanel').isHidden(), true);
-
-  await page.locator('.card[data-filename="k2"]').hover();
-  await page.locator('.card[data-filename="k2"] .action-btn[title^="Pin"]').click();
-  await page.locator('.card[data-filename="k1"]').hover();
-  await page.locator('.card[data-filename="k1"] .action-btn[title^="Pin"]').click({ modifiers: ['Shift'] });
-  assert.match(await text('.card[data-filename="k2"] .pin-badge'), /opener/);
-  assert.match(await text('.card[data-filename="k1"] .pin-badge'), /closer/);
+  assert.equal(await page.locator('.action-btn[title*="Pin"], .pin-badge, #aiPins').count(), 0);        // no pins any more
 
   await page.click('#aiBtn');
-  assert.match(await text('#aiPins'), /opener “Plate k2” · closer “Plate k1”/);
   await page.fill('#aiDirection', 'end on the blue one');
   await page.click('#aiGo');
   await page.waitForSelector('#statusText .slot');
   assert.match(await text('#statusText'), /AI order/);
   assert.equal(await page.locator('#statusText .slot').count(), 4);
   await shot('16-ai-progress');
-  await page.waitForFunction(() => /Done — AI: Opens on k2/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Done — AI: Opens on k3/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   assert.equal(await page.locator('#aiBtn').isDisabled(), false);
   assert.equal(await page.locator('#statusText .slot.ok').count(), 4);
   const body = api.state.jobs[0].body;
-  assert.deepEqual([body.first, body.last, body.direction, body.length], ['k2', 'k1', 'end on the blue one', null]);
+  assert.deepEqual([body.direction, body.length, 'first' in body, 'last' in body], ['end on the blue one', null, false, false]);
   assert.deepEqual(await seg(), [{ text: '✋ Manual (3)', on: false }, { text: '✨ AI (3)', on: true }]);
-  assert.deepEqual(await names(), ['k2', 'k3', 'k1']);
-  assert.match(await text('#seqSummary'), /Opens on k2, lands on k1/);
+  assert.deepEqual(await names(), ['k3', 'k2', 'k1']);
+  assert.match(await text('#seqSummary'), /Opens on k3, lands on k1/);
   await shot('17-ai-done');
   await clickSeg('Manual');
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k1');
@@ -513,5 +505,53 @@ test('AI order: a failure is reported and everything unlocks', { skip }, async (
   assert.equal(await page.locator('#aiBtn').isDisabled(), false);
   assert.equal(await page.locator('#generateBtn').isDisabled(), false);
   assert.equal((await seg()).length, 1);
+  await ctx.close();
+});
+
+test('AI order can replace the Manual order, after a confirmation; the AI order stays', { skip }, async () => {
+  const ctx = await fresh({ setup: aiSetup('x') });                                   // Manual: k3,k1,k2   AI: k2,k3,k1
+  assert.equal(await page.locator('#aiNote').isHidden(), true);                       // the button lives in the AI view only
+  await clickSeg('AI');
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k2');
+  await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));            // edit the AI order first
+  await page.waitForSelector('#resetAi:not([hidden])');
+  const edited = await names();
+  await shot('21-use-as-manual');
+  await page.click('#makeManual');
+  await page.waitForSelector('#confirmModal.open');
+  assert.match(await text('#confirmTitle'), /Replace your Manual order\?/);
+  assert.match(await text('#confirmBody'), /can't be undone/);
+  assert.equal(await text('#confirmYes'), 'Replace Manual');
+  await page.click('#confirmModal .confirm-foot button >> text=Cancel');
+  assert.equal(api.state.calls.filter(c => c.path === '/api/sequence' && c.body.action === 'make_manual').length, 0);
+  await clickSeg('Manual');
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
+  assert.deepEqual(await names(), ['k3', 'k1', 'k2']);                                // cancelling changed nothing
+  await clickSeg('AI');
+  await page.waitForFunction(first => document.querySelector('.card').dataset.filename === first, edited[0]);
+  await page.click('#makeManual');
+  await page.click('#confirmYes');
+  await page.waitForFunction(() => document.querySelector('#orderSeg button.on').textContent.includes('Manual'));
+  assert.deepEqual(await names(), edited);                                            // Manual is now a copy of the edited AI order
+  assert.match(await text('#toast'), /Manual order is now a copy of the AI order/);
+  await clickSeg('AI');
+  await page.waitForFunction(() => document.querySelector('#orderSeg button.on').textContent.includes('AI'));
+  assert.deepEqual(await names(), edited);                                            // the AI order is still there, still edited
+  assert.equal(await page.locator('#resetAi').isHidden(), false);
+  await ctx.close();
+});
+
+test('best N: the left-out divider has an "Include them all" button, and converting keeps the cut', { skip }, async () => {
+  const ctx = await fresh({ setup: st => { addAi(st, ['k1', 'k2', 'k3', 't1', 't2', 't3', 't4'], { summary: 'x', cut_off: 2 }); } });   // AI active, 2 of 3 in the edit
+  assert.deepEqual(await seg(), [{ text: '✋ Manual (3)', on: false }, { text: '✨ AI (2 of 3)', on: true }]);
+  assert.match(await text('.edit-divider'), /left out of this edit \(1\)/);
+  await page.click('#makeManual');
+  await page.click('#confirmYes');
+  await page.waitForFunction(() => document.querySelector('#orderSeg button.on').textContent.includes('Manual'));
+  assert.deepEqual((await seg())[0], { text: '✋ Manual (2 of 3)', on: true });       // the cut came along
+  await page.click('.edit-divider button');
+  await page.waitForFunction(() => !document.querySelector('.edit-divider'));
+  assert.deepEqual((await seg())[0], { text: '✋ Manual (3)', on: true });
+  assert.equal((await seg())[1].text, '✨ AI (2 of 3)');                              // the AI order keeps its own cut
   await ctx.close();
 });

@@ -140,19 +140,16 @@ def test_order_is_deterministic():
     assert E.order_images(items)["names"] == E.order_images(items)["names"]
 
 
-def test_pinned_opener_and_closer_are_respected():
+def test_the_briefs_opener_and_closer_are_used():
     items = lib(20)
-    r = E.order_images(items, pins={"first": "07.jpg", "last": "13.jpg"})
+    r = E.order_images(items, {"opener": "07.jpg", "closer": "13.jpg"})
     assert r["names"][0] == "07.jpg" and r["names"][-1] == "13.jpg"
 
 
-def test_brief_opener_closer_used_when_not_pinned_and_pins_win_over_the_brief():
-    items = lib(20)
-    brief = {"opener": "04.jpg", "closer": "09.jpg"}
-    r = E.order_images(items, brief)
-    assert (r["names"][0], r["names"][-1]) == ("04.jpg", "09.jpg")
-    r = E.order_images(items, brief, pins={"first": "11.jpg"})
-    assert (r["names"][0], r["names"][-1]) == ("11.jpg", "09.jpg")
+def test_unknown_opener_or_closer_names_are_ignored():
+    items = lib(10)
+    r = E.order_images(items, {"opener": "nope.jpg", "closer": "nada.jpg"})
+    assert len(r["names"]) == 10 and r["names"][0] != "nope.jpg"
 
 
 def test_without_a_brief_the_strongest_image_opens():
@@ -181,9 +178,9 @@ def test_same_territory_does_not_sit_together_when_it_can_be_avoided():
     assert same <= 2
 
 
-def test_best_n_picks_a_diverse_subset_with_pins_and_lists_the_rest():
+def test_best_n_picks_a_diverse_subset_with_the_opener_and_closer_and_lists_the_rest():
     items = lib(30)
-    r = E.order_images(items, pins={"first": "03.jpg", "last": "20.jpg"}, length=10)
+    r = E.order_images(items, {"opener": "03.jpg", "closer": "20.jpg"}, length=10)
     assert len(r["names"]) == 10 and len(r["left_out"]) == 20
     assert r["names"][0] == "03.jpg" and r["names"][-1] == "20.jpg"
     assert set(r["names"]) | set(r["left_out"]) == {it["name"] for it in items}
@@ -273,7 +270,7 @@ def test_build_ai_order_uses_the_brief_and_reports_progress(srv, make_plate):
 
     def llm(ask, key, model, images=None, system=None):
         return json.dumps({"opener": 2, "closer": 5, "peaks": [3], "weights": {"flip": 1.2}, "summary": "Hook, build, land."})
-    built = srv.build_ai_order(st, llm, "k", "m", None, "", {}, lambda step, note="": steps.append(step))
+    built = srv.build_ai_order(st, llm, "k", "m", None, "", lambda step, note="": steps.append(step))
     r = built["result"]
     assert r["names"][0] == "22_p2.jpg" and r["names"][-1] == "25_p5.jpg" and len(r["names"]) == 8
     assert built["summary"].startswith("Hook, build, land.")

@@ -180,7 +180,6 @@
             <label>Note (optional)
               <input id="aiDirection" type="text" maxlength="300" placeholder="e.g. open on the cap, end on the container" />
             </label>
-            <div class="ai-pins" id="aiPins"></div>
             <div class="ai-foot">
               <button onclick="toggleAiPanel()">Cancel</button>
               <button class="primary" id="aiGo" onclick="startAiOrder()">Order</button>
@@ -194,7 +193,7 @@
           <button id="trashEmpty" class="danger" onclick="emptyTrash()">Empty trash…</button>
         </div>
       </div>
-      <div class="ai-note" id="aiNote" hidden><b>✨ The AI's note</b><span id="seqSummary"></span></div>
+      <div class="ai-note" id="aiNote" hidden><b>✨ The AI's note</b><span id="seqSummary"></span><button id="makeManual" onclick="makeManual()" title="Copy this order over your Manual order">Use as my Manual order…</button></div>
       <div class="grid-col" id="grid"></div>
     </div>
   </div>

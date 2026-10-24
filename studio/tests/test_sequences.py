@@ -146,3 +146,28 @@ def test_legacy_state_without_sequences_still_reorders():
     assert st["order"] == ["b", "a"]
     sq.append_everywhere(st, "c")
     assert st["order"] == ["b", "a", "c"]
+
+
+def test_make_manual_copies_the_ai_order_over_manual_and_keeps_the_ai():
+    st = st_with()
+    ai = with_ai(st, ["b", "d", "a", "c"], cut_off=2)
+    sq.reorder_active(st, ["d", "b", "a", "c"])                            # the user edited the AI order
+    assert sq.make_manual(st) is True
+    m = sq.manual(st)
+    assert m["order"] == ["d", "b", "a", "c"] and m["cut_off"] == 2
+    assert st["active_sequence"] == m["id"]
+    assert ai["order"] == ["d", "b", "a", "c"] and ai["original"] == ["b", "d", "a", "c"]       # the AI order is unchanged
+    m["order"].append("z")
+    assert "z" not in ai["order"]                                          # a copy, not a shared list
+
+
+def test_make_manual_needs_an_ai_order():
+    assert sq.make_manual(st_with()) is False
+
+
+def test_include_all_clears_the_cut():
+    st = st_with()
+    with_ai(st, cut_off=2)
+    assert sq.include_all(st) is True and sq.active(st)["cut_off"] is None
+    assert sq.include_all(st) is False                                     # nothing left to clear
+    assert sq.edit_files(["a", "b", "c"], st) == ["a", "b", "c"]
