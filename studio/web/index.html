@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Match-Cut Studio</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%230b0b0d%27/%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%276%27 fill=%27none%27 stroke=%27%23ec540c%27 stroke-width=%273%27/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/src/style.css" />
 
 </head>
@@ -174,6 +175,10 @@
 
   <div class="status-text" id="statusText" data-idle="1">Ready</div>
   <div class="toast" id="toast"></div>
+
+  <div class="busy-bg" id="busy" hidden>
+    <div class="busy"><div class="spin"></div><div id="busyMsg">Working…</div></div>
+  </div>
 
   <div class="confirm-bg" id="confirmModal">
     <div class="confirm">

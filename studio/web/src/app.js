@@ -193,11 +193,15 @@
       if (confirmResolve) confirmResolve(yes);
       confirmResolve = null;
     }
+    function showBusy(msg) { document.getElementById('busyMsg').textContent = msg; document.getElementById('busy').hidden = false; }
+    function hideBusy() { document.getElementById('busy').hidden = true; }
     const KEEPS_LEARNING = 'The images are removed from disk for good. Your keep/trash history stays, so suggestions keep learning from them.';
     async function purge(payload, title, body, yesLabel) {
       if (!(await askConfirm(title, body, yesLabel))) return;
       const btns = ['trashDelSel', 'trashEmpty', 'trashSelAll'].map(id => document.getElementById(id));
       btns.forEach(b => { b.disabled = true; });
+      const count = payload.all ? plates.filter(p => p.trashed).length : payload.filenames.length;
+      showBusy(`Deleting ${count} image${count === 1 ? '' : 's'}…`);
       try {
         const res = await (await fetch('/api/purge', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
         if (!res.ok) throw new Error(res.error || 'delete failed');
@@ -207,6 +211,7 @@
       } catch (e) {
         setStatus(`Delete failed: ${e.message}`);
       } finally {
+        hideBusy();
         btns.forEach(b => { b.disabled = false; });
         updateTrashBar();
       }
