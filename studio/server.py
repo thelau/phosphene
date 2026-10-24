@@ -220,6 +220,16 @@ def plate_tone(path: Path) -> str:
     return "dark" if lum < 110 else "light"
 
 
+_TONE_CACHE: dict = {}
+
+
+def cached_tone(path: Path) -> str:
+    key = (path.name, int(path.stat().st_mtime))
+    if key not in _TONE_CACHE:
+        _TONE_CACHE[key] = plate_tone(path)
+    return _TONE_CACHE[key]
+
+
 def glue_twins(order: list[str], twin_of: dict) -> list[str]:
     """Every twin sits directly after its original, whatever order was saved."""
     present = set(order)
@@ -451,6 +461,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "prompt": prompts.get(p.name, titles.get(p.name, "")),
                     "model": models.get(p.name, "google/nano-banana-pro"),
                     "trashed": p.name in trashed_set,
+                    "tone": cached_tone(p),
                     "twin_of": st.get("twin_of", {}).get(p.name),
                     "has_twin": p.name in st.get("twin_of", {}).values(),
                     "qa_passed": qa["qa_passed"],

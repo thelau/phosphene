@@ -87,14 +87,24 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", default=",".join(CANDIDATE_MODELS))
     ap.add_argument("--workers", type=int, default=3)
+    ap.add_argument("--random", type=int, default=0, help="use N Kimi-invented random-axis scenes (taste-aware) instead of the fixed SCENES")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     jobs = []
-    for sc in SCENES:  # scene-major so a partial run still has every model covered per scene
+    scenes = SCENES
+    if a.random:
+        st = server.load_state()
+        ideas = []
+        while len(ideas) < a.random:
+            ideas += server.ask_kimi_for_prompts(st, st["kimi_api_key"], st.get("kimi_model", "kimi-k3"), count=min(6, a.random - len(ideas)), pair=False)
+            server.save_state(st)
+        scenes = [{"title": i["title"], "dark": i["prompt"], "guide": i.get("guide", "dark"), "light": None} for i in ideas]
+    for sc in scenes:  # scene-major so a partial run still has every model covered per scene
         for m in a.models.split(","):
-            jobs.append((sc["title"], sc["dark"], "dark", m))
-            jobs.append((sc["title"] + " (twin)", sc["light"], "light", m))
+            jobs.append((sc["title"], sc["dark"], sc.get("guide", "dark"), m))
+            if sc["light"]:
+                jobs.append((sc["title"] + " (twin)", sc["light"], "light", m))
     if a.limit:
         jobs = jobs[: a.limit]
     print(f"[BENCH] {len(jobs)} images, {a.workers} workers", flush=True)
