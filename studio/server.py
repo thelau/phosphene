@@ -440,6 +440,25 @@ def invent_world(st: dict, api_key: str, kimi_model: str, direction: str = "") -
     return w
 
 
+def match_world(st: dict, api_key: str, kimi_model: str, direction: str) -> dict | None:
+    """Route a typed direction to the closest existing world, or None if nothing fits (caller invents one)."""
+    worlds = chapters.all_worlds(st)
+    listing = "\n".join(f"- {w['name']}: {w['brief'][:140]}" for w in worlds)
+    try:
+        out = call_kimi_llm(
+            f"A creative director wants images about: \"{direction}\".\nWhich of these territories fits best?\n{listing}\n"
+            f"Reply with ONLY the exact territory name, or NEW if none is a genuinely good fit.",
+            api_key=api_key, preferred_model=kimi_model,
+        ).strip().strip('"').strip()
+    except Exception:
+        return None
+    for w in worlds:
+        if w["name"].lower() == out.lower():
+            print(f"[KIMI] direction '{direction}' -> '{w['name']}'", flush=True)
+            return w
+    return None
+
+
 def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, pair: bool = False, world: str | None = None, direction: str = "") -> list[dict]:
     """One authored creative world per batch (shots cohere), idea-first, steered by taste, near-duplicates dropped."""
     titles = {**DEFAULT_TITLES, **st.get("titles", {})}
@@ -448,8 +467,10 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     ban_str = ", ".join(list(dict.fromkeys(list(titles.values()) + st.get("history", [])))[-80:])
 
     w = chapters.choose_world(st, world or "")
-    if w is None or (direction and not world):
-        w = invent_world(st, api_key, kimi_model, direction)  # wildcard, or a typed direction with no fixed world
+    if direction and not world:
+        w = match_world(st, api_key, kimi_model, direction) or invent_world(st, api_key, kimi_model, direction)
+    elif w is None:
+        w = invent_world(st, api_key, kimi_model, direction)
 
     n_ask = count + 2  # over-ask so near-duplicates can be dropped
     apps = random.sample(w["applications"], k=min(n_ask, len(w["applications"])))
@@ -555,7 +576,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             st = load_state()
             stats = chapters.world_stats(st)
             self.send_json({"ok": True, "worlds": [
-                {"name": w["name"], "n": stats.get(w["name"], {}).get("n", 0), "kept": stats.get(w["name"], {}).get("kept", 0), "wildcard": bool(w.get("wildcard"))}
+                {"name": w["name"], "brief": w["brief"], "n": stats.get(w["name"], {}).get("n", 0), "kept": stats.get(w["name"], {}).get("kept", 0), "wildcard": bool(w.get("wildcard"))}
                 for w in chapters.all_worlds(st)
             ]})
             return
