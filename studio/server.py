@@ -317,6 +317,13 @@ def glue_twins(order: list[str], twin_of: dict) -> list[str]:
     return out
 
 
+def moved_to_end(order: list[str], names) -> list[str]:
+    """`names` (an original and its twins) go to the end, original first; everything else keeps its order."""
+    moving = set(names)
+    tail = sorted(moving, key=lambda n: (n not in order, order.index(n) if n in order else 0))
+    return [n for n in order if n not in moving] + tail
+
+
 def ordered_plate_files(st: dict) -> list[Path]:
     all_files = {p.name: p for p in sorted(PLATES_DIR.glob("*.jpg"))}
     order = st.get("order", [])
@@ -905,6 +912,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 cur -= group
                 for f in group:
                     st.get("trashed_at", {}).pop(f, None)
+                # a restored image joins the end of the order; it does not return to where it was
+                st["order"] = moved_to_end([p.name for p in ordered_plate_files(st)], group)
             st["trashed"] = sorted(cur)
             save_state(st)
             self.send_json({"ok": True})

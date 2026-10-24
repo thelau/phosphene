@@ -185,3 +185,20 @@ def test_get_cached_qa_flush_is_throttled(srv, make_plate, monkeypatch):
     for i in range(5):
         srv.get_cached_qa(make_plate(srv.PLATES_DIR / f"{i}.jpg", (i, i, i)))
     assert len(flushes) == 1
+
+
+# ---------- restoring from trash ----------
+
+def test_moved_to_end_puts_restored_images_last_and_keeps_the_rest(srv):
+    assert srv.moved_to_end(["a", "b", "c", "d"], {"b"}) == ["a", "c", "d", "b"]
+
+
+def test_moved_to_end_keeps_original_before_its_twin(srv):
+    out = srv.moved_to_end(["t", "a", "x", "y"], {"t", "a"})        # twin happened to sit before its original
+    assert out[:2] == ["x", "y"] and set(out[2:]) == {"t", "a"}
+    assert srv.moved_to_end(["a", "a2", "x"], {"a", "a2"}) == ["x", "a", "a2"]
+
+
+def test_moved_to_end_handles_names_missing_from_the_order(srv):
+    assert srv.moved_to_end(["a", "b"], {"zzz"}) == ["a", "b", "zzz"]
+    assert srv.moved_to_end([], {"a"}) == ["a"]
