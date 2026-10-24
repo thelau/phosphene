@@ -147,15 +147,48 @@ def test_ask_kimi_direction_replaces_the_worlds_random_subjects(srv, fake_llm):
     p = fake_llm[0]
     assert "HARD REQUIREMENT" in p and "fog, clouds, lightning" in p
     assert "invent a DIFFERENT concrete subject" in p
-    assert not any(f"subject = {a} " in p for a in w["applications"])      # no random world subjects when the director chose
+    assert "NOT a menu" not in p                                           # no territory flavour list when the director chose
+    assert not any(f"subject = {a} " in p for a in w["applications"])
 
 
-def test_ask_kimi_without_direction_uses_the_worlds_subjects(srv, fake_llm):
-    w = chapters.pick_world(name="Nature & Light")
-    srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=3, world="Nature & Light")
+def test_ask_kimi_without_direction_makes_kimi_invent_the_subjects(srv, fake_llm):
+    w = chapters.pick_world(name="Packaging & Product")
+    srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=8, world="Packaging & Product")
     p = fake_llm[0]
-    assert "HARD REQUIREMENT" not in p and "invent a DIFFERENT" not in p
-    assert any(f"subject = {a} " in p for a in w["applications"])
+    assert "HARD REQUIREMENT" not in p
+    assert p.count("invent a fresh, specific object or scene") == 10          # every shot asks for its own invented subject
+    assert not any(f"subject = {a} " in p for a in w["applications"])        # the hand-written list is no longer assigned
+    assert "NOT a menu" in p
+    shown = [a for a in w["applications"] if a in p]
+    assert 1 <= len(shown) <= 5                                              # only a few as flavour, never the whole list
+
+
+def test_ask_kimi_remembers_subjects_and_tells_kimi_to_avoid_them_next_time(srv, monkeypatch):
+    seen = []
+    batch = [{"title": f"T{i}", "subject": f"Subject number {i}", "idea": "i", "guide": "dark", "prompt": f"{WORDS[i]} scene"} for i in range(6)]
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda prompt, **k: seen.append(prompt) or json.dumps(batch))
+    st = srv.load_state()
+    out = srv.ask_kimi_for_prompts(st, "k", "kimi-k3", count=4, world="Packaging & Product")
+    assert out[0]["subject"] == "Subject number 0"
+    assert "Subject number 0" in st["recent_subjects"]["Packaging & Product"]
+    assert "Subjects already used here recently" not in seen[0]
+    srv.ask_kimi_for_prompts(st, "k", "kimi-k3", count=4, world="Packaging & Product")
+    assert "Subjects already used here recently" in seen[1] and "Subject number 0" in seen[1]
+
+
+def test_recent_subjects_memory_is_capped_per_territory(srv, monkeypatch):
+    batch = [{"title": f"T{i}", "subject": f"S{i}", "idea": "i", "guide": "dark", "prompt": f"{WORDS[i]} scene"} for i in range(6)]
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda prompt, **k: json.dumps(batch))
+    st = srv.load_state()
+    st["recent_subjects"] = {"Packaging & Product": [f"old{i}" for i in range(80)]}
+    srv.ask_kimi_for_prompts(st, "k", "kimi-k3", count=4, world="Packaging & Product")
+    mem = st["recent_subjects"]["Packaging & Product"]
+    assert len(mem) == 60 and mem[-1].startswith("S")
+
+
+def test_ask_kimi_without_direction_has_no_direction_block(srv, fake_llm):
+    srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=2, world="Fashion & Apparel")
+    assert "DIRECTOR'S DIRECTION" not in fake_llm[0]
 
 
 def test_ask_kimi_custom_territory_invents_from_the_text(srv, monkeypatch):
@@ -168,11 +201,6 @@ def test_ask_kimi_custom_territory_invents_from_the_text(srv, monkeypatch):
     out = srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=2, world="__custom__", direction="fog and rain")
     assert out[0]["world"] == "Harbor & Signal"
     assert "fog and rain" in seen[0] and not any("Which of these territories" in s for s in seen)
-
-
-def test_ask_kimi_without_direction_has_no_direction_block(srv, fake_llm):
-    srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=2, world="Fashion & Apparel")
-    assert "DIRECTOR'S DIRECTION" not in fake_llm[0]
 
 
 def test_ask_kimi_direction_routes_to_matched_world(srv, monkeypatch):

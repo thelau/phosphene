@@ -46,7 +46,6 @@ STUDIO_DIR = Path(__file__).resolve().parent
 WEB_DIST = STUDIO_DIR / "web" / "dist"  # built page (npm run build); in dev Vite serves it instead
 REJECTED_DIR = ROOT_DIR / "assets" / "ai-plates-rejected"
 OUTPUTS_DIR = ROOT_DIR / "outputs"
-MUSIC_BPM = 136.0
 CURATION_FILE = STUDIO_DIR / "curation_state.json"
 SECRETS_FILE = STUDIO_DIR / ".secrets.json"  # gitignored; holds kimi_api_key
 
@@ -439,10 +438,9 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
         w = invent_world(st, api_key, kimi_model, direction)
 
     n_ask = count + 2  # over-ask so near-duplicates can be dropped
-    apps = random.sample(w["applications"], k=min(n_ask, len(w["applications"])))
-    while len(apps) < n_ask:
-        apps.append(random.choice(w["applications"]))
     shots = diversity.sample_shots(n_ask, st.get("recent_axes"))
+    seen_subjects = st.get("recent_subjects", {}).get(w["name"], [])[-60:]
+    avoid_block = ""
     if direction:
         # the director's words choose the subjects; the territory only supplies look, palette and how the mark emerges
         shot_lines = "\n".join(
@@ -450,14 +448,21 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
             for i, sh in enumerate(shots)
         )
     else:
+        # Kimi invents fresh subjects for this territory on the spot; the hand-written list only shows the flavour
+        flavour = random.sample(w["applications"], k=min(5, len(w["applications"])))
         shot_lines = "\n".join(
-            f"Shot {i + 1}: subject = {apps[i]} | optional inspiration (use only what serves the idea, ignore the rest): texture {sh['texture']}, light {sh['lighting']}, camera {sh['camera']}"
+            f"Shot {i + 1}: subject = invent a fresh, specific object or scene that belongs to this territory | optional inspiration (use only what serves the idea, ignore the rest): texture {sh['texture']}, light {sh['lighting']}, camera {sh['camera']}"
             for i, sh in enumerate(shots)
+        )
+        avoid_block = (
+            f"SUBJECTS: every shot needs its own new subject invented for this territory. These examples only show the flavour of the territory, they are NOT a menu, never reuse them or their close variants: {'; '.join(flavour)}.\n"
+            + (f"Subjects already used here recently (never repeat these or close variants): {'; '.join(seen_subjects)}.\n" if seen_subjects else "")
+            + "Reach for subjects a design studio would actually photograph, not the first obvious thing for the territory.\n\n"
         )
     liked = "\n".join(f"- {t}: {p[:200]}" for t, p in brief["liked"]) or "(none yet)"
     disliked = ", ".join(brief["disliked"]) or "(none yet)"
     llm_prompt = (
-        f"Return ONLY a raw JSON array (no markdown fences) of {n_ask} objects with keys \"title\", \"idea\", \"guide\" ('dark' or 'light' = whether the frame is mostly dark or mostly light) and \"prompt\". "
+        f"Return ONLY a raw JSON array (no markdown fences) of {n_ask} objects with keys \"title\", \"subject\" (the shot's main subject in 2-6 words), \"idea\", \"guide\" ('dark' or 'light' = whether the frame is mostly dark or mostly light) and \"prompt\". "
         f"They are shots for a 9:16 vertical match-cut film where one small circular mark sits at the exact dead-center (50%, 50%) at 18% frame width.\n\n"
         f"WORLD: {w['name']}. {w['brief']}\n"
         + (f"DIRECTOR'S DIRECTION (a HARD REQUIREMENT): \"{direction}\". Every shot's central subject must plainly be this; nothing in a shot may belong to a different subject area "
@@ -467,7 +472,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
         f"For each shot first write \"idea\": ONE line on how the mark physically emerges from the scene (inspirations: {'; '.join(w['marks'])}; or something better). "
         f"Reject gimmicks like 'logo on a thing'. Then write \"prompt\" from that idea.\n\n"
         f"Alternate registers: odd-numbered shots are DARK register (mostly black or deep tones, luminous emitted light, \"guide\":\"dark\"); even-numbered shots are LIGHT register (mostly bone or pale tones, soft light, \"guide\":\"light\"). "
-        f"Each register uses the world's palette for that register.\n\nShots:\n{shot_lines}\n\n{QUALITY_BAR}\n\n"
+        f"Each register uses the world's palette for that register.\n\n{avoid_block}Shots:\n{shot_lines}\n\n{QUALITY_BAR}\n\n"
         f"TASTE (learned from what the director kept):\nLiked:\n{liked}\nSteer away from the feel of: {disliked}\n\n"
         f"RULES:\n"
         f"1. The mark is physically part of the scene (same perspective, light, material). Never a flat sticker, no outer rings, exactly one mark.\n"
@@ -493,8 +498,11 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
         kept.append(idea)
     kept = kept[:count] or ideas[:count]
 
-    flat = [{"title": i.get("title", "Untitled"), "guide": i.get("guide", "dark"), "prompt": i["prompt"], "idea": i.get("idea", ""), "world": w["name"]} for i in kept]
+    flat = [{"title": i.get("title", "Untitled"), "guide": i.get("guide", "dark"), "prompt": i["prompt"], "idea": i.get("idea", ""), "world": w["name"], "subject": str(i.get("subject", "")).strip()} for i in kept]
 
+    used = st.setdefault("recent_subjects", {}).setdefault(w["name"], [])
+    used.extend(x["subject"] for x in flat if x["subject"])
+    st["recent_subjects"][w["name"]] = used[-60:]
     st.setdefault("recent_worlds", []).append(w["name"])
     st["recent_worlds"] = st["recent_worlds"][-8:]
     recent = st.setdefault("recent_axes", {})
@@ -504,6 +512,20 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
             recent[axis] = recent[axis][-12:]
     print(f"[KIMI] titles: {[x['title'] for x in flat]}", flush=True)
     return flat
+
+
+def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "off", zoom_mode: str = "off") -> str:
+    """Unique, descriptive name per export so nothing is overwritten: Demo-136bpm-x4-invert-zoomout-20261025-0930.mp4"""
+    mult = f"{multiple:.2f}".rstrip("0").rstrip(".")
+    fx = ("-invert" if invert_mode in ("mono", "colour") else "") + (f"-zoom{zoom_mode}" if zoom_mode != "off" else "")
+    return f"Demo-{int(round(bpm))}bpm-x{mult}{fx}-{time.strftime('%Y%m%d-%H%M%S', time.localtime(ts))}.mp4"
+
+
+def prune_exports(folder: Path, keep: int = 12) -> None:
+    """Keep the newest `keep` exported videos."""
+    files = sorted(folder.glob("Demo-*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in files[keep:]:
+        old.unlink(missing_ok=True)
 
 
 def write_export_frames(files, tmp_dir: Path, total_frames: int, frames_per_cut: float, invert_mode: str = "off", zoom_mode: str = "off", zoom_amount: float = 0.6) -> int:
@@ -820,7 +842,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/export-video":
             bpm = float(body.get("bpm", 136.0))
             multiple = float(body.get("multiple", 1.0))  # cuts per beat: 0.5 = every 2 beats, 4 = 4 cuts/beat
-            total_seconds = float(body.get("total_seconds", 10.0))
             st = load_state()
             trashed_set = set(st.get("trashed", []))
             active_files = [p for p in ordered_plate_files(st) if p.name not in trashed_set]
@@ -830,7 +851,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
             fps = 30
             frames_per_cut = max(1.0, fps * 60.0 / (bpm * multiple))
-            total_frames = int(total_seconds * fps)
             tmp_dir = ROOT_DIR / "outputs" / "_tmp_export_frames"
             if tmp_dir.exists():
                 shutil.rmtree(tmp_dir)
@@ -839,19 +859,18 @@ class StudioHandler(SimpleHTTPRequestHandler):
             invert_mode = body.get("invert_mode", "off") if body.get("invert_mode") in cutplan.INVERT_MODES else "off"
             zoom_mode = body.get("zoom_mode", "off") if body.get("zoom_mode") in cutplan.ZOOM_MODES else "off"
             zoom_amount = max(0.0, min(10.0, float(body.get("zoom_amount", 0.6))))
+            n_cuts, total_frames = cutplan.export_length(len(active_files), frames_per_cut, invert_mode)  # every selected image, once
             write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount)
 
-            out_mp4 = OUTPUTS_DIR / "Demo-curated-matchcut.mp4"
-            audio_files = list((ROOT_DIR / "music").glob("*.mp3")) + list((ROOT_DIR / "music").glob("*.wav"))
-            cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp_dir / "f_%04d.jpg")]
-            if audio_files:
-                # Track is 136 BPM; stretch it so the music follows the chosen tempo.
-                ratio = max(0.5, min(2.0, bpm / MUSIC_BPM))
-                cmd += ["-i", str(audio_files[0]), "-af", f"atempo={ratio:.4f}", "-shortest"]
-            cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-t", str(total_seconds), str(out_mp4)]
+            out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode)
+            # picture only: no music is attached; cut length follows the tempo, multiple and effects chosen in the player
+            cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp_dir / "f_%04d.jpg"),
+                   "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", str(out_mp4)]
             subprocess.run(cmd, check=True, capture_output=True)
             shutil.rmtree(tmp_dir, ignore_errors=True)
-            self.send_json({"ok": True, "video_url": f"/outputs/Demo-curated-matchcut.mp4?t={int(time.time())}", "frames_per_cut": round(frames_per_cut, 2)})
+            prune_exports(OUTPUTS_DIR, keep=12)
+            self.send_json({"ok": True, "video_url": f"/outputs/{out_mp4.name}", "filename": out_mp4.name, "frames_per_cut": round(frames_per_cut, 2),
+                            "images": len(active_files), "cuts": n_cuts, "seconds": round(total_frames / fps, 1)})
             return
 
         self.send_json({"ok": False, "error": "Unknown endpoint"}, 404)

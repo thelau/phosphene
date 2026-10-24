@@ -142,3 +142,33 @@ def test_export_frames_zoom_changes_every_frame_and_keeps_size(srv, tmp_path, mo
     counts = [white_count(i) for i in range(8)]
     assert counts[-1] > counts[0] * 1.3                  # the white square grows as we zoom in
     assert counts == sorted(counts)
+
+
+# ---------- export length: every selected image, no fixed duration ----------
+
+@pytest.mark.parametrize("n,fpc,inv,cuts,frames", [
+    (10, 7.5, "off", 10, 75),
+    (10, 7.5, "mono", 20, 150),                 # each image takes two cuts when inverted copies are on
+    (116, 3.0, "colour", 232, 696),
+    (1, 1.0, "off", 1, 1),
+    (3, 0.5, "off", 3, 3),                      # never fewer frames than cuts
+])
+def test_export_length_covers_every_image(n, fpc, inv, cuts, frames):
+    assert cutplan.export_length(n, fpc, inv) == (cuts, frames)
+
+
+def test_every_image_appears_in_the_export_plan():
+    n, fpc = 7, 4.5
+    cuts, frames = cutplan.export_length(n, fpc, "off")
+    shown = {cutplan.frame_plan(f, fpc, n, "off")["plate"] for f in range(frames)}
+    assert shown == set(range(n))
+    shown_inv = {(cutplan.frame_plan(f, fpc, n, "mono")["plate"], cutplan.frame_plan(f, fpc, n, "mono")["inverted"])
+                 for f in range(cutplan.export_length(n, fpc, "mono")[1])}
+    assert shown_inv == {(i, flag) for i in range(n) for flag in (False, True)}
+
+
+def test_export_does_not_loop_back_to_the_first_image():
+    n, fpc = 5, 7.5
+    _, frames = cutplan.export_length(n, fpc, "off")
+    plates = [cutplan.frame_plan(f, fpc, n, "off")["plate"] for f in range(frames)]
+    assert plates[-1] == n - 1 and plates == sorted(plates)

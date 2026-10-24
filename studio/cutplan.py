@@ -50,3 +50,9 @@ def zoomed(img: Image.Image, scale: float) -> Image.Image:
 def inverted(img: Image.Image, invert_mode: str) -> Image.Image:
     base = img.convert("L").convert("RGB") if invert_mode == "mono" else img
     return ImageOps.invert(base)
+
+
+def export_length(n_plates: int, frames_per_cut: float, invert_mode: str = "off") -> tuple[int, int]:
+    """(number of cuts, number of frames) so every image is shown once; with invert on each image takes two cuts."""
+    n_cuts = n_plates * (2 if invert_mode in ("mono", "colour") else 1)
+    return n_cuts, max(n_cuts, int(n_cuts * frames_per_cut))

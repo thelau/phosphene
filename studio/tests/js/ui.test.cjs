@@ -431,3 +431,49 @@ test('the dark/light twin feature is gone from the page', () => {
     assert.ok(!app.includes(word), `app.js still mentions ${word}`);
   }
 });
+
+test('export leaves the preview alone and offers a download link', async () => {
+  const r = baseRoutes();
+  r['/api/export-video'] = { ok: true, images: 12, seconds: 6.0, video_url: '/outputs/Demo-136bpm-x4-20261025-093005.mp4', filename: 'Demo-136bpm-x4-20261025-093005.mp4' };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('stageImg').src = '/p/a';
+  h.$('stageImg').style.display = 'block';
+  h.$('bpmSlider').value = '136'; h.$('multSelect').value = '4'; h.$('invertSelect').value = 'mono'; h.$('zoomSelect').value = 'out'; h.$('zoomAmt').value = '1.2';
+  await h.run('exportVideo()');
+  const body = h.calls.find(c => c.url === '/api/export-video').body;
+  assert.deepEqual([body.invert_mode, body.zoom_mode, body.zoom_amount, body.bpm], ['mono', 'out', 1.2, 136]);
+  assert.equal('total_seconds' in body, false);                       // no fixed duration: the server exports every selected image
+  assert.equal(h.$('stageImg').src, '/p/a');
+  assert.equal(h.$('stageImg').style.display, 'block');
+  const link = h.$('downloadLink');
+  assert.equal(link.hidden, false);
+  assert.equal(link.href, '/outputs/Demo-136bpm-x4-20261025-093005.mp4');
+  assert.equal(link.download, 'Demo-136bpm-x4-20261025-093005.mp4');
+  assert.match(link.textContent, /Download Demo-136bpm/);
+  assert.match(h.$('toast').textContent, /12 images, 6s/);
+  assert.equal(h.$('exportBtn').disabled, false);
+  assert.equal(h.$('exportBtn').textContent, 'Export MP4');
+});
+
+test('export failures show a message and unlock the button', async () => {
+  const r = baseRoutes();
+  r['/api/export-video'] = { ok: false, error: 'No active plates' };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  await h.run('exportVideo()');
+  assert.match(h.$('toast').textContent, /Export failed: No active plates/);
+  assert.equal(h.$('exportBtn').disabled, false);
+  const r2 = baseRoutes();
+  r2['/api/export-video'] = async () => { throw new Error('socket hang up'); };
+  const h2 = load({ routes: r2 });
+  await settle(); await settle();
+  await h2.run('exportVideo()');
+  assert.match(h2.$('toast').textContent, /Export failed: socket hang up/);
+});
+
+test('the preview no longer has a video element to replace it with', () => {
+  const html = fs.readFileSync(WEB('index.html'), 'utf8');
+  const app = fs.readFileSync(WEB('src', 'app.js'), 'utf8');
+  assert.ok(!html.includes('stageVideo') && !app.includes('stageVideo'));
+});

@@ -192,3 +192,33 @@ def test_heal_circular_patch_copies_clean_texture_over_target():
     assert out.getpixel((200, 200)) == (0, 0, 255)
     assert im.getpixel((200, 200)) == (255, 0, 0)                           # original untouched
     assert out.size == im.size
+
+
+# ---------- export naming ----------
+
+def test_export_filename_is_descriptive_and_unique_per_second(srv):
+    import time as _t
+    ts = _t.mktime((2026, 10, 25, 9, 30, 5, 0, 0, -1))
+    assert srv.export_filename(136, 4, ts) == "Demo-136bpm-x4-20261025-093005.mp4"
+    assert srv.export_filename(136.4, 1.3333333, ts) == "Demo-136bpm-x1.33-20261025-093005.mp4"
+    assert srv.export_filename(120, 2, ts, "mono", "out") == "Demo-120bpm-x2-invert-zoomout-20261025-093005.mp4"
+    assert srv.export_filename(120, 2, ts, "off", "off").count("-invert") == 0
+    assert srv.export_filename(120, 2, ts) != srv.export_filename(120, 2, ts + 1)
+
+
+def test_prune_exports_keeps_newest_and_ignores_other_files(srv, tmp_path):
+    import os, time as _t
+    for i in range(5):
+        f = tmp_path / f"Demo-{i}.mp4"
+        f.write_bytes(b"x")
+        os.utime(f, (_t.time() + i, _t.time() + i))
+    other = tmp_path / "keepme.mp4"
+    other.write_bytes(b"x")
+    srv.prune_exports(tmp_path, keep=2)
+    assert sorted(p.name for p in tmp_path.glob("*.mp4")) == ["Demo-3.mp4", "Demo-4.mp4", "keepme.mp4"]
+
+
+def test_exports_have_no_audio_options_left(srv):
+    import inspect
+    src = inspect.getsource(srv)
+    assert "atempo" not in src and "MUSIC_BPM" not in src and '"-an"' in src

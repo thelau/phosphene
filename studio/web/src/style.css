@@ -186,13 +186,12 @@
     #loader .msg { font-size: 12px; color: var(--muted); }
     @keyframes spin { to { transform: rotate(360deg); } }
     #stageImg { transform-origin: 50% 50%; will-change: transform, filter; }
-    .stage img, .stage video {
+    .stage img {
       width: 100%;
       height: 100%;
       object-fit: cover;
       display: block;
     }
-    .stage video { display: none; }
     .reticle {
       position: absolute;
       inset: 0;
@@ -417,3 +416,7 @@
       letter-spacing: 0.01em;
     }
   
+
+.dl { display: block; width: 100%; margin-top: 6px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-size: 11px; font-weight: 600; text-align: center; text-decoration: none; word-break: break-all; background: #1f1f25; }
+.dl:hover { border-color: var(--orange); color: var(--orange); }
+.dl[hidden] { display: none; }

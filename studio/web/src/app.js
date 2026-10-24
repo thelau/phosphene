@@ -246,10 +246,7 @@
     }
 
     function previewPlate(filename) {
-      const stageVideo = document.getElementById('stageVideo');
       const stageImg = document.getElementById('stageImg');
-      stageVideo.pause();
-      stageVideo.style.display = 'none';
       stageImg.style.display = 'block';
       clearFx();
       const p = plates.find(x => x.filename === filename);
@@ -327,10 +324,7 @@
     }
 
     function togglePlay() {
-      const stageVideo = document.getElementById('stageVideo');
       const stageImg = document.getElementById('stageImg');
-      stageVideo.pause();
-      stageVideo.style.display = 'none';
       stageImg.style.display = 'block';
       isPlaying = !isPlaying;
       if (isPlaying) { cutPos = 0; lastTick = performance.now(); } else { clearFx(); }
@@ -604,20 +598,22 @@
             multiple: parseFloat(document.getElementById('multSelect').value),
             invert_mode: document.getElementById('invertSelect').value,
             zoom_mode: document.getElementById('zoomSelect').value,
-            zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
-            total_seconds: 10
+            zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0
           })
         });
         const data = await res.json();
         if (data.ok) {
-          const stageImg = document.getElementById('stageImg');
-          const stageVideo = document.getElementById('stageVideo');
-          stageImg.style.display = 'none';
-          stageVideo.style.display = 'block';
-          stageVideo.src = data.video_url;
-          stageVideo.play();
-          setStatus('Exported MP4.');
+          const link = document.getElementById('downloadLink');
+          link.href = data.video_url;
+          link.setAttribute('download', data.filename || 'Demo.mp4');
+          link.textContent = `⬇ Download ${data.filename || 'MP4'}`;
+          link.hidden = false;
+          setStatus(`Export ready: ${data.images} images, ${data.seconds}s. The preview is unchanged.`);
+        } else {
+          setStatus(`Export failed: ${data.error || 'unknown error'}`);
         }
+      } catch (e) {
+        setStatus(`Export failed: ${e.message}`);
       } finally {
         btn.disabled = false;
         btn.textContent = 'Export MP4';
