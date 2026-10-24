@@ -4,7 +4,7 @@ Minimal Match-Cut Curation & Generation Server
 - Uses Kimi (Kimi K3 / Kimi K2.7) via API key to generate fresh, non-repeating scene prompts and per-card variations.
 - Uses Krea MCP OAuth (`https://api.krea.ai/mcp`) to generate 9:16 center-locked plates.
 - Persists model name and full prompt per image, exposed in `/api/state` for the card badge & `(i)` prompt overlay.
-- Per-card "Twin" (`POST /api/make-twin`, image edit into the opposite tonal world) and drag-and-drop reordering (`POST /api/reorder`); twins stay glued after their original.
+- Drag-and-drop reordering (`POST /api/reorder`); restoring from trash puts an image at the end of the order.
 """
 
 import io
@@ -268,57 +268,8 @@ def save_state(state: dict) -> None:
     CURATION_FILE.write_text(json.dumps(state, indent=2))
 
 
-TWIN_MODEL = "google/nano-banana-pro"
-
-TWIN_PROMPTS = {
-    "light": (
-        "Re-render this exact image as its LIGHT twin. Keep the identical composition, camera angle, subject, object shapes and the single circular mark "
-        "at dead-center with the same size and treatment. Transform the whole palette into a bright high-key, near-monochrome world (white, pale grey, silver, "
-        "soft diffused light, at most one restrained accent color). Same materials and level of detail; only the tonal world changes."
-    ),
-    "dark": (
-        "Re-render this exact image as its DARK twin. Keep the identical composition, camera angle, subject, object shapes and the single circular mark "
-        "at dead-center with the same size and treatment. Transform the whole palette into a deep low-key world (ink black, saturated electric blue or violet accent, "
-        "dramatic directional light, crisp specular edges). Same materials and level of detail; only the tonal world changes."
-    ),
-}
-
-
-def plate_tone(path: Path) -> str:
-    from PIL import ImageStat
-    lum = ImageStat.Stat(Image.open(path).convert("L").resize((64, 114))).mean[0]
-    return "dark" if lum < 110 else "light"
-
-
-_TONE_CACHE: dict = {}
-
-
-def cached_tone(path: Path) -> str:
-    key = (path.name, path.stat().st_size)
-    if key not in _TONE_CACHE:
-        _TONE_CACHE[key] = plate_tone(path)
-    return _TONE_CACHE[key]
-
-
-def glue_twins(order: list[str], twin_of: dict) -> list[str]:
-    """Every twin sits directly after its original, whatever order was saved."""
-    present = set(order)
-    twins_of = {}
-    for twin, orig in twin_of.items():
-        if twin in present and orig in present:
-            twins_of.setdefault(orig, []).append(twin)
-    glued = {t for ts in twins_of.values() for t in ts}
-    out = []
-    for f in order:
-        if f in glued:
-            continue
-        out.append(f)
-        out.extend(sorted(twins_of.get(f, [])))
-    return out
-
-
 def moved_to_end(order: list[str], names) -> list[str]:
-    """`names` (an original and its twins) go to the end, original first; everything else keeps its order."""
+    """`names` go to the end (keeping their relative order); everything else keeps its order."""
     moving = set(names)
     tail = sorted(moving, key=lambda n: (n not in order, order.index(n) if n in order else 0))
     return [n for n in order if n not in moving] + tail
@@ -336,9 +287,6 @@ def ordered_plate_files(st: dict) -> list[Path]:
     for fname, p in sorted(all_files.items()):
         if fname not in seen:
             result.append(p)
-    names = glue_twins([p.name for p in result], st.get("twin_of", {}))
-    by_name = {p.name: p for p in result}
-    result = [by_name[n] for n in names]
     return result
 
 
@@ -682,9 +630,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "critic": st.get("critic", {}).get(p.name),
                     "world": st.get("worlds", {}).get(p.name),
                     "idea": st.get("ideas", {}).get(p.name),
-                    "tone": cached_tone(p),
-                    "twin_of": st.get("twin_of", {}).get(p.name),
-                    "has_twin": p.name in st.get("twin_of", {}).values(),
                     "qa_passed": qa["qa_passed"],
                     "qa_score": qa["qa_score"],
                     "qa_issues": qa.get("issues", []),
@@ -850,59 +795,12 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(e)}, 500)
             return
 
-        if parsed.path == "/api/make-twin":
-            auth = get_krea_oauth_token()
-            if not auth.get("connected") or auth.get("expired"):
-                self.send_json({"ok": False, "needs_auth": True, "error": "Approve Krea MCP OAuth in browser first"})
-                return
-            src_name = body.get("filename", "")
-            src = PLATES_DIR / src_name
-            st = load_state()
-            if not src.exists():
-                self.send_json({"ok": False, "error": "Unknown plate"}, 404)
-                return
-            if src_name in st.get("twin_of", {}) or src_name in st.get("twin_of", {}).values():
-                self.send_json({"ok": False, "error": "Already has a twin"}, 400)
-                return
-            model = body.get("model") or TWIN_MODEL
-            target = "light" if plate_tone(src) == "dark" else "dark"
-            try:
-                img_bytes = generate_plate_via_krea_mcp(prompt=TWIN_PROMPTS[target], guide_type=target, model=model, source_image=src)
-                im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
-                existing_nums = [
-                    int(p.name.split("_", 1)[0])
-                    for p in list(PLATES_DIR.glob("*.jpg")) + list(REJECTED_DIR.glob("*.jpg"))
-                    if p.name.split("_", 1)[0].isdigit()
-                ]
-                filename = f"{max(existing_nums, default=15) + 1:02d}_twin_of_{src.stem.split('_', 1)[-1]}"[:40] + ".jpg"
-                save_path = PLATES_DIR / filename
-                im.save(save_path, quality=95)
-                qa = get_cached_qa(save_path)
-
-                st = load_state()
-                titles = {**DEFAULT_TITLES, **st.get("titles", {})}
-                st.setdefault("titles", {})[filename] = f"{titles.get(src_name, src.stem)} (twin)"
-                st.setdefault("prompts", {})[filename] = TWIN_PROMPTS[target]
-                st.setdefault("models", {})[filename] = model
-                st.setdefault("twin_of", {})[filename] = src_name
-                if not qa["qa_passed"]:
-                    st["trashed"] = sorted(set(st.get("trashed", [])) | {filename})
-                    st.setdefault("trashed_at", {})[filename] = time.time()
-                    st["qa_failed"] = sorted(set(st.get("qa_failed", [])) | {filename})
-                save_state(st)
-                print(f"[TWIN] {src_name} -> {filename} ({target}, {model}) qa={qa['qa_passed']}", flush=True)
-                self.send_json({"ok": True, "filename": filename, "qa_passed": qa["qa_passed"], "target": target})
-            except Exception as e:
-                self.send_json({"ok": False, "error": str(e)}, 500)
-            return
-
         if parsed.path == "/api/trash":
             filename = body.get("filename")
             trashed = bool(body.get("trashed", True))
             st = load_state()
             cur = set(st.get("trashed", []))
-            twin_of = st.get("twin_of", {})
-            group = {filename} | {t for t, o in twin_of.items() if o == filename}  # trashing an original takes its twins along
+            group = {filename}
             if trashed:
                 cur |= group
                 now = time.time()

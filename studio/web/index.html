@@ -161,7 +161,6 @@
           <button id="tabSelection" onclick="setTrashView(false)">Selection (<span id="selCount">0</span>)</button>
           <button id="tabTrash" onclick="setTrashView(true)">🗑️ Trash (<span id="trashCount">0</span>)</button>
         </div>
-        <button onclick="openTwinDialog()" id="twinAllBtn" title="Pick images and make a dark↔light version of each (re-rendered, placed right after the original)">🌗 Dark↔light versions…</button>
       </div>
       <div class="grid-col" id="grid"></div>
     </div>
@@ -169,23 +168,6 @@
 
   <div class="status-text" id="statusText" data-idle="1">Ready</div>
   <div class="toast" id="toast"></div>
-
-  <div class="modal-bg" id="twinModal">
-    <div class="modal">
-      <div class="modal-head">
-        <h2>🌗 Make dark/light twins</h2>
-        <p id="twinIntro">Each selected image is re-rendered by Nano Banana Pro in the <b>opposite tone</b> (dark → light, light → dark) with the same composition and logo.
-        It costs <b>1 Krea image per selection</b> (~40s each). The twin is placed <b>right after its original</b> and moves with it. Twins that fail the logo check go to Trash.</p>
-      </div>
-      <div class="modal-body" id="twinList"></div>
-      <div class="modal-foot">
-        <button id="twinAllToggle" onclick="twinSelectAll()">Select all / none</button>
-        <span class="grow" id="twinSummary"></span>
-        <button id="twinCancelBtn" onclick="closeTwinDialog()">Cancel</button>
-        <button class="primary" id="twinStartBtn" onclick="startTwins()">Make twins</button>
-      </div>
-    </div>
-  </div>
 
   <script type="module" src="/src/app.js"></script>
 

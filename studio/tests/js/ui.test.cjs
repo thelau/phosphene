@@ -63,15 +63,6 @@ test('activePlates and tab counts reflect selection vs trash', async () => {
   assert.equal($('statusText').textContent, 'Ready');           // the bar never carries counts
 });
 
-test('pairBadge labels twins and originals', () => {
-  const { run } = load({ routes: baseRoutes() });
-  run(`plates = [{filename:'a'}, {filename:'b', twin_of:'a'}]`);
-  const vis = `[{filename:'a'},{filename:'b'}]`;
-  assert.match(run(`pairBadge(plates[1], ${vis})`), /twin of #01/);
-  assert.match(run(`pairBadge(plates[0], ${vis})`), /has twin #02/);
-  assert.equal(run(`pairBadge({filename:'z'}, ${vis})`), '');
-});
-
 // ---------- status bar ----------
 
 test('setStatus is a toast and never touches the generation status bar', () => {
@@ -88,9 +79,9 @@ test('toasts during a generation do not replace the progress', () => {
   const { run, $ } = load({ routes: baseRoutes() });
   run(`progStart(4); prog.stage='render'; prog.total=4; prog.world='Harbor'; prog.slots=['ok','run','wait','wait']; prog.titles=['a','b','c','d']; progRender();`);
   const before = $('statusText').innerHTML;
-  run(`setStatus('Making twin…')`);
+  run(`setStatus('Prompt copied.')`);
   assert.equal($('statusText').innerHTML, before);
-  assert.equal($('toast').textContent, 'Making twin…');
+  assert.equal($('toast').textContent, 'Prompt copied.');
 });
 
 // ---------- territory / direction controls ----------
@@ -430,4 +421,13 @@ test('the preview loop alternates image and inverted image, then moves on', asyn
   for (let i = 0; i < 4; i++) { tick(); seen.push([h.$('stageImg').src, h.$('stageImg').style.filter]); }
   assert.deepEqual(seen.map(s => s[1]), ['invert(1) grayscale(1)', '', 'invert(1) grayscale(1)', '']);
   assert.deepEqual(seen.map(s => s[0]), ['/p/a', '/p/b', '/p/b', '/p/a']);
+});
+
+test('the dark/light twin feature is gone from the page', () => {
+  const html = fs.readFileSync(WEB('index.html'), 'utf8');
+  const app = fs.readFileSync(WEB('src', 'app.js'), 'utf8');
+  for (const word of ['twin', 'Twin', 'Dark↔light']) {
+    assert.ok(!html.includes(word), `index.html still mentions ${word}`);
+    assert.ok(!app.includes(word), `app.js still mentions ${word}`);
+  }
 });

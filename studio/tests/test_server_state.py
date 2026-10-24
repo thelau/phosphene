@@ -1,4 +1,4 @@
-"""State, secrets, ordering, tone, QA cache."""
+"""State, secrets, ordering, QA cache."""
 
 import json
 import os
@@ -55,11 +55,11 @@ def test_load_state_fills_missing_keys(srv):
 
 def test_state_roundtrip_preserves_extra_keys(srv):
     st = srv.load_state()
-    st["twin_of"] = {"b": "a"}
+    st["order"] = ["b", "a"]
     st["custom_worlds"] = [{"name": "X"}]
     srv.save_state(st)
     again = srv.load_state()
-    assert again["twin_of"] == {"b": "a"} and again["custom_worlds"][0]["name"] == "X"
+    assert again["order"] == ["b", "a"] and again["custom_worlds"][0]["name"] == "X"
 
 
 # ---------- prompt wrapper (position wording must never be softened) ----------
@@ -71,63 +71,19 @@ def test_build_full_prompt_keeps_exact_position_wording(srv):
         assert needle in p
 
 
-# ---------- twins & ordering ----------
-
-def test_glue_twins_moves_twin_right_after_original(srv):
-    assert srv.glue_twins(["a", "x", "b", "a2"], {"a2": "a"}) == ["a", "a2", "x", "b"]
-
-
-def test_glue_twins_multiple_twins_sorted(srv):
-    assert srv.glue_twins(["a", "t2", "t1"], {"t1": "a", "t2": "a"}) == ["a", "t1", "t2"]
-
-
-def test_glue_twins_ignores_missing_pairs_and_keeps_everyone(srv):
-    out = srv.glue_twins(["a", "b"], {"ghost": "a", "b": "gone"})
-    assert out == ["a", "b"]
-
-
-def test_glue_twins_no_duplicates_and_idempotent(srv):
-    order = ["a", "b", "b2", "c"]
-    once = srv.glue_twins(order, {"b2": "b"})
-    assert once == order and srv.glue_twins(once, {"b2": "b"}) == once
-    assert len(set(once)) == len(once)
-
+# ---------- ordering ----------
 
 def test_ordered_plate_files_respects_order_then_appends_new(srv, make_plate):
     for n in ("1_a.jpg", "2_b.jpg", "3_c.jpg"):
         make_plate(srv.PLATES_DIR / n)
-    st = {"order": ["3_c.jpg", "gone.jpg", "1_a.jpg"], "twin_of": {}}
+    st = {"order": ["3_c.jpg", "gone.jpg", "1_a.jpg"]}
     assert [p.name for p in srv.ordered_plate_files(st)] == ["3_c.jpg", "1_a.jpg", "2_b.jpg"]
 
 
-def test_ordered_plate_files_applies_twin_glue(srv, make_plate):
-    for n in ("1_a.jpg", "2_b.jpg", "3_a_twin.jpg"):
+def test_ordered_plate_files_without_any_saved_order_is_by_name(srv, make_plate):
+    for n in ("2_b.jpg", "1_a.jpg"):
         make_plate(srv.PLATES_DIR / n)
-    st = {"order": ["1_a.jpg", "2_b.jpg", "3_a_twin.jpg"], "twin_of": {"3_a_twin.jpg": "1_a.jpg"}}
-    assert [p.name for p in srv.ordered_plate_files(st)] == ["1_a.jpg", "3_a_twin.jpg", "2_b.jpg"]
-
-
-# ---------- tone ----------
-
-def test_plate_tone_dark_and_light(srv, make_plate):
-    assert srv.plate_tone(make_plate(srv.PLATES_DIR / "d.jpg", (10, 10, 10))) == "dark"
-    assert srv.plate_tone(make_plate(srv.PLATES_DIR / "l.jpg", (240, 240, 240))) == "light"
-
-
-def test_plate_tone_threshold(srv, make_plate):
-    assert srv.plate_tone(make_plate(srv.PLATES_DIR / "m1.jpg", (100, 100, 100))) == "dark"
-    assert srv.plate_tone(make_plate(srv.PLATES_DIR / "m2.jpg", (125, 125, 125))) == "light"
-
-
-def test_cached_tone_survives_mtime_changes(srv, make_plate, monkeypatch):
-    p = make_plate(srv.PLATES_DIR / "x.jpg", (10, 10, 10))
-    calls = []
-    real = srv.plate_tone
-    monkeypatch.setattr(srv, "plate_tone", lambda path: calls.append(1) or real(path))
-    assert srv.cached_tone(p) == "dark"
-    os.utime(p, (1, 1))          # what a git checkout does
-    assert srv.cached_tone(p) == "dark"
-    assert len(calls) == 1
+    assert [p.name for p in srv.ordered_plate_files({})] == ["1_a.jpg", "2_b.jpg"]
 
 
 # ---------- QA cache ----------
@@ -193,10 +149,8 @@ def test_moved_to_end_puts_restored_images_last_and_keeps_the_rest(srv):
     assert srv.moved_to_end(["a", "b", "c", "d"], {"b"}) == ["a", "c", "d", "b"]
 
 
-def test_moved_to_end_keeps_original_before_its_twin(srv):
-    out = srv.moved_to_end(["t", "a", "x", "y"], {"t", "a"})        # twin happened to sit before its original
-    assert out[:2] == ["x", "y"] and set(out[2:]) == {"t", "a"}
-    assert srv.moved_to_end(["a", "a2", "x"], {"a", "a2"}) == ["x", "a", "a2"]
+def test_moved_to_end_keeps_the_relative_order_of_several_restored_images(srv):
+    assert srv.moved_to_end(["c", "a", "x", "b"], {"a", "b", "c"}) == ["x", "c", "a", "b"]
 
 
 def test_moved_to_end_handles_names_missing_from_the_order(srv):

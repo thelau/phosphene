@@ -103,19 +103,18 @@
       refreshIdle();
       document.getElementById('tabSelection').className = showTrash ? '' : 'on';
       document.getElementById('tabTrash').className = showTrash ? 'on' : '';
-      document.getElementById('twinAllBtn').style.display = showTrash ? 'none' : '';
 
       renderGrid();
       restartLoop();
       lastSig = plateSig(plates);
     }
 
-    // Auto-refresh: pick up new/trashed/paired plates without a manual reload.
+    // Auto-refresh: pick up new/trashed plates without a manual reload.
     let lastSig = null;
-    const plateSig = list => list.map(p => `${p.filename}|${p.trashed ? 1 : 0}|${p.twin_of || ''}`).join(',');
+    const plateSig = list => list.map(p => `${p.filename}|${p.trashed ? 1 : 0}`).join(',');
 
     async function pollState() {
-      if (document.hidden || draggedFilename || twinRunning || document.querySelector('.prompt-overlay.open')) return;
+      if (document.hidden || draggedFilename || document.querySelector('.prompt-overlay.open')) return;
       try {
         const data = await (await fetch('/api/state')).json();
         const next = data.plates || [];
@@ -161,8 +160,7 @@
             <div class="card-actions">
               ${p.trashed
                 ? `<button class="action-btn" onclick="setTrash(event, '${p.filename}', false)">↩️ Restore</button>`
-                : `${p.twin_of || p.has_twin ? '' : `<button class="action-btn more-btn" title="Re-render this exact image in the opposite tonal world (dark↔light)" onclick="makeTwin(event, '${p.filename}')">🌗 Dark↔light</button>`}
-                   <button class="action-btn trash-btn" title="Move to trash" onclick="setTrash(event, '${p.filename}', true)">🗑️</button>`
+                : `<button class="action-btn trash-btn" title="Move to trash" onclick="setTrash(event, '${p.filename}', true)">🗑️</button>`
               }
             </div>
             <div class="prompt-overlay" id="overlay-${CSS.escape(p.filename)}" onclick="togglePromptOverlay(event, '${p.filename}')">
@@ -176,7 +174,6 @@
               <div class="card-title-row">#${String(i + 1).padStart(2, '0')} · ${escapeHtml(p.title)}</div>
               <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
                 <span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>
-                ${pairBadge(p, visible)}
                 ${p.critic ? `<span class="card-model-badge" title="${escapeHtml(p.critic.reason)}">AI ${p.critic.mean}</span>` : ''}
                 ${p.trash_reason ? `<span class="card-model-badge" style="background:rgba(244,63,94,0.22);border-color:rgba(244,63,94,0.5);color:#fda4af;" title="${escapeHtml(p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
                 ${!p.qa_passed ? `<span class="card-model-badge" style="background:rgba(244,63,94,0.22);border-color:rgba(244,63,94,0.5);color:#fda4af;" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA Flagged</span>` : ''}
@@ -226,10 +223,8 @@
       e.currentTarget.classList.remove('drag-over');
       if (!draggedFilename || draggedFilename === targetFilename) return;
 
-      const root = f => (plates.find(p => p.filename === f) || {}).twin_of || f;
-      const dragged = root(draggedFilename);
-      const target = root(targetFilename);
-      if (dragged === target) return;
+      const dragged = draggedFilename;
+      const target = targetFilename;
       const fromIdx = plates.findIndex(p => p.filename === dragged);
       const toIdx = plates.findIndex(p => p.filename === target);
       if (fromIdx === -1 || toIdx === -1) return;
@@ -242,7 +237,7 @@
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ order: plates.map(p => p.filename) })
       });
-      await loadState();  // server re-attaches each twin right after its original
+      await loadState();
     }
     function onDragEnd(e) {
       e.currentTarget.classList.remove('dragging');
@@ -401,138 +396,6 @@
         return false;
       }
       return true;
-    }
-
-    function pairBadge(p, visible) {
-      const partner = p.twin_of || (plates.find(q => q.twin_of === p.filename) || {}).filename;
-      if (!partner) return '';
-      const n = visible.findIndex(q => q.filename === partner);
-      const label = p.twin_of ? `◐ twin of #${String(n + 1).padStart(2, '0')}` : `◐ has twin #${String(n + 1).padStart(2, '0')}`;
-      return `<span class="card-model-badge pair-badge" title="Click to jump to its pair" onclick="event.stopPropagation(); flashPlate('${partner}')">${n === -1 ? '◐ paired' : label}</span>`;
-    }
-
-    function flashPlate(filename) {
-      const el = document.querySelector(`.card[data-filename="${filename}"]`);
-      if (!el) return;
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.classList.remove('flash');
-      void el.offsetWidth;
-      el.classList.add('flash');
-    }
-
-    async function makeTwin(e, filename) {
-      e.stopPropagation();
-      const btn = e.currentTarget;
-      btn.disabled = true;
-      setStatus('Making twin (~40s)...');
-      let res;
-      try {
-        res = await (await fetch('/api/make-twin', {
-          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename })
-        })).json();
-      } finally {
-        await loadState();
-      }
-      if (res.needs_auth) setStatus('Approve Krea OAuth in browser, then try again.');
-      else if (!res.ok) setStatus(`Twin failed: ${res.error}`);
-      else if (res.qa_passed) { setStatus(`Twin added right after the original (${res.target}).`); flashPlate(res.filename); }
-      else setStatus('Twin failed the logo check and is in Trash — try again or skip.');
-    }
-
-    let twinSel = new Set();
-    let twinRunning = false;
-    let twinStop = false;
-    let twinFirst = null;
-
-    function twinCandidates() {
-      return plates.filter(p => !p.trashed && !p.twin_of && !p.has_twin);
-    }
-
-    function openTwinDialog() {
-      twinRunning = false; twinStop = false; twinFirst = null;
-      const cands = twinCandidates();
-      twinSel = new Set(cands.map(p => p.filename));
-      document.getElementById('twinModal').classList.add('open');
-      document.getElementById('twinStartBtn').style.display = '';
-      document.getElementById('twinStartBtn').textContent = 'Make twins';
-      document.getElementById('twinCancelBtn').textContent = 'Cancel';
-      renderTwinList();
-    }
-
-    function closeTwinDialog() {
-      if (twinRunning) { twinStop = true; setStatus('Stopping after the current image...'); return; }
-      document.getElementById('twinModal').classList.remove('open');
-    }
-
-    function twinSelectAll() {
-      if (twinRunning) return;
-      const cands = twinCandidates();
-      twinSel = twinSel.size === cands.length ? new Set() : new Set(cands.map(p => p.filename));
-      renderTwinList();
-    }
-
-    function toggleTwinSel(f) {
-      if (twinRunning) return;
-      twinSel.has(f) ? twinSel.delete(f) : twinSel.add(f);
-      renderTwinList();
-    }
-
-    function renderTwinList() {
-      const cands = twinCandidates();
-      document.getElementById('twinList').innerHTML = cands.length ? cands.map(p => `
-        <div class="twin-row ${twinSel.has(p.filename) ? '' : 'off'}" id="trow-${CSS.escape(p.filename)}" onclick="toggleTwinSel('${p.filename}')">
-          <input type="checkbox" ${twinSel.has(p.filename) ? 'checked' : ''} style="padding:0" />
-          <img src="${p.url}" />
-          <div class="meta"><div class="t">${escapeHtml(p.title)}</div><div class="s">${p.tone} → ${p.tone === 'dark' ? 'light' : 'dark'}</div></div>
-        </div>`).join('') : '<p style="color:var(--muted);font-size:12px;padding:12px 0">Every image in the grid already has a twin (or is a twin).</p>';
-      const n = twinSel.size;
-      document.getElementById('twinSummary').textContent = `${n} selected · ${n} image${n === 1 ? '' : 's'} · ~${Math.ceil(n * 40 / 60)} min`;
-      document.getElementById('twinStartBtn').disabled = n === 0;
-    }
-
-    function setTwinRow(f, cls, text, thumb) {
-      const row = document.getElementById('trow-' + CSS.escape(f));
-      if (!row) return;
-      row.classList.remove('ok', 'bad');
-      if (cls) row.classList.add(cls);
-      row.querySelector('.s').textContent = text;
-      if (thumb) {
-        const im = document.createElement('img');
-        im.src = thumb; im.style.marginLeft = 'auto';
-        row.appendChild(im);
-      }
-    }
-
-    async function startTwins() {
-      const todo = twinCandidates().filter(p => twinSel.has(p.filename));
-      if (!todo.length) return;
-      twinRunning = true; twinStop = false;
-      document.getElementById('twinStartBtn').style.display = 'none';
-      document.getElementById('twinCancelBtn').textContent = 'Stop';
-      document.querySelectorAll('#twinList .twin-row').forEach(r => { if (r.classList.contains('off')) r.style.display = 'none'; });
-      let ok = 0, failed = 0;
-      for (let i = 0; i < todo.length; i++) {
-        if (twinStop) break;
-        const p = todo[i];
-        document.getElementById('twinSummary').textContent = `Working ${i + 1}/${todo.length}…`;
-        setTwinRow(p.filename, '', 'rendering…');
-        try {
-          const res = await (await fetch('/api/make-twin', {
-            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename: p.filename })
-          })).json();
-          if (res.needs_auth) { setTwinRow(p.filename, 'bad', 'Krea login needed'); break; }
-          if (res.ok && res.qa_passed) { ok++; twinFirst = twinFirst || res.filename; setTwinRow(p.filename, 'ok', `✓ ${res.target} twin`, `/assets/ai-plates/${res.filename}`); }
-          else { failed++; setTwinRow(p.filename, 'bad', res.ok ? '✗ failed logo check (in Trash)' : `✗ ${(res.error || 'error').slice(0, 40)}`); }
-        } catch (e) { failed++; setTwinRow(p.filename, 'bad', '✗ network error'); }
-      }
-      twinRunning = false;
-      document.getElementById('twinSummary').textContent = `Done: ${ok} twin${ok === 1 ? '' : 's'} added${failed ? `, ${failed} failed` : ''}${twinStop ? ' (stopped)' : ''}. They sit right after their originals.`;
-      const start = document.getElementById('twinStartBtn');
-      start.style.display = ''; start.disabled = false;
-      start.textContent = ok ? 'Show in grid' : 'Close';
-      start.onclick = () => { document.getElementById('twinModal').classList.remove('open'); start.onclick = startTwins; if (twinFirst) flashPlate(twinFirst); };
-      document.getElementById('twinCancelBtn').textContent = 'Close';
-      await loadState();
     }
 
     function updateDirectionHint() {
@@ -800,18 +663,14 @@
 
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
-  closeTwinDialog,
   copyPromptText,
   exportVideo,
-  flashPlate,
   generateImages,
-  makeTwin,
   onDragEnd,
   onDragLeave,
   onDragOver,
   onDragStart,
   onDrop,
-  openTwinDialog,
   previewPlate,
   reconnectKrea,
   saveCritic,
@@ -819,13 +678,10 @@ Object.assign(window, {
   saveKimiSettingsDebounced,
   setTrash,
   setTrashView,
-  startTwins,
   togglePlay,
   togglePromptOverlay,
   toggleReticle,
   toggleSettings,
-  toggleTwinSel,
-  twinSelectAll,
   updateTempo,
   updateFx,
 });

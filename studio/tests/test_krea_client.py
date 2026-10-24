@@ -287,19 +287,6 @@ def test_generate_plate_happy_path_and_payload(monkeypatch):
     assert sent["args"]["input"]["prompt"] == "hello" and sent["args"]["sync"] is True
 
 
-def test_generate_plate_uses_source_image_for_edits(tmp_path, monkeypatch):
-    src = tmp_path / "s.jpg"
-    src.write_bytes(b"x")
-    used = {}
-    monkeypatch.setattr(k, "init_mcp_session", lambda: "S")
-    monkeypatch.setattr(k, "upload_file_to_krea_mcp", lambda p, sid=None: used.setdefault("p", p) and "https://src/1")
-    monkeypatch.setattr(k, "get_or_upload_guide_url", lambda *a, **kw: pytest.fail("guide must not be used for edits"))
-    monkeypatch.setattr(k, "call_krea_mcp_tool", lambda name, args, sid=None, timeout=0: {"result": {"structuredContent": {"urls": ["https://i/1.png"]}}} if name == "generate_image" and "https://src/1" in json.dumps(args) else pytest.fail("source url not in payload"))
-    monkeypatch.setattr(k.urllib.request, "urlopen", lambda req, timeout=0: ImgResp())
-    k.generate_plate_via_krea_mcp("p", "dark", "google/nano-banana-pro", source_image=src)
-    assert used["p"] == src
-
-
 def test_generate_plate_polls_job_until_urls(monkeypatch):
     monkeypatch.setattr(k, "init_mcp_session", lambda: "S")
     monkeypatch.setattr(k, "get_or_upload_guide_url", lambda *a, **kw: GUIDE)

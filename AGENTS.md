@@ -35,14 +35,9 @@ Done:
 
 4. Player effects (`studio/cutplan.py`, mirrored by `planAt`/`zoomScale` in `studio/web/src/app.js`; tests share vectors): Invert (every image followed by an inverted grey/colour copy, as in Soiltone) and Zoom (slow in/out inside each cut, as in Moverunion: measured ~0.15-0.45% zoom OUT over a 5-frame cut). Both apply to preview and export.
 
-Quality reference: `inspiration/soiltone-inspo.mp4` — 8s, ~48 cuts, each scene shown as a color/mono twin pair, one hero subject, logo crisp at dead-center. Twins are made with the 🌗 Twin button. Quality bar lives in `QUALITY_BAR` in `server.py`.
+Quality reference: `inspiration/soiltone-inspo.mp4` — 8s, ~48 cuts, each scene shown as a color/mono twin pair, one hero subject, logo crisp at dead-center. Quality bar lives in `QUALITY_BAR` in `server.py`.
 
 Caveat: the 223 plates trashed before `qa_failed` existed can't be told apart (manual vs QA), so older model scores are noisy.
-
-## Twins
-- No "Pairs" at generation. Each kept card has a 🌗 Twin button (and "Twin all kept"): `/api/make-twin` edits the plate itself (nano-banana-pro) into the opposite tone and stores `twin_of[twin] = original` in `curation_state.json`.
-- Order: `glue_twins()` keeps every twin directly after its original, so dragging/reordering moves pairs together. Trashing an original trashes its twins.
-- Audio/tempo-curve work (synth vs. uploaded track, accelerate/decelerate cut curve measured from the reference) is planned after image quality.
 
 ## Git
 Agents commit and push to `origin` after every change they make (not on a timer). Plates under `assets/ai-plates/*.jpg` go through Git LFS (`.gitattributes`). Never commit `studio/.secrets.json`.
@@ -52,4 +47,4 @@ Agents commit and push to `origin` after every change they make (not on a timer)
 python3 -m venv --system-site-packages .venv; .venv/bin/pip install -r requirements-dev.txt   # once
 .venv/bin/python -m pytest studio/tests -q
 ```
-~160 tests, ~7s, no network, no Krea credits, never touches the real state or plates (fixtures redirect paths to a temp dir). Covers taste, worlds, diversity, state/secrets, twin ordering, QA cache, Kimi parsing and batch writing (fake LLM), critic, Krea client (fake HTTP), logo QA on synthetic plates, bench, dev runner, and the page's JavaScript (`studio/tests/js/*.cjs`, `npm test`, run through node with a fake DOM and fake server, including the full Generate flow). HTTP endpoints are deliberately not tested. Run the tests before committing; add a test with every bug fix. `test_build_full_prompt_keeps_exact_position_wording` guards the logo position text.
+~160 tests, ~7s, no network, no Krea credits, never touches the real state or plates (fixtures redirect paths to a temp dir). Covers taste, worlds, diversity, state/secrets, ordering, QA cache, Kimi parsing and batch writing (fake LLM), critic, Krea client (fake HTTP), logo QA on synthetic plates, bench, dev runner, and the page's JavaScript (`studio/tests/js/*.cjs`, `npm test`, run through node with a fake DOM and fake server, including the full Generate flow). HTTP endpoints are deliberately not tested. Run the tests before committing; add a test with every bug fix. `test_build_full_prompt_keeps_exact_position_wording` guards the logo position text.

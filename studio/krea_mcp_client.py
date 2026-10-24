@@ -313,17 +313,12 @@ def generate_plate_via_krea_mcp(
     prompt: str,
     guide_type: str = "dark",
     model: str = "google/nano-banana-pro",
-    source_image: Path | None = None,
 ) -> bytes:
     """
-    Generates a 9:16 image via Krea MCP using the center-locked Demo guide image
-    (or, for edits such as twins, `source_image`) and returns the raw image bytes.
+    Generates a 9:16 image via Krea MCP using the center-locked Demo guide image and returns the raw image bytes.
     """
     sid = init_mcp_session()
-    if source_image is not None:
-        guide_url = upload_file_to_krea_mcp(source_image, sid=sid)
-    else:
-        guide_url = get_or_upload_guide_url(guide_type=guide_type, sid=sid)
+    guide_url = get_or_upload_guide_url(guide_type=guide_type, sid=sid)
     input_payload = build_model_input(model=model, prompt=prompt, guide_url=guide_url)
 
     print(f"[KREA MCP] Calling generate_image model={model} guide={guide_type}", flush=True)
