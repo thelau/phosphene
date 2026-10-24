@@ -9,11 +9,8 @@ import os
 import signal
 import subprocess
 import sys
-import threading
 import time
 from pathlib import Path
-
-import autosync
 
 HERE = Path(__file__).resolve().parent
 
@@ -27,9 +24,8 @@ def start() -> subprocess.Popen:
 
 
 def main() -> None:
-    threading.Thread(target=autosync.loop, daemon=True).start()
     proc, seen = start(), snapshot()
-    print("[dev] watching studio/*.py, syncing to GitHub every 2 min (Ctrl-C to stop)", flush=True)
+    print("[dev] watching studio/*.py (Ctrl-C to stop)", flush=True)
     try:
         while True:
             time.sleep(0.7)
