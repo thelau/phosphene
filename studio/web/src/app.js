@@ -156,13 +156,6 @@
     // ---- trash: select, delete selected, empty ----
     // ---- AI order ----
     const aiPins = { first: null, last: null };
-    let showCuts = false;
-    try { showCuts = localStorage.getItem('showCuts') === '1'; } catch (e) {}
-    function toggleCuts() {
-      showCuts = document.getElementById('cutsToggle').checked;
-      try { localStorage.setItem('showCuts', showCuts ? '1' : '0'); } catch (e) {}
-      renderGrid();
-    }
     function pinCard(e, filename) {
       e.stopPropagation();
       const slot = e.shiftKey ? 'last' : 'first';
@@ -188,9 +181,17 @@
     document.addEventListener('click', () => { const p = document.getElementById('aiPanel'); if (p) p.hidden = true; });
 
     async function startAiOrder() {
+      if (generating) { setStatus('Wait for image generation to finish before ordering with AI.'); return; }
+      if (aiRunning) return;
       if (!ensureKimiReady()) return;
       const shown = plates.filter(p => !p.trashed).length;
       if (shown < 2) { setStatus('Keep at least two images before ordering.'); return; }
+      const existing = sequences.find(s => s.kind === 'ai');
+      if (existing) {  // redoing replaces the AI order, so always ask first
+        document.getElementById('aiPanel').hidden = true;
+        const lost = existing.edited ? ' This also drops the changes you made to it.' : '';
+        if (!(await askConfirm('Replace the current AI order?', `Redoing makes a fresh AI order and replaces the one you have.${lost} Your Manual order is not touched.`, 'Redo with AI'))) return;
+      }
       const body = {
         length: parseInt(document.getElementById('aiLength').value, 10) || null,
         direction: document.getElementById('aiDirection').value.trim(),
@@ -201,7 +202,9 @@
       if (start.needs_kimi_key) { ensureKimiReady(); return; }
       if (!start.ok) { setStatus(start.error || 'Could not start the AI order.'); return; }
       const steps = start.steps || [];
-      ['aiBtn', 'seqSelect'].forEach(id => { document.getElementById(id).disabled = true; });
+      aiRunning = true;
+      applyLocks();
+      renderSequences();
       document.getElementById('statusText').dataset.idle = '';
       Object.assign(prog, { t0: Date.now(), stage: 'render', world: 'AI order', total: steps.length, titles: steps, slots: steps.map((_, i) => (i === 0 ? 'run' : 'wait')), summary: '', note: steps[0] || '' });
       clearInterval(prog.timer); prog.timer = setInterval(progRender, 1000); progRender();
@@ -224,22 +227,29 @@
       } catch (e) {
         progStop(`AI order failed: ${e.message}`);
       } finally {
-        ['aiBtn', 'seqSelect'].forEach(id => { document.getElementById(id).disabled = false; });
+        aiRunning = false;
+        renderSequences();
+        applyLocks();
       }
     }
 
-    // ---- orders (sequences): Manual and AI orders of the selection ----
+    // ---- the two orders of the selection: Manual (yours) and AI ----
     let sequences = [];
     let activeSeq = null;
     function renderSequences() {
-      const sel = document.getElementById('seqSelect');
-      sel.innerHTML = sequences.map(s => `<option value="${s.id}">${s.kind === 'ai' ? '✨' : '✋'} ${escapeHtml(s.name)} (${s.cut_off && s.cut_off < s.count ? `${s.cut_off} of ${s.count}` : s.count})</option>`).join('');
-      sel.value = activeSeq || '';
-      const cur = sequences.find(s => s.id === activeSeq);
-      document.getElementById('seqSummary').textContent = cur && cur.summary ? cur.summary : '';
-      document.getElementById('seqSummary').title = cur && cur.summary ? cur.summary : '';
+      const seg = document.getElementById('orderSeg');
+      const label = q => (q.cut_off && q.cut_off < q.count ? `${q.cut_off} of ${q.count}` : q.count);
+      const manual = sequences.find(q => q.kind === 'manual');
+      const ai = sequences.find(q => q.kind === 'ai');
+      seg.innerHTML = [manual, ai].filter(Boolean).map(q =>
+        `<button data-seq="${q.id}" class="${q.id === activeSeq ? 'on' : ''}" onclick="switchSequence('${q.id}')" ${aiRunning ? 'disabled' : ''}>${q.kind === 'ai' ? '✨ AI' : '✋ Manual'} (${label(q)})</button>`).join('');
+      const cur = sequences.find(q => q.id === activeSeq);
+      const summary = cur && cur.kind === 'ai' && cur.summary ? cur.summary : '';
+      document.getElementById('seqSummary').textContent = summary;
+      document.getElementById('aiNote').hidden = !summary || showTrash;
+      document.getElementById('resetAi').hidden = !(cur && cur.kind === 'ai' && cur.edited);
+      document.getElementById('aiBtn').textContent = ai ? '↻ Redo with AI…' : '✨ Order with AI…';
       document.getElementById('seqBox').hidden = showTrash;
-      document.getElementById('cutsToggle').checked = showCuts;
     }
     async function seqCall(payload) {
       const res = await (await fetch('/api/sequence', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
@@ -247,44 +257,13 @@
       await loadState();
       return true;
     }
-    function switchSequence() { return seqCall({ action: 'activate', id: document.getElementById('seqSelect').value }); }
-    function toggleSeqMenu(e) {
-      if (e) e.stopPropagation();
-      const m = document.getElementById('seqMenu');
-      m.hidden = !m.hidden;
+    async function switchSequence(id) {
+      if (blockedByAi() || id === activeSeq) return;
+      const ok = await seqCall({ action: 'activate', id });
+      if (ok && isPlaying) { cutPos = 0; lastTick = performance.now(); currentIdx = 0; }   // the player follows: start the other order from its first image
+      return ok;
     }
-    document.addEventListener('click', () => { document.getElementById('seqMenu').hidden = true; });
-    async function renameSeq() {
-      document.getElementById('seqMenu').hidden = true;
-      const cur = sequences.find(s => s.id === activeSeq);
-      const name = await askText('Rename this order', cur ? cur.name : '');
-      if (name) await seqCall({ action: 'rename', id: activeSeq, name });
-    }
-    async function duplicateSeq() {
-      document.getElementById('seqMenu').hidden = true;
-      if (await seqCall({ action: 'duplicate', id: activeSeq })) setStatus('Duplicated. You are now editing the copy.');
-    }
-    async function deleteSeq() {
-      document.getElementById('seqMenu').hidden = true;
-      const cur = sequences.find(s => s.id === activeSeq);
-      if (!cur) return;
-      if (await askConfirm(`Delete “${cur.name}”?`, 'Only this order is removed. Your images and your other orders are not touched.', 'Delete order')) await seqCall({ action: 'delete', id: activeSeq });
-    }
-
-    let textResolve = null;
-    function askText(title, value) {
-      document.getElementById('textTitle').textContent = title;
-      const input = document.getElementById('textInput');
-      input.value = value || '';
-      document.getElementById('textModal').classList.add('open');
-      input.focus(); input.select();
-      return new Promise(res => { textResolve = res; });
-    }
-    function textAnswer(ok) {
-      document.getElementById('textModal').classList.remove('open');
-      if (textResolve) textResolve(ok ? document.getElementById('textInput').value.trim() : null);
-      textResolve = null;
-    }
+    function resetAi() { return blockedByAi() ? undefined : seqCall({ action: 'reset' }); }
 
     let trashSel = new Set();
     let lastSel = null;
@@ -311,7 +290,7 @@
       trashSel = new Set([...trashSel].filter(f => trashed.includes(f)));
       document.getElementById('trashBar').hidden = !(showTrash && trashed.length);
       document.getElementById('trashSelCount').textContent = `${trashSel.size} selected`;
-      document.getElementById('trashDelSel').disabled = trashSel.size === 0;
+      document.getElementById('trashDelSel').disabled = aiRunning || trashSel.size === 0;
       document.getElementById('trashDelSel').textContent = trashSel.size ? `Delete ${trashSel.size} selected…` : 'Delete selected…';
       document.getElementById('trashSelAll').textContent = trashSel.size && trashSel.size === trashed.length ? 'Clear selection' : 'Select all';
       document.getElementById('trashEmpty').textContent = `Empty trash (${trashed.length})…`;
@@ -339,6 +318,7 @@
     function hideBusy() { document.getElementById('busy').hidden = true; }
     const KEEPS_LEARNING = 'The images are removed from disk for good. Your keep/trash history stays, so suggestions keep learning from them.';
     async function purge(payload, title, body, yesLabel) {
+      if (blockedByAi()) return;
       if (!(await askConfirm(title, body, yesLabel))) return;
       const btns = ['trashDelSel', 'trashEmpty', 'trashSelAll'].map(id => document.getElementById(id));
       btns.forEach(b => { b.disabled = true; });
@@ -407,7 +387,7 @@
               <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
                 <span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>
                 ${aiPins.first === p.filename ? '<span class="card-model-badge pin-badge">📌 opener</span>' : ''}${aiPins.last === p.filename ? '<span class="card-model-badge pin-badge">📌 closer</span>' : ''}
-                ${showCuts && p.cut_in && !p.trashed ? `<span class="card-model-badge cut-badge k-${p.cut_in.kind}" title="${escapeHtml(p.cut_in.reason)}">${p.cut_in.kind === 'cut' ? 'new angle' : p.cut_in.kind}</span>` : ''}
+
                 ${p.critic ? `<span class="card-model-badge" title="${escapeHtml(p.critic.reason)}">AI ${p.critic.mean}</span>` : ''}
                 ${p.trash_reason ? `<span class="card-model-badge" style="background:rgba(244,63,94,0.22);border-color:rgba(244,63,94,0.5);color:#fda4af;" title="${escapeHtml(p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
                 ${!p.qa_passed ? `<span class="card-model-badge" style="background:rgba(244,63,94,0.22);border-color:rgba(244,63,94,0.5);color:#fda4af;" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA Flagged</span>` : ''}
@@ -441,6 +421,7 @@
 
     /* Drag and drop reordering */
     function onDragStart(e, filename) {
+      if (aiRunning) { e.preventDefault(); return; }
       draggedFilename = filename;
       e.currentTarget.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
@@ -456,7 +437,7 @@
     async function onDrop(e, targetFilename) {
       e.preventDefault();
       e.currentTarget.classList.remove('drag-over');
-      if (!draggedFilename || draggedFilename === targetFilename) return;
+      if (aiRunning || !draggedFilename || draggedFilename === targetFilename) return;
 
       const dragged = draggedFilename;
       const target = targetFilename;
@@ -472,7 +453,6 @@
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ order: plates.map(p => p.filename) })
       })).json();
-      if (res.forked) setStatus(`Saved as “${res.forked.name}”. The AI order is untouched.`);
       await loadState();
     }
     function onDragEnd(e) {
@@ -609,6 +589,7 @@
     }
 
     async function setTrash(e, filename, trashed) {
+      if (blockedByAi(e)) return;
       e.stopPropagation();
       await fetch('/api/trash', {
         method: 'POST',
@@ -693,11 +674,31 @@
       clearInterval(prog.timer); prog.timer = setInterval(progRender, 1000); progRender();
     }
     function progStop(summary) { clearInterval(prog.timer); prog.timer = null; prog.summary = summary; progRender(); }
-    function setGenerating(on) {
-      ['worldSelect', 'directionInput', 'batchCountSelect', 'modelSelect', 'generateBtn'].forEach(id => { document.getElementById(id).disabled = on; });
+    // Two busy states keep the app consistent:
+    //  - generating images: new images may arrive, so the AI cannot order yet
+    //  - the AI ordering: it works from a snapshot of the selection, so nothing may change the selection until it is done
+    let generating = false;
+    let aiRunning = false;
+    function applyLocks() {
+      const lockGen = generating || aiRunning;
+      ['worldSelect', 'directionInput', 'batchCountSelect', 'modelSelect', 'generateBtn'].forEach(id => { document.getElementById(id).disabled = lockGen; });
+      document.getElementById('aiBtn').disabled = lockGen;
+      document.getElementById('exportBtn').disabled = aiRunning;
+      ['trashSelAll', 'trashEmpty', 'resetAi'].forEach(id => { document.getElementById(id).disabled = aiRunning; });
+      document.querySelectorAll('#orderSeg button').forEach(b => { b.disabled = aiRunning; });
+      document.body.classList.toggle('ai-running', aiRunning);
+      updateTrashBar();
+    }
+    function setGenerating(on) { generating = on; applyLocks(); }
+    function blockedByAi(e) {
+      if (!aiRunning) return false;
+      if (e && e.stopPropagation) e.stopPropagation();
+      setStatus('The AI is ordering your selection. Wait until it finishes.');
+      return true;
     }
 
     async function generateImages() {
+      if (blockedByAi()) return;
       if (!ensureKimiReady()) return;
 
       const model = document.getElementById('modelSelect').value;
@@ -823,6 +824,7 @@
     }
 
     async function exportVideo() {
+      if (blockedByAi()) return;
       const btn = document.getElementById('exportBtn');
       btn.disabled = true;
       btn.textContent = 'Rendering...';
@@ -896,16 +898,11 @@
 
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
+  resetAi,
   pinCard,
   startAiOrder,
   toggleAiPanel,
-  toggleCuts,
-  deleteSeq,
-  duplicateSeq,
-  renameSeq,
   switchSequence,
-  textAnswer,
-  toggleSeqMenu,
   cardClick,
   confirmAnswer,
   deleteSelected,

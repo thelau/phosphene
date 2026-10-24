@@ -163,17 +163,9 @@
           <button id="tabTrash" onclick="setTrashView(true)">🗑️ Trash (<span id="trashCount">0</span>)</button>
         </div>
         <div class="order-tools" id="seqBox">
-          <span class="seq-summary" id="seqSummary"></span>
-          <label class="cuts-toggle" title="Show how each image cuts in from the one before it"><input type="checkbox" id="cutsToggle" onchange="toggleCuts()" /> Cuts</label>
-          <span class="seq-label">Order</span>
-          <select id="seqSelect" onchange="switchSequence()" title="Switch between your saved orders"></select>
-          <button id="seqMenuBtn" onclick="toggleSeqMenu(event)" title="Rename, duplicate or delete this order">⋯</button>
-          <div class="seq-menu" id="seqMenu" hidden>
-            <button onclick="renameSeq()">Rename…</button>
-            <button onclick="duplicateSeq()">Duplicate</button>
-            <button class="danger" onclick="deleteSeq()">Delete…</button>
-          </div>
-          <button id="aiBtn" onclick="toggleAiPanel(event)" title="Let the AI cut an edit of your selection">✨ Order with AI…</button>
+          <button class="reset-ai" id="resetAi" onclick="resetAi()" title="Undo your drags and go back to the order the AI made" hidden>↺ Back to the AI's order</button>
+          <div class="seg" id="orderSeg" role="tablist" title="Switch between your own order and the AI's order. Nothing is lost when you switch."></div>
+          <button id="aiBtn" onclick="toggleAiPanel(event)" title="Let the AI order your selection. Your own order is never touched.">✨ Order with AI…</button>
           <div class="ai-panel" id="aiPanel" hidden onclick="event.stopPropagation()">
             <h4>Order with AI</h4>
             <label>Use
@@ -202,6 +194,7 @@
           <button id="trashEmpty" class="danger" onclick="emptyTrash()">Empty trash…</button>
         </div>
       </div>
+      <div class="ai-note" id="aiNote" hidden><b>✨ The AI's note</b><span id="seqSummary"></span></div>
       <div class="grid-col" id="grid"></div>
     </div>
   </div>
@@ -211,17 +204,6 @@
 
   <div class="busy-bg" id="busy" hidden>
     <div class="busy"><div class="spin"></div><div id="busyMsg">Working…</div></div>
-  </div>
-
-  <div class="confirm-bg" id="textModal">
-    <div class="confirm">
-      <h3 id="textTitle"></h3>
-      <input id="textInput" type="text" maxlength="60" style="width:100%;margin-top:10px" onkeydown="if(event.key==='Enter')textAnswer(true);if(event.key==='Escape')textAnswer(false)" />
-      <div class="confirm-foot">
-        <button onclick="textAnswer(false)">Cancel</button>
-        <button class="primary" onclick="textAnswer(true)">Save</button>
-      </div>
-    </div>
   </div>
 
   <div class="confirm-bg" id="confirmModal">

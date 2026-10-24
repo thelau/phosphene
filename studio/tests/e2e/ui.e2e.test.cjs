@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { chromium } = require('playwright-core');
-const { start, makeState, addSeq } = require('./fakeapi.cjs');
+const { start, makeState, addAi } = require('./fakeapi.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const PORT = 5410 + Math.floor(Math.random() * 400);
@@ -47,7 +47,7 @@ test.after(async () => {
 
 async function fresh(opts = {}) {
   const fresh_state = makeState();
-  Object.assign(api.state, { plates: fresh_state.plates, sequences: fresh_state.sequences, active: fresh_state.active, counter: fresh_state.counter });
+  Object.assign(api.state, { plates: fresh_state.plates, sequences: fresh_state.sequences, active: fresh_state.active });
   if (opts.setup) opts.setup(api.state);
   api.state.delays = { purge: 0, generate: 0, invent: 0, export: 0, ai: 600, ...opts.delays };
   api.state.jobs = [];
@@ -246,68 +246,86 @@ test('narrow window: the header wraps without squeezing the Generate button', { 
 });
 
 const names = async () => page.locator('.card').evaluateAll(els => els.map(e => e.dataset.filename));
+const seg = async () => page.locator('#orderSeg button').evaluateAll(els => els.map(e => ({ text: e.textContent.trim(), on: e.classList.contains('on') })));
+const clickSeg = async label => { await page.locator('#orderSeg button', { hasText: label }).click(); };
+const aiSetup = (summary = 'Hook on k2, lands on k1.') => st => { st.sequences[0].order = ['k3', 'k1', 'k2', 't1', 't2', 't3', 't4']; addAi(st, ['k2', 'k3', 'k1'], { summary }); st.active = 's1'; };
+
+test('orders: one Manual order, and the AI button, are all there is', { skip }, async () => {
+  const ctx = await fresh();
+  assert.deepEqual(await seg(), [{ text: '✋ Manual (3)', on: true }]);
+  assert.equal(await text('#aiBtn'), '✨ Order with AI…');
+  assert.equal(await page.locator('#seqMenuBtn, #seqSelect, #cutsToggle, #resetAi:visible').count(), 0);     // no menu, no dropdown, no cuts checkbox
+  await shot('11-orders-manual-only');
+  await ctx.close();
+});
 
 test('orders: switch between Manual and AI without losing either', { skip }, async () => {
-  const ctx = await fresh({ setup: st => { st.sequences[0].order = ['k3', 'k1', 'k2', 't1', 't2', 't3', 't4']; addSeq(st, 'ai', ['k2', 'k3', 'k1'], { summary: 'Hook on k2, lands on k1.' }); st.active = 's1'; } });
+  const ctx = await fresh({ setup: aiSetup() });
+  assert.deepEqual(await seg(), [{ text: '✋ Manual (3)', on: true }, { text: '✨ AI (3)', on: false }]);
+  assert.equal(await text('#aiBtn'), '↻ Redo with AI…');
   assert.deepEqual(await names(), ['k3', 'k1', 'k2']);
-  assert.equal(await page.locator('#seqSelect option').count(), 2);
-  assert.match(await page.locator('#seqSelect option').nth(0).innerText(), /✋ Manual 1 \(3\)/);
-  assert.match(await page.locator('#seqSelect option').nth(1).innerText(), /✨ AI 1 \(3\)/);
-  await shot('11-orders-manual');
-  await page.selectOption('#seqSelect', { label: '✨ AI 1 (3)' });
+  await clickSeg('AI');
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k2');
   assert.deepEqual(await names(), ['k2', 'k3', 'k1']);
   assert.equal(await text('#seqSummary'), 'Hook on k2, lands on k1.');
+  assert.equal(await page.locator('#aiNote').isVisible(), true);
+  assert.match(await text('#aiNote'), /The AI's note/);
+  assert.deepEqual((await seg()).map(x => x.on), [false, true]);
   await shot('12-orders-ai');
-  await page.selectOption('#seqSelect', { label: '✋ Manual 1 (3)' });
+  await clickSeg('Manual');
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
   assert.deepEqual(await names(), ['k3', 'k1', 'k2']);
-  assert.equal(await text('#seqSummary'), '');
+  assert.equal(await page.locator('#aiNote').isHidden(), true);                      // the note belongs to the AI order only
   await ctx.close();
 });
 
-test('orders: dragging in an AI order forks a manual copy and keeps the AI order', { skip }, async () => {
-  const ctx = await fresh({ setup: st => { addSeq(st, 'ai', ['k2', 'k3', 'k1'], { summary: 'x' }); } });   // AI 1 is active
-  assert.deepEqual(await names(), ['k2', 'k3', 'k1']);
-  await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));     // drag k1 onto k2
-  await page.waitForFunction(() => /Manual 2 \(from AI 1\)/.test(document.getElementById('seqSelect').selectedOptions[0].textContent));
-  assert.match(await text('#toast'), /Saved as “Manual 2 \(from AI 1\)”/);
-  const forked = await names();
-  assert.notDeepEqual(forked, ['k2', 'k3', 'k1']);
-  await page.selectOption('#seqSelect', { label: '✨ AI 1 (3)' });
+test('player: switching between Manual and AI while playing follows the new order from its first image', { skip }, async () => {
+  const ctx = await fresh({ setup: aiSetup() });                                      // Manual: k3,k1,k2   AI: k2,k3,k1
+  await page.fill('#bpmSlider', '60'); await page.locator('#bpmSlider').dispatchEvent('input');
+  await page.selectOption('#multSelect', '1');                                        // one cut per second
+  await page.click('#playBtn');
+  const src = async () => (await page.locator('#stageImg').getAttribute('src')).split('/').pop().replace('.svg', '');
+  await page.waitForFunction(() => document.getElementById('stageImg').getAttribute('src'));
+  assert.equal(await src(), 'k3');                                                    // starts on Manual's first
+  await clickSeg('AI');
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k2');
-  assert.deepEqual(await names(), ['k2', 'k3', 'k1']);                         // untouched
-  await shot('13-orders-forked');
+  await page.waitForFunction(() => document.getElementById('stageImg').getAttribute('src').includes('k2'), null, { timeout: 3000 });
+  assert.equal(await src(), 'k2');                                                    // AI's first image
+  await page.waitForFunction(() => document.getElementById('stageImg').getAttribute('src').includes('k3'), null, { timeout: 3000 });
+  assert.equal(await src(), 'k3');                                                    // then AI's second
+  await clickSeg('Manual');
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
+  await page.waitForFunction(() => document.getElementById('stageImg').getAttribute('src').includes('k3'));
+  assert.equal(await src(), 'k3');                                                    // back to Manual's first
+  await page.click('#playBtn');
   await ctx.close();
 });
 
-test('orders: rename, duplicate and delete from the menu; the last order cannot be deleted', { skip }, async () => {
-  const ctx = await fresh();
-  await page.click('#seqMenuBtn');
-  await page.click('#seqMenu >> text=Rename');
-  await page.waitForSelector('#textModal.open');
-  await page.fill('#textInput', 'Opening cut');
-  await page.keyboard.press('Enter');
-  await page.waitForFunction(() => /Opening cut/.test(document.getElementById('seqSelect').selectedOptions[0].textContent));
-  await page.click('#seqMenuBtn');
-  await page.click('#seqMenu >> text=Duplicate');
-  await page.waitForFunction(() => /Opening cut copy/.test(document.getElementById('seqSelect').selectedOptions[0].textContent));
-  assert.equal(await page.locator('#seqSelect option').count(), 2);
-  await page.click('#seqMenuBtn');
-  await page.click('#seqMenu >> text=Delete');
-  assert.match(await text('#confirmTitle'), /Delete “Opening cut copy”\?/);
-  await page.click('#confirmYes');
-  await page.waitForFunction(() => document.querySelectorAll('#seqSelect option').length === 1);
-  await page.click('#seqMenuBtn');
-  await page.click('#seqMenu >> text=Delete');
-  await page.click('#confirmYes');
-  await page.waitForFunction(() => document.getElementById('toast').classList.contains('show') && /last order/.test(document.getElementById('toast').textContent));
-  assert.equal(await page.locator('#seqSelect option').count(), 1);
+test('orders: dragging edits the order you are looking at; the AI one can be reset; the other order is untouched', { skip }, async () => {
+  const ctx = await fresh({ setup: aiSetup('x') });
+  await clickSeg('AI');
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k2');
+  assert.equal(await page.locator('#resetAi').isHidden(), true);
+  await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));          // k1 onto k2
+  await page.waitForSelector('#resetAi:not([hidden])');
+  const edited = await names();
+  assert.notDeepEqual(edited, ['k2', 'k3', 'k1']);
+  assert.equal((await seg()).length, 2);                                              // still just Manual and AI: no copy was made
+  await clickSeg('Manual');
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
+  assert.deepEqual(await names(), ['k3', 'k1', 'k2']);                               // Manual untouched
+  await clickSeg('AI');
+  await page.waitForFunction(first => document.querySelector('.card').dataset.filename === first, edited[0]);
+  assert.deepEqual(await names(), edited);                                            // the edit was kept
+  await shot('13-ai-edited');
+  await page.click('#resetAi');
+  await page.waitForFunction(() => document.getElementById('resetAi').hidden);
+  assert.deepEqual(await names(), ['k2', 'k3', 'k1']);
   await ctx.close();
 });
 
-test('orders: a restored image lands at the end of every order, and the order bar hides in the trash view', { skip }, async () => {
-  const ctx = await fresh({ setup: st => { addSeq(st, 'ai', ['k3', 'k2', 'k1'], { summary: 'x' }); st.active = 's1'; } });
+test('orders: a restored image lands at the end of both orders, and the order tools hide in the trash view', { skip }, async () => {
+  const ctx = await fresh({ setup: st => { st.sequences[0].order = ['k1', 'k2', 'k3', 't1', 't2', 't3', 't4']; addAi(st, ['k3', 'k2', 'k1', 't1', 't2', 't3', 't4'], { summary: 'x' }); st.active = 's1'; } });
   await page.click('#tabTrash');
   await page.waitForSelector('#trashBar:not([hidden])');
   assert.equal(await page.locator('#seqBox').isHidden(), true);
@@ -319,19 +337,19 @@ test('orders: a restored image lands at the end of every order, and the order ba
   assert.equal(await page.locator('#seqBox').isVisible(), true);
   assert.equal(await page.locator('#trashBar').isHidden(), true);
   assert.deepEqual(await names(), ['k1', 'k2', 'k3', 't2']);
-  await page.selectOption('#seqSelect', { label: '✨ AI 1 (4)' });
+  await clickSeg('AI');
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
   assert.deepEqual(await names(), ['k3', 'k2', 'k1', 't2']);
   await ctx.close();
 });
 
-test('orders: the selector sits on the right of the gallery bar, where the trash buttons take over in the trash tab', { skip }, async () => {
+test('orders: the tools sit on the right of the gallery bar, where the trash buttons take over in the trash tab', { skip }, async () => {
   const ctx = await fresh();
   const bar = await page.locator('.gallery-head').boundingBox();
-  const tabs = await page.locator('.seg').boundingBox();
-  const seq = await page.locator('#seqBox').boundingBox();
-  assert.ok(seq.x > tabs.x + tabs.width, 'right of the tabs');
-  assert.ok(seq.x + seq.width > bar.x + bar.width - 40, 'pushed to the right edge');
+  const tabs = await page.locator('.gallery-head > .seg').boundingBox();
+  const tools = await page.locator('#seqBox').boundingBox();
+  assert.ok(tools.x > tabs.x + tabs.width, 'right of the tabs');
+  assert.ok(tools.x + tools.width > bar.x + bar.width - 40, 'pushed to the right edge');
   await page.click('#tabTrash');
   await page.waitForSelector('#trashBar:not([hidden])');
   const trash = await page.locator('#trashBar').boundingBox();
@@ -341,19 +359,16 @@ test('orders: the selector sits on the right of the gallery bar, where the trash
   await ctx.close();
 });
 
-test('AI order: panel, pins, live progress, best-N divider, and the original order stays', { skip }, async () => {
+test('AI order: panel, pins, live progress, and the Manual order stays exactly as it was', { skip }, async () => {
   const ctx = await fresh({ delays: { ai: 2000 } });
   assert.deepEqual(await names(), ['k1', 'k2', 'k3']);
   await page.click('#aiBtn');
   await page.waitForSelector('#aiPanel:not([hidden])');
   assert.match(await text('#aiPins'), /No pins/);
   await shot('15-ai-panel');
-  await page.selectOption('#aiLength', '12');                             // more than we have: the AI uses everything
-  await page.selectOption('#aiLength', { label: 'All images' });
-  await page.click('#aiBtn');                                              // closes
+  await page.click('#aiBtn');
   assert.equal(await page.locator('#aiPanel').isHidden(), true);
 
-  // pin k2 as opener (click) and k1 as closer (shift-click)
   await page.locator('.card[data-filename="k2"]').hover();
   await page.locator('.card[data-filename="k2"] .action-btn[title^="Pin"]').click();
   await page.locator('.card[data-filename="k1"]').hover();
@@ -368,30 +383,75 @@ test('AI order: panel, pins, live progress, best-N divider, and the original ord
   await page.waitForSelector('#statusText .slot');
   assert.match(await text('#statusText'), /AI order/);
   assert.equal(await page.locator('#statusText .slot').count(), 4);
-  assert.equal(await page.locator('#aiBtn').isDisabled(), true);
-  assert.equal(await page.locator('#seqSelect').isDisabled(), true);
   await shot('16-ai-progress');
-  await page.waitForFunction(() => /Done — AI 1/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Done — AI: Opens on k2/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   assert.equal(await page.locator('#aiBtn').isDisabled(), false);
   assert.equal(await page.locator('#statusText .slot.ok').count(), 4);
   const body = api.state.jobs[0].body;
   assert.deepEqual([body.first, body.last, body.direction, body.length], ['k2', 'k1', 'end on the blue one', null]);
-  assert.match(await page.locator('#seqSelect option:checked').innerText(), /✨ AI 1 \(3\)/);
+  assert.deepEqual(await seg(), [{ text: '✋ Manual (3)', on: false }, { text: '✨ AI (3)', on: true }]);
   assert.deepEqual(await names(), ['k2', 'k3', 'k1']);
   assert.match(await text('#seqSummary'), /Opens on k2, lands on k1/);
   await shot('17-ai-done');
-  await page.selectOption('#seqSelect', { label: '✋ Manual 1 (3)' });
+  await clickSeg('Manual');
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k1');
-  assert.deepEqual(await names(), ['k1', 'k2', 'k3']);                       // the manual order is exactly as before
+  assert.deepEqual(await names(), ['k1', 'k2', 'k3']);
   assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
+test('AI order: while it works nothing that changes the selection can run', { skip }, async () => {
+  const ctx = await fresh({ delays: { ai: 2400 } });
+  await page.click('#aiBtn');
+  await page.click('#aiGo');
+  await page.waitForSelector('#statusText .slot');
+  // the controls are locked...
+  for (const id of ['#generateBtn', '#worldSelect', '#directionInput', '#batchCountSelect', '#aiBtn', '#exportBtn']) assert.equal(await page.locator(id).isDisabled(), true, `${id} locked`);
+  assert.equal(await page.locator('body.ai-running').count(), 1);
+  // ...a card's trash button cannot be used...
+  const before = await names();
+  await page.locator('.card[data-filename="k1"]').hover();
+  await page.locator('.card[data-filename="k1"] .trash-btn').click({ force: true });
+  assert.deepEqual(await names(), before);
+  assert.equal(api.state.calls.filter(c => c.path === '/api/trash').length, 0);
+  // ...dragging does nothing...
+  await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));
+  assert.equal(api.state.calls.filter(c => c.path === '/api/reorder').length, 0);
+  assert.deepEqual(await names(), before);
+  // ...and the trash tab's delete buttons are locked (the tab itself can still be looked at)
+  await page.click('#tabTrash');
+  await page.waitForSelector('#trashBar:not([hidden])');
+  assert.equal(await page.locator('#tabTrash').getAttribute('class'), 'on');                // the active tab is highlighted even while locked
+  assert.equal(await page.locator('#tabSelection').getAttribute('class') || '', '');
+  for (const id of ['#trashEmpty', '#trashSelAll', '#trashDelSel']) assert.equal(await page.locator(id).isDisabled(), true, `${id} locked`);
+  await page.waitForTimeout(1500);
+  assert.equal(await page.locator('#tabTrash').getAttribute('class'), 'on', 'still highlighted a moment later');
+  await shot('20-ai-locked');
+  await page.click('#tabSelection');
+  await page.waitForFunction(() => /Done — AI/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  // everything is back
+  for (const id of ['#generateBtn', '#worldSelect', '#aiBtn', '#exportBtn']) assert.equal(await page.locator(id).isDisabled(), false, `${id} unlocked`);
+  assert.equal(await page.locator('body.ai-running').count(), 0);
+  await page.locator('.card[data-filename="k1"]').hover();
+  await page.locator('.card[data-filename="k1"] .trash-btn').click();
+  await page.waitForFunction(() => document.getElementById('tabTrash').textContent.includes('(5)'));
+  await ctx.close();
+});
+
+test('AI order: it cannot start while images are being generated', { skip }, async () => {
+  const ctx = await fresh({ delays: { invent: 400, generate: 1200 } });
+  await page.click('#generateBtn');
+  await page.waitForSelector('#statusText .slot');
+  assert.equal(await page.locator('#aiBtn').isDisabled(), true);
+  await page.waitForFunction(() => /Done — 4 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
+  assert.equal(await page.locator('#aiBtn').isDisabled(), false);
+  assert.equal(api.state.calls.filter(c => c.path === '/api/order-ai').length, 0);
   await ctx.close();
 });
 
 test('AI order: "best N" cuts the edit and shows what was left out; playback uses only the edit', { skip }, async () => {
   const ctx = await fresh({ delays: { ai: 400 } });
-  await page.click('#aiBtn');
-  await page.selectOption('#aiLength', '12');
-  api.state.plates.push(...['k4', 'k5', 'k6'].map((f, i) => ({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` })));
+  api.state.plates.push(...['k4', 'k5', 'k6'].map(f => ({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` })));
   api.state.sequences[0].order.push('k4', 'k5', 'k6');
   await page.reload();
   await page.waitForSelector('.card');
@@ -399,16 +459,14 @@ test('AI order: "best N" cuts the edit and shows what was left out; playback use
   await page.evaluate(() => { const o = document.createElement('option'); o.value = '2'; o.textContent = 'Best 2'; document.getElementById('aiLength').appendChild(o); });
   await page.selectOption('#aiLength', '2');
   await page.click('#aiGo');
-  await page.waitForFunction(() => /Done — AI 1/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Done — AI/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   await page.waitForSelector('.edit-divider');
   assert.match(await text('.edit-divider'), /left out of this edit \(4\)/);
   const cards = await names();
   assert.equal(cards.length, 6);
-  const dividerIndex = await page.evaluate(() => [...document.getElementById('grid').children].findIndex(e => e.classList.contains('edit-divider')));
-  assert.equal(dividerIndex, 2);
-  assert.match(await page.locator('#seqSelect option:checked').innerText(), /✨ AI 1 \(2 of 6\)/);
+  assert.equal(await page.evaluate(() => [...document.getElementById('grid').children].findIndex(e => e.classList.contains('edit-divider'))), 2);
+  assert.deepEqual(await seg(), [{ text: '✋ Manual (6)', on: false }, { text: '✨ AI (2 of 6)', on: true }]);
   await shot('18-best-n');
-  // playback only visits the first two
   await page.fill('#bpmSlider', '220'); await page.locator('#bpmSlider').dispatchEvent('input');
   await page.selectOption('#multSelect', '9');
   await page.click('#playBtn');
@@ -420,16 +478,30 @@ test('AI order: "best N" cuts the edit and shows what was left out; playback use
   await ctx.close();
 });
 
-test('AI order: cut markers can be switched on and explain each cut', { skip }, async () => {
-  const ctx = await fresh();
-  assert.equal(await page.locator('.cut-badge').count(), 0);
-  await page.check('#cutsToggle');
-  await page.waitForSelector('.cut-badge');
-  assert.equal(await page.locator('.cut-badge').count(), 2);                // the first image has no cut in
-  assert.match(await page.locator('.cut-badge').first().getAttribute('title'), /reason k1→k2/);
-  await shot('19-cuts');
-  await page.reload();
-  await page.waitForSelector('.cut-badge');                                  // remembered
+test('AI order: redoing replaces the AI order and always asks first', { skip }, async () => {
+  const ctx = await fresh({ delays: { ai: 400 }, setup: aiSetup('x') });
+  await clickSeg('AI');
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k2');
+  await page.click('#aiBtn');
+  await page.click('#aiGo');
+  await page.waitForSelector('#confirmModal.open');                                  // never edited: still asks
+  assert.match(await text('#confirmTitle'), /Replace the current AI order\?/);
+  assert.doesNotMatch(await text('#confirmBody'), /drops the changes/);
+  await page.click('#confirmModal .confirm-foot button >> text=Cancel');
+  await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));
+  await page.waitForSelector('#resetAi:not([hidden])');
+  await page.click('#aiBtn');
+  await page.click('#aiGo');
+  await page.waitForSelector('#confirmModal.open');                                  // edited: says what is lost
+  assert.match(await text('#confirmBody'), /drops the changes you made/);
+  await page.click('#confirmModal .confirm-foot button >> text=Cancel');
+  assert.equal(api.state.calls.filter(c => c.path === '/api/order-ai').length, 0);
+  await page.click('#aiBtn');
+  await page.click('#aiGo');
+  await page.click('#confirmYes');
+  await page.waitForFunction(() => /Done — AI/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  assert.equal((await seg()).length, 2);                                              // still one Manual and one AI
+  assert.equal(await page.locator('#resetAi').isHidden(), true);                      // the new AI order is unedited
   await ctx.close();
 });
 
@@ -439,6 +511,7 @@ test('AI order: a failure is reported and everything unlocks', { skip }, async (
   await page.click('#aiGo');
   await page.waitForFunction(() => /AI order failed: Kimi exploded/.test(document.getElementById('statusText').textContent), null, { timeout: 10000 });
   assert.equal(await page.locator('#aiBtn').isDisabled(), false);
-  assert.equal(await page.locator('#seqSelect option').count(), 1);
+  assert.equal(await page.locator('#generateBtn').isDisabled(), false);
+  assert.equal((await seg()).length, 1);
   await ctx.close();
 });

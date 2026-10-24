@@ -216,7 +216,7 @@ def test_ordered_plate_files_follows_the_active_sequence(srv, make_plate):
     st = srv.load_state()
     manual = st["active_sequence"]
     sequences.set_order(st, ["3_c.jpg", "1_a.jpg", "2_b.jpg"])
-    ai = sequences.add(st, "ai", ["2_b.jpg", "3_c.jpg", "1_a.jpg"])
+    ai = sequences.add_ai(st, ["2_b.jpg", "3_c.jpg", "1_a.jpg"])
     assert [p.name for p in srv.ordered_plate_files(st)] == ["2_b.jpg", "3_c.jpg", "1_a.jpg"]
     sequences.activate(st, manual)
     assert [p.name for p in srv.ordered_plate_files(st)] == ["3_c.jpg", "1_a.jpg", "2_b.jpg"]
@@ -225,10 +225,11 @@ def test_ordered_plate_files_follows_the_active_sequence(srv, make_plate):
 def test_sequences_survive_save_and_load(srv):
     import sequences
     st = srv.load_state()
-    sequences.add(st, "ai", ["x", "y"], summary="s")
+    sequences.add_ai(st, ["x", "y"], summary="s")
     srv.save_state(st)
     again = srv.load_state()
-    assert [s["name"] for s in again["sequences"]] == ["Manual 1", "AI 1"] and again["active_sequence"] == st["active_sequence"]
+    assert [s["name"] for s in again["sequences"]] == ["Manual", "AI"] and again["active_sequence"] == st["active_sequence"]
+    assert again["sequences"][1]["original"] == ["x", "y"]
     assert "order" not in again
 
 
@@ -239,6 +240,6 @@ def test_purge_removes_images_from_every_sequence(srv, make_plate):
     st = srv.load_state()
     st["trashed"] = ["20_a.jpg"]
     sequences.set_order(st, ["20_a.jpg", "21_b.jpg"])
-    sequences.add(st, "ai", ["21_b.jpg", "20_a.jpg"])
+    sequences.add_ai(st, ["21_b.jpg", "20_a.jpg"])
     srv.purge_plates(st, ["20_a.jpg"])
     assert all("20_a.jpg" not in s["order"] for s in st["sequences"])

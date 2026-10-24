@@ -299,7 +299,7 @@ def test_build_ai_order_ignores_trashed_images_and_needs_two(srv, make_plate):
     assert "20_p0.jpg" not in built["result"]["names"]
 
 
-def test_add_ai_sequence_keeps_other_orders_and_trashed_slots(srv, make_plate):
+def test_add_ai_sequence_keeps_the_manual_order_and_trashed_slots(srv, make_plate):
     st = build_state(srv, make_plate)
     manual = st["active_sequence"]
     st["trashed"] = ["27_p7.jpg"]
@@ -309,7 +309,15 @@ def test_add_ai_sequence_keeps_other_orders_and_trashed_slots(srv, make_plate):
     assert seq["kind"] == "ai" and st["active_sequence"] == seq["id"] and seq["cut_off"] is None
     assert seq["order"][:7] == built["result"]["names"] and seq["order"][-1] == "27_p7.jpg"       # trashed keeps a slot at the end
     assert sq.find(st, manual)["order"] == [f"{20 + i}_p{i}.jpg" for i in range(8)]                   # the manual order is untouched
-    assert len(seq["cuts"]) == 6
+    assert len(seq["cuts"]) == 6 and seq["original"] == seq["order"]
+
+
+def test_redoing_the_ai_replaces_the_ai_order_only(srv, make_plate):
+    st = build_state(srv, make_plate)
+    first = srv.add_ai_sequence(st, srv.build_ai_order(st, lambda *a, **k: "{}", "k", "m"))
+    again = srv.add_ai_sequence(st, srv.build_ai_order(st, lambda *a, **k: "{}", "k", "m", 3))
+    assert [s["kind"] for s in st["sequences"]] == ["manual", "ai"] and st["sequences"][1]["id"] == again["id"] != first["id"]
+    assert again["cut_off"] == 3
 
 
 def test_best_n_marks_the_cut_off_and_the_export_follows_it(srv, make_plate):
@@ -323,17 +331,36 @@ def test_best_n_marks_the_cut_off_and_the_export_follows_it(srv, make_plate):
     assert len(shown) == 10
 
 
-def test_forking_an_ai_best_n_edit_keeps_the_cut_off(srv, make_plate):
+def test_dragging_in_an_ai_best_n_edit_keeps_the_cut_off_and_can_be_reset(srv, make_plate):
     st = build_state(srv, make_plate, n=10)
     seq = srv.add_ai_sequence(st, srv.build_ai_order(st, lambda *a, **k: "{}", "k", "m", 4))
-    forked = sq.reorder_active(st, list(reversed(seq["order"])))
-    assert forked["kind"] == "manual" and forked["cut_off"] == 4
-    assert sq.duplicate(st, forked["id"])["cut_off"] == 4
+    original = list(seq["order"])
+    sq.reorder_active(st, list(reversed(seq["order"])))
+    assert seq["cut_off"] == 4 and seq["order"] != original and sq.is_edited(seq)
+    sq.reset_ai(st)
+    assert seq["order"] == original
+
+
+# ---------- the lock while the AI works ----------
+
+def test_the_server_refuses_changes_while_an_ai_order_runs(srv):
+    assert not srv.ai_busy()
+    srv.AI_JOBS["j1"] = {"done": False}
+    try:
+        assert srv.ai_busy()
+        for path in ("/api/trash", "/api/reorder", "/api/purge", "/api/sequence", "/api/generate-image", "/api/invent-prompts", "/api/export-video"):
+            assert path in srv.LOCKED_DURING_AI
+        for path in ("/api/save-settings", "/api/order-ai", "/api/krea-auth"):
+            assert path not in srv.LOCKED_DURING_AI
+    finally:
+        srv.AI_JOBS["j1"]["done"] = True
+    assert not srv.ai_busy()
+    srv.AI_JOBS.clear()
 
 
 def test_public_sequences_expose_the_cut_off(srv):
     st = srv.load_state()
-    sq.add(st, "ai", ["a", "b", "c"], cut_off=2)
+    sq.add_ai(st, ["a", "b", "c"], cut_off=2)
     assert sq.public(st)[-1]["cut_off"] == 2
 
 

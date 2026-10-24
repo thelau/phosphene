@@ -10,9 +10,8 @@ function makeState() {
   const plates = [plate('k1', false, 0), plate('k2', false, 1), plate('k3', false, 2), plate('t1', true, 1), plate('t2', true, 2), plate('t3', true, 3), plate('t4', true, 4)];
   return {
     plates,
-    sequences: [{ id: 's1', name: 'Manual 1', kind: 'manual', order: plates.map(p => p.filename), summary: null }],
+    sequences: [{ id: 's1', name: 'Manual', kind: 'manual', order: plates.map(p => p.filename), summary: null }],
     active: 's1',
-    counter: { manual: 1, ai: 0 },
     delays: { purge: 0, generate: 0, invent: 0, export: 0, ai: 600 },
     jobs: [],
     aiFail: null,
@@ -21,12 +20,13 @@ function makeState() {
   };
 }
 
-// the same rules as studio/sequences.py, in a few lines
+// the same rules as studio/sequences.py: one Manual order, at most one AI order (redo replaces it), both editable in place
 const seqOf = (st, id) => st.sequences.find(s => s.id === id);
 const activeSeq = st => seqOf(st, st.active);
-function addSeq(st, kind, order, { name, summary = null, parent = null, cut_off = null } = {}) {
-  st.counter[kind] = (st.counter[kind] || 0) + (name ? 0 : 1);
-  const seq = { id: `s${st.sequences.length + 1 + Math.floor(Math.random() * 1e6)}`, name: name || `${kind === 'ai' ? 'AI' : 'Manual'} ${st.counter[kind]}`, kind, order: [...new Set(order)], summary, parent, cut_off };
+let seqCounter = 100;
+function addAi(st, order, { summary = null, cut_off = null } = {}) {
+  st.sequences = st.sequences.filter(q => q.kind !== 'ai');
+  const seq = { id: `s${++seqCounter}`, name: 'AI', kind: 'ai', order: [...new Set(order)], original: [...new Set(order)], summary, cut_off };
   st.sequences.push(seq); st.active = seq.id; return seq;
 }
 function orderedPlates(st) {
@@ -41,7 +41,6 @@ const svg = name => {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="270" height="480" viewBox="0 0 270 480"><rect width="270" height="480" fill="${c}"/><circle cx="135" cy="240" r="24" fill="none" stroke="#fff" stroke-width="5"/><text x="135" y="320" fill="#fff" font-size="22" text-anchor="middle">${name}</text></svg>`;
 };
 
-const withCuts = list => { let prev = null; return list.map((p, i) => { if (p.trashed) return p; const out = { ...p, cut_in: prev ? { kind: ['flip', 'echo', 'hue'][i % 3], reason: `reason ${prev}→${p.filename}` } : undefined }; prev = p.filename; return out; }); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function start(state = makeState()) {
@@ -55,6 +54,8 @@ function start(state = makeState()) {
     }
     const send = (obj, status = 200) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
     if (url.pathname.startsWith('/api/')) state.calls.push({ path: url.pathname, body });
+    const LOCKED = ['/api/trash', '/api/reorder', '/api/purge', '/api/sequence', '/api/generate-image', '/api/invent-prompts', '/api/export-video'];
+    if (LOCKED.includes(url.pathname) && state.jobs.some(j => !j.done)) return send({ ok: false, busy: true, error: 'The AI is ordering your selection. Wait until it finishes.' }, 409);
 
     if (url.pathname.startsWith('/assets/ai-plates/')) {
       const name = decodeURIComponent(url.pathname.split('/').pop()).replace(/\.svg$/, '');
@@ -63,7 +64,7 @@ function start(state = makeState()) {
     switch (url.pathname) {
       case '/api/state': {
         const visible = new Set(state.plates.filter(p => !p.trashed).map(p => p.filename));
-        return send({ plates: withCuts(orderedPlates(state)), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, parent: q.parent, cut_off: q.cut_off || null })), active_sequence: state.active, krea_connected: true, kimi_configured: true, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3', critic_enabled: false, critic_autotrash: false });
+        return send({ plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, krea_connected: true, kimi_configured: true, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3', critic_enabled: false, critic_autotrash: false });
       }
       case '/api/worlds':
         return send({ ok: true, worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', n: 7, kept: 3, wildcard: false }, { name: 'Matter & Elements', brief: 'Fluids and fire.', n: 10, kept: 2, wildcard: false }] });
@@ -73,27 +74,13 @@ function start(state = makeState()) {
       case '/api/reorder': {
         const seq = activeSeq(state);
         let order = [...new Set(body.order || [])];
-        order = order.concat(seq.order.filter(n => !order.includes(n)));
-        if (seq.kind === 'ai') {
-          state.counter.manual += 1;
-          const f = addSeq(state, 'manual', order, { name: `Manual ${state.counter.manual} (from ${seq.name})`, parent: seq.id });
-          return send({ ok: true, forked: { id: f.id, name: f.name } });
-        }
-        seq.order = order;
-        return send({ ok: true, forked: null });
+        seq.order = order.concat(seq.order.filter(n => !order.includes(n)));
+        return send({ ok: true });
       }
       case '/api/sequence': {
-        const seq = seqOf(state, body.id);
-        if (!seq) return send({ ok: false, error: 'unknown order' }, 400);
-        if (body.action === 'activate') state.active = seq.id;
-        else if (body.action === 'rename' && (body.name || '').trim()) seq.name = body.name.trim();
-        else if (body.action === 'duplicate') { addSeq(state, 'manual', seq.order, { name: `${seq.name} copy`, parent: seq.id }); }
-        else if (body.action === 'delete') {
-          if (state.sequences.length <= 1) return send({ ok: false, error: 'Could not do that (the last order cannot be deleted).' }, 400);
-          state.sequences = state.sequences.filter(q => q.id !== seq.id);
-          if (state.active === seq.id) state.active = state.sequences[0].id;
-        } else return send({ ok: false, error: 'bad action' }, 400);
-        return send({ ok: true });
+        if (body.action === 'activate' && seqOf(state, body.id)) { state.active = body.id; return send({ ok: true }); }
+        if (body.action === 'reset') { const ai = state.sequences.find(q => q.kind === 'ai'); if (ai) { ai.order = [...ai.original]; return send({ ok: true }); } }
+        return send({ ok: false, error: 'Could not do that.' }, 400);
       }
       case '/api/trash': {
         const p = state.plates.find(x => x.filename === body.filename);
@@ -116,7 +103,7 @@ function start(state = makeState()) {
           if (body.last) order = [...order.filter(n => n !== body.last), body.last];
           const rest = state.plates.map(p => p.filename).filter(n => !order.includes(n));
           const n = body.length && body.length < order.length ? body.length : null;
-          const seq = addSeq(state, 'ai', [...order, ...rest], { summary: `Opens on ${order[0]}, lands on ${order[order.length - 1]}.`, cut_off: n });
+          const seq = addAi(state, [...order, ...rest], { summary: `Opens on ${order[0]}, lands on ${order[order.length - 1]}.`, cut_off: n });
           job.done = true; job.step = 4; job.stage = 'Done'; job.sequence = { id: seq.id, name: seq.name, summary: seq.summary };
         })();
         return send({ ok: true, job: id, steps: names });
@@ -156,4 +143,4 @@ function start(state = makeState()) {
   return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve({ server, state, url: `http://127.0.0.1:${server.address().port}`, close: () => new Promise(r => server.close(r)) })));
 }
 
-module.exports = { start, makeState, addSeq, orderedPlates };
+module.exports = { start, makeState, addAi, orderedPlates };
