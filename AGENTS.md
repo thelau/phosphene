@@ -35,3 +35,8 @@ Done:
 Quality reference: `inspiration/soiltone-inspo.mp4` — 8s, ~48 cuts, each scene shown as a color/mono twin pair, one hero subject, logo crisp at dead-center. "Pairs" generates the twin. Quality bar lives in `QUALITY_BAR` in `server.py`.
 
 Caveat: trashed = manual trash OR logo-QA auto-trash; most trash so far is QA failures, so model scores mostly reflect logo-lock reliability until you approve more plates.
+
+## Twins
+- No "Pairs" at generation. Each kept card has a 🌗 Twin button (and "Twin all kept"): `/api/make-twin` edits the plate itself (nano-banana-pro) into the opposite tone and stores `twin_of[twin] = original` in `curation_state.json`.
+- Order: `glue_twins()` keeps every twin directly after its original, so dragging/reordering moves pairs together. Trashing an original trashes its twins.
+- Audio/tempo-curve work (synth vs. uploaded track, accelerate/decelerate cut curve measured from the reference) is planned after image quality.

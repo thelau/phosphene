@@ -4,7 +4,7 @@ Minimal Match-Cut Curation & Generation Server
 - Uses Kimi (Kimi K3 / Kimi K2.7) via API key to generate fresh, non-repeating scene prompts and per-card variations.
 - Uses Krea MCP OAuth (`https://api.krea.ai/mcp`) to generate 9:16 center-locked plates.
 - Persists model name and full prompt per image, exposed in `/api/state` for the card badge & `(i)` prompt overlay.
-- Supports per-card "More like this" (`POST /api/invent-variation`) and drag-and-drop reordering (`POST /api/reorder`).
+- Per-card "Twin" (`POST /api/make-twin`, image edit into the opposite tonal world) and drag-and-drop reordering (`POST /api/reorder`); twins stay glued after their original.
 """
 
 import io
@@ -198,6 +198,45 @@ def save_state(state: dict) -> None:
     CURATION_FILE.write_text(json.dumps(state, indent=2))
 
 
+TWIN_MODEL = "google/nano-banana-pro"
+
+TWIN_PROMPTS = {
+    "light": (
+        "Re-render this exact image as its LIGHT twin. Keep the identical composition, camera angle, subject, object shapes and the single circular mark "
+        "at dead-center with the same size and treatment. Transform the whole palette into a bright high-key, near-monochrome world (white, pale grey, silver, "
+        "soft diffused light, at most one restrained accent color). Same materials and level of detail; only the tonal world changes."
+    ),
+    "dark": (
+        "Re-render this exact image as its DARK twin. Keep the identical composition, camera angle, subject, object shapes and the single circular mark "
+        "at dead-center with the same size and treatment. Transform the whole palette into a deep low-key world (ink black, saturated electric blue or violet accent, "
+        "dramatic directional light, crisp specular edges). Same materials and level of detail; only the tonal world changes."
+    ),
+}
+
+
+def plate_tone(path: Path) -> str:
+    from PIL import ImageStat
+    lum = ImageStat.Stat(Image.open(path).convert("L").resize((64, 114))).mean[0]
+    return "dark" if lum < 110 else "light"
+
+
+def glue_twins(order: list[str], twin_of: dict) -> list[str]:
+    """Every twin sits directly after its original, whatever order was saved."""
+    present = set(order)
+    twins_of = {}
+    for twin, orig in twin_of.items():
+        if twin in present and orig in present:
+            twins_of.setdefault(orig, []).append(twin)
+    glued = {t for ts in twins_of.values() for t in ts}
+    out = []
+    for f in order:
+        if f in glued:
+            continue
+        out.append(f)
+        out.extend(sorted(twins_of.get(f, [])))
+    return out
+
+
 def ordered_plate_files(st: dict) -> list[Path]:
     all_files = {p.name: p for p in sorted(PLATES_DIR.glob("*.jpg"))}
     order = st.get("order", [])
@@ -210,6 +249,9 @@ def ordered_plate_files(st: dict) -> list[Path]:
     for fname, p in sorted(all_files.items()):
         if fname not in seen:
             result.append(p)
+    names = glue_twins([p.name for p in result], st.get("twin_of", {}))
+    by_name = {p.name: p for p in result}
+    result = [by_name[n] for n in names]
     return result
 
 
@@ -359,33 +401,6 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     return flat
 
 
-def ask_kimi_for_variation(base_title: str, base_prompt: str, ban_list: list[str], api_key: str, kimi_model: str) -> dict:
-    """Calls Kimi K3 / K2.7 to create a slight prompt variation of a specific plate."""
-    ban_str = ", ".join(ban_list[-40:])
-    llm_prompt = (
-        f"Return ONLY a raw JSON object (no markdown fences, no commentary) with keys \"title\", \"guide\" ('dark' or 'light'), and \"prompt\" "
-        f"that is a fresh, photorealistic sibling variation of this shot:\n"
-        f"Base Title: {base_title}\n"
-        f"Base Prompt: {base_prompt}\n"
-        f"CRITICAL RULES:\n"
-        f"1. Keep the central surface straight-on (fronto-parallel to the camera, never skewed in 3/4 perspective) so the logo never looks like a flat overlay.\n"
-        f"2. Keep the logo physically embedded/carved/woven/etched into the material with real texture, cracks, or lighting crossing through it.\n"
-        f"3. Vary the lighting mood, surface detail, or logo color/material (#EC540C orange, #F64570 pink, #5D8FF4 blue, #381313 oxblood, #1A1A1A black, #FEFFE7 cream, or tone-on-tone relief) in ONE unified finish (no separate colored border ring).\n"
-        f"4. Do not duplicate these previous variations: [{ban_str}]."
-    )
-    print(f"[KIMI] Requesting variation for '{base_title}' using {kimi_model}...", flush=True)
-    out = call_kimi_llm(llm_prompt, api_key=api_key, preferred_model=kimi_model)
-    s_idx = out.find("{")
-    e_idx = out.rfind("}")
-    if s_idx != -1 and e_idx != -1:
-        return json.loads(out[s_idx : e_idx + 1])
-    return {
-        "title": f"{base_title} II",
-        "guide": "dark",
-        "prompt": f"{base_prompt}, straight-on fronto-parallel view with deep physical material integration and raking light",
-    }
-
-
 class StudioHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT_DIR), **kwargs)
@@ -436,6 +451,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "prompt": prompts.get(p.name, titles.get(p.name, "")),
                     "model": models.get(p.name, "google/nano-banana-pro"),
                     "trashed": p.name in trashed_set,
+                    "twin_of": st.get("twin_of", {}).get(p.name),
+                    "has_twin": p.name in st.get("twin_of", {}).values(),
                     "qa_passed": qa["qa_passed"],
                     "qa_score": qa["qa_score"],
                     "qa_issues": qa.get("issues", []),
@@ -503,29 +520,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         st["history"].append(t)
                 save_state(st)
                 self.send_json({"ok": True, "ideas": ideas})
-            except Exception as e:
-                self.send_json({"ok": False, "error": str(e)}, 500)
-            return
-
-        if parsed.path == "/api/invent-variation":
-            filename = body.get("filename", "")
-            st = load_state()
-            kimi_key = body.get("kimi_api_key") or st.get("kimi_api_key", "")
-            kimi_model = body.get("kimi_model") or st.get("kimi_model", "kimi-k3")
-            if not kimi_key:
-                self.send_json({"ok": False, "needs_kimi_key": True, "error": "Enter your Kimi API key in ⚙️ Settings first"}, 400)
-                return
-            titles = {**DEFAULT_TITLES, **st.get("titles", {})}
-            prompts = {**DEFAULT_PROMPTS, **st.get("prompts", {})}
-            base_title = titles.get(filename, filename)
-            base_prompt = prompts.get(filename, base_title)
-            ban_list = list(dict.fromkeys(list(titles.values()) + st.get("history", [])))
-            try:
-                idea = ask_kimi_for_variation(base_title, base_prompt, ban_list, api_key=kimi_key, kimi_model=kimi_model)
-                t = idea.get("title", f"{base_title} II")
-                st["history"].append(t)
-                save_state(st)
-                self.send_json({"ok": True, "idea": idea})
             except Exception as e:
                 self.send_json({"ok": False, "error": str(e)}, 500)
             return
@@ -609,15 +603,62 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(e)}, 500)
             return
 
+        if parsed.path == "/api/make-twin":
+            auth = get_krea_oauth_token()
+            if not auth.get("connected") or auth.get("expired"):
+                self.send_json({"ok": False, "needs_auth": True, "error": "Approve Krea MCP OAuth in browser first"})
+                return
+            src_name = body.get("filename", "")
+            src = PLATES_DIR / src_name
+            st = load_state()
+            if not src.exists():
+                self.send_json({"ok": False, "error": "Unknown plate"}, 404)
+                return
+            if src_name in st.get("twin_of", {}) or src_name in st.get("twin_of", {}).values():
+                self.send_json({"ok": False, "error": "Already has a twin"}, 400)
+                return
+            model = body.get("model") or TWIN_MODEL
+            target = "light" if plate_tone(src) == "dark" else "dark"
+            try:
+                img_bytes = generate_plate_via_krea_mcp(prompt=TWIN_PROMPTS[target], guide_type=target, model=model, source_image=src)
+                im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
+                existing_nums = [
+                    int(p.name.split("_", 1)[0])
+                    for p in list(PLATES_DIR.glob("*.jpg")) + list(REJECTED_DIR.glob("*.jpg"))
+                    if p.name.split("_", 1)[0].isdigit()
+                ]
+                filename = f"{max(existing_nums, default=15) + 1:02d}_twin_of_{src.stem.split('_', 1)[-1]}"[:40] + ".jpg"
+                save_path = PLATES_DIR / filename
+                im.save(save_path, quality=95)
+                qa = get_cached_qa(save_path)
+
+                st = load_state()
+                titles = {**DEFAULT_TITLES, **st.get("titles", {})}
+                st.setdefault("titles", {})[filename] = f"{titles.get(src_name, src.stem)} (twin)"
+                st.setdefault("prompts", {})[filename] = TWIN_PROMPTS[target]
+                st.setdefault("models", {})[filename] = model
+                st.setdefault("twin_of", {})[filename] = src_name
+                if not qa["qa_passed"]:
+                    st["trashed"] = sorted(set(st.get("trashed", [])) | {filename})
+                    st["qa_failed"] = sorted(set(st.get("qa_failed", [])) | {filename})
+                save_state(st)
+                print(f"[TWIN] {src_name} -> {filename} ({target}, {model}) qa={qa['qa_passed']}", flush=True)
+                self.send_json({"ok": True, "filename": filename, "qa_passed": qa["qa_passed"], "target": target})
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e)}, 500)
+            return
+
         if parsed.path == "/api/trash":
             filename = body.get("filename")
             trashed = bool(body.get("trashed", True))
             st = load_state()
             cur = set(st.get("trashed", []))
+            twin_of = st.get("twin_of", {})
+            group = {filename} | {t for t, o in twin_of.items() if o == filename}  # trashing an original takes its twins along
             if trashed:
-                cur.add(filename)
+                cur |= group
             else:
-                cur.discard(filename)
+                cur -= group
             st["trashed"] = sorted(cur)
             save_state(st)
             self.send_json({"ok": True})
