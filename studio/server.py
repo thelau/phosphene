@@ -842,6 +842,107 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": ok} if ok else {"ok": False, "error": "Could not do that."}, 200 if ok else 400)
             return
 
+        if parsed.path == "/api/invent-prompts":
+            st = load_state()
+            kimi_key = body.get("kimi_api_key") or st.get("kimi_api_key", "")
+            kimi_model = body.get("kimi_model") or st.get("kimi_model", "kimi-k3")
+            if not kimi_key:
+                self.send_json({"ok": False, "needs_kimi_key": True, "error": "Enter your Kimi API key in ⚙️ Settings first"}, 400)
+                return
+            try:
+                ideas = ask_kimi_for_prompts(
+                    st,
+                    api_key=kimi_key,
+                    kimi_model=kimi_model,
+                    count=int(body.get("count", 4)),
+                    pair=False,
+                    world=body.get("world") or None,
+                    direction=(body.get("direction") or "").strip()[:300],
+                )
+                for idea in ideas:
+                    t = idea.get("title", "")
+                    if t and t not in st["history"]:
+                        st["history"].append(t)
+                save_state(st)
+                self.send_json({"ok": True, "ideas": ideas})
+            except Exception as e:
+                print(f"[KIMI] invent-prompts failed: {e!r}", flush=True)
+                self.send_json({"ok": False, "error": str(e)}, 500)
+            return
+
+        if parsed.path == "/api/generate-image":
+            auth = get_krea_oauth_token()
+            if not auth.get("connected") or auth.get("expired"):
+                subprocess.Popen(["/opt/homebrew/bin/opencode", "mcp", "auth", "krea"], cwd=str(ROOT_DIR))
+                self.send_json({"ok": False, "needs_auth": True, "error": "Approve Krea MCP OAuth in browser first"})
+                return
+
+            title = body.get("title", "Outdoor Plate").strip()
+            raw_prompt = body.get("prompt", "").strip()
+            guide_type = body.get("guide", "dark")
+            model = body.get("model", "google/nano-banana-pro")
+            if model == "auto":
+                model = taste.pick_model(load_state())
+                print(f"[TASTE] auto-picked model {model}", flush=True)
+            after_filename = body.get("after_filename")
+
+            full_prompt = build_full_prompt(raw_prompt)
+            try:
+                img_bytes = generate_plate_via_krea_mcp(prompt=full_prompt, guide_type=guide_type, model=model)
+                im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
+
+                with STATE_LOCK:
+                    next_num = next_plate_number(load_state())
+                    slug = "".join(c if c.isalnum() else "_" for c in title.lower()).strip("_")[:26] or "plate"
+                    while "__" in slug:
+                        slug = slug.replace("__", "_")
+                    filename = f"{next_num:02d}_{slug}.jpg"
+                    save_path = PLATES_DIR / filename
+                    im.save(save_path, quality=95)
+
+                    qa = get_cached_qa(save_path)
+                    print(
+                        f"[QA] {filename} ({model}) -> passed={qa['qa_passed']} score={qa['qa_score']}% "
+                        f"corr={qa['center_corr']} asym={qa['core_asymmetry']} issues={qa['issues']}",
+                        flush=True,
+                    )
+
+                    st = load_state()
+                    st.setdefault("titles", {})[filename] = title
+                    st.setdefault("prompts", {})[filename] = raw_prompt
+                    st.setdefault("models", {})[filename] = model
+                    if body.get("world"):
+                        st.setdefault("worlds", {})[filename] = body["world"]
+                    if body.get("idea"):
+                        st.setdefault("ideas", {})[filename] = body["idea"]
+                    if title not in st.setdefault("history", []):
+                        st["history"].append(title)
+
+                    # If Logo QA flags the image, send it to Trash instead of deleting/hiding it!
+                    if not qa["qa_passed"]:
+                        trashed_list = set(st.get("trashed", []))
+                        trashed_list.add(filename)
+                        st["trashed"] = sorted(trashed_list)
+                        st.setdefault("trashed_at", {})[filename] = time.time()
+                        st["qa_failed"] = sorted(set(st.get("qa_failed", [])) | {filename})
+
+                    sequences.append_everywhere(st, filename)
+                    save_state(st)
+                threading.Thread(target=apply_critic, args=(filename,), daemon=True).start()
+
+                self.send_json({
+                    "ok": True,
+                    "qa_passed": qa["qa_passed"],
+                    "trashed": not qa["qa_passed"],
+                    "filename": filename,
+                    "title": title,
+                    "model": model,
+                    "qa_issues": qa.get("issues", []),
+                })
+            except Exception as e:
+                self.send_json({"ok": False, "error": str(e)}, 500)
+            return
+
         if parsed.path == "/api/purge":
             with STATE_LOCK:
                 st = load_state()
