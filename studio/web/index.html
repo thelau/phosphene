@@ -162,8 +162,9 @@
           <button id="tabSelection" onclick="setTrashView(false)">Selection (<span id="selCount">0</span>)</button>
           <button id="tabTrash" onclick="setTrashView(true)">🗑️ Trash (<span id="trashCount">0</span>)</button>
         </div>
-        <div class="seq" id="seqBox">
+        <div class="order-tools" id="seqBox">
           <span class="seq-summary" id="seqSummary"></span>
+          <label class="cuts-toggle" title="Show how each image cuts in from the one before it"><input type="checkbox" id="cutsToggle" onchange="toggleCuts()" /> Cuts</label>
           <span class="seq-label">Order</span>
           <select id="seqSelect" onchange="switchSequence()" title="Switch between your saved orders"></select>
           <button id="seqMenuBtn" onclick="toggleSeqMenu(event)" title="Rename, duplicate or delete this order">⋯</button>
@@ -171,6 +172,27 @@
             <button onclick="renameSeq()">Rename…</button>
             <button onclick="duplicateSeq()">Duplicate</button>
             <button class="danger" onclick="deleteSeq()">Delete…</button>
+          </div>
+          <button id="aiBtn" onclick="toggleAiPanel(event)" title="Let the AI cut an edit of your selection">✨ Order with AI…</button>
+          <div class="ai-panel" id="aiPanel" hidden onclick="event.stopPropagation()">
+            <h4>Order with AI</h4>
+            <label>Use
+              <select id="aiLength">
+                <option value="">All images</option>
+                <option value="12">Best 12</option>
+                <option value="24">Best 24</option>
+                <option value="36">Best 36</option>
+                <option value="48">Best 48</option>
+              </select>
+            </label>
+            <label>Note (optional)
+              <input id="aiDirection" type="text" maxlength="300" placeholder="e.g. open on the cap, end on the container" />
+            </label>
+            <div class="ai-pins" id="aiPins"></div>
+            <div class="ai-foot">
+              <button onclick="toggleAiPanel()">Cancel</button>
+              <button class="primary" id="aiGo" onclick="startAiOrder()">Order</button>
+            </div>
           </div>
         </div>
         <div class="trash-bar" id="trashBar" hidden>

@@ -49,7 +49,9 @@ async function fresh(opts = {}) {
   const fresh_state = makeState();
   Object.assign(api.state, { plates: fresh_state.plates, sequences: fresh_state.sequences, active: fresh_state.active, counter: fresh_state.counter });
   if (opts.setup) opts.setup(api.state);
-  api.state.delays = { purge: 0, generate: 0, invent: 0, export: 0, ...opts.delays };
+  api.state.delays = { purge: 0, generate: 0, invent: 0, export: 0, ai: 600, ...opts.delays };
+  api.state.jobs = [];
+  api.state.aiFail = opts.aiFail || null;
   api.state.genCount = 0;
   api.state.calls.length = 0;
   const ctx = await browser.newContext({ viewport: { width: opts.width || 1500, height: opts.height || 900 } });
@@ -336,5 +338,107 @@ test('orders: the selector sits on the right of the gallery bar, where the trash
   assert.ok(trash.x + trash.width > bar.x + bar.width - 40, 'trash buttons on the same right edge');
   assert.equal(await page.locator('#seqBox').isHidden(), true);
   await shot('14-orders-right');
+  await ctx.close();
+});
+
+test('AI order: panel, pins, live progress, best-N divider, and the original order stays', { skip }, async () => {
+  const ctx = await fresh({ delays: { ai: 2000 } });
+  assert.deepEqual(await names(), ['k1', 'k2', 'k3']);
+  await page.click('#aiBtn');
+  await page.waitForSelector('#aiPanel:not([hidden])');
+  assert.match(await text('#aiPins'), /No pins/);
+  await shot('15-ai-panel');
+  await page.selectOption('#aiLength', '12');                             // more than we have: the AI uses everything
+  await page.selectOption('#aiLength', { label: 'All images' });
+  await page.click('#aiBtn');                                              // closes
+  assert.equal(await page.locator('#aiPanel').isHidden(), true);
+
+  // pin k2 as opener (click) and k1 as closer (shift-click)
+  await page.locator('.card[data-filename="k2"]').hover();
+  await page.locator('.card[data-filename="k2"] .action-btn[title^="Pin"]').click();
+  await page.locator('.card[data-filename="k1"]').hover();
+  await page.locator('.card[data-filename="k1"] .action-btn[title^="Pin"]').click({ modifiers: ['Shift'] });
+  assert.match(await text('.card[data-filename="k2"] .pin-badge'), /opener/);
+  assert.match(await text('.card[data-filename="k1"] .pin-badge'), /closer/);
+
+  await page.click('#aiBtn');
+  assert.match(await text('#aiPins'), /opener “Plate k2” · closer “Plate k1”/);
+  await page.fill('#aiDirection', 'end on the blue one');
+  await page.click('#aiGo');
+  await page.waitForSelector('#statusText .slot');
+  assert.match(await text('#statusText'), /AI order/);
+  assert.equal(await page.locator('#statusText .slot').count(), 4);
+  assert.equal(await page.locator('#aiBtn').isDisabled(), true);
+  assert.equal(await page.locator('#seqSelect').isDisabled(), true);
+  await shot('16-ai-progress');
+  await page.waitForFunction(() => /Done — AI 1/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  assert.equal(await page.locator('#aiBtn').isDisabled(), false);
+  assert.equal(await page.locator('#statusText .slot.ok').count(), 4);
+  const body = api.state.jobs[0].body;
+  assert.deepEqual([body.first, body.last, body.direction, body.length], ['k2', 'k1', 'end on the blue one', null]);
+  assert.match(await page.locator('#seqSelect option:checked').innerText(), /✨ AI 1 \(3\)/);
+  assert.deepEqual(await names(), ['k2', 'k3', 'k1']);
+  assert.match(await text('#seqSummary'), /Opens on k2, lands on k1/);
+  await shot('17-ai-done');
+  await page.selectOption('#seqSelect', { label: '✋ Manual 1 (3)' });
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k1');
+  assert.deepEqual(await names(), ['k1', 'k2', 'k3']);                       // the manual order is exactly as before
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
+test('AI order: "best N" cuts the edit and shows what was left out; playback uses only the edit', { skip }, async () => {
+  const ctx = await fresh({ delays: { ai: 400 } });
+  await page.click('#aiBtn');
+  await page.selectOption('#aiLength', '12');
+  api.state.plates.push(...['k4', 'k5', 'k6'].map((f, i) => ({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` })));
+  api.state.sequences[0].order.push('k4', 'k5', 'k6');
+  await page.reload();
+  await page.waitForSelector('.card');
+  await page.click('#aiBtn');
+  await page.evaluate(() => { const o = document.createElement('option'); o.value = '2'; o.textContent = 'Best 2'; document.getElementById('aiLength').appendChild(o); });
+  await page.selectOption('#aiLength', '2');
+  await page.click('#aiGo');
+  await page.waitForFunction(() => /Done — AI 1/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  await page.waitForSelector('.edit-divider');
+  assert.match(await text('.edit-divider'), /left out of this edit \(4\)/);
+  const cards = await names();
+  assert.equal(cards.length, 6);
+  const dividerIndex = await page.evaluate(() => [...document.getElementById('grid').children].findIndex(e => e.classList.contains('edit-divider')));
+  assert.equal(dividerIndex, 2);
+  assert.match(await page.locator('#seqSelect option:checked').innerText(), /✨ AI 1 \(2 of 6\)/);
+  await shot('18-best-n');
+  // playback only visits the first two
+  await page.fill('#bpmSlider', '220'); await page.locator('#bpmSlider').dispatchEvent('input');
+  await page.selectOption('#multSelect', '9');
+  await page.click('#playBtn');
+  const seen = new Set();
+  const t0 = Date.now();
+  while (Date.now() - t0 < 1500) { seen.add(await page.locator('#stageImg').getAttribute('src')); await page.waitForTimeout(20); }
+  await page.click('#playBtn');
+  assert.deepEqual([...seen].filter(Boolean).map(u => u.split('/').pop().replace('.svg', '')).sort(), cards.slice(0, 2).sort());
+  await ctx.close();
+});
+
+test('AI order: cut markers can be switched on and explain each cut', { skip }, async () => {
+  const ctx = await fresh();
+  assert.equal(await page.locator('.cut-badge').count(), 0);
+  await page.check('#cutsToggle');
+  await page.waitForSelector('.cut-badge');
+  assert.equal(await page.locator('.cut-badge').count(), 2);                // the first image has no cut in
+  assert.match(await page.locator('.cut-badge').first().getAttribute('title'), /reason k1→k2/);
+  await shot('19-cuts');
+  await page.reload();
+  await page.waitForSelector('.cut-badge');                                  // remembered
+  await ctx.close();
+});
+
+test('AI order: a failure is reported and everything unlocks', { skip }, async () => {
+  const ctx = await fresh({ delays: { ai: 400 }, aiFail: 'Kimi exploded' });
+  await page.click('#aiBtn');
+  await page.click('#aiGo');
+  await page.waitForFunction(() => /AI order failed: Kimi exploded/.test(document.getElementById('statusText').textContent), null, { timeout: 10000 });
+  assert.equal(await page.locator('#aiBtn').isDisabled(), false);
+  assert.equal(await page.locator('#seqSelect option').count(), 1);
   await ctx.close();
 });

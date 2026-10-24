@@ -134,8 +134,15 @@
       } catch (e) {}
     }
 
+    // the images in the edit: the shown ones, cut at the active order's cut_off when the AI picked "best N"
+    function activeCutOff() {
+      const cur = sequences.find(s => s.id === activeSeq);
+      return cur && cur.cut_off ? cur.cut_off : null;
+    }
     function activePlates() {
-      return plates.filter(p => !p.trashed);
+      const shown = plates.filter(p => !p.trashed);
+      const n = activeCutOff();
+      return n ? shown.slice(0, n) : shown;
     }
 
     function visiblePlates() {
@@ -147,17 +154,92 @@
     }
 
     // ---- trash: select, delete selected, empty ----
+    // ---- AI order ----
+    const aiPins = { first: null, last: null };
+    let showCuts = false;
+    try { showCuts = localStorage.getItem('showCuts') === '1'; } catch (e) {}
+    function toggleCuts() {
+      showCuts = document.getElementById('cutsToggle').checked;
+      try { localStorage.setItem('showCuts', showCuts ? '1' : '0'); } catch (e) {}
+      renderGrid();
+    }
+    function pinCard(e, filename) {
+      e.stopPropagation();
+      const slot = e.shiftKey ? 'last' : 'first';
+      const other = slot === 'first' ? 'last' : 'first';
+      aiPins[slot] = aiPins[slot] === filename ? null : filename;
+      if (aiPins[other] === filename) aiPins[other] = null;
+      renderAiPins();
+      renderGrid();
+    }
+    function renderAiPins() {
+      const title = f => { const p = plates.find(x => x.filename === f); return p ? p.title : f; };
+      const el = document.getElementById('aiPins');
+      el.textContent = (aiPins.first || aiPins.last)
+        ? `Pinned: ${aiPins.first ? `opener “${title(aiPins.first)}”` : 'no opener'} · ${aiPins.last ? `closer “${title(aiPins.last)}”` : 'no closer'}`
+        : 'No pins. Hover a card and press 📌 to pin the opener (Shift-click: the closer). Otherwise the AI picks them.';
+    }
+    function toggleAiPanel(e) {
+      if (e) e.stopPropagation();
+      const panel = document.getElementById('aiPanel');
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) renderAiPins();
+    }
+    document.addEventListener('click', () => { const p = document.getElementById('aiPanel'); if (p) p.hidden = true; });
+
+    async function startAiOrder() {
+      if (!ensureKimiReady()) return;
+      const shown = plates.filter(p => !p.trashed).length;
+      if (shown < 2) { setStatus('Keep at least two images before ordering.'); return; }
+      const body = {
+        length: parseInt(document.getElementById('aiLength').value, 10) || null,
+        direction: document.getElementById('aiDirection').value.trim(),
+        first: aiPins.first, last: aiPins.last,
+      };
+      document.getElementById('aiPanel').hidden = true;
+      const start = await (await fetch('/api/order-ai', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) })).json();
+      if (start.needs_kimi_key) { ensureKimiReady(); return; }
+      if (!start.ok) { setStatus(start.error || 'Could not start the AI order.'); return; }
+      const steps = start.steps || [];
+      ['aiBtn', 'seqSelect'].forEach(id => { document.getElementById(id).disabled = true; });
+      document.getElementById('statusText').dataset.idle = '';
+      Object.assign(prog, { t0: Date.now(), stage: 'render', world: 'AI order', total: steps.length, titles: steps, slots: steps.map((_, i) => (i === 0 ? 'run' : 'wait')), summary: '', note: steps[0] || '' });
+      clearInterval(prog.timer); prog.timer = setInterval(progRender, 1000); progRender();
+      try {
+        for (;;) {
+          await new Promise(r => setTimeout(r, 700));
+          const job = await (await fetch(`/api/order-ai-status?job=${encodeURIComponent(start.job)}`)).json();
+          if (!job.ok && job.error) throw new Error(job.error);
+          if (job.done) {
+            if (job.error) throw new Error(job.error);
+            prog.slots = steps.map(() => 'ok');
+            progStop(`Done — ${job.sequence.name}: ${job.sequence.summary}`);
+            await loadState();
+            break;
+          }
+          prog.slots = steps.map((_, i) => (i < job.step ? 'ok' : i === job.step ? 'run' : 'wait'));
+          prog.note = `${job.stage}${job.note ? ' · ' + job.note : ''}`;
+          progRender();
+        }
+      } catch (e) {
+        progStop(`AI order failed: ${e.message}`);
+      } finally {
+        ['aiBtn', 'seqSelect'].forEach(id => { document.getElementById(id).disabled = false; });
+      }
+    }
+
     // ---- orders (sequences): Manual and AI orders of the selection ----
     let sequences = [];
     let activeSeq = null;
     function renderSequences() {
       const sel = document.getElementById('seqSelect');
-      sel.innerHTML = sequences.map(s => `<option value="${s.id}">${s.kind === 'ai' ? '✨' : '✋'} ${escapeHtml(s.name)} (${s.count})</option>`).join('');
+      sel.innerHTML = sequences.map(s => `<option value="${s.id}">${s.kind === 'ai' ? '✨' : '✋'} ${escapeHtml(s.name)} (${s.cut_off && s.cut_off < s.count ? `${s.cut_off} of ${s.count}` : s.count})</option>`).join('');
       sel.value = activeSeq || '';
       const cur = sequences.find(s => s.id === activeSeq);
       document.getElementById('seqSummary').textContent = cur && cur.summary ? cur.summary : '';
       document.getElementById('seqSummary').title = cur && cur.summary ? cur.summary : '';
       document.getElementById('seqBox').hidden = showTrash;
+      document.getElementById('cutsToggle').checked = showCuts;
     }
     async function seqCall(payload) {
       const res = await (await fetch('/api/sequence', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
@@ -291,7 +373,8 @@
       const grid = document.getElementById('grid');
       const visible = visiblePlates();
 
-      grid.innerHTML = visible.map((p, i) => `
+      const cutOff = showTrash ? null : activeCutOff();
+      grid.innerHTML = visible.map((p, i) => `${cutOff && i === cutOff && i < visible.length ? `<div class="edit-divider">left out of this edit (${visible.length - cutOff})</div>` : ''}
         <div class="card"
              id="card-${CSS.escape(p.filename)}"
              draggable="${!showTrash}"
@@ -308,7 +391,8 @@
             <div class="card-actions">
               ${p.trashed
                 ? `<button class="action-btn" onclick="setTrash(event, '${p.filename}', false)">↩️ Restore</button>`
-                : `<button class="action-btn trash-btn" title="Move to trash" onclick="setTrash(event, '${p.filename}', true)">🗑️</button>`
+                : `<button class="action-btn" title="Pin as opener for the AI order (Shift-click: closer)" onclick="pinCard(event, '${p.filename}')">📌</button>
+                   <button class="action-btn trash-btn" title="Move to trash" onclick="setTrash(event, '${p.filename}', true)">🗑️</button>`
               }
             </div>
             <div class="prompt-overlay" id="overlay-${CSS.escape(p.filename)}" onclick="togglePromptOverlay(event, '${p.filename}')">
@@ -322,6 +406,8 @@
               <div class="card-title-row">#${String(i + 1).padStart(2, '0')} · ${escapeHtml(p.title)}</div>
               <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
                 <span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>
+                ${aiPins.first === p.filename ? '<span class="card-model-badge pin-badge">📌 opener</span>' : ''}${aiPins.last === p.filename ? '<span class="card-model-badge pin-badge">📌 closer</span>' : ''}
+                ${showCuts && p.cut_in && !p.trashed ? `<span class="card-model-badge cut-badge k-${p.cut_in.kind}" title="${escapeHtml(p.cut_in.reason)}">${p.cut_in.kind === 'cut' ? 'new angle' : p.cut_in.kind}</span>` : ''}
                 ${p.critic ? `<span class="card-model-badge" title="${escapeHtml(p.critic.reason)}">AI ${p.critic.mean}</span>` : ''}
                 ${p.trash_reason ? `<span class="card-model-badge" style="background:rgba(244,63,94,0.22);border-color:rgba(244,63,94,0.5);color:#fda4af;" title="${escapeHtml(p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
                 ${!p.qa_passed ? `<span class="card-model-badge" style="background:rgba(244,63,94,0.22);border-color:rgba(244,63,94,0.5);color:#fda4af;" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA Flagged</span>` : ''}
@@ -810,6 +896,10 @@
 
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
+  pinCard,
+  startAiOrder,
+  toggleAiPanel,
+  toggleCuts,
   deleteSeq,
   duplicateSeq,
   renameSeq,

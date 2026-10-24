@@ -39,10 +39,12 @@ def ensure(st: dict) -> dict:
     return st
 
 
-def add(st: dict, kind: str, order: list, name: str | None = None, summary: str | None = None, parent: str | None = None, activate: bool = True) -> dict:
+def add(st: dict, kind: str, order: list, name: str | None = None, summary: str | None = None, parent: str | None = None, activate: bool = True,
+        cut_off: int | None = None, cuts: list | None = None) -> dict:
+    """cut_off = only the first N shown images are in the edit (preview and export); the rest are listed after a divider."""
     seq = {
         "id": _next_id(st), "name": name or _label(st, kind), "kind": kind, "order": list(dict.fromkeys(order)),
-        "summary": summary, "parent": parent, "created_at": time.time(),
+        "summary": summary, "parent": parent, "created_at": time.time(), "cut_off": cut_off, "cuts": cuts or [],
     }
     st.setdefault("sequences", []).append(seq)
     if activate or not st.get("active_sequence"):
@@ -82,7 +84,7 @@ def reorder_active(st: dict, new_order: list) -> dict | None:
     if seq["kind"] == "ai":
         n = st.setdefault("seq_counter", {"manual": 0, "ai": 0})
         n["manual"] = n.get("manual", 0) + 1
-        return add(st, "manual", order, name=f"Manual {n['manual']} (from {seq['name']})", parent=seq["id"])
+        return add(st, "manual", order, name=f"Manual {n['manual']} (from {seq['name']})", parent=seq["id"], cut_off=seq.get("cut_off"))
     seq["order"] = order
     return None
 
@@ -99,7 +101,7 @@ def duplicate(st: dict, seq_id: str) -> dict | None:
     seq = find(st, seq_id)
     if not seq:
         return None
-    return add(st, "manual", seq["order"], name=f"{seq['name']} copy", parent=seq["id"])
+    return add(st, "manual", seq["order"], name=f"{seq['name']} copy", parent=seq["id"], cut_off=seq.get("cut_off"))
 
 
 def delete(st: dict, seq_id: str) -> bool:
@@ -155,5 +157,12 @@ def public(st: dict, visible: set | None = None) -> list:
     out = []
     for s in st.get("sequences", []):
         count = len([n for n in s["order"] if visible is None or n in visible])
-        out.append({"id": s["id"], "name": s["name"], "kind": s["kind"], "count": count, "summary": s.get("summary"), "parent": s.get("parent")})
+        out.append({"id": s["id"], "name": s["name"], "kind": s["kind"], "count": count, "summary": s.get("summary"), "parent": s.get("parent"), "cut_off": s.get("cut_off")})
     return out
+
+
+def edit_files(files: list, st: dict) -> list:
+    """The images that are in the edit: the shown (not trashed) ones, cut at the active order's cut_off if it has one."""
+    seq = active(st)
+    n = seq.get("cut_off") if seq else None
+    return files[:n] if n else files

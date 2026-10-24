@@ -13,3 +13,4 @@ studio/.bench_latest.log
 .pytest_cache/
 node_modules/
 studio/web/dist/
+.features_cache.json

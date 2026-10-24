@@ -20,13 +20,15 @@ import urllib.error
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from PIL import Image
 
 import chapters
 import critic
 import cutplan
+import editor
+import features
 import sequences
 import diversity
 import taste
@@ -510,6 +512,64 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     return flat
 
 
+AI_JOBS: dict = {}
+AI_STEPS = ["Reading the images", "Writing the edit brief", "Cutting the edit", "Reviewing the cuts"]
+
+
+def build_ai_order(st: dict, call_llm, api_key: str, model: str, length: int | None = None, direction: str = "", pins: dict | None = None,
+                   progress=lambda step, note="": None) -> dict:
+    """Works out an AI edit of the images currently shown (does not touch the state). Kimi writes the brief; editor.py cuts the order."""
+    trashed = set(st.get("trashed", []))
+    files = [p for p in ordered_plate_files(st) if p.name not in trashed]
+    if len(files) < 2:
+        raise RuntimeError("Need at least two images in the selection to make an edit.")
+    progress(0, f"{len(files)} images")
+    world = st.get("worlds", {})
+    items = [{"name": p.name, "f": features.get(p), "world": world.get(p.name)} for p in files]
+    features.save_cache()
+    progress(1, "looking at the contact sheet")
+    note = ""
+    try:
+        sheet = editor.contact_sheet(files)
+        brief = editor.brief_to_names(editor.ask_brief(call_llm, api_key, model, sheet, len(files), direction, length), [p.name for p in files])
+    except Exception as e:                      # Kimi is optional here: the edit still works from the measurements alone
+        print(f"[EDIT] brief failed, using measurements only: {e!r}", flush=True)
+        brief, note = {}, "Kimi was unavailable, so this edit uses measurements only. "
+    progress(2, "choosing the order")
+    result = editor.order_images(items, brief, pins or {}, length)
+    progress(3, "writing the summary")
+    titles = {**DEFAULT_TITLES, **st.get("titles", {})}
+    return {"result": result, "summary": note + editor.summarize(titles, result, brief.get("summary"))}
+
+
+def add_ai_sequence(st: dict, built: dict) -> dict:
+    """Adds the finished edit to the CURRENT state (so reorders made while it was working are kept) and switches to it."""
+    result = built["result"]
+    taken = set(result["names"]) | set(result["left_out"])
+    rest = [n for n in sequences.get_order(st) if n not in taken]
+    return sequences.add(st, "ai", result["names"] + result["left_out"] + rest, summary=built["summary"],
+                         cut_off=len(result["names"]) if result["left_out"] else None, cuts=result["cuts"])
+
+
+def run_ai_order_job(job_id: str, length, direction: str, pins: dict) -> None:
+    job = AI_JOBS[job_id]
+    try:
+        st = load_state()
+        key, model = st.get("kimi_api_key", ""), st.get("kimi_model", "kimi-k3")
+
+        def progress(step, note=""):
+            job.update(step=step, stage=AI_STEPS[step], note=note)
+        built = build_ai_order(st, call_kimi_llm, key, model, length, direction, pins, progress)
+        with STATE_LOCK:
+            fresh = load_state()
+            seq = add_ai_sequence(fresh, built)
+            save_state(fresh)
+        job.update(done=True, step=len(AI_STEPS), stage="Done", sequence={"id": seq["id"], "name": seq["name"], "summary": seq["summary"]})
+    except Exception as e:
+        print(f"[EDIT] failed: {e!r}", flush=True)
+        job.update(done=True, error=str(e))
+
+
 def next_plate_number(st: dict) -> int:
     """Next free plate number. Counts purged plates too (their records stay in the state), so numbers are never reused."""
     names = [p.name for p in list(PLATES_DIR.glob("*.jpg")) + list(REJECTED_DIR.glob("*.jpg"))]
@@ -642,6 +702,11 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_json({"boot": BOOT_ID, "html": html_mtime})
             return
 
+        if parsed.path == "/api/order-ai-status":
+            job = AI_JOBS.get(parse_qs(parsed.query).get("job", [""])[0])
+            self.send_json({"ok": bool(job), **(job or {"error": "unknown job"})})
+            return
+
         if parsed.path == "/api/worlds":
             st = load_state()
             stats = chapters.world_stats(st)
@@ -682,6 +747,20 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "qa_score": qa["qa_score"],
                     "qa_issues": qa.get("issues", []),
                 })
+
+            try:  # how each shown image cuts in from the one before it (for the optional cut markers)
+                prev = None
+                for pl in plates:
+                    if pl["trashed"]:
+                        continue
+                    f = features.get(PLATES_DIR / pl["filename"])
+                    if prev is not None:
+                        k = editor.cut_kind(prev, f)
+                        pl["cut_in"] = {"kind": k, "reason": editor.describe_cut(prev, f, k)}
+                    prev = f
+                features.save_cache()
+            except Exception as e:
+                print(f"[STATE] cut markers skipped: {e!r}", flush=True)
 
             kimi_key = st.get("kimi_api_key", "")
             self.send_json({
@@ -731,6 +810,25 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     forked = sequences.reorder_active(st, new_order)
                     save_state(st)
             self.send_json({"ok": True, "forked": {"id": forked["id"], "name": forked["name"]} if forked else None})
+            return
+
+        if parsed.path == "/api/order-ai":
+            st = load_state()
+            if not st.get("kimi_api_key"):
+                self.send_json({"ok": False, "needs_kimi_key": True, "error": "Enter your Kimi API key in Settings first"}, 400)
+                return
+            if any(not j.get("done") for j in AI_JOBS.values()):
+                self.send_json({"ok": False, "error": "An AI order is already running."}, 409)
+                return
+            try:
+                length = int(body.get("length") or 0) or None
+            except (TypeError, ValueError):
+                length = None
+            pins = {k: body.get(k) for k in ("first", "last") if body.get(k)}
+            job_id = f"job{int(time.time() * 1000)}"
+            AI_JOBS[job_id] = {"done": False, "step": 0, "steps": len(AI_STEPS), "stage": AI_STEPS[0], "note": ""}
+            threading.Thread(target=run_ai_order_job, args=(job_id, length, str(body.get("direction", ""))[:300], pins), daemon=True).start()
+            self.send_json({"ok": True, "job": job_id, "steps": AI_STEPS})
             return
 
         if parsed.path == "/api/sequence":
@@ -892,7 +990,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             multiple = float(body.get("multiple", 1.0))  # cuts per beat: 0.5 = every 2 beats, 4 = 4 cuts/beat
             st = load_state()
             trashed_set = set(st.get("trashed", []))
-            active_files = [p for p in ordered_plate_files(st) if p.name not in trashed_set]
+            active_files = sequences.edit_files([p for p in ordered_plate_files(st) if p.name not in trashed_set], st)
             if not active_files:
                 self.send_json({"ok": False, "error": "No active plates"}, 400)
                 return

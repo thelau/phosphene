@@ -13,7 +13,9 @@ function makeState() {
     sequences: [{ id: 's1', name: 'Manual 1', kind: 'manual', order: plates.map(p => p.filename), summary: null }],
     active: 's1',
     counter: { manual: 1, ai: 0 },
-    delays: { purge: 0, generate: 0, invent: 0, export: 0 },
+    delays: { purge: 0, generate: 0, invent: 0, export: 0, ai: 600 },
+    jobs: [],
+    aiFail: null,
     calls: [],
     genCount: 0,
   };
@@ -22,9 +24,9 @@ function makeState() {
 // the same rules as studio/sequences.py, in a few lines
 const seqOf = (st, id) => st.sequences.find(s => s.id === id);
 const activeSeq = st => seqOf(st, st.active);
-function addSeq(st, kind, order, { name, summary = null, parent = null } = {}) {
+function addSeq(st, kind, order, { name, summary = null, parent = null, cut_off = null } = {}) {
   st.counter[kind] = (st.counter[kind] || 0) + (name ? 0 : 1);
-  const seq = { id: `s${st.sequences.length + 1 + Math.floor(Math.random() * 1e6)}`, name: name || `${kind === 'ai' ? 'AI' : 'Manual'} ${st.counter[kind]}`, kind, order: [...new Set(order)], summary, parent };
+  const seq = { id: `s${st.sequences.length + 1 + Math.floor(Math.random() * 1e6)}`, name: name || `${kind === 'ai' ? 'AI' : 'Manual'} ${st.counter[kind]}`, kind, order: [...new Set(order)], summary, parent, cut_off };
   st.sequences.push(seq); st.active = seq.id; return seq;
 }
 function orderedPlates(st) {
@@ -39,6 +41,7 @@ const svg = name => {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="270" height="480" viewBox="0 0 270 480"><rect width="270" height="480" fill="${c}"/><circle cx="135" cy="240" r="24" fill="none" stroke="#fff" stroke-width="5"/><text x="135" y="320" fill="#fff" font-size="22" text-anchor="middle">${name}</text></svg>`;
 };
 
+const withCuts = list => { let prev = null; return list.map((p, i) => { if (p.trashed) return p; const out = { ...p, cut_in: prev ? { kind: ['flip', 'echo', 'hue'][i % 3], reason: `reason ${prev}→${p.filename}` } : undefined }; prev = p.filename; return out; }); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function start(state = makeState()) {
@@ -60,7 +63,7 @@ function start(state = makeState()) {
     switch (url.pathname) {
       case '/api/state': {
         const visible = new Set(state.plates.filter(p => !p.trashed).map(p => p.filename));
-        return send({ plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, parent: q.parent })), active_sequence: state.active, krea_connected: true, kimi_configured: true, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3', critic_enabled: false, critic_autotrash: false });
+        return send({ plates: withCuts(orderedPlates(state)), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, parent: q.parent, cut_off: q.cut_off || null })), active_sequence: state.active, krea_connected: true, kimi_configured: true, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3', critic_enabled: false, critic_autotrash: false });
       }
       case '/api/worlds':
         return send({ ok: true, worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', n: 7, kept: 3, wildcard: false }, { name: 'Matter & Elements', brief: 'Fluids and fire.', n: 10, kept: 2, wildcard: false }] });
@@ -97,6 +100,30 @@ function start(state = makeState()) {
         if (p) { p.trashed = !!body.trashed; p.trashed_at = body.trashed ? Date.now() : null; }
         if (p && !body.trashed) for (const q of state.sequences) q.order = q.order.filter(n => n !== p.filename).concat(p.filename);   // restored: end of every order
         return send({ ok: true });
+      }
+      case '/api/order-ai': {
+        const shown = orderedPlates(state).filter(p => !p.trashed).map(p => p.filename);
+        if (shown.length < 2) return send({ ok: false, error: 'Need at least two images' }, 400);
+        const id = `job${state.jobs.length + 1}`;
+        const job = { done: false, step: 0, steps: 4, stage: 'Reading the images', note: `${shown.length} images`, body };
+        state.jobs.push(job);
+        const names = ['Reading the images', 'Writing the edit brief', 'Cutting the edit', 'Reviewing the cuts'];
+        (async () => {
+          for (let i = 0; i < 4; i++) { job.step = i; job.stage = names[i]; await sleep(state.delays.ai / 4); }
+          if (state.aiFail) { job.done = true; job.error = state.aiFail; return; }
+          let order = shown.slice().reverse();
+          if (body.first) order = [body.first, ...order.filter(n => n !== body.first)];
+          if (body.last) order = [...order.filter(n => n !== body.last), body.last];
+          const rest = state.plates.map(p => p.filename).filter(n => !order.includes(n));
+          const n = body.length && body.length < order.length ? body.length : null;
+          const seq = addSeq(state, 'ai', [...order, ...rest], { summary: `Opens on ${order[0]}, lands on ${order[order.length - 1]}.`, cut_off: n });
+          job.done = true; job.step = 4; job.stage = 'Done'; job.sequence = { id: seq.id, name: seq.name, summary: seq.summary };
+        })();
+        return send({ ok: true, job: id, steps: names });
+      }
+      case '/api/order-ai-status': {
+        const job = state.jobs[Number((url.searchParams.get('job') || '').replace('job', '')) - 1];
+        return job ? send({ ok: true, ...job, body: undefined }) : send({ ok: false, error: 'unknown job' });
       }
       case '/api/purge': {
         await sleep(state.delays.purge);

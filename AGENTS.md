@@ -35,6 +35,8 @@ Done:
 
 4. Player effects (`studio/cutplan.py`, mirrored by `planAt`/`zoomScale` in `studio/web/src/app.js`; tests share vectors): Invert (every image followed by an inverted grey/colour copy, as in Soiltone) and Zoom (slow in/out inside each cut, as in Moverunion: measured ~0.15-0.45% zoom OUT over a 5-frame cut). Both apply to preview and export.
 
+5. Orders (`studio/sequences.py`): named Manual/AI orders of the selection with a switcher in the gallery bar; AI orders are frozen (dragging forks a manual copy); restored/new images go to the end of every order. AI ordering (`studio/editor.py` + `studio/features.py`): Kimi (vision, contact sheet) writes the edit brief (opener, closer, peaks, weights), a deterministic beam search orders by cut kind (flip / shape echo / colour hand-off), no three of a kind in a row, territory variety, an energy arc; "Best N" sets `cut_off` (preview and export use only the first N). Runs as a background job (`/api/order-ai`, `/api/order-ai-status`).
+
 Quality reference: `inspiration/soiltone-inspo.mp4` — 8s, ~48 cuts, each scene shown as a color/mono twin pair, one hero subject, logo crisp at dead-center. Quality bar lives in `QUALITY_BAR` in `server.py`.
 
 Caveat: the 223 plates trashed before `qa_failed` existed can't be told apart (manual vs QA), so older model scores are noisy.
