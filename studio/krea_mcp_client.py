@@ -263,6 +263,35 @@ def build_model_input(model: str, prompt: str, guide_url: str) -> dict:
             "height": 1920,
             "style_images": [{"url": guide_url, "strength": 1.0}],
         }
+    if model == "ideogram/ideogram-4.5":
+        return {
+            "prompt": prompt,
+            "image_urls": [guide_url],
+            "aspect_ratio": "9:16",
+            "resolution": "2K",
+            "quality": "high",
+        }
+    if model in ("luma/uni-1",):
+        return {
+            "prompt": prompt[:6000],
+            "width": 1080,
+            "height": 1920,
+            "mode": "max",
+            "style_images": [{"url": guide_url, "strength": 1.0}],
+        }
+    if model == "meta/muse-image":
+        return {
+            "prompt": prompt,
+            "aspect_ratio": "9:16",
+            "style_images": [{"url": guide_url, "strength": 1.0}],
+        }
+    if model == "runway/gen-4-image":
+        return {
+            "prompt": prompt[:1000],
+            "width": 1080,
+            "height": 1920,
+            "reference_images": [{"url": guide_url, "tag": "logoguide"}],
+        }
     if model == "krea/krea-3":
         return {
             "prompt": prompt,

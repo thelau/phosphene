@@ -22,6 +22,9 @@ from urllib.parse import urlparse
 
 from PIL import Image
 
+import diversity
+import taste
+
 from krea_mcp_client import (
     generate_plate_via_krea_mcp,
     get_krea_oauth_token,
@@ -37,6 +40,7 @@ from qa_engine import (
 STUDIO_DIR = Path(__file__).resolve().parent
 REJECTED_DIR = ROOT_DIR / "assets" / "ai-plates-rejected"
 OUTPUTS_DIR = ROOT_DIR / "outputs"
+MUSIC_BPM = 136.0
 CURATION_FILE = STUDIO_DIR / "curation_state.json"
 SECRETS_FILE = STUDIO_DIR / ".secrets.json"  # gitignored; holds kimi_api_key
 
@@ -133,59 +137,6 @@ DEFAULT_MODELS = {
     "33_dotonbori_rain_curve.jpg": "krea/krea-3",
     "34_ochre_sandstone_monolith.jpg": "krea/krea-3",
 }
-
-CREATIVE_BUCKETS = {
-    "Demo_design": [
-        "pure Demo v2.0 design system graphic layout: a rich grainy blurred multi-color aura gradient blending Burnt Orange (#EC540C), Hot Pink (#F64570), and Electric Blue (#5D8FF4) over Deep Oxblood (#381313) or Matte Black (#1A1A1A), with bold editorial typography ('Orchestrate' or 'Make it right. Make it magic.'), a frosted glass pill badge ('[ HI × AI ]'), and the crisp circular orbital logo at dead-center",
-        "pure Demo v2.0 light-mode brand system poster on tactile Warm Cream (#FEFFE7) paper grain with a soft diffused Burnt Orange (#EC540C) and Hot Pink (#F64570) aura orb, ultra-clean Swiss grid hairlines, 'Think · Plan · Create · Make' micro-type, and the Deep Oxblood (#381313) or Matte Black (#1A1A1A) circular orbital logo at dead-center",
-        "Demo v2.0 glassmorphic brand card floating over a vibrant grainy gradient mesh of Electric Blue (#5D8FF4), Hot Pink (#F64570), and Burnt Orange (#EC540C), with specular glass edges, subtle halftone film noise, and the luminous Warm Cream (#FEFFE7) circular orbital logo refracting inside the glass at dead-center",
-        "Demo v2.0 split-tone typographic identity lockup (inspired by Soiltone Cut #19/#23) contrasting Matte Black (#1A1A1A) and Warm Cream (#FEFFE7) or Electric Blue (#5D8FF4) with oversized cropped 'Demo' display typography and the circular orbital logo locked at dead-center",
-    ],
-    "digital_ui": [
-        "tight macro crop of a sleek dark or light Demo software interface on an OLED display with a grainy Burnt Orange (#EC540C) & Hot Pink (#F64570) ambient glow, oversized cropped typography ('Orchestrate'), a '[ 1 Step · HI × AI ]' pill button, and the circular orbital logo at dead-center (like Soiltone Cut #31)",
-        "frameless transparent AR glass desk console with glowing HUD telemetry rings in Electric Blue (#5D8FF4) and Warm Cream (#FEFFE7) with warm blurred studio bokeh behind",
-        "extreme macro RGB LED dot-matrix or CRT phosphor broadcast monitor with visible pixel grid, interlace scanlines, and glowing Burnt Orange (#EC540C) / Hot Pink (#F64570) pixels forming the circular orbital logo",
-        "massive floor-to-ceiling curved LED virtual-production stage screen displaying a grainy Demo aura gradient (#EC540C, #F64570, #5D8FF4) with the circular orbital logo at dead-center reflecting onto a glossy dark stage floor",
-    ],
-    "wireframe_cad": [
-        "architectural CAD drafting paper in Warm Cream (#FEFFE7) or Matte Black (#1A1A1A) with ultra-fine geometric construction circles, tangent guidelines, crosshairs, and tiny dimension numbers in Burnt Orange (#EC540C) forming the circular orbital logo (like Soiltone Cut #09/#10)",
-        "vector design software canvas (Figma/Illustrator style) on a vibrant Electric Blue (#5D8FF4) or Burnt Orange (#EC540C) background where the circular orbital logo is rendered as vector bezier paths with tiny square anchor points and tangent handles (like Soiltone Cut #15/#16)",
-        "dark-mode 3D CAD engineering viewport showing a glowing wireframe mesh and XYZ coordinate grid of the 3D circular orbital logo with subtle telemetry readouts",
-        "blueprint cyanotype drafting sheet in Electric Blue (#5D8FF4) with crisp Warm Cream (#FEFFE7) geometric compass arcs, protractor ticks, and technical callouts forming the circular orbital logo",
-    ],
-    "3d_isometric": [
-        "minimalist pitch-black (#1A1A1A) or warm-cream (#FEFFE7) studio poster with tiny centered micro-typography and barcode, featuring a slightly-angled 3D extruded volumetric sculpture of the circular orbital logo in brushed chrome and translucent Burnt Orange (#EC540C) glass floating at dead-center (like Soiltone Cut #13/#14)",
-        "floating 3D smartphone tilted in perspective in front of a futuristic matte-black and chrome sculptural object against an Electric Blue (#5D8FF4) & Burnt Orange (#EC540C) backdrop, with the circular orbital logo rendered in matching 3D perspective on the phone's screen at dead-center (like Soiltone Cut #29)",
-        "isometric studio macro of a thick tactile Warm Cream (#FEFFE7) cotton-paper packaging box with a perforated cardboard zip tear-strip spiraling open right around the circular orbital logo printed in isometric perspective at dead-center (like Soiltone Cut #21)",
-        "isometric studio macro of a thick polished slab of translucent Burnt Orange (#EC540C) and Hot Pink (#F64570) cast acrylic resting on concrete with glowing edge caustics and the circular orbital logo laser-etched in 3D inside the slab (like Soiltone Cut #25)",
-        "isometric luxury matte-black Japanese archive portfolio folder with white string-tie clasp and grainy Demo orange/pink/blue aura print, with the circular orbital logo embossed in isometric perspective on the folder flap at dead-center (like Soiltone Cut #17)",
-    ],
-    "nature": [
-        "3D monolithic sculpture of the circular orbital logo itself made of mirror-polished chrome or translucent Burnt Orange (#EC540C) glass standing in a misty mossy redwood forest or wet black volcanic sand beach",
-        "looking straight up through tall dark pine trees where the negative-space forest canopy opening forms the circular orbital logo against a glowing dusk sky",
-        "calm dark obsidian tide pool or frozen black lake ice where glowing bioluminescent Electric Blue (#5D8FF4) or warm amber light beneath the water forms the circular orbital logo with gentle water ripples",
-        "volumetric laser projection of the circular orbital logo in Burnt Orange (#EC540C) or Hot Pink (#F64570) slicing through dense forest fog onto wet ferns and moss",
-        "overhead studio botanical arrangement of pressed ferns, burnt-orange flower petals, and dark volcanic stones forming the circular orbital logo on warm vellum",
-        "ancient moss-covered forest tree trunk or towering basalt/sandstone cliff face with the circular orbital logo deeply carved into the bark/stone under dappled golden sunbeams",
-    ],
-    "outdoor_urban": [
-        "massive 3D curved LED billboard on a rainy night skyscraper corner in Times Square, Shibuya, or Dotonbori displaying a glowing Demo aura gradient (#EC540C, #F64570, #5D8FF4) with wet neon street reflections",
-        "rain-streaked glass bus shelter lightbox at night displaying a backlit Demo brand poster in Deep Oxblood (#381313), Burnt Orange (#EC540C), and Hot Pink (#F64570) with wet neon asphalt reflections",
-        "frosted glass architectural studio partition wall at night with moody blurred Electric Blue (#5D8FF4) and Burnt Orange (#EC540C) interior lights glowing softly behind the glass (like Soiltone Cut #27)",
-        "brutalist board-formed concrete gallery facade grazed by a dramatic moving diagonal golden sunbeam with the circular orbital logo deeply debossed in the concrete",
-        "urban wheatpaste street poster wall or perforated mesh building scaffolding wrap featuring the grainy Demo gradient palette (#EC540C, #F64570, #5D8FF4) and bold editorial typography with the circular orbital logo at dead-center",
-    ],
-    "apparel_tactile": [
-        "high-fashion studio portrait of a model in structured glossy techwear collar and tinted glasses under Electric Blue (#5D8FF4) & Burnt Orange (#EC540C) lighting with the circular orbital logo on the collar at dead-center (like Soiltone Cut #01)",
-        "silhouetted hand holding up a small rectangular transparent frosted glass access card against a grainy Demo orange/pink/blue aura background with the circular orbital logo etched inside the glass at dead-center (like Soiltone Cut #11)",
-        "architectural hardcover design monographs finished in Matte Black (#1A1A1A) and Burnt Orange (#EC540C) standing vertically on stone casting sharp studio shadows, with the circular orbital logo stamped on the cover at dead-center (like Soiltone Cut #05)",
-        "tight studio macro of heavyweight cotton hoodie fleece with drawstrings, 3D embroidered cap crown, woven jacquard garment label, or technical ripstop nylon tote bag with Burnt Orange (#EC540C) accents (like Soiltone Cut #07)",
-    ],
-    "kimi_wildcard": [
-        "KIMI ON-THE-SPOT IMAGINATION WILDCARD: Invent a completely unexpected, show-stopping avant-garde medium, physical phenomenon, or artistic installation NOT covered by the other 7 buckets (for example: magnetic ferrofluid spikes, precision watch tourbillon mechanism, X-ray fluoroscopy scan, kinetic brass pin-screen, carved glacial ice block with internal refraction, stained glass rose window, liquid mercury ripple, holographic security foil, or acoustic cymatics sand plate) where the exact Demo circular orbital logo shape is formed at dead-center",
-    ],
-}
-
 
 def _read_secret_key() -> str:
     try:
@@ -319,86 +270,84 @@ def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3") -
     raise RuntimeError(f"Kimi API call failed ({last_err})")
 
 
-def ask_kimi_for_prompts(ban_list: list[str], api_key: str, kimi_model: str, count: int = 4, theme: str = "all") -> list[dict]:
-    """
-    Makes 1 SINGLE API call to Kimi K3 / K2.7 to generate `count` (2, 4, 6, or 8) prompts in one go,
-    using the 8-Bucket System (7 curated buckets + 1 Kimi On-the-Spot Imagination Wildcard bucket):
-      1. Demo_design (Pure Demo v2.0 Design System: grainy aura gradients, typography, glass pills)
-      2. digital_ui (Digital Screens, Software & Interfaces)
-      3. wireframe_cad (Wireframe, CAD Drafting & Vector Bezier Software)
-      4. 3d_isometric (Slightly-Angled 3D Extruded Sculptures & Isometric Objects)
-      5. nature (Nature, Sculptures in Wild, Water/Mist/Canopy/Botanical)
-      6. outdoor_urban (Times Square/Shibuya 3D Billboards, Rainy Bus Shelters, Frosted Partitions, Concrete, Posters)
-      7. apparel_tactile (Techwear Portraits, Hoodies, Glass Pass in Hand, Hardcover Monographs)
-      8. kimi_wildcard (Kimi On-the-Spot Imagination — completely different from the other 7)
-    """
-    all_bucket_defs = [
-        ("Bucket 1 — Pure Demo Design System (Grainy Aura Gradients, Typography & Glass UI)", CREATIVE_BUCKETS["Demo_design"]),
-        ("Bucket 2 — Digital Screens, Software & Interfaces", CREATIVE_BUCKETS["digital_ui"]),
-        ("Bucket 3 — Wireframe, CAD & Vector Bezier Software", CREATIVE_BUCKETS["wireframe_cad"]),
-        ("Bucket 4 — 3D Extruded Sculptures & Isometric Objects", CREATIVE_BUCKETS["3d_isometric"]),
-        ("Bucket 5 — Nature & Organic / Sculpture in the Wild", CREATIVE_BUCKETS["nature"]),
-        ("Bucket 6 — Outdoor, Urban & Architecture", CREATIVE_BUCKETS["outdoor_urban"]),
-        ("Bucket 7 — Apparel, Streetwear & Tactile Print", CREATIVE_BUCKETS["apparel_tactile"]),
-        ("Bucket 8 — Kimi On-the-Spot Wildcard Imagination", CREATIVE_BUCKETS["kimi_wildcard"]),
-    ]
-    theme_map = {
-        "Demo_design": [all_bucket_defs[0]],
-        "digital_ui": [all_bucket_defs[1]],
-        "wireframe_cad": [all_bucket_defs[2]],
-        "3d_isometric": [all_bucket_defs[3]],
-        "nature": [all_bucket_defs[4]],
-        "outdoor_urban": [all_bucket_defs[5]],
-        "apparel_tactile": [all_bucket_defs[6]],
-        "kimi_wildcard": [all_bucket_defs[7]],
-    }
-    if theme == "all":
-        # Pick randomly without replacement across all 8 buckets (7 curated + 1 Kimi wildcard)
-        bucket_defs = random.sample(all_bucket_defs, k=min(count, len(all_bucket_defs)))
-    else:
-        bucket_defs = theme_map.get(theme, all_bucket_defs)
+QUALITY_BAR = (
+    "QUALITY BAR (the reference is a premium brand-identity reel: Soltone): each frame is ONE hero subject, "
+    "minimal and art-directed, generous negative space, a restrained two-tone palette, photoreal CGI / studio-product quality, "
+    "razor-sharp edges, believable materials. The mark is the crisp focal point at dead-center, large and legible, never lost in clutter. "
+    "No busy collage, no text other than tiny micro-type, no stock-photo look."
+)
 
-    picked_seeds = []
-    used_subseeds = set()
-    for i in range(count):
-        b_label, b_pool = bucket_defs[i % len(bucket_defs)]
-        avail = [s for s in b_pool if s not in used_subseeds] or b_pool
-        chosen = random.choice(avail)
-        used_subseeds.add(chosen)
-        picked_seeds.append(f"Shot {i + 1} [{b_label}]: {chosen}")
 
-    seeds_str = "\n".join(picked_seeds)
-    ban_str = ", ".join(ban_list[-60:])
-    llm_prompt = (
-        f"Return ONLY a raw JSON array (no markdown fences, no commentary) of {count} scene objects "
-        f"(each with keys: \"title\", \"guide\" ('dark' or 'light'), and \"prompt\") for a 9:16 vertical match-cut film "
-        f"where the single Demo circular logo SHAPE is placed at the exact dead-center (50%, 50%) at 18% frame width.\n\n"
-        f"Follow this exact bucket assignment for the {count} shots:\n{seeds_str}\n\n"
-        f"Demo v2.0 DESIGN SYSTEM DNA (tap into this across the Pure Design System bucket AND where appropriate on screens, posters, billboards, and packaging):\n"
-        f"- Palette: Burnt Orange (#EC540C), Hot Pink (#F64570), Electric Blue (#5D8FF4), Deep Oxblood (#381313), Matte Black Ink (#1A1A1A), Warm Cream (#FEFFE7).\n"
-        f"- Visual Texture: Grainy blurred multi-color aura gradients (#EC540C + #F64570 + #5D8FF4), frosted glass cards/pills with specular borders, high-contrast editorial typography ('Orchestrate', 'Make it right. Make it magic.', 'Think · Plan · Create · Make', 'HI × AI').\n\n"
-        f"CRITICAL LOGO RENDERING VARIETY & DIEGETIC RULES (inspired by the Soiltone match-cut film):\n"
-        f"1. VARY HOW THE LOGO IS RENDERED (NOT ALWAYS FLAT!): Across shots, render the logo shape in dramatically different ways matching each bucket:\n"
-        f"   - Pure Demo Design System graphics (grainy aura gradients, frosted glass refraction, Swiss grid lockups)\n"
-        f"   - Slightly-angled 3D volumetric extrusion (chrome, translucent orange/pink glass, stone, or matte-black 3D sculpture)\n"
-        f"   - Technical CAD wireframe / vector design software bezier paths with tiny square anchor points, tangent handles, and construction circles\n"
-        f"   - True isometric / 3D perspective on angled objects (tilted 3D iPhone screen, isometric tear-strip box, cast acrylic slab, archive folder)\n"
-        f"   - Living / elemental nature formations (negative-space forest canopy skylight, glowing sub-surface water ripples, volumetric laser beam in forest mist, carved mossy bark/basalt, arranged botanicals)\n"
-        f"   - Kimi Wildcard: if assigned Bucket 8, invent an extraordinary, unexpected physical medium or optical phenomenon completely distinct from the other 7 buckets.\n"
-        f"2. NEVER A FLAT PASTED STICKER: If a surface is angled in 3D/isometric space, the logo must share that exact 3D perspective and lighting; if on a physical material, it must have real depth, texture, cracks, or refraction crossing through it.\n"
-        f"3. MICRO-VIDEO READY: Include subtle kinetic/atmospheric cues (drifting fog, water ripples, raking sunbeams, caustic light, UI glow) so each frame works as a start keyframe for a 1–2s micro-video.\n"
-        f"4. ONE UNIFIED FINISH: Do NOT add a separate colored border ring around the logo.\n"
-        f"5. STRICT BAN LIST — do NOT repeat any of these previous scenes: [{ban_str}]."
+def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, pair: bool = True) -> list[dict]:
+    """Random multi-axis shots, steered by taste history. Near-duplicates of past prompts are dropped."""
+    titles = {**DEFAULT_TITLES, **st.get("titles", {})}
+    prompts = {**DEFAULT_PROMPTS, **st.get("prompts", {})}
+    brief = taste.taste_brief(st, titles, prompts)
+    ban_str = ", ".join(list(dict.fromkeys(list(titles.values()) + st.get("history", [])))[-80:])
+
+    n_ask = count + 2  # over-ask so near-duplicates can be dropped
+    shots = diversity.sample_shots(n_ask, st.get("recent_axes"))
+    shot_lines = "\n".join(f"Shot {i + 1}: {diversity.describe(sh)}" for i, sh in enumerate(shots))
+    twin_rule = (
+        "For EACH shot also return \"twin_prompt\" and \"twin_guide\": the SAME composition, camera and object re-rendered in the opposite tonal world "
+        "(a dark/saturated version and a light/monochrome version, like the reference's color/mono pairs) so the two cut together as a match-cut pair. "
+        if pair else ""
     )
-    print(f"[KIMI] 1 single API call requesting {count} prompts (theme={theme}) using {kimi_model}...", flush=True)
+    liked = "\n".join(f"- {t}: {p[:220]}" for t, p in brief["liked"]) or "(none yet)"
+    disliked = ", ".join(brief["disliked"]) or "(none yet)"
+    llm_prompt = (
+        f"Return ONLY a raw JSON array (no markdown fences) of {n_ask} objects with keys \"title\", \"guide\" ('dark' or 'light' = "
+        f"whether the scene is mostly dark or mostly light), \"prompt\"" + (", \"twin_prompt\", \"twin_guide\"" if pair else "") + ". "
+        f"They are shots for a 9:16 vertical match-cut film where one circular logo mark sits at the exact dead-center (50%, 50%) at 18% frame width.\n\n"
+        f"Build each shot from its random ingredients (you may bend an ingredient if it makes the image better, but keep the combination surprising; "
+        f"invent the scene around it, do not just list the words):\n{shot_lines}\n\n"
+        f"{QUALITY_BAR}\n\n"
+        f"Brand palette is available but NOT mandatory: Burnt Orange #EC540C, Hot Pink #F64570, Electric Blue #5D8FF4, Oxblood #381313, Ink #1A1A1A, Cream #FEFFE7. "
+        f"Follow each shot's palette ingredient.\n\n"
+        f"TASTE (learned from what the director kept):\nLiked:\n{liked}\nSteer away from the feel of: {disliked}\n\n"
+        f"RULES:\n"
+        f"1. The logo must be physically part of the scene (same perspective, light, and material). Never a flat pasted sticker, no outer rings, one single mark.\n"
+        f"2. Each prompt: 2-4 sentences, concrete visual language, name the lens/light/material, end by stating the mark's treatment and dead-center position.\n"
+        f"3. {twin_rule}\n"
+        f"4. All shots must look clearly different from each other and from these past scenes: [{ban_str}]."
+    )
+    print(f"[KIMI] requesting {n_ask} random-axis prompts (pair={pair}) using {kimi_model}...", flush=True)
     out = call_kimi_llm(llm_prompt, api_key=api_key, preferred_model=kimi_model)
-    s_idx = out.find("[")
-    e_idx = out.rfind("]")
-    if s_idx != -1 and e_idx != -1:
-        ideas = json.loads(out[s_idx : e_idx + 1])
-        print(f"[KIMI] Generated titles: {[x.get('title') for x in ideas]}", flush=True)
-        return ideas
-    raise RuntimeError("Kimi did not return a valid JSON array of prompts")
+    s_idx, e_idx = out.find("["), out.rfind("]")
+    if s_idx == -1 or e_idx == -1:
+        raise RuntimeError("Kimi did not return a valid JSON array of prompts")
+    ideas = json.loads(out[s_idx : e_idx + 1])
+
+    past = list(prompts.values())
+    kept = []
+    for idea in ideas:
+        p = idea.get("prompt", "")
+        nov = taste.novelty(p, past)
+        if nov < 0.45:
+            print(f"[DIVERSITY] dropped near-duplicate '{idea.get('title')}' (novelty={nov:.2f})", flush=True)
+            continue
+        past.append(p)
+        kept.append(idea)
+    kept = kept[:count] or ideas[:count]
+
+    flat = []
+    for idea in kept:
+        flat.append({"title": idea.get("title", "Untitled"), "guide": idea.get("guide", "dark"), "prompt": idea["prompt"]})
+        if pair and idea.get("twin_prompt"):
+            flat.append({
+                "title": f"{idea.get('title', 'Untitled')} (twin)",
+                "guide": idea.get("twin_guide") or ("light" if idea.get("guide") == "dark" else "dark"),
+                "prompt": idea["twin_prompt"],
+                "twin": True,
+            })
+
+    recent = st.setdefault("recent_axes", {})
+    for sh in shots[: len(kept)]:
+        for axis, val in sh.items():
+            recent.setdefault(axis, []).append(val)
+            recent[axis] = recent[axis][-12:]
+    print(f"[KIMI] titles: {[x['title'] for x in flat]}", flush=True)
+    return flat
 
 
 def ask_kimi_for_variation(base_title: str, base_prompt: str, ban_list: list[str], api_key: str, kimi_model: str) -> dict:
@@ -456,6 +405,10 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.wfile.write(html_bytes)
             return
 
+        if parsed.path == "/api/stats":
+            self.send_json({"ok": True, "models": taste.model_stats(load_state())})
+            return
+
         if parsed.path == "/api/state":
             st = load_state()
             trashed_set = set(st.get("trashed", []))
@@ -474,6 +427,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "prompt": prompts.get(p.name, titles.get(p.name, "")),
                     "model": models.get(p.name, "google/nano-banana-pro"),
                     "trashed": p.name in trashed_set,
+                    "decision": st.get("decisions", {}).get(p.name),
                     "qa_passed": qa["qa_passed"],
                     "qa_score": qa["qa_score"],
                     "qa_issues": qa.get("issues", []),
@@ -524,19 +478,16 @@ class StudioHandler(SimpleHTTPRequestHandler):
             st = load_state()
             kimi_key = body.get("kimi_api_key") or st.get("kimi_api_key", "")
             kimi_model = body.get("kimi_model") or st.get("kimi_model", "kimi-k3")
-            theme = body.get("theme", "all")
             if not kimi_key:
                 self.send_json({"ok": False, "needs_kimi_key": True, "error": "Enter your Kimi API key in ⚙️ Settings first"}, 400)
                 return
-            titles = {**DEFAULT_TITLES, **st.get("titles", {})}
-            ban_list = list(dict.fromkeys(list(titles.values()) + st.get("history", [])))
             try:
                 ideas = ask_kimi_for_prompts(
-                    ban_list,
+                    st,
                     api_key=kimi_key,
                     kimi_model=kimi_model,
                     count=int(body.get("count", 4)),
-                    theme=theme,
+                    pair=bool(body.get("pair", True)),
                 )
                 for idea in ideas:
                     t = idea.get("title", "")
@@ -546,6 +497,19 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True, "ideas": ideas})
             except Exception as e:
                 self.send_json({"ok": False, "error": str(e)}, 500)
+            return
+
+        if parsed.path == "/api/decide":
+            filename = body.get("filename", "")
+            decision = body.get("decision")  # "approved" | "rejected" | None (clear)
+            st = load_state()
+            decisions = st.setdefault("decisions", {})
+            if decision in ("approved", "rejected"):
+                decisions[filename] = decision
+            else:
+                decisions.pop(filename, None)
+            save_state(st)
+            self.send_json({"ok": True})
             return
 
         if parsed.path == "/api/invent-variation":
@@ -582,6 +546,9 @@ class StudioHandler(SimpleHTTPRequestHandler):
             raw_prompt = body.get("prompt", "").strip()
             guide_type = body.get("guide", "dark")
             model = body.get("model", "google/nano-banana-pro")
+            if model == "auto":
+                model = taste.pick_model(load_state())
+                print(f"[TASTE] auto-picked model {model}", flush=True)
             after_filename = body.get("after_filename")
 
             full_prompt = (
@@ -666,7 +633,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/api/export-video":
-            frames_per_cut = int(body.get("frames_per_cut", 5))
+            bpm = float(body.get("bpm", 136.0))
+            multiple = float(body.get("multiple", 1.0))  # cuts per beat: 0.5 = every 2 beats, 4 = 4 cuts/beat
             total_seconds = float(body.get("total_seconds", 10.0))
             st = load_state()
             trashed_set = set(st.get("trashed", []))
@@ -676,26 +644,34 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 return
 
             fps = 30
+            frames_per_cut = max(1.0, fps * 60.0 / (bpm * multiple))
             total_frames = int(total_seconds * fps)
             tmp_dir = ROOT_DIR / "outputs" / "_tmp_export_frames"
             if tmp_dir.exists():
                 shutil.rmtree(tmp_dir)
             tmp_dir.mkdir(parents=True, exist_ok=True)
 
-            loaded_imgs = [Image.open(p).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS) for p in active_files]
+            # Encode each plate once, then write the same bytes for every frame it covers.
+            encoded = []
+            for p in active_files:
+                buf = io.BytesIO()
+                Image.open(p).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS).save(buf, "JPEG", quality=92)
+                encoded.append(buf.getvalue())
             for f_idx in range(total_frames):
-                plate_idx = (f_idx // frames_per_cut) % len(loaded_imgs)
-                loaded_imgs[plate_idx].save(tmp_dir / f"f_{f_idx:04d}.jpg", quality=92)
+                plate_idx = int(f_idx / frames_per_cut) % len(encoded)
+                (tmp_dir / f"f_{f_idx:04d}.jpg").write_bytes(encoded[plate_idx])
 
             out_mp4 = OUTPUTS_DIR / "Demo-curated-matchcut.mp4"
             audio_files = list((ROOT_DIR / "music").glob("*.mp3")) + list((ROOT_DIR / "music").glob("*.wav"))
             cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp_dir / "f_%04d.jpg")]
             if audio_files:
-                cmd += ["-i", str(audio_files[0]), "-shortest"]
+                # Track is 136 BPM; stretch it so the music follows the chosen tempo.
+                ratio = max(0.5, min(2.0, bpm / MUSIC_BPM))
+                cmd += ["-i", str(audio_files[0]), "-af", f"atempo={ratio:.4f}", "-shortest"]
             cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-t", str(total_seconds), str(out_mp4)]
             subprocess.run(cmd, check=True, capture_output=True)
             shutil.rmtree(tmp_dir, ignore_errors=True)
-            self.send_json({"ok": True, "video_url": f"/outputs/Demo-curated-matchcut.mp4?t={int(time.time())}"})
+            self.send_json({"ok": True, "video_url": f"/outputs/Demo-curated-matchcut.mp4?t={int(time.time())}", "frames_per_cut": round(frames_per_cut, 2)})
             return
 
         self.send_json({"ok": False, "error": "Unknown endpoint"}, 404)
