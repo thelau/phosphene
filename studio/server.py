@@ -59,8 +59,31 @@ except Exception:
     QA_CACHE = {}
 
 
+def _plate_key(path: Path) -> str:
+    # size, not mtime: git checkouts rewrite mtimes and used to invalidate every cached result
+    return f"{path.name}:{path.stat().st_size}"
+
+
+def _migrate_qa_cache() -> None:
+    """Re-key old 'name:mtime' entries to 'name:size' so existing results survive."""
+    latest: dict = {}
+    for k, v in QA_CACHE.items():
+        name, _, tail = k.rpartition(":")
+        if name and tail.isdigit() and int(tail) > 10**9:  # an mtime
+            latest[name] = v
+    for name, v in latest.items():
+        for d in (PLATES_DIR, REJECTED_DIR):
+            f = d / name
+            if f.exists():
+                QA_CACHE.setdefault(f"{name}:{f.stat().st_size}", v)
+                break
+
+
+_migrate_qa_cache()
+
+
 def get_cached_qa(path: Path) -> dict:
-    key = f"{path.name}:{int(path.stat().st_mtime)}"
+    key = _plate_key(path)
     if key not in QA_CACHE:
         QA_CACHE[key] = evaluate_plate_qa(path)
         try:
@@ -252,7 +275,7 @@ _TONE_CACHE: dict = {}
 
 
 def cached_tone(path: Path) -> str:
-    key = (path.name, int(path.stat().st_mtime))
+    key = (path.name, path.stat().st_size)
     if key not in _TONE_CACHE:
         _TONE_CACHE[key] = plate_tone(path)
     return _TONE_CACHE[key]
