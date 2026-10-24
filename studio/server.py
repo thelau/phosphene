@@ -178,6 +178,10 @@ def _read_secret_key() -> str:
         return ""
 
 
+STATE_LOCK = threading.RLock()
+BOOT_ID = str(time.time())
+
+
 def load_state() -> dict:
     st = _load_state_raw()
     st["kimi_api_key"] = _read_secret_key() or st.get("kimi_api_key", "") or os.environ.get("KIMI_API_KEY", os.environ.get("MOONSHOT_API_KEY", ""))
@@ -371,14 +375,42 @@ QUALITY_BAR = (
 )
 
 
-def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, pair: bool = False, world: str | None = None) -> list[dict]:
+def invent_world(st: dict, api_key: str, kimi_model: str, direction: str = "") -> dict:
+    """Wildcard: Kimi authors a brand-new world in the same format as chapters.WORLDS."""
+    known = ", ".join(w["name"] for w in chapters.all_worlds(st))
+    ref = chapters.WORLDS[0]
+    steer = f"The director asked for: \"{direction}\". Build the world around that." if direction else "Pick a discipline or phenomenon NOT covered by the existing worlds."
+    out = call_kimi_llm(
+        f"Invent ONE new creative world for a 9:16 match-cut film where a small circular mark sits at dead-center in every shot. {steer}\n"
+        f"Existing worlds (do not repeat): {known}.\n"
+        f"It must be authored like a design-studio identity (Pentagram quality): one idea, a restrained palette (max 3 colors), a rigorous visual language, a dark and a light register. "
+        f"Return ONLY raw JSON (no fences) with keys: name (2-4 words, 'X & Y' style ok), brief (2 sentences), palette (one sentence, may use #EC540C #F64570 #5D8FF4 #381313 #1A1A1A #FEFFE7), "
+        f"applications (10 concrete photographable subjects), marks (5 ways the mark physically emerges from the scene). Example format: {json.dumps({k: ref[k] for k in ('name', 'brief', 'palette', 'marks')})[:400]}",
+        api_key=api_key, preferred_model=kimi_model,
+    )
+    w = json.loads(out[out.find("{"): out.rfind("}") + 1])
+    for k in ("name", "brief", "palette", "applications", "marks"):
+        if not w.get(k):
+            raise RuntimeError(f"invented world missing '{k}'")
+    w["weight"] = 1.0
+    w["wildcard"] = True
+    st.setdefault("custom_worlds", [])
+    st["custom_worlds"] = [x for x in st["custom_worlds"] if x["name"] != w["name"]] + [w]
+    print(f"[KIMI] invented world '{w['name']}'", flush=True)
+    return w
+
+
+def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, pair: bool = False, world: str | None = None, direction: str = "") -> list[dict]:
     """One authored creative world per batch (shots cohere), idea-first, steered by taste, near-duplicates dropped."""
     titles = {**DEFAULT_TITLES, **st.get("titles", {})}
     prompts = {**DEFAULT_PROMPTS, **st.get("prompts", {})}
     brief = taste.taste_brief(st, titles, prompts)
     ban_str = ", ".join(list(dict.fromkeys(list(titles.values()) + st.get("history", [])))[-80:])
 
-    w = chapters.pick_world(st.get("recent_worlds"), world)
+    w = chapters.choose_world(st, world or "")
+    if w is None or (direction and not world):
+        w = invent_world(st, api_key, kimi_model, direction)  # wildcard, or a typed direction with no fixed world
+
     n_ask = count + 2  # over-ask so near-duplicates can be dropped
     apps = random.sample(w["applications"], k=min(n_ask, len(w["applications"])))
     while len(apps) < n_ask:
@@ -393,7 +425,9 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     llm_prompt = (
         f"Return ONLY a raw JSON array (no markdown fences) of {n_ask} objects with keys \"title\", \"idea\", \"guide\" ('dark' or 'light' = whether the frame is mostly dark or mostly light) and \"prompt\". "
         f"They are shots for a 9:16 vertical match-cut film where one small circular mark sits at the exact dead-center (50%, 50%) at 18% frame width.\n\n"
-        f"WORLD: {w['name']}. {w['brief']}\nPalette for this whole batch: {w['palette']}. Every shot lives inside this world and palette so the cut sequence coheres; "
+        f"WORLD: {w['name']}. {w['brief']}\n"
+        + (f"DIRECTOR'S DIRECTION for this batch (follow it, but keep the quality bar and rules below): {direction}\n" if direction else "")
+        + f"Palette for this whole batch: {w['palette']}. Every shot lives inside this world and palette so the cut sequence coheres; "
         f"vary subject, framing and light, not the world.\n\n"
         f"For each shot first write \"idea\": ONE line on how the mark physically emerges from the scene (inspirations: {'; '.join(w['marks'])}; or something better). "
         f"Reject gimmicks like 'logo on a thing'. Then write \"prompt\" from that idea.\n\n"
@@ -467,6 +501,23 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
         if parsed.path == "/api/stats":
             self.send_json({"ok": True, "models": taste.model_stats(load_state())})
+            return
+
+        if parsed.path == "/api/version":
+            try:
+                html_mtime = (STUDIO_DIR / "index.html").stat().st_mtime
+            except OSError:
+                html_mtime = 0
+            self.send_json({"boot": BOOT_ID, "html": html_mtime})
+            return
+
+        if parsed.path == "/api/worlds":
+            st = load_state()
+            stats = chapters.world_stats(st)
+            self.send_json({"ok": True, "worlds": [
+                {"name": w["name"], "n": stats.get(w["name"], {}).get("n", 0), "kept": stats.get(w["name"], {}).get("kept", 0), "wildcard": bool(w.get("wildcard"))}
+                for w in chapters.all_worlds(st)
+            ]})
             return
 
         if parsed.path == "/api/state":
@@ -564,6 +615,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     count=int(body.get("count", 4)),
                     pair=False,
                     world=body.get("world") or None,
+                    direction=(body.get("direction") or "").strip()[:300],
                 )
                 for idea in ideas:
                     t = idea.get("title", "")
@@ -596,55 +648,56 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 img_bytes = generate_plate_via_krea_mcp(prompt=full_prompt, guide_type=guide_type, model=model)
                 im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
 
-                existing_nums = [
-                    int(p.name.split("_", 1)[0])
-                    for p in list(PLATES_DIR.glob("*.jpg")) + list(REJECTED_DIR.glob("*.jpg"))
-                    if p.name.split("_", 1)[0].isdigit()
-                ]
-                next_num = max(existing_nums, default=15) + 1
-                slug = "".join(c if c.isalnum() else "_" for c in title.lower()).strip("_")[:26] or "plate"
-                while "__" in slug:
-                    slug = slug.replace("__", "_")
-                filename = f"{next_num:02d}_{slug}.jpg"
-                save_path = PLATES_DIR / filename
-                im.save(save_path, quality=95)
+                with STATE_LOCK:
+                    existing_nums = [
+                        int(p.name.split("_", 1)[0])
+                        for p in list(PLATES_DIR.glob("*.jpg")) + list(REJECTED_DIR.glob("*.jpg"))
+                        if p.name.split("_", 1)[0].isdigit()
+                    ]
+                    next_num = max(existing_nums, default=15) + 1
+                    slug = "".join(c if c.isalnum() else "_" for c in title.lower()).strip("_")[:26] or "plate"
+                    while "__" in slug:
+                        slug = slug.replace("__", "_")
+                    filename = f"{next_num:02d}_{slug}.jpg"
+                    save_path = PLATES_DIR / filename
+                    im.save(save_path, quality=95)
 
-                qa = get_cached_qa(save_path)
-                print(
-                    f"[QA] {filename} ({model}) -> passed={qa['qa_passed']} score={qa['qa_score']}% "
-                    f"corr={qa['center_corr']} asym={qa['core_asymmetry']} issues={qa['issues']}",
-                    flush=True,
-                )
+                    qa = get_cached_qa(save_path)
+                    print(
+                        f"[QA] {filename} ({model}) -> passed={qa['qa_passed']} score={qa['qa_score']}% "
+                        f"corr={qa['center_corr']} asym={qa['core_asymmetry']} issues={qa['issues']}",
+                        flush=True,
+                    )
 
-                st = load_state()
-                st.setdefault("titles", {})[filename] = title
-                st.setdefault("prompts", {})[filename] = raw_prompt
-                st.setdefault("models", {})[filename] = model
-                if body.get("world"):
-                    st.setdefault("worlds", {})[filename] = body["world"]
-                if body.get("idea"):
-                    st.setdefault("ideas", {})[filename] = body["idea"]
-                if title not in st.setdefault("history", []):
-                    st["history"].append(title)
+                    st = load_state()
+                    st.setdefault("titles", {})[filename] = title
+                    st.setdefault("prompts", {})[filename] = raw_prompt
+                    st.setdefault("models", {})[filename] = model
+                    if body.get("world"):
+                        st.setdefault("worlds", {})[filename] = body["world"]
+                    if body.get("idea"):
+                        st.setdefault("ideas", {})[filename] = body["idea"]
+                    if title not in st.setdefault("history", []):
+                        st["history"].append(title)
 
-                # If Logo QA flags the image, send it to Trash instead of deleting/hiding it!
-                if not qa["qa_passed"]:
-                    trashed_list = set(st.get("trashed", []))
-                    trashed_list.add(filename)
-                    st["trashed"] = sorted(trashed_list)
-                    st.setdefault("trashed_at", {})[filename] = time.time()
-                    st["qa_failed"] = sorted(set(st.get("qa_failed", [])) | {filename})
+                    # If Logo QA flags the image, send it to Trash instead of deleting/hiding it!
+                    if not qa["qa_passed"]:
+                        trashed_list = set(st.get("trashed", []))
+                        trashed_list.add(filename)
+                        st["trashed"] = sorted(trashed_list)
+                        st.setdefault("trashed_at", {})[filename] = time.time()
+                        st["qa_failed"] = sorted(set(st.get("qa_failed", [])) | {filename})
 
-                cur_order = [p.name for p in ordered_plate_files(st)]
-                if filename in cur_order:
-                    cur_order.remove(filename)
-                if after_filename and after_filename in cur_order:
-                    idx = cur_order.index(after_filename) + 1
-                    cur_order.insert(idx, filename)
-                else:
-                    cur_order.append(filename)
-                st["order"] = cur_order
-                save_state(st)
+                    cur_order = [p.name for p in ordered_plate_files(st)]
+                    if filename in cur_order:
+                        cur_order.remove(filename)
+                    if after_filename and after_filename in cur_order:
+                        idx = cur_order.index(after_filename) + 1
+                        cur_order.insert(idx, filename)
+                    else:
+                        cur_order.append(filename)
+                    st["order"] = cur_order
+                    save_state(st)
                 threading.Thread(target=apply_critic, args=(filename,), daemon=True).start()
 
                 self.send_json({

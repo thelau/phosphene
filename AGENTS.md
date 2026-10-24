@@ -40,3 +40,6 @@ Caveat: the 223 plates trashed before `qa_failed` existed can't be told apart (m
 - No "Pairs" at generation. Each kept card has a 🌗 Twin button (and "Twin all kept"): `/api/make-twin` edits the plate itself (nano-banana-pro) into the opposite tone and stores `twin_of[twin] = original` in `curation_state.json`.
 - Order: `glue_twins()` keeps every twin directly after its original, so dragging/reordering moves pairs together. Trashing an original trashes its twins.
 - Audio/tempo-curve work (synth vs. uploaded track, accelerate/decelerate cut curve measured from the reference) is planned after image quality.
+
+## Dev
+`python3 studio/dev.py` also auto-commits and pushes to GitHub every 2 min (`studio/autosync.py`; plates via Git LFS). It runs the server and restarts it when any `studio/*.py` changes; the page live-reloads on restart or when `index.html` changes (polls `/api/version`). Do not restart it mid-generation.

@@ -247,3 +247,60 @@ def pick_world(recent: list[str] | None = None, name: str | None = None) -> dict
     recent = recent or []
     pool = [w for w in WORLDS if w["name"] not in recent[-4:]] or WORLDS
     return random.choices(pool, weights=[w["weight"] for w in pool], k=1)[0]
+
+
+def all_worlds(st: dict) -> list[dict]:
+    """Built-in worlds plus wildcard worlds Kimi invented that have earned their place."""
+    out = list(WORLDS)
+    names = {w["name"] for w in out}
+    for w in st.get("custom_worlds", []):
+        if w["name"] in names:
+            continue
+        stats = world_stats(st).get(w["name"], {"n": 0, "kept": 0})
+        if stats["n"] >= 6 and stats["kept"] == 0:
+            continue  # flopped: never kept anything, retire it
+        out.append(w)
+    return out
+
+
+def world_stats(st: dict) -> dict:
+    """Per world: n generated, kept (still in the grid), and a smoothed keep rate."""
+    trashed = set(st.get("trashed", []))
+    qa_failed = set(st.get("qa_failed", []))
+    stats: dict = {}
+    for filename, name in st.get("worlds", {}).items():
+        s = stats.setdefault(name, {"n": 0, "kept": 0, "qa": 0})
+        s["n"] += 1
+        if filename not in trashed:
+            s["kept"] += 1
+        elif filename in qa_failed:
+            s["qa"] += 1
+    for s in stats.values():
+        # qa-failed plates are a weak negative: count them as half an observation
+        eff_n = s["n"] - 0.5 * s["qa"]
+        s["rate"] = (s["kept"] + 1) / (eff_n + 6)  # prior ~ 1/6 pulls small samples to the middle
+    return stats
+
+
+def choose_world(st: dict, mode: str = "") -> dict | None:
+    """
+    mode '' = surprise me, a world name = that world, '__wildcard__' = None (caller invents a new world).
+    Surprise: 50% exploit by keep rate (floored), 30% explore the least-sampled, 20% wildcard.
+    """
+    worlds = all_worlds(st)
+    if mode == "__wildcard__":
+        return None
+    for w in worlds:
+        if w["name"] == mode:
+            return w
+    recent = st.get("recent_worlds", [])[-3:]
+    pool = [w for w in worlds if w["name"] not in recent] or worlds
+    stats = world_stats(st)
+    r = random.random()
+    if r < 0.2:
+        return None
+    if r < 0.5:
+        least = min(stats.get(w["name"], {"n": 0})["n"] for w in pool)
+        return random.choice([w for w in pool if stats.get(w["name"], {"n": 0})["n"] <= least + 2])
+    weights = [max(0.05, stats.get(w["name"], {"rate": 0.17})["rate"]) for w in pool]
+    return random.choices(pool, weights=weights, k=1)[0]
