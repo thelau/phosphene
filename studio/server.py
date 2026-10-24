@@ -13,6 +13,7 @@ import os
 import random
 import shutil
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -770,8 +771,17 @@ class StudioHandler(SimpleHTTPRequestHandler):
         self.send_json({"ok": False, "error": "Unknown endpoint"}, 404)
 
 
+class QuietServer(ThreadingHTTPServer):
+    """A browser that reloads or navigates away mid-response is normal; don't dump a traceback for it."""
+
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)):
+            return
+        super().handle_error(request, client_address)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8765"))
-    server = ThreadingHTTPServer(("127.0.0.1", port), StudioHandler)
+    server = QuietServer(("127.0.0.1", port), StudioHandler)
     print(f"Studio running at http://localhost:{port}")
     server.serve_forever()
