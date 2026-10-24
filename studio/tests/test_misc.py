@@ -43,6 +43,46 @@ def test_dev_snapshot_tracks_py_files_but_not_itself(tmp_path, monkeypatch):
     assert dev.snapshot() != snap
 
 
+def test_dev_respawns_after_a_normal_run_but_not_a_crash_loop():
+    assert dev.respawn_now(60.0) is True            # killed or died after running a while: bring it back
+    assert dev.respawn_now(0.4) is False            # died right after starting: wait for an edit
+
+
+def test_dev_restarts_a_killed_server_and_survives_a_crash_loop(tmp_path, monkeypatch):
+    """Drive dev.main() with fake processes: killed after a long run -> respawned; instant crash -> not respawned until an edit."""
+    class P:
+        def __init__(self, dead_after):
+            self.dead_after, self.returncode, self.n = dead_after, None, 0
+
+        def poll(self):
+            self.n += 1
+            if self.dead_after is not None and self.n > self.dead_after:
+                self.returncode = -15
+            return self.returncode
+
+        def send_signal(self, s): pass
+        def wait(self, t): pass
+        def kill(self): pass
+
+    procs = [P(1), P(0), P(None)]          # 1st dies after a long run, 2nd crashes instantly, 3rd is fine
+    started = []
+    monkeypatch.setattr(dev, "start", lambda: started.append(1) or procs[len(started) - 1])
+    monkeypatch.setattr(dev, "snapshot", lambda: {})
+    now = [0.0]
+    monkeypatch.setattr(dev.time, "time", lambda: now[0])
+    ticks = []
+
+    def fake_sleep(s):
+        ticks.append(1)
+        if len(ticks) == 1:
+            now[0] = 100.0                  # the first server has been up for a long time when it dies
+        if len(ticks) > 6:
+            raise KeyboardInterrupt
+    monkeypatch.setattr(dev.time, "sleep", fake_sleep)
+    dev.main()
+    assert len(started) == 2                # initial start + one respawn; the instant crash is not retried in a loop
+
+
 # ---------- bench.run_one (fake Krea) ----------
 
 def png(color):
