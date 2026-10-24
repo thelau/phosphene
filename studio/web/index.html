@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Match-Cut Studio</title>
+  <link rel="stylesheet" href="/src/style.css" />
+
+</head>
+<body>
+  <div id="loader"><div class="spin"></div><div class="msg" id="loaderMsg">Loading library…</div></div>
+
+  <header>
+    <div class="header-left">
+      <select id="worldSelect" title="Which territory to generate in">
+        <option value="">🎲 Mix it up</option>
+        <option value="__custom__">✍️ Custom territory…</option>
+        <option value="__wildcard__">✨ New territory (Kimi decides)</option>
+      </select>
+      <input id="directionInput" type="text" maxlength="300" placeholder="Direction (optional): e.g. apparel, wet, warm" style="width:230px">
+      <select id="batchCountSelect" title="Number of images per batch">
+        <option value="2">2 images</option>
+        <option value="4" selected>4 images</option>
+        <option value="6">6 images</option>
+        <option value="8">8 images</option>
+      </select>
+      <button class="primary" id="generateBtn" onclick="generateImages()">Generate Images</button>
+    </div>
+
+    <div class="header-right">
+      <button onclick="toggleSettings()" id="settingsBtn" title="Settings">⚙️</button>
+    </div>
+
+    <div class="settings-popover" id="settingsPopover">
+      <div class="setting-row">
+        <div class="setting-label">
+          <span>Prompt LLM (Kimi)</span>
+          <span><span class="dot" id="kimiDot"></span><span id="kimiStatusLabel">Needs Key</span></span>
+        </div>
+        <input
+          type="password"
+          id="kimiKeyInput"
+          placeholder="Paste Kimi API Key (sk-...)"
+          onchange="saveKimiSettings()"
+          oninput="saveKimiSettingsDebounced()"
+        />
+        <select id="kimiModelSelect" onchange="saveKimiSettings()" style="margin-top:4px;">
+          <option value="kimi-k3">Kimi K3 (kimi-k3)</option>
+          <option value="kimi-k2.7-code">Kimi K2.7 (kimi-k2.7-code)</option>
+          <option value="kimi-k2.5">Kimi K2.5 (kimi-k2.5)</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-label">
+          <span>Krea MCP Image Model</span>
+          <span><span class="dot" id="kreaDot"></span><span id="kreaStatusLabel">Connected</span></span>
+        </div>
+        <select id="modelSelect">
+          <option value="google/nano-banana-2.1">Nano Banana 2.1 · 2K (best keep rate)</option>
+          <option value="google/nano-banana-pro">Nano Banana Pro · 2K (best logo lock)</option>
+          <option value="auto">Auto (2.1 / Pro, learns from kept / trashed)</option>
+          <optgroup label="Experimental (low keep rate)">
+            <option value="openai/gpt-image-2.5-flare">GPT Image 2.5 Flare · 2K</option>
+            <option value="openai/gpt-image-2.5-sunburst">GPT Image 2.5 Sunburst · 2K</option>
+            <option value="openai/gpt-image-2">GPT Image 2 (ChatGPT 2)</option>
+            <option value="google/nano-banana-2">Nano Banana 2 · 2K</option>
+            <option value="krea/krea-3">Krea 3 · 2K</option>
+            <option value="bytedance/seedream-5-pro">Seedream 5 Pro</option>
+            <option value="ideogram/ideogram-4.5">Ideogram 4.5 · 2K</option>
+            <option value="luma/uni-1">Luma UNI-1</option>
+            <option value="meta/muse-image">Meta Muse Image</option>
+            <option value="runway/gen-4-image">Runway Gen-4 Image</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-label"><span>AI critic (Kimi)</span></div>
+        <label style="font-size:12px;display:block;margin:4px 0"><input type="checkbox" id="criticOn" onchange="saveCritic()" /> Score new images (shown on each card)</label>
+        <label style="font-size:12px;display:block;margin:4px 0"><input type="checkbox" id="criticTrash" onchange="saveCritic()" /> Auto-trash weak ones (reason shown in Trash)</label>
+        <div style="font-size:10px;opacity:.6">Off by default: on a test it didn't yet match your keep/trash choices.</div>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-label"><span>Model scorecard (kept / trashed / logo-QA fail)</span></div>
+        <div id="modelStats" style="font-size:11px;line-height:1.6;opacity:.85;"></div>
+      </div>
+
+      <div class="setting-row">
+        <button onclick="reconnectKrea()">Reconnect Krea MCP OAuth</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <div class="preview-col">
+      <div class="stage">
+        <img id="stageImg" alt="" />
+        <video id="stageVideo" controls loop playsinline></video>
+        <div class="reticle" id="reticle">
+          <div class="reticle-circle"></div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="control-line">
+          <button onclick="togglePlay()" id="playBtn" style="flex:1">▶ Play</button>
+          <button onclick="toggleReticle()">🎯 Guide</button>
+        </div>
+        <div class="control-line">
+          <span>Tempo</span>
+          <input type="range" id="bpmSlider" min="60" max="220" value="136" oninput="updateTempo()" />
+          <span id="bpmVal">136 BPM</span>
+        </div>
+        <div class="control-line">
+          <span>Multiple</span>
+          <select id="multSelect" onchange="updateTempo()" style="flex:1">
+            <option value="0.25">×¼ (1 cut / 4 beats)</option>
+            <option value="0.5">×½ (1 cut / 2 beats)</option>
+            <option value="1">×1 (1 cut / beat)</option>
+            <option value="1.3333333">×1⅓ (1 cut / ¾ beat)</option>
+            <option value="2">×2 (2 cuts / beat)</option>
+            <option value="3">×3 (triplets, 3 cuts / beat)</option>
+            <option value="4" selected>×4 (4 cuts / beat)</option>
+            <option value="6">×6 (6 cuts / beat)</option>
+            <option value="8">×8 (8 cuts / beat)</option>
+            <option value="9">×9 (9 cuts / beat)</option>
+          </select>
+          <span id="speedVal">~4f</span>
+        </div>
+        <button class="primary" onclick="exportVideo()" id="exportBtn" style="width:100%;margin-top:4px">Export MP4</button>
+      </div>
+    </div>
+
+    <div class="gallery-col">
+      <div class="gallery-head">
+        <div class="seg">
+          <button id="tabSelection" onclick="setTrashView(false)">Selection (<span id="selCount">0</span>)</button>
+          <button id="tabTrash" onclick="setTrashView(true)">🗑️ Trash (<span id="trashCount">0</span>)</button>
+        </div>
+        <button onclick="openTwinDialog()" id="twinAllBtn" title="Pick images and make a dark↔light version of each (re-rendered, placed right after the original)">🌗 Dark↔light versions…</button>
+      </div>
+      <div class="grid-col" id="grid"></div>
+    </div>
+  </div>
+
+  <div class="status-text" id="statusText" data-idle="1">Ready</div>
+  <div class="toast" id="toast"></div>
+
+  <div class="modal-bg" id="twinModal">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>🌗 Make dark/light twins</h2>
+        <p id="twinIntro">Each selected image is re-rendered by Nano Banana Pro in the <b>opposite tone</b> (dark → light, light → dark) with the same composition and logo.
+        It costs <b>1 Krea image per selection</b> (~40s each). The twin is placed <b>right after its original</b> and moves with it. Twins that fail the logo check go to Trash.</p>
+      </div>
+      <div class="modal-body" id="twinList"></div>
+      <div class="modal-foot">
+        <button id="twinAllToggle" onclick="twinSelectAll()">Select all / none</button>
+        <span class="grow" id="twinSummary"></span>
+        <button id="twinCancelBtn" onclick="closeTwinDialog()">Cancel</button>
+        <button class="primary" id="twinStartBtn" onclick="startTwins()">Make twins</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/app.js"></script>
+
+</body>
+</html>

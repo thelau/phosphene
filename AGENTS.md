@@ -4,7 +4,8 @@ Demo 9:16 match-cut film project. Every shot places the circular orbital logo at
 
 ## Layout
 - `render.py` — original headless PIL + ffmpeg renderer (30s, 136 BPM, beat-locked to `music/warehouse-tension.mp3`).
-- `studio/server.py` — the only server (port 8765, `PORT` env to change). Serves `studio/index.html` and the JSON API. No separate frontend server.
+- `studio/server.py` — the API server (port 8765, `PORT` env to change): JSON API, plates and exported video. It also serves the built page from `studio/web/dist` if `npm run build` was run.
+- `studio/web/` — the frontend (Vite, vanilla JS): `index.html` (markup), `src/app.js`, `src/style.css`, `vite.config.js` (proxies `/api`, `/assets`, `/outputs` to :8765). Inline `onclick=` handlers need the function exported at the bottom of `app.js` (a test checks this).
 - `studio/krea_mcp_client.py` — Krea image generation over MCP (`https://api.krea.ai/mcp`). OAuth token is read from `~/.local/share/opencode/mcp-auth.json`.
 - `studio/qa_engine.py` — logo QA on generated plates. `studio/diegetic_engine.py` — repairs failed plates.
 - `studio/prompts.json` — seed prompts. `studio/curation_state.json` — approvals, trash, order, titles, prompts, per-plate model. Committed on purpose: it is the selection history.
@@ -12,10 +13,10 @@ Demo 9:16 match-cut film project. Every shot places the circular orbital logo at
 
 ## Run
 ```fish
-cd studio
-/opt/homebrew/bin/python3 server.py   # then open http://localhost:8765
+npm install        # once
+npm run dev        # API with auto-restart (studio/dev.py) + Vite with hot reload -> http://localhost:5173
 ```
-Needs Pillow and ffmpeg at `/opt/homebrew/bin/ffmpeg`. The user runs the server themselves; do not start or kill it unless asked.
+Separately: `npm run api` (backend only, restarts when `studio/*.py` changes, the page reloads itself) and `npm run web` (Vite only). `npm run build` writes `studio/web/dist` and the backend then serves the page at :8765. Needs Python 3 with Pillow, ffmpeg at `/opt/homebrew/bin/ffmpeg`, Node 20+. The user runs these themselves; do not start or kill their server unless asked. Do not restart the API mid-generation.
 
 ## Secrets
 - The Kimi API key lives in `studio/.secrets.json` (gitignored) or `KIMI_API_KEY` / `MOONSHOT_API_KEY`. Never write it into `curation_state.json` or any committed file.
@@ -41,9 +42,6 @@ Caveat: the 223 plates trashed before `qa_failed` existed can't be told apart (m
 - Order: `glue_twins()` keeps every twin directly after its original, so dragging/reordering moves pairs together. Trashing an original trashes its twins.
 - Audio/tempo-curve work (synth vs. uploaded track, accelerate/decelerate cut curve measured from the reference) is planned after image quality.
 
-## Dev
-`python3 studio/dev.py` runs the server and restarts it when any `studio/*.py` changes; the page live-reloads on restart or when `index.html` changes (polls `/api/version`). Do not restart it mid-generation.
-
 ## Git
 Agents commit and push to `origin` after every change they make (not on a timer). Plates under `assets/ai-plates/*.jpg` go through Git LFS (`.gitattributes`). Never commit `studio/.secrets.json`.
 
@@ -52,4 +50,4 @@ Agents commit and push to `origin` after every change they make (not on a timer)
 python3 -m venv --system-site-packages .venv; .venv/bin/pip install -r requirements-dev.txt   # once
 .venv/bin/python -m pytest studio/tests -q
 ```
-~160 tests, ~7s, no network, no Krea credits, never touches the real state or plates (fixtures redirect paths to a temp dir). Covers taste, worlds, diversity, state/secrets, twin ordering, QA cache, Kimi parsing and batch writing (fake LLM), critic, Krea client (fake HTTP), logo QA on synthetic plates, bench, dev runner, and the page's JavaScript (`studio/tests/js`, run through node with a fake DOM and fake server, including the full Generate flow). HTTP endpoints are deliberately not tested. Run the tests before committing; add a test with every bug fix. `test_build_full_prompt_keeps_exact_position_wording` guards the logo position text.
+~160 tests, ~7s, no network, no Krea credits, never touches the real state or plates (fixtures redirect paths to a temp dir). Covers taste, worlds, diversity, state/secrets, twin ordering, QA cache, Kimi parsing and batch writing (fake LLM), critic, Krea client (fake HTTP), logo QA on synthetic plates, bench, dev runner, and the page's JavaScript (`studio/tests/js/*.cjs`, `npm test`, run through node with a fake DOM and fake server, including the full Generate flow). HTTP endpoints are deliberately not tested. Run the tests before committing; add a test with every bug fix. `test_build_full_prompt_keeps_exact_position_wording` guards the logo position text.

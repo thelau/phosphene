@@ -11,5 +11,5 @@ JS_DIR = Path(__file__).resolve().parent / "js"
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_page_javascript():
-    r = subprocess.run(["node", "--test", str(JS_DIR / "ui.test.js")], capture_output=True, text=True, timeout=120)
+    r = subprocess.run(["node", "--test", str(JS_DIR / "ui.test.cjs")], capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-2000:]

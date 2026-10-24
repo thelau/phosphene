@@ -11,3 +11,5 @@ assets/ai-plates-rejected/
 studio/.bench_latest.log
 .venv/
 .pytest_cache/
+node_modules/
+studio/web/dist/

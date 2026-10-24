@@ -1,6 +1,6 @@
 """
 Dev runner: restarts server.py when any studio/*.py changes. The page reloads itself
-(it polls /api/version, which changes on every restart and whenever index.html is edited).
+(it polls /api/version, which changes on every restart and whenever the built page changes).
 
     python3 studio/dev.py
 """

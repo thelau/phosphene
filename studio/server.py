@@ -42,6 +42,7 @@ from qa_engine import (
 )
 
 STUDIO_DIR = Path(__file__).resolve().parent
+WEB_DIST = STUDIO_DIR / "web" / "dist"  # built page (npm run build); in dev Vite serves it instead
 REJECTED_DIR = ROOT_DIR / "assets" / "ai-plates-rejected"
 OUTPUTS_DIR = ROOT_DIR / "outputs"
 MUSIC_BPM = 136.0
@@ -567,8 +568,28 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/static/") and (WEB_DIST / parsed.path.lstrip("/")).is_file():
+            f = WEB_DIST / parsed.path.lstrip("/")
+            data = f.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", {".js": "text/javascript", ".css": "text/css"}.get(f.suffix, "application/octet-stream"))
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         if parsed.path in ("/", "/index.html", "/studio", "/studio/"):
-            html_bytes = (STUDIO_DIR / "index.html").read_bytes()
+            index = WEB_DIST / "index.html"
+            if index.exists():
+                html_bytes = index.read_bytes()
+            else:
+                html_bytes = (
+                    "<!doctype html><meta charset=utf-8><title>Match-Cut Studio</title>"
+                    "<body style='font:15px system-ui;background:#0b0b0d;color:#ddd;padding:40px;line-height:1.6'>"
+                    "<h2>The API is running.</h2><p>Open the app at <a style='color:#ec540c' href='http://localhost:5173'>http://localhost:5173</a> "
+                    "(started by <code>npm run dev</code>), or run <code>npm run build</code> to serve it from here.</p>"
+                ).encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(html_bytes)))
@@ -583,7 +604,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
         if parsed.path == "/api/version":
             try:
-                html_mtime = (STUDIO_DIR / "index.html").stat().st_mtime
+                html_mtime = (WEB_DIST / "index.html").stat().st_mtime
             except OSError:
                 html_mtime = 0
             self.send_json({"boot": BOOT_ID, "html": html_mtime})

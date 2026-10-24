@@ -1,0 +1,360 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { load, WEB } = require('./harness.cjs');
+const fs = require('fs');
+
+const baseRoutes = () => ({
+  '/api/state': { plates: [], krea_connected: true, kimi_configured: true },
+  '/api/worlds': { worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', n: 21, kept: 2, wildcard: false }, { name: 'Harbor & Signal', brief: 'Ports.', n: 0, kept: 0, wildcard: true }] },
+});
+const settle = () => new Promise(r => setImmediate(r));
+const mkPlate = (name, trashed = false) => ({ filename: name, url: `/p/${name}`, trashed, title: name, prompt: 'p', model: 'm' });
+
+// ---------- helpers ----------
+
+test('fmtElapsed formats m:ss', () => {
+  const { run } = load({ routes: baseRoutes() });
+  assert.equal(run('fmtElapsed(0)'), '0:00');
+  assert.equal(run('fmtElapsed(59999)'), '0:59');
+  assert.equal(run('fmtElapsed(65000)'), '1:05');
+  assert.equal(run('fmtElapsed(600000)'), '10:00');
+});
+
+test('escapeHtml escapes markup', () => {
+  const { run } = load({ routes: baseRoutes() });
+  assert.equal(run(`escapeHtml('<b a="1">&')`), '&lt;b a=&quot;1&quot;&gt;&amp;');
+});
+
+test('formatModelShort strips provider', () => {
+  const { run } = load({ routes: baseRoutes() });
+  assert.equal(run(`formatModelShort('google/nano-banana-2.1')`), 'nano-banana-2.1');
+  assert.equal(run(`formatModelShort('plain')`), 'plain');
+  assert.equal(run(`formatModelShort('')`), 'nano-banana-2');
+});
+
+test('updateTempo computes frames per cut and persists', () => {
+  const { run, $, store } = load({ routes: baseRoutes() });
+  $('bpmSlider').value = '120'; $('multSelect').value = '2';
+  run('updateTempo()');
+  assert.equal(run('framesPerCut'), 7.5);                      // 1800 / (120*2)
+  assert.equal($('speedVal').textContent, '7.5f');
+  assert.equal($('bpmVal').textContent, '120 BPM');
+  const saved = JSON.parse(store.studioSettings);
+  assert.equal(saved.bpmSlider, '120'); assert.equal(saved.multSelect, '2');
+  $('bpmSlider').value = '220'; $('multSelect').value = '9';
+  run('updateTempo()');
+  assert.equal(run('framesPerCut'), 1);                        // never below one frame
+});
+
+test('restoreSettings brings back remembered values (and ignores unknown options)', () => {
+  const { run, $ } = load({ routes: baseRoutes(), storage: { studioSettings: JSON.stringify({ bpmSlider: '150', directionInput: 'wet' }) } });
+  assert.equal($('bpmSlider').value, '150');
+  assert.equal($('directionInput').value, 'wet');
+});
+
+test('activePlates and tab counts reflect selection vs trash', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: [mkPlate('a'), mkPlate('b'), mkPlate('c', true)] };
+  const { run, $ } = load({ routes: r });
+  await settle(); await settle();
+  assert.equal(run('activePlates().length'), 2);
+  assert.equal($('selCount').textContent, 2);
+  assert.equal($('trashCount').textContent, 1);
+  assert.equal($('statusText').textContent, 'Ready');           // the bar never carries counts
+});
+
+test('pairBadge labels twins and originals', () => {
+  const { run } = load({ routes: baseRoutes() });
+  run(`plates = [{filename:'a'}, {filename:'b', twin_of:'a'}]`);
+  const vis = `[{filename:'a'},{filename:'b'}]`;
+  assert.match(run(`pairBadge(plates[1], ${vis})`), /twin of #01/);
+  assert.match(run(`pairBadge(plates[0], ${vis})`), /has twin #02/);
+  assert.equal(run(`pairBadge({filename:'z'}, ${vis})`), '');
+});
+
+// ---------- status bar ----------
+
+test('setStatus is a toast and never touches the generation status bar', () => {
+  const { run, $ } = load({ routes: baseRoutes() });
+  assert.equal($('statusText').textContent, 'Ready');
+  run(`setStatus('Prompt copied.')`);
+  assert.equal($('toast').textContent, 'Prompt copied.');
+  assert.equal($('statusText').textContent, 'Ready');
+  run(`setStatus('')`);
+  assert.equal($('toast').textContent, '');
+});
+
+test('toasts during a generation do not replace the progress', () => {
+  const { run, $ } = load({ routes: baseRoutes() });
+  run(`progStart(4); prog.stage='render'; prog.total=4; prog.world='Harbor'; prog.slots=['ok','run','wait','wait']; prog.titles=['a','b','c','d']; progRender();`);
+  const before = $('statusText').innerHTML;
+  run(`setStatus('Making twin…')`);
+  assert.equal($('statusText').innerHTML, before);
+  assert.equal($('toast').textContent, 'Making twin…');
+});
+
+// ---------- territory / direction controls ----------
+
+test('direction placeholder follows the territory selection', async () => {
+  const { run, $ } = load({ routes: baseRoutes() });
+  await settle(); await settle();
+  $('worldSelect').value = '';
+  run('updateDirectionHint()');
+  assert.match($('directionInput').placeholder, /what do you want/i);
+  $('worldSelect').value = '__wildcard__';
+  run('updateDirectionHint()');
+  assert.match($('directionInput').placeholder, /hint for the new territory/i);
+  $('worldSelect').value = '__custom__';
+  run('updateDirectionHint()');
+  assert.match($('directionInput').placeholder, /Describe your territory \(required\)/);
+  $('worldSelect').value = 'Editorial Print';
+  run('updateDirectionHint()');
+  assert.match($('directionInput').placeholder, /focus inside Editorial Print/);
+});
+
+test('loadWorlds fills the dropdown with "X of Y kept" and wildcard marker', async () => {
+  const { $, run } = load({ routes: baseRoutes() });
+  await settle(); await settle();
+  const labels = $('worldSelect').options.map(o => o.textContent);
+  assert.ok(labels.includes('Editorial Print (2 of 21 kept)'));
+  assert.ok(labels.includes('✨ Harbor & Signal (0 of 0 kept)'));
+});
+
+test('changing territory clears the direction text', async () => {
+  const { $ } = load({ routes: baseRoutes() });
+  await settle();
+  $('directionInput').value = 'wet apparel';
+  $('worldSelect').fire('change');
+  assert.equal($('directionInput').value, '');
+});
+
+test('setGenerating locks and unlocks all generation controls', () => {
+  const { run, $ } = load({ routes: baseRoutes() });
+  const ids = ['worldSelect', 'directionInput', 'batchCountSelect', 'modelSelect', 'generateBtn'];
+  run('setGenerating(true)');
+  ids.forEach(id => assert.equal($(id).disabled, true, id));
+  run('setGenerating(false)');
+  ids.forEach(id => assert.equal($(id).disabled, false, id));
+});
+
+// ---------- progress rendering ----------
+
+test('progRender: invent stage shows an indeterminate bar, no count', () => {
+  const { run, $ } = load({ routes: baseRoutes() });
+  run('progStart(6)');
+  const html = $('statusText').innerHTML;
+  assert.match(html, /indeterminate/);
+  assert.match(html, /Choosing a territory and writing 6 scenes/);
+  assert.doesNotMatch(html, /<b>/);
+});
+
+test('progRender: slot states, count, running tally and world name', () => {
+  const { run, $ } = load({ routes: baseRoutes() });
+  run(`progStart(6); prog.stage='render'; prog.total=6; prog.world='Harbor & <Signal>';
+       prog.slots=['ok','trash','err','run','run','wait']; prog.titles=['a','b','c','d','e','f']; prog.t0=Date.now()-65000; progRender();`);
+  const html = $('statusText').innerHTML;
+  assert.match(html, /<b>3\/6<\/b>/);
+  assert.equal((html.match(/class="slot ok"/g) || []).length, 1);
+  assert.equal((html.match(/class="slot trash"/g) || []).length, 1);
+  assert.equal((html.match(/class="slot err"/g) || []).length, 1);
+  assert.equal((html.match(/class="slot run"/g) || []).length, 2);
+  assert.equal((html.match(/class="slot wait"/g) || []).length, 1);
+  assert.match(html, /Harbor &amp; &lt;Signal&gt;/);              // escaped
+  assert.match(html, /1:05 · 2 rendering/);
+});
+
+test('progStop keeps a summary and stops the timer', () => {
+  const { run, $ } = load({ routes: baseRoutes() });
+  run(`progStart(2)`);
+  assert.ok(run('prog.timer'));
+  run(`progStop('Done — 2 added')`);
+  assert.equal(run('prog.timer'), null);
+  assert.match($('statusText').innerHTML, /Done — 2 added/);
+});
+
+// ---------- generateImages end to end (fake server) ----------
+
+const ideas = n => Array.from({ length: n }, (_, i) => ({ title: `Idea ${i}`, prompt: `p${i}`, guide: i % 2 ? 'light' : 'dark', world: 'Harbor & Signal', idea: `i${i}` }));
+
+function genRoutes({ n = 4, gen } = {}) {
+  const r = baseRoutes();
+  r['/api/invent-prompts'] = { ok: true, ideas: ideas(n) };
+  r['/api/generate-image'] = gen || (async () => ({ ok: true, qa_passed: true, filename: 'f.jpg' }));
+  return r;
+}
+
+async function runGenerate(h) {
+  h.$('kimiKeyInput').value = 'sk-x';
+  h.$('batchCountSelect').value = '4';
+  const p = h.run('generateImages()');
+  return p;
+}
+
+test('generateImages: success path locks controls, reports progress, then unlocks and clears direction', async () => {
+  let observed = null;
+  const h = load({ routes: genRoutes({ n: 4, gen: async () => { observed = observed || ['worldSelect', 'directionInput', 'batchCountSelect', 'generateBtn'].map(id => h.$(id).disabled); return { ok: true, qa_passed: true }; } }) });
+  await settle(); await settle();
+  h.$('directionInput').value = 'harbour fog';
+  await runGenerate(h);
+  assert.deepEqual(observed, [true, true, true, true]);                            // locked while running
+  ['worldSelect', 'directionInput', 'batchCountSelect', 'generateBtn', 'modelSelect'].forEach(id => assert.equal(h.$(id).disabled, false, id));
+  assert.equal(h.$('directionInput').value, '');                                   // cleared after the batch
+  assert.deepEqual(h.run('prog.slots'), ['ok', 'ok', 'ok', 'ok']);
+  assert.match(h.$('statusText').innerHTML, /Done — 4 added/);
+  assert.equal(h.run('prog.timer'), null);
+  const gen = h.calls.filter(c => c.url === '/api/generate-image');
+  assert.equal(gen.length, 4);
+  assert.equal(gen[0].body.model, h.$('modelSelect').value);
+  assert.equal(gen[0].body.world, 'Harbor & Signal');
+});
+
+test('generateImages sends territory, direction and count to the idea endpoint', async () => {
+  const h = load({ routes: genRoutes({ n: 2 }) });
+  await settle(); await settle();
+  h.$('worldSelect').value = 'Editorial Print';
+  h.$('directionInput').value = 'big type';
+  h.$('batchCountSelect').value = '6';
+  h.$('kimiKeyInput').value = 'sk-x';
+  await h.run('generateImages()');
+  const inv = h.calls.find(c => c.url === '/api/invent-prompts');
+  assert.equal(inv.body.world, 'Editorial Print');
+  assert.equal(inv.body.direction, 'big type');
+  assert.equal(inv.body.count, 6);
+});
+
+test('generateImages runs at most 3 renders in parallel', async () => {
+  let cur = 0, max = 0;
+  const h = load({ routes: genRoutes({ n: 8, gen: async () => { cur++; max = Math.max(max, cur); await settle(); cur--; return { ok: true, qa_passed: true }; } }) });
+  await settle(); await settle();
+  await runGenerate(h);
+  assert.equal(max, 3);
+  assert.equal(h.calls.filter(c => c.url === '/api/generate-image').length, 8);
+});
+
+test('generateImages: logo-check failures show as trash slots and in the summary', async () => {
+  let i = 0;
+  const h = load({ routes: genRoutes({ n: 4, gen: async () => (i++ % 2 ? { ok: true, qa_passed: false, qa_issues: ['Low center logo fidelity'] } : { ok: true, qa_passed: true }) }) });
+  await settle(); await settle();
+  await runGenerate(h);
+  assert.deepEqual(h.run('prog.slots').slice().sort(), ['ok', 'ok', 'trash', 'trash']);
+  assert.match(h.$('statusText').innerHTML, /2 added, 2 in Trash \(Low center logo fidelity\)/);
+});
+
+test('generateImages: server errors on an image become err slots, batch continues', async () => {
+  let i = 0;
+  const h = load({ routes: genRoutes({ n: 3, gen: async () => (i++ === 1 ? { ok: false, error: 'Krea 500' } : { ok: true, qa_passed: true }) }) });
+  await settle(); await settle();
+  await runGenerate(h);
+  assert.equal(h.run('prog.slots').filter(s => s === 'err').length, 1);
+  assert.match(h.$('statusText').innerHTML, /2 added, 1 failed \(Krea 500\)/);
+});
+
+test('generateImages: thrown network errors do not freeze the page', async () => {
+  const h = load({ routes: genRoutes({ n: 2, gen: async () => { throw new Error('socket hang up'); } }) });
+  await settle(); await settle();
+  await runGenerate(h);
+  assert.deepEqual(h.run('prog.slots'), ['err', 'err']);
+  assert.equal(h.$('generateBtn').disabled, false);
+});
+
+test('generateImages: Krea login needed stops remaining renders', async () => {
+  const h = load({ routes: genRoutes({ n: 6, gen: async () => ({ ok: false, needs_auth: true }) }) });
+  await settle(); await settle();
+  await runGenerate(h);
+  assert.ok(h.calls.filter(c => c.url === '/api/generate-image').length <= 3);     // only the in-flight ones were sent
+  assert.equal(h.run('prog.slots').every(s => s === 'err'), true);
+  assert.match(h.$('statusText').innerHTML, /Krea login needed/);
+});
+
+test('generateImages: prompt-writing failure shows an error and unlocks', async () => {
+  const r = baseRoutes();
+  r['/api/invent-prompts'] = { ok: false, error: 'Extra data: line 1 column 798' };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('directionInput').value = 'keep me';
+  await runGenerate(h);
+  assert.match(h.$('statusText').innerHTML, /Error: Extra data/);
+  assert.equal(h.$('generateBtn').disabled, false);
+  assert.equal(h.$('directionInput').value, 'keep me');           // nothing ran, so the text stays
+  assert.equal(h.calls.filter(c => c.url === '/api/generate-image').length, 0);
+});
+
+test('generateImages: missing Kimi key opens settings and does not start', async () => {
+  const h = load({ routes: genRoutes() });
+  await settle(); await settle();
+  h.run('kimiConfigured = false');
+  h.$('kimiKeyInput').value = '';
+  await h.run('generateImages()');
+  assert.equal(h.calls.filter(c => c.url === '/api/invent-prompts').length, 0);
+  assert.match(h.$('toast').textContent, /Paste your Kimi API key/);
+  assert.equal(h.$('generateBtn').disabled, false);
+});
+
+test('background polling does not overwrite live progress', async () => {
+  const h = load({ routes: genRoutes() });
+  await settle(); await settle();
+  h.run(`progStart(3)`);
+  h.run(`refreshIdle()`);
+  assert.match(h.$('statusText').innerHTML, /prog-world/);
+});
+
+test('changing the territory never writes to the status bar', async () => {
+  const h = load({ routes: genRoutes() });
+  await settle(); await settle();
+  h.run(`progStart(2)`);
+  const before = h.$('statusText').innerHTML;
+  h.$('worldSelect').value = 'Editorial Print';
+  h.$('worldSelect').fire('change');
+  assert.equal(h.$('statusText').innerHTML, before);
+});
+
+test('custom territory requires a description before anything is generated', async () => {
+  const h = load({ routes: genRoutes() });
+  await settle(); await settle();
+  h.$('kimiKeyInput').value = 'sk-x';
+  h.$('worldSelect').value = '__custom__';
+  h.$('directionInput').value = '   ';
+  await h.run('generateImages()');
+  assert.equal(h.calls.filter(c => c.url === '/api/invent-prompts').length, 0);
+  assert.match(h.$('toast').textContent, /Describe your custom territory/);
+  assert.equal(h.$('generateBtn').disabled, false);
+});
+
+test('custom territory sends its description as the direction', async () => {
+  const h = load({ routes: genRoutes({ n: 2 }) });
+  await settle(); await settle();
+  h.$('kimiKeyInput').value = 'sk-x';
+  h.$('worldSelect').value = '__custom__';
+  h.$('directionInput').value = '  fog, clouds, rain  ';
+  await h.run('generateImages()');
+  const inv = h.calls.find(c => c.url === '/api/invent-prompts');
+  assert.equal(inv.body.world, '__custom__');
+  assert.equal(inv.body.direction, 'fog, clouds, rain');
+});
+
+test('territory dropdown offers Mix it up, Custom and New', () => {
+  const { $, run } = load({ routes: baseRoutes() });
+  const html = fs.readFileSync(WEB('index.html'), 'utf8');
+  assert.match(html, /<option value="">🎲 Mix it up<\/option>/);
+  assert.match(html, /<option value="__custom__">✍️ Custom territory…<\/option>/);
+  assert.match(html, /<option value="__wildcard__">✨ New territory/);
+});
+
+test('every inline handler in the markup and templates is exported on window', () => {
+  const html = fs.readFileSync(WEB('index.html'), 'utf8');
+  const app = fs.readFileSync(WEB('src', 'app.js'), 'utf8');
+  const used = new Set();
+  for (const m of (html + app).matchAll(/\bon[a-z]+="(?:[^"]*?[;\s])?([A-Za-z_]\w*)\(/g)) used.add(m[1]);
+  used.delete('event');
+  const h = load({ routes: baseRoutes() });
+  const missing = [...used].filter(n => h.run(`typeof window.${n}`) !== 'function');
+  assert.deepEqual(missing, []);
+  assert.ok(used.size >= 20);
+});
+
+test('the page entry is a module with a stylesheet, and markup has no inline script or style blocks', () => {
+  const html = fs.readFileSync(WEB('index.html'), 'utf8');
+  assert.match(html, /<script type="module" src="\/src\/app.js">/);
+  assert.match(html, /<link rel="stylesheet" href="\/src\/style.css"/);
+  assert.doesNotMatch(html, /<style>/);
+});

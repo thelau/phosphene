@@ -1,0 +1,16 @@
+{
+  "name": "Demo-studio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c yellow,cyan \"python3 studio/dev.py\" \"vite studio/web\"",
+    "web": "vite studio/web",
+    "api": "python3 studio/dev.py",
+    "build": "vite build studio/web",
+    "test": "node --test studio/tests/js/ui.test.cjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "vite": "^7.0.0"
+  }
+}
