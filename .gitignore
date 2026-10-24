@@ -9,3 +9,5 @@ assets/ai-plates-backups/
 assets/ai-plates-rejected/
 
 studio/.bench_latest.log
+.venv/
+.pytest_cache/

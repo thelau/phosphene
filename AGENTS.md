@@ -46,3 +46,10 @@ Caveat: the 223 plates trashed before `qa_failed` existed can't be told apart (m
 
 ## Git
 Agents commit and push to `origin` after every change they make (not on a timer). Plates under `assets/ai-plates/*.jpg` go through Git LFS (`.gitattributes`). Never commit `studio/.secrets.json`.
+
+## Tests
+```fish
+python3 -m venv --system-site-packages .venv; .venv/bin/pip install -r requirements-dev.txt   # once
+.venv/bin/python -m pytest studio/tests -q
+```
+~160 tests, ~7s, no network, no Krea credits, never touches the real state or plates (fixtures redirect paths to a temp dir). Covers taste, worlds, diversity, state/secrets, twin ordering, QA cache, Kimi parsing and batch writing (fake LLM), critic, Krea client (fake HTTP), logo QA on synthetic plates, bench, dev runner, and the page's JavaScript (`studio/tests/js`, run through node with a fake DOM and fake server, including the full Generate flow). HTTP endpoints are deliberately not tested. Run the tests before committing; add a test with every bug fix. `test_build_full_prompt_keeps_exact_position_wording` guards the logo position text.
