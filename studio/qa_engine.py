@@ -15,7 +15,6 @@ from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageOp
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 LOGO_CREAM_PATH = ROOT_DIR / "demo-info" / "design-system" / "logo-cream.png"
-LOGO_OXBLOOD_PATH = ROOT_DIR / "demo-info" / "design-system" / "logo-oxblood.png"
 PLATES_DIR = ROOT_DIR / "assets" / "ai-plates"
 
 TARGET_W = 1080
@@ -182,11 +181,6 @@ def evaluate_plate_qa(image_path: Path) -> dict:
 
     if outer_max_corr > 0.40 and best_corr < 0.22:
         issues.append(f"Oversized outer ring (d={outer_best_diam}px, corr={outer_max_corr:.2f})")
-
-    # Known specific artifact check for leftover reference watermark or double carving
-    fname = image_path.name.lower()
-    if any(bad in fname for bad in ("11_concrete_double", "13_tear_strip_box", "14_archive_folder", "20_neon_glass_tube_sign", "21_asphalt_crosswalk_stencil")):
-        issues.append("Rejected artifact plate")
 
     qa_score = max(0, min(100, int(round(
         (min(best_corr, 0.70) / 0.70) * 80

@@ -300,7 +300,7 @@ def test_add_ai_sequence_keeps_the_manual_order_and_trashed_slots(srv, make_plat
     st = build_state(srv, make_plate)
     manual = st["active_sequence"]
     st["trashed"] = ["27_p7.jpg"]
-    sq.set_order(st, [f"{20 + i}_p{i}.jpg" for i in range(8)])
+    sq.reorder_active(st, [f"{20 + i}_p{i}.jpg" for i in range(8)])
     built = srv.build_ai_order(st, lambda *a, **k: "{}", "k", "m")
     seq = srv.add_ai_sequence(st, built)
     assert seq["kind"] == "ai" and st["active_sequence"] == seq["id"] and seq["cut_off"] is None

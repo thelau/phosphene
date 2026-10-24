@@ -15,18 +15,6 @@ def test_worlds_are_well_formed():
         assert w["brief"] and w["palette"]
 
 
-def test_pick_world_by_name_and_fallback():
-    assert chapters.pick_world(name="Editorial Print")["name"] == "Editorial Print"
-    assert chapters.pick_world(name="Nope")["name"] in {w["name"] for w in chapters.WORLDS}
-
-
-def test_pick_world_avoids_recent():
-    recent = [w["name"] for w in chapters.WORLDS[:4]]
-    random.seed(3)
-    for _ in range(100):
-        assert chapters.pick_world(recent)["name"] not in recent
-
-
 def mk_world(name):
     return {"name": name, "brief": "b", "palette": "p", "applications": ["a"] * 10, "marks": ["m"] * 5, "weight": 1.0}
 

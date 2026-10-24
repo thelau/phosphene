@@ -79,14 +79,6 @@ def get_order(st: dict) -> list:
     return list(seq["order"]) if seq else list(st.get("order", []))
 
 
-def set_order(st: dict, order: list) -> None:
-    seq = active(st)
-    if seq:
-        seq["order"] = list(dict.fromkeys(order))
-    else:
-        st["order"] = list(order)
-
-
 def reorder_active(st: dict, new_order: list) -> None:
     """The user dragged something: the order they are looking at changes (Manual or AI)."""
     order = list(dict.fromkeys(str(x) for x in new_order))

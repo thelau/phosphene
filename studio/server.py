@@ -47,13 +47,11 @@ from qa_engine import (
 
 STUDIO_DIR = Path(__file__).resolve().parent
 WEB_DIST = STUDIO_DIR / "web" / "dist"  # built page (npm run build); in dev Vite serves it instead
-REJECTED_DIR = ROOT_DIR / "assets" / "ai-plates-rejected"
 OUTPUTS_DIR = ROOT_DIR / "outputs"
 CURATION_FILE = STUDIO_DIR / "curation_state.json"
 SECRETS_FILE = STUDIO_DIR / ".secrets.json"  # gitignored; holds kimi_api_key
 
 PLATES_DIR.mkdir(parents=True, exist_ok=True)
-REJECTED_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 QA_CACHE_FILE = STUDIO_DIR / "qa_cache.json"
@@ -66,24 +64,6 @@ except Exception:
 def _plate_key(path: Path) -> str:
     # size, not mtime: git checkouts rewrite mtimes and used to invalidate every cached result
     return f"{path.name}:{path.stat().st_size}"
-
-
-def _migrate_qa_cache() -> None:
-    """Re-key old 'name:mtime' entries to 'name:size' so existing results survive."""
-    latest: dict = {}
-    for k, v in QA_CACHE.items():
-        name, _, tail = k.rpartition(":")
-        if name and tail.isdigit() and int(tail) > 10**9:  # an mtime
-            latest[name] = v
-    for name, v in latest.items():
-        for d in (PLATES_DIR, REJECTED_DIR):
-            f = d / name
-            if f.exists():
-                QA_CACHE.setdefault(f"{name}:{f.stat().st_size}", v)
-                break
-
-
-_migrate_qa_cache()
 
 
 QA_LOCK = threading.Lock()
@@ -113,78 +93,8 @@ def get_cached_qa(path: Path) -> dict:
         return QA_CACHE[key]
 
 
-DEFAULT_TITLES = {
-    "01_glass_card.jpg": "Frosted Glass Pass",
-    "02_black_hoodie.jpg": "Matte-Black Hoodie",
-    "03_white_hoodie.jpg": "Warm-Cream Hoodie",
-    "04_sculpture_badge.jpg": "3D Chrome & Glass Sculpture",
-    "05_dark_ui_crop.jpg": "Dark OLED UI ('Orchestrate')",
-    "06_light_ui_crop.jpg": "Light Display UI ('Orchestrate')",
-    "07_techwear_portrait.jpg": "Techwear Collar Portrait",
-    "08_floating_iphone_3d.jpg": "Floating 3D iPhone UI",
-    "09_tinted_acrylic_slab.jpg": "Cast Orange/Pink Acrylic Slab",
-    "10_concrete_sunbeam.jpg": "Brutalist Concrete Sunbeam",
-    "11_concrete_double.jpg": "Concrete Double Carving",
-    "12_led_matrix.jpg": "RGB LED Matrix Display",
-    "13_tear_strip_box.jpg": "Isometric Tear-Strip Box",
-    "14_archive_folder.jpg": "Japanese Archive Folder",
-    "15_times_square_billboard.jpg": "Times Square 3D LED Billboard",
-    "20_neon_glass_tube_sign.jpg": "Neon Glass Tube Sign",
-    "21_asphalt_crosswalk_stencil.jpg": "Asphalt Crosswalk Stencil",
-    "24_phosphor_broadcast_crt_tel.jpg": "Phosphor Broadcast CRT Telemetry",
-    "26_ancient_moss_trunk_carving.jpg": "Ancient Moss Trunk Carving",
-    "28_ar_hud_glass_console.jpg": "AR HUD Glass Console",
-    "29_shibuya_rain_curve.jpg": "Shibuya Rain 3D Curve",
-    "30_electric_blue_command_pale.jpg": "Electric-Blue Command Palette UI",
-    "31_neon_drench_transit_lightb.jpg": "Neon Drench Transit Lightbox",
-    "32_interlace_telemetry_wall.jpg": "Interlace Telemetry Wall",
-    "33_dotonbori_rain_curve.jpg": "Dotonbori Rain 3D Curve",
-    "34_ochre_sandstone_monolith.jpg": "Ochre Sandstone Monolith",
-}
 
-DEFAULT_PROMPTS = {
-    "01_glass_card.jpg": "Silhouetted hand holding up a small rectangular transparent frosted glass access pass against a grainy blurred aura of burnt orange (#EC540C), hot pink (#F64570), and electric blue (#5D8FF4), with the warm-cream (#FEFFE7) circular orbital logo etched inside the glass at dead-center",
-    "02_black_hoodie.jpg": "Tight studio macro shot of a heavyweight matte-black cotton hoodie chest with hood drawstrings and burnt-orange (#EC540C) metal aglet tips, with the warm-cream (#FEFFE7) circular orbital logo screen-printed on the black cotton weave at dead-center",
-    "03_white_hoodie.jpg": "Tight studio macro shot of a heavyweight warm-cream (#FEFFE7) cotton hoodie chest with matte-black metal aglet tips, with the matte-black (#1A1A1A) circular orbital logo screen-printed on the cotton fleece at dead-center",
-    "04_sculpture_badge.jpg": "Macro 3D studio render of architectural blocks made of brushed silver chrome and translucent burnt-orange (#EC540C) glass, with a matte-black rounded-square badge at dead-center containing the glowing warm-cream (#FEFFE7) circular orbital logo",
-    "05_dark_ui_crop.jpg": "Tight macro crop of a sleek dark-mode software interface on an OLED display (#1A1A1A) with subtle burnt-orange (#EC540C) and hot-pink (#F64570) glow, bold cropped white typography above, and the glowing burnt-orange circular orbital logo at dead-center",
-    "06_light_ui_crop.jpg": "Tight macro crop of a sleek light-mode software interface on a high-DPI display in warm cream (#FEFFE7) with bold cropped black typography above, and the vibrant burnt-orange (#EC540C) circular orbital logo at dead-center",
-    "07_techwear_portrait.jpg": "High-fashion futuristic studio portrait of a model in dark glossy techwear with a high collar and tinted glasses under electric-blue (#5D8FF4) rim light against a burnt-orange (#EC540C) backdrop, with the luminous warm-cream (#FEFFE7) circular orbital logo on the high collar at dead-center",
-    "08_floating_iphone_3d.jpg": "Floating 3D iPhone tilted in perspective in front of a matte-black and chrome sculptural object against an electric-blue (#5D8FF4) and burnt-orange (#EC540C) studio backdrop, with the glowing warm-cream (#FEFFE7) circular orbital logo on the angled glass screen at dead-center",
-    "09_tinted_acrylic_slab.jpg": "Isometric studio macro photo of a thick polished slab of translucent burnt-orange (#EC540C) and hot-pink (#F64570) cast acrylic resting on concrete with glowing caustic edge reflections, with the white circular orbital logo laser-etched at dead-center",
-    "10_concrete_sunbeam.jpg": "Architectural macro photograph of a dark brutalist board-formed concrete wall grazed by a diagonal beam of warm golden-orange sunlight, with the circular orbital logo debossed and painted in warm cream (#FEFFE7) at dead-center",
-    "12_led_matrix.jpg": "Extreme macro shot of a dark industrial RGB LED dot-matrix display (#1A1A1A) with visible pixel grid, lit up in glowing burnt-orange (#EC540C) LED dots forming the circular orbital logo at dead-center",
-    "15_times_square_billboard.jpg": "Cinematic night street-level photograph looking up at a massive curved 3D LED billboard wrapped around a skyscraper corner in rainy Times Square with wet asphalt reflections, displaying a grainy aura of burnt orange (#EC540C), hot pink (#F64570), and electric blue (#5D8FF4) with the glowing warm-cream (#FEFFE7) circular orbital logo at dead-center",
-}
 
-DEFAULT_MODELS = {
-    "01_glass_card.jpg": "google/nano-banana-2",
-    "02_black_hoodie.jpg": "google/nano-banana-2",
-    "03_white_hoodie.jpg": "google/nano-banana-2",
-    "04_sculpture_badge.jpg": "google/nano-banana-2",
-    "05_dark_ui_crop.jpg": "google/nano-banana-2",
-    "06_light_ui_crop.jpg": "google/nano-banana-2",
-    "07_techwear_portrait.jpg": "google/nano-banana-2",
-    "08_floating_iphone_3d.jpg": "google/nano-banana-2",
-    "09_tinted_acrylic_slab.jpg": "google/nano-banana-2",
-    "10_concrete_sunbeam.jpg": "google/nano-banana-2",
-    "11_concrete_double.jpg": "google/nano-banana-2",
-    "12_led_matrix.jpg": "google/nano-banana-2",
-    "13_tear_strip_box.jpg": "google/nano-banana-2",
-    "14_archive_folder.jpg": "google/nano-banana-2",
-    "15_times_square_billboard.jpg": "google/nano-banana-pro",
-    "20_neon_glass_tube_sign.jpg": "google/nano-banana-pro",
-    "21_asphalt_crosswalk_stencil.jpg": "google/nano-banana-pro",
-    "24_phosphor_broadcast_crt_tel.jpg": "bytedance/seedream-5-pro",
-    "26_ancient_moss_trunk_carving.jpg": "bytedance/seedream-5-pro",
-    "28_ar_hud_glass_console.jpg": "krea/krea-3",
-    "29_shibuya_rain_curve.jpg": "krea/krea-3",
-    "30_electric_blue_command_pale.jpg": "krea/krea-3",
-    "31_neon_drench_transit_lightb.jpg": "krea/krea-3",
-    "32_interlace_telemetry_wall.jpg": "krea/krea-3",
-    "33_dotonbori_rain_curve.jpg": "krea/krea-3",
-    "34_ochre_sandstone_monolith.jpg": "krea/krea-3",
-}
 
 def apply_critic(filename: str) -> None:
     """Score a plate with the Kimi critic. Advisory unless critic_autotrash is on (then low scores go to Trash with the reason)."""
@@ -422,10 +332,10 @@ def match_world(st: dict, api_key: str, kimi_model: str, direction: str) -> dict
     return None
 
 
-def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, pair: bool = False, world: str | None = None, direction: str = "") -> list[dict]:
+def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, world: str | None = None, direction: str = "") -> list[dict]:
     """One authored creative world per batch (shots cohere), idea-first, steered by taste, near-duplicates dropped."""
-    titles = {**DEFAULT_TITLES, **st.get("titles", {})}
-    prompts = {**DEFAULT_PROMPTS, **st.get("prompts", {})}
+    titles = st.get("titles", {})
+    prompts = st.get("prompts", {})
     brief = taste.taste_brief(st, titles, prompts)
     ban_str = ", ".join(list(dict.fromkeys(list(titles.values()) + st.get("history", [])))[-80:])
 
@@ -538,7 +448,7 @@ def build_ai_order(st: dict, call_llm, api_key: str, model: str, length: int | N
     progress(2, "choosing the order")
     result = editor.order_images(items, brief, length)
     progress(3, "writing the summary")
-    titles = {**DEFAULT_TITLES, **st.get("titles", {})}
+    titles = st.get("titles", {})
     return {"result": result, "summary": note + editor.summarize(titles, result, brief.get("summary"))}
 
 
@@ -580,7 +490,7 @@ def run_ai_order_job(job_id: str, length, direction: str) -> None:
 
 def next_plate_number(st: dict) -> int:
     """Next free plate number. Counts purged plates too (their records stay in the state), so numbers are never reused."""
-    names = [p.name for p in list(PLATES_DIR.glob("*.jpg")) + list(REJECTED_DIR.glob("*.jpg"))]
+    names = [p.name for p in PLATES_DIR.glob("*.jpg")]
     for key in ("titles", "prompts", "models"):
         names += list(st.get(key, {}))
     names += list(st.get("purged", []))
@@ -595,12 +505,11 @@ def purge_plates(st: dict, requested) -> tuple[int, int]:
     names = [n for n in requested if n in trashed]
     freed = deleted = 0
     for n in names:
-        for folder in (PLATES_DIR, REJECTED_DIR):
-            f = folder / n
-            if f.is_file():
-                freed += f.stat().st_size
-                f.unlink()
-                deleted += 1
+        f = PLATES_DIR / n
+        if f.is_file():
+            freed += f.stat().st_size
+            f.unlink()
+            deleted += 1
         for key in [k for k in QA_CACHE if k.rpartition(":")[0] == n]:
             QA_CACHE.pop(key, None)
     st["purged"] = sorted(set(st.get("purged", [])) | set(names))
@@ -728,9 +637,9 @@ class StudioHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/state":
             st = load_state()
             trashed_set = set(st.get("trashed", []))
-            titles = {**DEFAULT_TITLES, **st.get("titles", {})}
-            prompts = {**DEFAULT_PROMPTS, **st.get("prompts", {})}
-            models = {**DEFAULT_MODELS, **st.get("models", {})}
+            titles = st.get("titles", {})
+            prompts = st.get("prompts", {})
+            models = st.get("models", {})
             auth = get_krea_oauth_token()
 
             plates = []
@@ -855,7 +764,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     api_key=kimi_key,
                     kimi_model=kimi_model,
                     count=int(body.get("count", 4)),
-                    pair=False,
                     world=body.get("world") or None,
                     direction=(body.get("direction") or "").strip()[:300],
                 )

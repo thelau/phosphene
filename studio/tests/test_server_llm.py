@@ -142,7 +142,7 @@ def test_ask_kimi_direction_with_named_world_is_injected(srv, fake_llm):
 
 
 def test_ask_kimi_direction_replaces_the_worlds_random_subjects(srv, fake_llm):
-    w = chapters.pick_world(name="Nature & Light")
+    w = next(w for w in chapters.WORLDS if w["name"] == "Nature & Light")
     srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=3, world="Nature & Light", direction="fog, clouds, lightning")
     p = fake_llm[0]
     assert "HARD REQUIREMENT" in p and "fog, clouds, lightning" in p
@@ -152,7 +152,7 @@ def test_ask_kimi_direction_replaces_the_worlds_random_subjects(srv, fake_llm):
 
 
 def test_ask_kimi_without_direction_makes_kimi_invent_the_subjects(srv, fake_llm):
-    w = chapters.pick_world(name="Packaging & Product")
+    w = next(w for w in chapters.WORLDS if w["name"] == "Packaging & Product")
     srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=8, world="Packaging & Product")
     p = fake_llm[0]
     assert "HARD REQUIREMENT" not in p

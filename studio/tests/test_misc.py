@@ -11,7 +11,6 @@ import bench
 import sequences
 import bench_status
 import dev
-import diegetic_engine as de
 
 
 # ---------- bench_status ----------
@@ -179,18 +178,6 @@ def test_bench_runway_prompt_is_capped_and_mentions_mark():
 
 def test_bench_runway_prompt_short_input_kept():
     assert bench.runway_prompt("short").startswith("short")
-
-
-# ---------- repair helper ----------
-
-def test_heal_circular_patch_copies_clean_texture_over_target():
-    im = Image.new("RGB", (400, 400), (0, 0, 255))
-    from PIL import ImageDraw
-    ImageDraw.Draw(im).ellipse((140, 140, 260, 260), fill=(255, 0, 0))     # the thing to heal at (200,200)
-    out = de.heal_circular_patch(im, 200, 200, 60, sample_dx=0, sample_dy=-130)   # clean blue patch from above
-    assert out.getpixel((200, 200)) == (0, 0, 255)
-    assert im.getpixel((200, 200)) == (255, 0, 0)                           # original untouched
-    assert out.size == im.size
 
 
 # ---------- export naming ----------

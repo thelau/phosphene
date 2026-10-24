@@ -3,12 +3,12 @@
 Demo 9:16 match-cut film project. Every shot places the circular orbital logo at exact dead-center (50%, 50%), 18% of frame width, in a different material/scene.
 
 ## Layout
-- `render.py` — original headless PIL + ffmpeg renderer (30s, 136 BPM, beat-locked to `music/warehouse-tension.mp3`).
 - `studio/server.py` — the API server (port 8765, `PORT` env to change): JSON API, plates and exported video. It also serves the built page from `studio/web/dist` if `npm run build` was run.
 - `studio/web/` — the frontend (Vite, vanilla JS): `index.html` (markup), `src/app.js`, `src/style.css`, `vite.config.js` (proxies `/api`, `/assets`, `/outputs` to :8765). Inline `onclick=` handlers need the function exported at the bottom of `app.js` (a test checks this).
 - `studio/krea_mcp_client.py` — Krea image generation over MCP (`https://api.krea.ai/mcp`). OAuth token is read from `~/.local/share/opencode/mcp-auth.json`.
-- `studio/qa_engine.py` — logo QA on generated plates. `studio/diegetic_engine.py` — repairs failed plates.
-- `studio/prompts.json` — seed prompts. `studio/curation_state.json` — approvals, trash, order, titles, prompts, per-plate model. Committed on purpose: it is the selection history.
+- `studio/qa_engine.py` — logo QA on generated plates (needs `demo-info/design-system/logo-cream.png`). `demo-info/` also holds the design-system PDFs and the playbook: reference, not read by code.
+- `studio/chapters.py` (territories), `diversity.py` (random axes), `taste.py` (learning from kept/trashed), `critic.py` (optional AI scoring, off by default), `cutplan.py` (preview/export frame plan, invert, zoom), `sequences.py` (Manual/AI orders), `editor.py` + `features.py` (AI ordering), `bench.py` (scripted generation runs, optional).
+- `studio/curation_state.json` — approvals, trash, order, titles, prompts, per-plate model. Committed on purpose: it is the selection history.
 - `assets/ai-plates/` — generated plates (committed). `outputs/*.mp4` is gitignored.
 
 ## Run

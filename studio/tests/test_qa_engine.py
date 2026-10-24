@@ -71,12 +71,6 @@ def test_non_standard_size_is_normalised(tmp_path):
     assert qa.evaluate_plate_qa(p)["qa_passed"]
 
 
-def test_known_bad_filenames_are_rejected(tmp_path):
-    p = plate_with_logo(tmp_path / "11_concrete_double.jpg")
-    r = qa.evaluate_plate_qa(p)
-    assert not r["qa_passed"] and "Rejected artifact plate" in r["issues"]
-
-
 def test_result_shape(tmp_path):
     r = qa.evaluate_plate_qa(plate_with_logo(tmp_path / "ok.jpg"))
     for key in ("filename", "qa_passed", "qa_score", "center_corr", "core_asymmetry", "outer_ring_corr", "detected_diam_px", "polarity", "issues"):

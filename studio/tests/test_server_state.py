@@ -96,15 +96,6 @@ def test_plate_key_uses_size_not_mtime(srv, make_plate):
     assert srv._plate_key(p) == k1 == f"a.jpg:{p.stat().st_size}"
 
 
-def test_migrate_qa_cache_rekeys_old_mtime_entries(srv, make_plate, monkeypatch):
-    p = make_plate(srv.PLATES_DIR / "a.jpg")
-    srv.QA_CACHE["a.jpg:1792745756"] = {"qa_passed": True}
-    srv.QA_CACHE["gone.jpg:1792745756"] = {"qa_passed": False}
-    srv._migrate_qa_cache()
-    assert srv.QA_CACHE[f"a.jpg:{p.stat().st_size}"] == {"qa_passed": True}
-    assert not any(k.startswith("gone.jpg:") and k != "gone.jpg:1792745756" for k in srv.QA_CACHE)
-
-
 def test_get_cached_qa_evaluates_once_and_writes_atomically(srv, make_plate, monkeypatch):
     p = make_plate(srv.PLATES_DIR / "a.jpg")
     calls = []
@@ -215,7 +206,7 @@ def test_ordered_plate_files_follows_the_active_sequence(srv, make_plate):
         make_plate(srv.PLATES_DIR / n)
     st = srv.load_state()
     manual = st["active_sequence"]
-    sequences.set_order(st, ["3_c.jpg", "1_a.jpg", "2_b.jpg"])
+    sequences.reorder_active(st, ["3_c.jpg", "1_a.jpg", "2_b.jpg"])
     ai = sequences.add_ai(st, ["2_b.jpg", "3_c.jpg", "1_a.jpg"])
     assert [p.name for p in srv.ordered_plate_files(st)] == ["2_b.jpg", "3_c.jpg", "1_a.jpg"]
     sequences.activate(st, manual)
@@ -239,7 +230,7 @@ def test_purge_removes_images_from_every_sequence(srv, make_plate):
         make_plate(srv.PLATES_DIR / n)
     st = srv.load_state()
     st["trashed"] = ["20_a.jpg"]
-    sequences.set_order(st, ["20_a.jpg", "21_b.jpg"])
+    sequences.reorder_active(st, ["20_a.jpg", "21_b.jpg"])
     sequences.add_ai(st, ["21_b.jpg", "20_a.jpg"])
     srv.purge_plates(st, ["20_a.jpg"])
     assert all("20_a.jpg" not in s["order"] for s in st["sequences"])

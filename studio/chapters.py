@@ -238,17 +238,6 @@ WORLDS = [
 ]
 
 
-def pick_world(recent: list[str] | None = None, name: str | None = None) -> dict:
-    """Weighted random world, avoiding the most recently used ones."""
-    if name:
-        for w in WORLDS:
-            if w["name"] == name:
-                return w
-    recent = recent or []
-    pool = [w for w in WORLDS if w["name"] not in recent[-4:]] or WORLDS
-    return random.choices(pool, weights=[w["weight"] for w in pool], k=1)[0]
-
-
 def all_worlds(st: dict) -> list[dict]:
     """Built-in worlds plus wildcard worlds Kimi invented that have earned their place."""
     out = list(WORLDS)
