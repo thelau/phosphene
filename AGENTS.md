@@ -42,6 +42,7 @@ Quality reference: `inspiration/soiltone-inspo.mp4` — 8s, ~48 cuts, each scene
 Caveat: the 223 plates trashed before `qa_failed` existed can't be told apart (manual vs QA), so older model scores are noisy.
 
 ## Git
+History was rewritten on 2026-10-25 to drop deleted plates and legacy assets (`.git` 744 MB -> 100 MB; all plates are Git LFS). A full backup of the old `.git` is in `~/Downloads/old-git-backup-20261025`. On a new machine: `git lfs install && git clone <repo>` (or `git lfs pull` after cloning) to get the images.
 Agents commit and push to `origin` after every change they make (not on a timer). Plates under `assets/ai-plates/*.jpg` go through Git LFS (`.gitattributes`). Never commit `studio/.secrets.json`.
 
 ## Tests
