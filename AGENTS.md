@@ -28,13 +28,13 @@ Needs Pillow and ffmpeg at `/opt/homebrew/bin/ffmpeg`. The user runs the server 
 
 ## Roadmap
 Done:
-1. Taste loop (`studio/taste.py`): ❤ approve button, liked/disliked brief injected into prompt generation, per-model scorecard in Settings, "Auto" model that exploits/explores by score. Added Ideogram 4.5, Luma UNI-1, Meta Muse, Runway Gen-4 (all take the logo guide image).
+1. Taste loop (`studio/taste.py`): kept = liked, trashed = disliked (logo-QA auto-trash is tracked separately in `qa_failed`), liked/disliked brief injected into prompt generation, per-model scorecard in Settings, "Auto" model that exploits/explores by score. Added Ideogram 4.5, Luma UNI-1, Meta Muse, Runway Gen-4 (all take the logo guide image).
 2. Diversity (`studio/diversity.py`): no fixed categories; each shot is a random combo of subject/material/setting/light/camera/logo/palette, recent values avoided, near-duplicate prompts dropped (Jaccard novelty).
 3. Tempo: BPM slider + cuts-per-beat multiple in preview and export; music is time-stretched from 136 BPM.
 
-Quality reference: `inspiration/soiltone-inspo.mp4` — 8s, ~48 cuts, each scene shown as a color/mono twin pair, one hero subject, logo crisp at dead-center. "Pairs" generates the twin. Quality bar lives in `QUALITY_BAR` in `server.py`.
+Quality reference: `inspiration/soiltone-inspo.mp4` — 8s, ~48 cuts, each scene shown as a color/mono twin pair, one hero subject, logo crisp at dead-center. Twins are made with the 🌗 Twin button. Quality bar lives in `QUALITY_BAR` in `server.py`.
 
-Caveat: trashed = manual trash OR logo-QA auto-trash; most trash so far is QA failures, so model scores mostly reflect logo-lock reliability until you approve more plates.
+Caveat: the 223 plates trashed before `qa_failed` existed can't be told apart (manual vs QA), so older model scores are noisy.
 
 ## Twins
 - No "Pairs" at generation. Each kept card has a 🌗 Twin button (and "Twin all kept"): `/api/make-twin` edits the plate itself (nano-banana-pro) into the opposite tone and stores `twin_of[twin] = original` in `curation_state.json`.
