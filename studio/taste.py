@@ -10,7 +10,7 @@ no taste signal for prompts. Restoring a plate from trash makes it "kept".
 import random
 import re
 
-WEIGHTS = {"kept": 1.0, "trashed": -1.0, "qa_failed": -0.5}
+WEIGHTS = {"kept": 1.0, "trashed": -1.0, "qa_failed": -0.5, "critic_failed": -0.25}
 
 # Models that accept a reference image (the center-locked logo guide). Order is the UI order.
 CANDIDATE_MODELS = [
@@ -29,15 +29,19 @@ CANDIDATE_MODELS = [
 
 def plate_status(st: dict, filename: str) -> str:
     if filename in st.get("trashed", []):
-        return "qa_failed" if filename in st.get("qa_failed", []) else "trashed"
+        if filename in st.get("qa_failed", []):
+            return "qa_failed"
+        if filename in st.get("critic_failed", []):
+            return "critic_failed"
+        return "trashed"
     return "kept"
 
 
 def model_stats(st: dict) -> dict:
     """Per model: counts per status, n, and a smoothed mean score in [-2, 2]."""
-    stats = {m: {"n": 0, "kept": 0, "trashed": 0, "qa_failed": 0} for m in CANDIDATE_MODELS}
+    stats = {m: {"n": 0, "kept": 0, "trashed": 0, "qa_failed": 0, "critic_failed": 0} for m in CANDIDATE_MODELS}
     for filename, model in st.get("models", {}).items():
-        s = stats.setdefault(model, {"n": 0, "kept": 0, "trashed": 0, "qa_failed": 0})
+        s = stats.setdefault(model, {"n": 0, "kept": 0, "trashed": 0, "qa_failed": 0, "critic_failed": 0})
         s["n"] += 1
         s[plate_status(st, filename)] += 1
     for s in stats.values():

@@ -13,6 +13,7 @@ import os
 import random
 import shutil
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -22,6 +23,8 @@ from urllib.parse import urlparse
 
 from PIL import Image
 
+import chapters
+import critic
 import diversity
 import taste
 
@@ -137,6 +140,26 @@ DEFAULT_MODELS = {
     "33_dotonbori_rain_curve.jpg": "krea/krea-3",
     "34_ochre_sandstone_monolith.jpg": "krea/krea-3",
 }
+
+def apply_critic(filename: str) -> None:
+    """Score a plate with the Kimi critic. Advisory unless critic_autotrash is on (then low scores go to Trash with the reason)."""
+    st = load_state()
+    if not st.get("critic_enabled", True) or not st.get("kimi_api_key"):
+        return
+    try:
+        r = critic.review_plate(PLATES_DIR / filename, call_kimi_llm, st["kimi_api_key"], st.get("kimi_model", "kimi-k3"))
+    except Exception as e:
+        print(f"[CRITIC] {filename}: {str(e)[:120]}", flush=True)
+        return
+    st = load_state()
+    st.setdefault("critic", {})[filename] = {"mean": r["mean"], "reason": r["reason"], "scores": r["scores"]}
+    if st.get("critic_autotrash") and r["verdict"] == "trash" and filename not in st.get("trashed", []):
+        st["trashed"] = sorted(set(st.get("trashed", [])) | {filename})
+        st.setdefault("trashed_at", {})[filename] = time.time()
+        st["critic_failed"] = sorted(set(st.get("critic_failed", [])) | {filename})
+    save_state(st)
+    print(f"[CRITIC] {filename} {r['mean']} {r['verdict']} - {r['reason']}", flush=True)
+
 
 def build_full_prompt(raw_prompt: str) -> str:
     return (
@@ -265,7 +288,7 @@ def ordered_plate_files(st: dict) -> list[Path]:
     return result
 
 
-def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3") -> str:
+def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", images: list | None = None, system: str | None = None) -> str:
     """Calls Kimi API (Moonshot .ai, .cn, or Kimi Coding) with automatic model/endpoint fallback."""
     key = (api_key or "").strip()
     if not key:
@@ -289,6 +312,13 @@ def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3") -
         if m and m not in models_to_try:
             models_to_try.append(m)
 
+    user_content = prompt
+    if images:  # JPEG bytes -> OpenAI-style multimodal content
+        import base64
+        user_content = [{"type": "text", "text": prompt}] + [
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(b).decode()}} for b in images
+        ]
+
     last_err = None
     for ep in endpoints:
         for model in models_to_try:
@@ -297,9 +327,9 @@ def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3") -
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are a senior film director for a high-fashion match-cut brand film. Output raw valid JSON only, with no markdown code fences.",
+                        "content": system or "You are a senior film director for a high-fashion match-cut brand film. Output raw valid JSON only, with no markdown code fences.",
                     },
-                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": user_content},
                 ],
             }
             if model == "kimi-k3":
@@ -332,47 +362,48 @@ def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3") -
 
 
 QUALITY_BAR = (
-    "QUALITY BAR (the reference is a premium brand-identity reel: Soltone): each frame is ONE hero subject, "
-    "minimal and art-directed, generous negative space, a restrained two-tone palette, photoreal CGI / studio-product quality, "
-    "razor-sharp edges, believable materials. The mark is the crisp focal point at dead-center, large and legible, never lost in clutter. "
-    "No busy collage, no text other than tiny micro-type, no stock-photo look."
+    "QUALITY BAR: this is for Demo, a creative toolkit for creatives at an agency group, and it must look like a top design studio's identity reel "
+    "(Pentagram-level): one idea per frame, one hero subject, restrained composition with confident negative space, a disciplined palette (max 3 colors), "
+    "believable tactile materials, photoreal studio/CGI craft, razor-sharp edges. The mark may be subtle or bold, but it is deliberate, "
+    "physically part of the scene, and never lost. If any type appears it is intentional, rigorous grotesk typography (huge crop or tiny micro-type), never gibberish; "
+    "otherwise no text. No collage, no clutter, no stock-photo look, no generic neon trope."
 )
 
 
-def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, pair: bool = True) -> list[dict]:
-    """Random multi-axis shots, steered by taste history. Near-duplicates of past prompts are dropped."""
+def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, pair: bool = False, world: str | None = None) -> list[dict]:
+    """One authored creative world per batch (shots cohere), idea-first, steered by taste, near-duplicates dropped."""
     titles = {**DEFAULT_TITLES, **st.get("titles", {})}
     prompts = {**DEFAULT_PROMPTS, **st.get("prompts", {})}
     brief = taste.taste_brief(st, titles, prompts)
     ban_str = ", ".join(list(dict.fromkeys(list(titles.values()) + st.get("history", [])))[-80:])
 
+    w = chapters.pick_world(st.get("recent_worlds"), world)
     n_ask = count + 2  # over-ask so near-duplicates can be dropped
+    apps = random.sample(w["applications"], k=min(n_ask, len(w["applications"])))
+    while len(apps) < n_ask:
+        apps.append(random.choice(w["applications"]))
     shots = diversity.sample_shots(n_ask, st.get("recent_axes"))
-    shot_lines = "\n".join(f"Shot {i + 1}: {diversity.describe(sh)}" for i, sh in enumerate(shots))
-    twin_rule = (
-        "For EACH shot also return \"twin_prompt\" and \"twin_guide\": the SAME composition, camera and object re-rendered in the opposite tonal world "
-        "(a dark/saturated version and a light/monochrome version, like the reference's color/mono pairs) so the two cut together as a match-cut pair. "
-        if pair else ""
+    shot_lines = "\n".join(
+        f"Shot {i + 1}: subject = {apps[i]} | optional inspiration (use only what serves the idea, ignore the rest): texture {sh['texture']}, light {sh['lighting']}, camera {sh['camera']}"
+        for i, sh in enumerate(shots)
     )
-    liked = "\n".join(f"- {t}: {p[:220]}" for t, p in brief["liked"]) or "(none yet)"
+    liked = "\n".join(f"- {t}: {p[:200]}" for t, p in brief["liked"]) or "(none yet)"
     disliked = ", ".join(brief["disliked"]) or "(none yet)"
     llm_prompt = (
-        f"Return ONLY a raw JSON array (no markdown fences) of {n_ask} objects with keys \"title\", \"guide\" ('dark' or 'light' = "
-        f"whether the scene is mostly dark or mostly light), \"prompt\"" + (", \"twin_prompt\", \"twin_guide\"" if pair else "") + ". "
-        f"They are shots for a 9:16 vertical match-cut film where one circular logo mark sits at the exact dead-center (50%, 50%) at 18% frame width.\n\n"
-        f"Build each shot from its random ingredients (you may bend an ingredient if it makes the image better, but keep the combination surprising; "
-        f"invent the scene around it, do not just list the words):\n{shot_lines}\n\n"
-        f"{QUALITY_BAR}\n\n"
-        f"Brand palette is available but NOT mandatory: Burnt Orange #EC540C, Hot Pink #F64570, Electric Blue #5D8FF4, Oxblood #381313, Ink #1A1A1A, Cream #FEFFE7. "
-        f"Follow each shot's palette ingredient.\n\n"
+        f"Return ONLY a raw JSON array (no markdown fences) of {n_ask} objects with keys \"title\", \"idea\", \"guide\" ('dark' or 'light' = whether the frame is mostly dark or mostly light) and \"prompt\". "
+        f"They are shots for a 9:16 vertical match-cut film where one small circular mark sits at the exact dead-center (50%, 50%) at 18% frame width.\n\n"
+        f"WORLD: {w['name']}. {w['brief']}\nPalette for this whole batch: {w['palette']}. Every shot lives inside this world and palette so the cut sequence coheres; "
+        f"vary subject, framing and light, not the world.\n\n"
+        f"For each shot first write \"idea\": ONE line on how the mark physically emerges from the scene (inspirations: {'; '.join(w['marks'])}; or something better). "
+        f"Reject gimmicks like 'logo on a thing'. Then write \"prompt\" from that idea.\n\n"
+        f"Shots:\n{shot_lines}\n\n{QUALITY_BAR}\n\n"
         f"TASTE (learned from what the director kept):\nLiked:\n{liked}\nSteer away from the feel of: {disliked}\n\n"
         f"RULES:\n"
-        f"1. The logo must be physically part of the scene (same perspective, light, and material). Never a flat pasted sticker, no outer rings, one single mark.\n"
-        f"2. Each prompt: 2-4 sentences, concrete visual language, name the lens/light/material, end by stating the mark's treatment and dead-center position.\n"
-        f"3. {twin_rule}\n"
-        f"4. All shots must look clearly different from each other and from these past scenes: [{ban_str}]."
+        f"1. The mark is physically part of the scene (same perspective, light, material). Never a flat sticker, no outer rings, exactly one mark.\n"
+        f"2. Each prompt: 2-4 sentences, concrete visual language, name lens/light/material, end by stating the mark's treatment and dead-center position.\n"
+        f"3. All shots must look clearly different from each other and from these past scenes: [{ban_str}]."
     )
-    print(f"[KIMI] requesting {n_ask} random-axis prompts (pair={pair}) using {kimi_model}...", flush=True)
+    print(f"[KIMI] world='{w['name']}' requesting {n_ask} prompts using {kimi_model}...", flush=True)
     out = call_kimi_llm(llm_prompt, api_key=api_key, preferred_model=kimi_model)
     s_idx, e_idx = out.find("["), out.rfind("]")
     if s_idx == -1 or e_idx == -1:
@@ -391,17 +422,10 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
         kept.append(idea)
     kept = kept[:count] or ideas[:count]
 
-    flat = []
-    for idea in kept:
-        flat.append({"title": idea.get("title", "Untitled"), "guide": idea.get("guide", "dark"), "prompt": idea["prompt"]})
-        if pair and idea.get("twin_prompt"):
-            flat.append({
-                "title": f"{idea.get('title', 'Untitled')} (twin)",
-                "guide": idea.get("twin_guide") or ("light" if idea.get("guide") == "dark" else "dark"),
-                "prompt": idea["twin_prompt"],
-                "twin": True,
-            })
+    flat = [{"title": i.get("title", "Untitled"), "guide": i.get("guide", "dark"), "prompt": i["prompt"], "idea": i.get("idea", ""), "world": w["name"]} for i in kept]
 
+    st.setdefault("recent_worlds", []).append(w["name"])
+    st["recent_worlds"] = st["recent_worlds"][-8:]
     recent = st.setdefault("recent_axes", {})
     for sh in shots[: len(kept)]:
         for axis, val in sh.items():
@@ -462,6 +486,13 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "model": models.get(p.name, "google/nano-banana-pro"),
                     "trashed": p.name in trashed_set,
                     "trashed_at": st.get("trashed_at", {}).get(p.name),
+                    "trash_reason": (
+                        "Logo check" if p.name in st.get("qa_failed", []) and p.name in trashed_set
+                        else ("AI critic: " + st.get("critic", {}).get(p.name, {}).get("reason", "") if p.name in st.get("critic_failed", []) and p.name in trashed_set else None)
+                    ),
+                    "critic": st.get("critic", {}).get(p.name),
+                    "world": st.get("worlds", {}).get(p.name),
+                    "idea": st.get("ideas", {}).get(p.name),
                     "tone": cached_tone(p),
                     "twin_of": st.get("twin_of", {}).get(p.name),
                     "has_twin": p.name in st.get("twin_of", {}).values(),
@@ -477,6 +508,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 "kimi_configured": bool(kimi_key),
                 "kimi_key_masked": (kimi_key[:6] + "••••••••" + kimi_key[-4:]) if len(kimi_key) > 10 else "",
                 "kimi_model": st.get("kimi_model", "kimi-k3"),
+                "critic_enabled": st.get("critic_enabled", True),
+                "critic_autotrash": st.get("critic_autotrash", False),
             })
             return
 
@@ -498,6 +531,9 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 st["kimi_api_key"] = body["kimi_api_key"].strip()
             if "kimi_model" in body and body["kimi_model"].strip():
                 st["kimi_model"] = body["kimi_model"].strip()
+            for flag in ("critic_enabled", "critic_autotrash"):
+                if flag in body:
+                    st[flag] = bool(body[flag])
             save_state(st)
             self.send_json({"ok": True, "kimi_configured": bool(st.get("kimi_api_key"))})
             return
@@ -524,7 +560,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     api_key=kimi_key,
                     kimi_model=kimi_model,
                     count=int(body.get("count", 4)),
-                    pair=bool(body.get("pair", True)),
+                    pair=False,
+                    world=body.get("world") or None,
                 )
                 for idea in ideas:
                     t = idea.get("title", "")
@@ -581,6 +618,10 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 st.setdefault("titles", {})[filename] = title
                 st.setdefault("prompts", {})[filename] = raw_prompt
                 st.setdefault("models", {})[filename] = model
+                if body.get("world"):
+                    st.setdefault("worlds", {})[filename] = body["world"]
+                if body.get("idea"):
+                    st.setdefault("ideas", {})[filename] = body["idea"]
                 if title not in st.setdefault("history", []):
                     st["history"].append(title)
 
@@ -602,6 +643,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     cur_order.append(filename)
                 st["order"] = cur_order
                 save_state(st)
+                threading.Thread(target=apply_critic, args=(filename,), daemon=True).start()
 
                 self.send_json({
                     "ok": True,
