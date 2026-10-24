@@ -15,7 +15,7 @@ import random
 WORLDS = [
     {
         "name": "Editorial Print",
-        "weight": 1.0,
+        "weight": 0.5,
         "brief": "Swiss-grid editorial design: oversized grotesk type, hairline rules, uncoated stock, folded posters, risograph overprint. One bold typographic or color-block gesture per frame.",
         "palette": "warm cream #FEFFE7 and ink #1A1A1A with a single burnt orange #EC540C accent",
         "applications": [
@@ -27,7 +27,7 @@ WORLDS = [
     },
     {
         "name": "Packaging & Product",
-        "weight": 1.0,
+        "weight": 0.6,
         "brief": "Premium product and packaging photography: one object on a seamless sweep, perfect edges, tactile finishes, calm confidence.",
         "palette": "stone grey, matte black, and one signal color (burnt orange #EC540C or electric blue #5D8FF4)",
         "applications": [
@@ -51,7 +51,7 @@ WORLDS = [
     },
     {
         "name": "Out-of-Home & City",
-        "weight": 1.2,
+        "weight": 0.7,
         "brief": "Brand identity in the city: billboards, transit, wayfinding, flags and murals, photographed with a real sense of scale and weather.",
         "palette": "concrete grey, sky blue and black with one saturated brand color",
         "applications": [
@@ -75,7 +75,7 @@ WORLDS = [
     },
     {
         "name": "Film & Broadcast",
-        "weight": 1.0,
+        "weight": 0.7,
         "brief": "The language of cinema and broadcast: lenses, light, film stock, marquee and control-room. Cinematic restraint, one motivated light source.",
         "palette": "projector black, tungsten amber and a deep teal",
         "applications": [
@@ -146,7 +146,7 @@ WORLDS = [
     },
     {
         "name": "People & Gesture",
-        "weight": 1.3,
+        "weight": 0.7,
         "brief": "Human presence and motion: hands, faces, bodies, light on skin. Candid and cinematic, always designed so the frame could start a video.",
         "palette": "skin tones against one saturated brand color and black",
         "applications": [
@@ -158,7 +158,7 @@ WORLDS = [
     },
     {
         "name": "Retail & Hospitality",
-        "weight": 0.8,
+        "weight": 0.3,
         "brief": "Brand in the hand: matchboxes, cups, menus, keycards, shopfronts. Small, specific, beautifully made.",
         "palette": "paper, brass and one red or orange",
         "applications": [
@@ -169,7 +169,7 @@ WORLDS = [
     },
     {
         "name": "Sport & Culture",
-        "weight": 0.8,
+        "weight": 0.3,
         "brief": "The energy of sport and live culture: stadiums, tickets, kit, courts, arcades. Fast, graphic, high-contrast.",
         "palette": "court green or track red, white and black",
         "applications": [
@@ -179,14 +179,35 @@ WORLDS = [
         "marks": ["the center circle of the court", "a perforated ticket stub", "woven into the mesh", "the lane marking", "an LED matrix pattern"],
     },
     {
-        "name": "Data & Instruments",
-        "weight": 0.35,
-        "brief": "Scientific instruments, drafting and measurement. Use sparingly: the library is already heavy on drafting sheets.",
-        "palette": "cyanotype blue and cream",
+        "name": "Precision & Drafting",
+        "weight": 1.3,
+        "brief": "The language of precision: construction geometry, dimension lines, cyanotype, vellum, instruments. Rigorous, quiet, beautiful. Always rendered as a considered design object with real paper, light and shadow, never a flat diagram.",
+        "palette": "dark register: matte black or oxblood with copper and cream linework; light register: cream vellum or cyanotype blue with ink and a single orange accent",
         "applications": [
-            "a cyanotype print with a compass", "an X-ray of a mechanism", "a microscope slide under light", "a brass sextant", "a drafting table with dividers",
+            "a cyanotype sheet with compass arcs and a lamp shadow", "a matte black drafting sheet with copper dimension lines and a caliper", "a cream drafting sheet with tangent construction circles in raking light",
+            "tracing paper layered over a grid under a desk lamp", "protractor and brass dividers on vellum", "a blueprint with folded creases under side light",
+            "an X-ray of a watch mechanism glowing on a lightbox", "orbit diagrams scribed into black acrylic", "a brass sextant in haze", "dimension callouts etched into anodized aluminum",
         ],
-        "marks": ["a construction-circle diagram", "an X-ray glow", "the microscope's circular field of view"],
+        "marks": ["a construction-circle diagram that resolves into the mark", "the intersection of tangent arcs", "a scribed groove catching light", "an X-ray glow", "the circular field of an instrument"],
+    },
+    {
+        "name": "Matter & Elements",
+        "weight": 3.0,
+        "brief": "Matter in motion, photographed like a physicist-artist: fluids, magnetism, smoke, fire, water, light and dust. The mark is never added; it emerges from the physics (a vortex, a void, a ring of ripples, field lines, a smoke ring, an interference ring). Macro or large-scale, hyper-real, dramatic, quiet.",
+        "palette": "dark register: deep black with luminous amber, ember orange, electric blue or hot pink emitted light; light register: bone white and graphite with one cobalt or orange accent",
+        "applications": [
+            "ferrofluid spikes rising from a black pool", "iron filings tracing a magnetic field around a magnet", "ink blooming in clear water", "smoke rising in a still dark room",
+            "steam curling off a dark surface in raking light", "embers drifting upward from a fire", "molten glass pouring in a thin stream", "oil film on water with rainbow interference",
+            "a soap bubble wall at macro with swirling color", "sand falling through a shaft of light", "dust motes in a beam of light in a dark hall", "a splash frozen mid-air against black",
+            "foam and bubbles on dark liquid", "lightning branching across a night sky", "a plasma globe's glowing filaments", "a milk-drop crown frozen against black",
+            "two paints mixing in a clear tank", "mercury beads rolling together", "frost crystals growing across black glass", "a wave curling backlit at dawn",
+            "magma crust cracking with orange light beneath", "a candle flame's blue core in darkness", "a smoke ring drifting in a spotlight", "wet sand ripples at low tide in low sun",
+            "a prism splitting a beam into a spectrum on a wall", "water caustics over a pale wall", "powdered pigment exploding in the air",
+        ],
+        "marks": [
+            "the vortex or void at the center of the flow", "a ring of ripples", "magnetic field lines", "a smoke ring or the negative space in the smoke", "a bubble film's interference ring",
+            "a ring-shaped flame or ember halo", "the circular opening between two fluids", "a caustic highlight forming it", "a splash crown", "a lightning-lit circular clearing",
+        ],
     },
 ]
 

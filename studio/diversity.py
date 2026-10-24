@@ -95,6 +95,8 @@ COLOR_WORLDS = [
 ]
 
 TEXTURES = [
+    "ferrofluid spikes", "drifting smoke", "ink clouds in water", "embers and sparks", "oil-film iridescence", "condensation beads", "rippling water", "fine sand grains",
+    "suspended dust in light", "frozen splash droplets", "foam bubbles", "lightning filaments", "steam wisps", "molten glow", "caustic light patterns", "wet reflective surface",
     "visible fabric weave", "fine film grain and halation", "brushed metal anisotropic streaks", "orange-peel lacquer", "pitted concrete with bug holes",
     "cracked dried mud", "frost crystals", "fogged glass with droplets", "matte paper fibers", "pixel grid visible at macro",
     "knurled metal", "wet asphalt sheen", "moss and lichen", "ribbed rubber", "embossed leather grain", "scratched acrylic",

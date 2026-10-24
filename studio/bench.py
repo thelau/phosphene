@@ -47,12 +47,10 @@ SCENES = [
 ]
 
 DEFAULT_BENCH_MODELS = [
-    "openai/gpt-image-2.5-flare",
     "google/nano-banana-2.1",
     "google/nano-banana-pro",
+    "openai/gpt-image-2.5-flare",
     "openai/gpt-image-2.5-sunburst",
-    "krea/krea-3",
-    "meta/muse-image",
 ]
 
 lock = threading.Lock()
@@ -104,16 +102,18 @@ if __name__ == "__main__":
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--worlds", type=int, default=0, help="number of creative worlds; each yields --per-world Kimi-invented shots (taste-aware)")
     ap.add_argument("--per-world", type=int, default=4)
+    ap.add_argument("--world-names", default="", help="comma-separated explicit worlds (repeat a name for more batches of it)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     jobs = []
     scenes = SCENES
-    if a.worlds:
+    if a.worlds or a.world_names:
         ideas = []
-        for _ in range(a.worlds):
+        batches = [n.strip() for n in a.world_names.split(",") if n.strip()] or [None] * a.worlds
+        for wname in batches:
             st = server.load_state()
-            ideas += server.ask_kimi_for_prompts(st, st["kimi_api_key"], st.get("kimi_model", "kimi-k3"), count=a.per_world)
+            ideas += server.ask_kimi_for_prompts(st, st["kimi_api_key"], st.get("kimi_model", "kimi-k3"), count=a.per_world, world=wname)
             server.save_state(st)
         scenes = [{"title": i["title"], "dark": i["prompt"], "guide": i.get("guide", "dark"), "light": None, "world": i["world"], "idea": i["idea"]} for i in ideas]
     for sc in scenes:  # scene-major so a partial run still has every model covered per scene
