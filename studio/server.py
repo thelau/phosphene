@@ -465,6 +465,16 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.wfile.write(html_bytes)
             return
 
+        if parsed.path == "/api/progress":
+            try:
+                p = json.loads((STUDIO_DIR / ".bench_progress.json").read_text())
+                if p.get("phase") == "done" or time.time() - p.get("updated", 0) > 900:
+                    p = {"phase": "idle"}  # finished, or stale (the run died)
+            except Exception:
+                p = {"phase": "idle"}
+            self.send_json({"ok": True, **p})
+            return
+
         if parsed.path == "/api/stats":
             self.send_json({"ok": True, "models": taste.model_stats(load_state())})
             return
