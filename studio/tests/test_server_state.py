@@ -97,7 +97,6 @@ def test_plate_key_uses_size_not_mtime(srv, make_plate):
 
 def test_migrate_qa_cache_rekeys_old_mtime_entries(srv, make_plate, monkeypatch):
     p = make_plate(srv.PLATES_DIR / "a.jpg")
-    monkeypatch.setattr(srv, "REJECTED_DIR", srv.PLATES_DIR.parent / "rej")
     srv.QA_CACHE["a.jpg:1792745756"] = {"qa_passed": True}
     srv.QA_CACHE["gone.jpg:1792745756"] = {"qa_passed": False}
     srv._migrate_qa_cache()
@@ -156,3 +155,65 @@ def test_moved_to_end_keeps_the_relative_order_of_several_restored_images(srv):
 def test_moved_to_end_handles_names_missing_from_the_order(srv):
     assert srv.moved_to_end(["a", "b"], {"zzz"}) == ["a", "b", "zzz"]
     assert srv.moved_to_end([], {"a"}) == ["a"]
+
+
+# ---------- purging the trash ----------
+
+def prepared(srv, make_plate, names=("20_a.jpg", "21_b.jpg", "22_c.jpg")):
+    for n in names:
+        make_plate(srv.PLATES_DIR / n)
+    st = {"trashed": ["20_a.jpg", "21_b.jpg"], "order": list(names), "titles": {n: n for n in names},
+          "prompts": {n: "p" for n in names}, "models": {n: "google/nano-banana-2.1" for n in names},
+          "worlds": {n: "W" for n in names}, "qa_failed": ["21_b.jpg"]}
+    srv.QA_CACHE.update({f"{n}:{(srv.PLATES_DIR / n).stat().st_size}": {"qa_passed": True} for n in names})
+    return st
+
+
+def test_purge_deletes_only_trashed_files_and_reports_size(srv, make_plate):
+    st = prepared(srv, make_plate)
+    deleted, freed = srv.purge_plates(st, ["20_a.jpg", "22_c.jpg", "nope.jpg"])      # 22_c is kept: must survive
+    assert deleted == 1 and freed > 0
+    assert not (srv.PLATES_DIR / "20_a.jpg").exists()
+    assert (srv.PLATES_DIR / "22_c.jpg").exists() and (srv.PLATES_DIR / "21_b.jpg").exists()
+
+
+def test_purge_keeps_the_learning_record_but_drops_order_and_qa_cache(srv, make_plate):
+    st = prepared(srv, make_plate)
+    srv.purge_plates(st, ["20_a.jpg", "21_b.jpg"])
+    for key in ("titles", "prompts", "models", "worlds"):
+        assert "20_a.jpg" in st[key]                        # taste and territory scores still see it
+    assert "20_a.jpg" in st["trashed"] and "21_b.jpg" in st["qa_failed"]
+    assert st["purged"] == ["20_a.jpg", "21_b.jpg"]
+    assert st["order"] == ["22_c.jpg"]
+    assert not any(k.startswith(("20_a.jpg:", "21_b.jpg:")) for k in srv.QA_CACHE)
+    assert any(k.startswith("22_c.jpg:") for k in srv.QA_CACHE)
+
+
+def test_purged_plates_still_count_for_model_and_world_scores(srv, make_plate):
+    import chapters, taste
+    st = prepared(srv, make_plate)
+    st["worlds"] = {"20_a.jpg": "Matter & Elements", "21_b.jpg": "Matter & Elements", "22_c.jpg": "Matter & Elements"}
+    before_models, before_worlds = taste.model_stats(st)["google/nano-banana-2.1"], chapters.world_stats(st)["Matter & Elements"]
+    srv.purge_plates(st, ["20_a.jpg", "21_b.jpg"])
+    assert taste.model_stats(st)["google/nano-banana-2.1"] == before_models
+    assert chapters.world_stats(st)["Matter & Elements"] == before_worlds
+
+
+def test_purge_nothing_and_twice_are_safe(srv, make_plate):
+    st = prepared(srv, make_plate)
+    assert srv.purge_plates(st, []) == (0, 0)
+    srv.purge_plates(st, ["20_a.jpg"])
+    assert srv.purge_plates(st, ["20_a.jpg"]) == (0, 0)
+    assert st["purged"] == ["20_a.jpg"]
+
+
+def test_next_plate_number_never_reuses_a_purged_number(srv, make_plate):
+    st = prepared(srv, make_plate, names=("30_a.jpg", "31_b.jpg", "32_c.jpg"))
+    st["trashed"] = ["32_c.jpg"]
+    assert srv.next_plate_number(st) == 33
+    srv.purge_plates(st, ["32_c.jpg"])                    # the highest-numbered file is gone from disk...
+    assert not (srv.PLATES_DIR / "32_c.jpg").exists()
+    assert srv.next_plate_number(st) == 33                # ...but its number is still taken
+    for f in srv.PLATES_DIR.glob("*.jpg"):
+        f.unlink()
+    assert srv.next_plate_number({}) == 16               # an empty library starts at 16

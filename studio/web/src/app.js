@@ -135,13 +135,96 @@
       return plates.filter(p => !p.trashed);
     }
 
-    function renderGrid() {
-      const grid = document.getElementById('grid');
+    function visiblePlates() {
       const num = p => parseInt(p.filename, 10) || 0;
-      const visible = showTrash
+      return showTrash
         // newest trashed first; plates trashed before timestamps existed fall back to creation number
         ? plates.filter(p => p.trashed).sort((a, b) => (b.trashed_at || 0) - (a.trashed_at || 0) || num(b) - num(a))
         : plates.filter(p => !p.trashed);
+    }
+
+    // ---- trash: select, delete selected, empty ----
+    let trashSel = new Set();
+    let lastSel = null;
+    function cardClick(e, filename) {
+      if (!showTrash) { previewPlate(filename); return; }
+      const list = visiblePlates().map(p => p.filename);
+      if (e.shiftKey && lastSel && list.includes(lastSel)) {
+        const [a, b] = [list.indexOf(lastSel), list.indexOf(filename)].sort((x, y) => x - y);
+        list.slice(a, b + 1).forEach(f => trashSel.add(f));
+      } else if (trashSel.has(filename)) {
+        trashSel.delete(filename);
+      } else {
+        trashSel.add(filename);
+      }
+      lastSel = filename;
+      syncSelection();
+    }
+    function syncSelection() {
+      document.querySelectorAll('.card[data-filename]').forEach(el => el.classList.toggle('sel', trashSel.has(el.dataset.filename)));
+      updateTrashBar();
+    }
+    function updateTrashBar() {
+      const trashed = plates.filter(p => p.trashed).map(p => p.filename);
+      trashSel = new Set([...trashSel].filter(f => trashed.includes(f)));
+      document.getElementById('trashBar').hidden = !(showTrash && trashed.length);
+      document.getElementById('trashSelCount').textContent = `${trashSel.size} selected`;
+      document.getElementById('trashDelSel').disabled = trashSel.size === 0;
+      document.getElementById('trashDelSel').textContent = trashSel.size ? `Delete ${trashSel.size} selected…` : 'Delete selected…';
+      document.getElementById('trashSelAll').textContent = trashSel.size && trashSel.size === trashed.length ? 'Clear selection' : 'Select all';
+      document.getElementById('trashEmpty').textContent = `Empty trash (${trashed.length})…`;
+    }
+    function selectAllTrash() {
+      const all = plates.filter(p => p.trashed).map(p => p.filename);
+      trashSel = trashSel.size === all.length ? new Set() : new Set(all);
+      syncSelection();
+    }
+
+    let confirmResolve = null;
+    function askConfirm(title, body, yesLabel) {
+      document.getElementById('confirmTitle').textContent = title;
+      document.getElementById('confirmBody').textContent = body;
+      document.getElementById('confirmYes').textContent = yesLabel;
+      document.getElementById('confirmModal').classList.add('open');
+      return new Promise(res => { confirmResolve = res; });
+    }
+    function confirmAnswer(yes) {
+      document.getElementById('confirmModal').classList.remove('open');
+      if (confirmResolve) confirmResolve(yes);
+      confirmResolve = null;
+    }
+    const KEEPS_LEARNING = 'The images are removed from disk for good. Your keep/trash history stays, so suggestions keep learning from them.';
+    async function purge(payload, title, body, yesLabel) {
+      if (!(await askConfirm(title, body, yesLabel))) return;
+      const btns = ['trashDelSel', 'trashEmpty', 'trashSelAll'].map(id => document.getElementById(id));
+      btns.forEach(b => { b.disabled = true; });
+      try {
+        const res = await (await fetch('/api/purge', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
+        if (!res.ok) throw new Error(res.error || 'delete failed');
+        trashSel = new Set();
+        setStatus(`Deleted ${res.deleted} image${res.deleted === 1 ? '' : 's'} (${res.freed_mb} MB freed).`);
+        await loadState();
+      } catch (e) {
+        setStatus(`Delete failed: ${e.message}`);
+      } finally {
+        btns.forEach(b => { b.disabled = false; });
+        updateTrashBar();
+      }
+    }
+    function deleteSelected() {
+      const n = trashSel.size;
+      if (!n) return;
+      return purge({ filenames: [...trashSel] }, `Delete ${n} image${n === 1 ? '' : 's'} permanently?`, `This can't be undone. ${KEEPS_LEARNING}`, `Delete ${n}`);
+    }
+    function emptyTrash() {
+      const n = plates.filter(p => p.trashed).length;
+      if (!n) return;
+      return purge({ all: true }, `Empty the trash (${n} images)?`, `Every image in the trash is deleted permanently. This can't be undone. ${KEEPS_LEARNING}`, `Delete all ${n}`);
+    }
+
+    function renderGrid() {
+      const grid = document.getElementById('grid');
+      const visible = visiblePlates();
 
       grid.innerHTML = visible.map((p, i) => `
         <div class="card"
@@ -153,7 +236,7 @@
              ondragleave="onDragLeave(event)"
              ondrop="onDrop(event, '${p.filename}')"
              ondragend="onDragEnd(event)"
-             onclick="previewPlate('${p.filename}')">
+             onclick="cardClick(event, '${p.filename}')">
           <div class="card-thumb">
             <img src="${p.url}" loading="lazy" />
             <button class="info-btn" title="View prompt & model" onclick="togglePromptOverlay(event, '${p.filename}')">i</button>
@@ -182,6 +265,7 @@
           </div>
         </div>
       `).join('');
+      syncSelection();
     }
 
     function escapeHtml(str) {
@@ -368,7 +452,8 @@
 
     function setTrashView(on) {
       showTrash = on;
-      loadState();
+      trashSel = new Set();
+      return loadState();
     }
 
     async function setTrash(e, filename, trashed) {
@@ -659,6 +744,11 @@
 
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
+  cardClick,
+  confirmAnswer,
+  deleteSelected,
+  emptyTrash,
+  selectAllTrash,
   copyPromptText,
   exportVideo,
   generateImages,

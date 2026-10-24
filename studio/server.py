@@ -514,6 +514,36 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     return flat
 
 
+def next_plate_number(st: dict) -> int:
+    """Next free plate number. Counts purged plates too (their records stay in the state), so numbers are never reused."""
+    names = [p.name for p in list(PLATES_DIR.glob("*.jpg")) + list(REJECTED_DIR.glob("*.jpg"))]
+    for key in ("titles", "prompts", "models"):
+        names += list(st.get(key, {}))
+    names += list(st.get("purged", []))
+    nums = [int(n.split("_", 1)[0]) for n in names if n.split("_", 1)[0].isdigit()]
+    return max(nums, default=15) + 1
+
+
+def purge_plates(st: dict, requested) -> tuple[int, int]:
+    """Permanently delete trashed plates (never a kept one). Files and QA results go; the keep/trash record stays
+    so taste and territory scores keep learning from them. Returns (files deleted, bytes freed)."""
+    trashed = set(st.get("trashed", []))
+    names = [n for n in requested if n in trashed]
+    freed = deleted = 0
+    for n in names:
+        for folder in (PLATES_DIR, REJECTED_DIR):
+            f = folder / n
+            if f.is_file():
+                freed += f.stat().st_size
+                f.unlink()
+                deleted += 1
+        for key in [k for k in QA_CACHE if k.rpartition(":")[0] == n]:
+            QA_CACHE.pop(key, None)
+    st["purged"] = sorted(set(st.get("purged", [])) | set(names))
+    st["order"] = [n for n in st.get("order", []) if n not in set(names)]
+    return deleted, freed
+
+
 def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "off", zoom_mode: str = "off") -> str:
     """Unique, descriptive name per export so nothing is overwritten: Demo-136bpm-x4-invert-zoomout-20261025-0930.mp4"""
     mult = f"{multiple:.2f}".rstrip("0").rstrip(".")
@@ -753,12 +783,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
 
                 with STATE_LOCK:
-                    existing_nums = [
-                        int(p.name.split("_", 1)[0])
-                        for p in list(PLATES_DIR.glob("*.jpg")) + list(REJECTED_DIR.glob("*.jpg"))
-                        if p.name.split("_", 1)[0].isdigit()
-                    ]
-                    next_num = max(existing_nums, default=15) + 1
+                    next_num = next_plate_number(load_state())
                     slug = "".join(c if c.isalnum() else "_" for c in title.lower()).strip("_")[:26] or "plate"
                     while "__" in slug:
                         slug = slug.replace("__", "_")
@@ -815,6 +840,19 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 })
             except Exception as e:
                 self.send_json({"ok": False, "error": str(e)}, 500)
+            return
+
+        if parsed.path == "/api/purge":
+            with STATE_LOCK:
+                st = load_state()
+                wanted = list(st.get("trashed", [])) if body.get("all") else list(body.get("filenames", []))
+                deleted, freed = purge_plates(st, wanted)
+                save_state(st)
+                try:
+                    _flush_qa_cache()
+                except Exception:
+                    pass
+            self.send_json({"ok": True, "deleted": deleted, "freed_mb": round(freed / 1e6, 1)})
             return
 
         if parsed.path == "/api/trash":

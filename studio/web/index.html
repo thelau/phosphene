@@ -161,6 +161,12 @@
           <button id="tabSelection" onclick="setTrashView(false)">Selection (<span id="selCount">0</span>)</button>
           <button id="tabTrash" onclick="setTrashView(true)">🗑️ Trash (<span id="trashCount">0</span>)</button>
         </div>
+        <div class="trash-bar" id="trashBar" hidden>
+          <span id="trashSelCount">0 selected</span>
+          <button id="trashSelAll" onclick="selectAllTrash()">Select all</button>
+          <button id="trashDelSel" class="danger" onclick="deleteSelected()">Delete selected…</button>
+          <button id="trashEmpty" class="danger" onclick="emptyTrash()">Empty trash…</button>
+        </div>
       </div>
       <div class="grid-col" id="grid"></div>
     </div>
@@ -168,6 +174,17 @@
 
   <div class="status-text" id="statusText" data-idle="1">Ready</div>
   <div class="toast" id="toast"></div>
+
+  <div class="confirm-bg" id="confirmModal">
+    <div class="confirm">
+      <h3 id="confirmTitle"></h3>
+      <p id="confirmBody"></p>
+      <div class="confirm-foot">
+        <button onclick="confirmAnswer(false)">Cancel</button>
+        <button class="danger solid" id="confirmYes" onclick="confirmAnswer(true)">Delete</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="/src/app.js"></script>
 

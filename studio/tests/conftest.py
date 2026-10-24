@@ -21,6 +21,9 @@ def srv(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "QA_CACHE_FILE", tmp_path / "qa_cache.json")
     monkeypatch.setattr(server, "QA_CACHE", {})
     monkeypatch.setattr(server, "PLATES_DIR", plates)
+    rejected = tmp_path / "rejected"
+    rejected.mkdir()
+    monkeypatch.setattr(server, "REJECTED_DIR", rejected)
     for var in ("KIMI_API_KEY", "MOONSHOT_API_KEY"):
         monkeypatch.delenv(var, raising=False)
     return server

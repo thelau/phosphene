@@ -40,8 +40,7 @@ def run_one(job):
         return
     im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
     with lock:  # allocate the number and save atomically; state is re-read right before writing
-        nums = [int(p.name.split("_", 1)[0]) for p in list(PLATES_DIR.glob("*.jpg")) + list(server.REJECTED_DIR.glob("*.jpg")) if p.name.split("_", 1)[0].isdigit()]
-        n = max(nums, default=15) + 1
+        n = server.next_plate_number(server.load_state())
         slug = "".join(c if c.isalnum() else "_" for c in f"{title}_{model.split('/')[-1]}".lower()).strip("_")[:26]
         filename = f"{n:02d}_{slug}.jpg"
         path = PLATES_DIR / filename

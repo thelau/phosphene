@@ -8,7 +8,11 @@ class El {
     this.id = id; this.value = ''; this.textContent = ''; this.innerHTML = ''; this.style = {}; this.dataset = {};
     this.disabled = false; this.placeholder = ''; this.title = ''; this.className = ''; this.checked = false;
     this.options = /Select$/.test(id) ? [] : undefined; this.listeners = {}; this.scrollTop = 0; this.children = [];
-    this.classList = { add() {}, remove() {}, toggle() {}, contains: () => false };
+    const set = (this._classes = new Set());
+    this.classList = {
+      add: c => { set.add(c); }, remove: c => { set.delete(c); }, contains: c => set.has(c),
+      toggle: (c, force) => { const on = force === undefined ? !set.has(c) : !!force; on ? set.add(c) : set.delete(c); return on; },
+    };
   }
   addEventListener(ev, fn) { (this.listeners[ev] ||= []).push(fn); }
   fire(ev) { (this.listeners[ev] || []).forEach(fn => fn({ target: this })); }

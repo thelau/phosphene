@@ -477,3 +477,112 @@ test('the preview no longer has a video element to replace it with', () => {
   const app = fs.readFileSync(WEB('src', 'app.js'), 'utf8');
   assert.ok(!html.includes('stageVideo') && !app.includes('stageVideo'));
 });
+
+// ---------- trash: selection and permanent delete ----------
+
+const trashRoutes = (extra = {}) => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: [mkPlate('1_a', true), mkPlate('2_b', true), mkPlate('3_c', true), mkPlate('4_d', true), mkPlate('5_k', false)] };
+  return Object.assign(r, extra);
+};
+async function inTrash(extra) {
+  const h = load({ routes: trashRoutes(extra) });
+  await settle(); await settle();
+  h.run('showTrash = true');
+  await h.run('loadState()');
+  return h;
+}
+const ev = (o = {}) => ({ shiftKey: false, ...o });
+
+test('trash bar only shows in the trash view and counts what is selected', async () => {
+  const h = await inTrash();
+  assert.equal(h.$('trashBar').hidden, false);
+  assert.equal(h.$('trashEmpty').textContent, 'Empty trash (4)…');
+  assert.equal(h.$('trashDelSel').disabled, true);
+  h.run(`cardClick(${JSON.stringify(ev())}, '2_b')`);
+  assert.equal(h.$('trashSelCount').textContent, '1 selected');
+  assert.equal(h.$('trashDelSel').textContent, 'Delete 1 selected…');
+  assert.equal(h.$('trashDelSel').disabled, false);
+  h.run(`cardClick(${JSON.stringify(ev())}, '2_b')`);                  // click again deselects
+  assert.equal(h.$('trashSelCount').textContent, '0 selected');
+  await h.run('setTrashView(false)');
+  assert.equal(h.$('trashBar').hidden, true);
+});
+
+test('in the selection view a click previews instead of selecting', async () => {
+  const h = load({ routes: trashRoutes() });
+  await settle(); await settle();
+  h.run(`cardClick(${JSON.stringify(ev())}, '5_k')`);
+  assert.equal(h.run('trashSel.size'), 0);
+  assert.equal(h.$('stageImg').src, '/p/5_k');
+});
+
+test('shift-click selects a range; select all toggles', async () => {
+  const h = await inTrash();
+  const order = h.run('visiblePlates().map(p => p.filename)');
+  h.run(`cardClick(${JSON.stringify(ev())}, '${order[0]}')`);
+  h.run(`cardClick(${JSON.stringify(ev({ shiftKey: true }))}, '${order[2]}')`);
+  assert.equal(h.run('trashSel.size'), 3);
+  h.run('selectAllTrash()');
+  assert.equal(h.run('trashSel.size'), 4);
+  assert.equal(h.$('trashSelAll').textContent, 'Clear selection');
+  h.run('selectAllTrash()');
+  assert.equal(h.run('trashSel.size'), 0);
+});
+
+test('deleting selected asks first, and cancelling deletes nothing', async () => {
+  const h = await inTrash({ '/api/purge': { ok: true, deleted: 2, freed_mb: 3.1 } });
+  h.run(`cardClick(${JSON.stringify(ev())}, '1_a')`); h.run(`cardClick(${JSON.stringify(ev())}, '2_b')`);
+  const p = h.run('deleteSelected()');
+  assert.equal(h.$('confirmModal').classList.contains('open'), true);
+  assert.match(h.$('confirmTitle').textContent, /Delete 2 images permanently\?/);
+  assert.match(h.$('confirmBody').textContent, /can't be undone/);
+  assert.match(h.$('confirmBody').textContent, /keep\/trash history stays/);
+  assert.equal(h.$('confirmYes').textContent, 'Delete 2');
+  h.run('confirmAnswer(false)');
+  await p;
+  assert.equal(h.$('confirmModal').classList.contains('open'), false);
+  assert.equal(h.calls.filter(c => c.url === '/api/purge').length, 0);
+  assert.equal(h.run('trashSel.size'), 2);                              // selection survives a cancel
+});
+
+test('confirming deletes exactly the selected files and reports what was freed', async () => {
+  const h = await inTrash({ '/api/purge': { ok: true, deleted: 2, freed_mb: 3.1 } });
+  h.run(`cardClick(${JSON.stringify(ev())}, '1_a')`); h.run(`cardClick(${JSON.stringify(ev())}, '3_c')`);
+  const p = h.run('deleteSelected()');
+  h.run('confirmAnswer(true)');
+  await p;
+  const call = h.calls.find(c => c.url === '/api/purge');
+  assert.deepEqual(call.body.filenames.slice().sort(), ['1_a', '3_c']);
+  assert.equal(call.body.all, undefined);
+  assert.match(h.$('toast').textContent, /Deleted 2 images \(3.1 MB freed\)/);
+  assert.equal(h.run('trashSel.size'), 0);
+  assert.equal(h.$('trashDelSel').disabled, true);
+});
+
+test('empty trash asks with the count and sends all=true', async () => {
+  const h = await inTrash({ '/api/purge': { ok: true, deleted: 4, freed_mb: 9 } });
+  const p = h.run('emptyTrash()');
+  assert.match(h.$('confirmTitle').textContent, /Empty the trash \(4 images\)\?/);
+  assert.equal(h.$('confirmYes').textContent, 'Delete all 4');
+  h.run('confirmAnswer(true)');
+  await p;
+  assert.deepEqual(h.calls.find(c => c.url === '/api/purge').body, { all: true });
+});
+
+test('a failed delete reports the error and unlocks the buttons', async () => {
+  const h = await inTrash({ '/api/purge': { ok: false, error: 'disk busy' } });
+  const p = h.run('emptyTrash()');
+  h.run('confirmAnswer(true)');
+  await p;
+  assert.match(h.$('toast').textContent, /Delete failed: disk busy/);
+  assert.equal(h.$('trashEmpty').disabled, false);
+});
+
+test('selection forgets images that are no longer in the trash (restored)', async () => {
+  const h = await inTrash();
+  h.run(`cardClick(${JSON.stringify(ev())}, '1_a')`);
+  h.run(`plates.find(p => p.filename === '1_a').trashed = false`);
+  h.run('updateTrashBar()');
+  assert.equal(h.run('trashSel.size'), 0);
+});

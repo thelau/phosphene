@@ -420,3 +420,18 @@
 .dl { display: block; width: 100%; margin-top: 6px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-size: 11px; font-weight: 600; text-align: center; text-decoration: none; word-break: break-all; background: #1f1f25; }
 .dl:hover { border-color: var(--orange); color: var(--orange); }
 .dl[hidden] { display: none; }
+
+.trash-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.trash-bar[hidden] { display: none; }
+button.danger { color: #fda4af; border-color: rgba(244,63,94,0.45); }
+button.danger:hover:not(:disabled) { border-color: #f43f5e; }
+button.danger.solid { background: #c0263f; border-color: #c0263f; color: #fff; }
+.card.sel { outline: 2px solid var(--orange); outline-offset: -2px; }
+.card.sel::after { content: '✓'; position: absolute; top: 8px; left: 8px; width: 22px; height: 22px; border-radius: 50%; background: var(--orange); color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; z-index: 5; }
+.card.sel .info-btn { display: none; }
+.confirm-bg { position: fixed; inset: 0; background: rgba(0,0,0,.66); display: none; align-items: center; justify-content: center; z-index: 150; }
+.confirm-bg.open { display: flex; }
+.confirm { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 22px; width: min(440px, 92vw); box-shadow: 0 24px 60px rgba(0,0,0,.6); }
+.confirm h3 { font-size: 15px; margin-bottom: 8px; }
+.confirm p { font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+.confirm-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
