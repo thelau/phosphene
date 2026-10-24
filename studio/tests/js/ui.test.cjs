@@ -336,7 +336,7 @@ test('every inline handler in the markup and templates is exported on window', (
   const app = fs.readFileSync(WEB('src', 'app.js'), 'utf8');
   const used = new Set();
   for (const m of (html + app).matchAll(/\bon[a-z]+="(?:[^"]*?[;\s])?([A-Za-z_]\w*)\(/g)) used.add(m[1]);
-  used.delete('event');
+  used.delete('event'); used.delete('if');
   const h = load({ routes: baseRoutes() });
   const missing = [...used].filter(n => h.run(`typeof window.${n}`) !== 'function');
   assert.deepEqual(missing, []);
