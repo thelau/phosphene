@@ -486,17 +486,25 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     while len(apps) < n_ask:
         apps.append(random.choice(w["applications"]))
     shots = diversity.sample_shots(n_ask, st.get("recent_axes"))
-    shot_lines = "\n".join(
-        f"Shot {i + 1}: subject = {apps[i]} | optional inspiration (use only what serves the idea, ignore the rest): texture {sh['texture']}, light {sh['lighting']}, camera {sh['camera']}"
-        for i, sh in enumerate(shots)
-    )
+    if direction:
+        # the director's words choose the subjects; the territory only supplies look, palette and how the mark emerges
+        shot_lines = "\n".join(
+            f"Shot {i + 1}: subject = invent a DIFFERENT concrete subject that is a clear instance of the direction \"{direction}\" | optional inspiration: light {sh['lighting']}, camera {sh['camera']}"
+            for i, sh in enumerate(shots)
+        )
+    else:
+        shot_lines = "\n".join(
+            f"Shot {i + 1}: subject = {apps[i]} | optional inspiration (use only what serves the idea, ignore the rest): texture {sh['texture']}, light {sh['lighting']}, camera {sh['camera']}"
+            for i, sh in enumerate(shots)
+        )
     liked = "\n".join(f"- {t}: {p[:200]}" for t, p in brief["liked"]) or "(none yet)"
     disliked = ", ".join(brief["disliked"]) or "(none yet)"
     llm_prompt = (
         f"Return ONLY a raw JSON array (no markdown fences) of {n_ask} objects with keys \"title\", \"idea\", \"guide\" ('dark' or 'light' = whether the frame is mostly dark or mostly light) and \"prompt\". "
         f"They are shots for a 9:16 vertical match-cut film where one small circular mark sits at the exact dead-center (50%, 50%) at 18% frame width.\n\n"
         f"WORLD: {w['name']}. {w['brief']}\n"
-        + (f"DIRECTOR'S DIRECTION for this batch (follow it, but keep the quality bar and rules below): {direction}\n" if direction else "")
+        + (f"DIRECTOR'S DIRECTION (a HARD REQUIREMENT): \"{direction}\". Every shot's central subject must plainly be this; nothing in a shot may belong to a different subject area "
+           f"(for example if the direction is weather, do not show plants, sand or webs). The world below only supplies the palette, finish and how the mark emerges.\n" if direction else "")
         + f"Palette for this whole batch: {w['palette']}. Every shot lives inside this world and palette so the cut sequence coheres; "
         f"vary subject, framing and light, not the world.\n\n"
         f"For each shot first write \"idea\": ONE line on how the mark physically emerges from the scene (inspirations: {'; '.join(w['marks'])}; or something better). "
@@ -587,6 +595,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "worlds": [
                 {"name": w["name"], "brief": w["brief"], "n": stats.get(w["name"], {}).get("n", 0), "kept": stats.get(w["name"], {}).get("kept", 0), "wildcard": bool(w.get("wildcard"))}
                 for w in chapters.all_worlds(st)
+                if not w.get("wildcard") or stats.get(w["name"], {}).get("n", 0) > 0  # invented worlds only list once they have images
             ]})
             return
 

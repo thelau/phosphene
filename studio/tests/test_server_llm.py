@@ -141,6 +141,35 @@ def test_ask_kimi_direction_with_named_world_is_injected(srv, fake_llm):
     assert "DIRECTOR'S DIRECTION" in fake_llm[0] and "wet, warm" in fake_llm[0]
 
 
+def test_ask_kimi_direction_replaces_the_worlds_random_subjects(srv, fake_llm):
+    w = chapters.pick_world(name="Nature & Light")
+    srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=3, world="Nature & Light", direction="fog, clouds, lightning")
+    p = fake_llm[0]
+    assert "HARD REQUIREMENT" in p and "fog, clouds, lightning" in p
+    assert "invent a DIFFERENT concrete subject" in p
+    assert not any(f"subject = {a} " in p for a in w["applications"])      # no random world subjects when the director chose
+
+
+def test_ask_kimi_without_direction_uses_the_worlds_subjects(srv, fake_llm):
+    w = chapters.pick_world(name="Nature & Light")
+    srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=3, world="Nature & Light")
+    p = fake_llm[0]
+    assert "HARD REQUIREMENT" not in p and "invent a DIFFERENT" not in p
+    assert any(f"subject = {a} " in p for a in w["applications"])
+
+
+def test_ask_kimi_custom_territory_invents_from_the_text(srv, monkeypatch):
+    seen = []
+
+    def llm(prompt, **k):
+        seen.append(prompt)
+        return json.dumps(NEW_WORLD) if "Invent ONE new creative world" in prompt else json.dumps(shots(6))
+    monkeypatch.setattr(srv, "call_kimi_llm", llm)
+    out = srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=2, world="__custom__", direction="fog and rain")
+    assert out[0]["world"] == "Harbor & Signal"
+    assert "fog and rain" in seen[0] and not any("Which of these territories" in s for s in seen)
+
+
 def test_ask_kimi_without_direction_has_no_direction_block(srv, fake_llm):
     srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=2, world="Fashion & Apparel")
     assert "DIRECTOR'S DIRECTION" not in fake_llm[0]

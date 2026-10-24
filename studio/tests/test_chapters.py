@@ -63,9 +63,10 @@ def test_custom_world_kept_if_any_keep_or_too_few_samples():
     assert "Flop" in [w["name"] for w in chapters.all_worlds(few)]
 
 
-def test_choose_world_named_and_wildcard():
+def test_choose_world_named_wildcard_and_custom():
     assert chapters.choose_world({}, "Matter & Elements")["name"] == "Matter & Elements"
     assert chapters.choose_world({}, "__wildcard__") is None
+    assert chapters.choose_world({}, "__custom__") is None
 
 
 def test_choose_world_surprise_mix():

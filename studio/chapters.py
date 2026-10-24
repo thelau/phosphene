@@ -284,11 +284,11 @@ def world_stats(st: dict) -> dict:
 
 def choose_world(st: dict, mode: str = "") -> dict | None:
     """
-    mode '' = surprise me, a world name = that world, '__wildcard__' = None (caller invents a new world).
+    mode '' = surprise me, a world name = that world, '__wildcard__' / '__custom__' = None (caller invents a new world; custom is built from the director's text).
     Surprise: 50% exploit by keep rate (floored), 30% explore the least-sampled, 20% wildcard.
     """
     worlds = all_worlds(st)
-    if mode == "__wildcard__":
+    if mode in ("__wildcard__", "__custom__"):
         return None
     for w in worlds:
         if w["name"] == mode:
