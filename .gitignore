@@ -8,5 +8,4 @@ outputs/_tmp_export_frames/
 assets/ai-plates-backups/
 assets/ai-plates-rejected/
 
-studio/.bench_progress.json
 studio/.bench_latest.log

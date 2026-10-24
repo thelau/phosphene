@@ -54,14 +54,6 @@ DEFAULT_BENCH_MODELS = [
 ]
 
 lock = threading.Lock()
-PROGRESS = Path(__file__).resolve().parent / ".bench_progress.json"
-prog = {"phase": "starting", "total": 0, "done": 0, "errors": 0, "logo_fail": 0}
-
-
-def write_progress(**kw):
-    prog.update(kw)
-    prog["updated"] = __import__("time").time()
-    PROGRESS.write_text(__import__("json").dumps(prog))
 
 
 def runway_prompt(raw: str) -> str:
@@ -75,8 +67,6 @@ def run_one(job):
         img_bytes = generate_plate_via_krea_mcp(prompt=full, guide_type=guide, model=model)
     except Exception as e:
         print(f"[BENCH] FAIL {model} {title}: {str(e)[:160]}", flush=True)
-        with lock:
-            write_progress(done=prog["done"] + 1, errors=prog["errors"] + 1)
         return
     im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
     with lock:  # allocate the number and save atomically; state is re-read right before writing
@@ -102,8 +92,6 @@ def run_one(job):
         order = [p.name for p in server.ordered_plate_files(st)]
         st["order"] = [f for f in order if f != filename] + [filename]
         server.save_state(st)
-    with lock:
-        write_progress(done=prog["done"] + 1, logo_fail=prog["logo_fail"] + (0 if qa["qa_passed"] else 1))
     server.apply_critic(filename)
     print(f"[BENCH] {filename} {model} qa={'PASS' if qa['qa_passed'] else 'FAIL'} score={qa['qa_score']}", flush=True)
 
@@ -120,7 +108,6 @@ if __name__ == "__main__":
     a = ap.parse_args()
     jobs = []
     scenes = SCENES
-    write_progress(phase="inventing scenes")
     if a.worlds or a.world_names:
         ideas = []
         batches = [n.strip() for n in a.world_names.split(",") if n.strip()] or [None] * a.worlds
@@ -137,10 +124,8 @@ if __name__ == "__main__":
     if a.limit:
         jobs = jobs[: a.limit]
     print(f"[BENCH] {len(jobs)} images, {a.workers} workers", flush=True)
-    write_progress(phase="generating", total=len(jobs))
     if a.dry_run:
         raise SystemExit
     with ThreadPoolExecutor(a.workers) as ex:
         list(ex.map(run_one, jobs))
-    write_progress(phase="done")
     print("[BENCH] done", flush=True)
