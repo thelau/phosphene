@@ -22,6 +22,24 @@ SUBJECTS = [
     "an embossed leather book cover", "a woven textile loom", "a neon tube bender's bench", "a foundry mold",
     "a hot-stamped foil card", "a rack of vinyl-wrapped tubes", "a cassette shell", "a pill blister pack",
     "a giant inflatable object", "a shoe on a plinth", "a sunglasses lens", "a cutting mat with blade",
+    # apparel & wearables
+    "a cropped puffer jacket collar", "a knit beanie with a folded cuff", "a denim jacket back panel", "a cargo pant pocket flap",
+    "a woven label sewn into a seam", "a leather belt buckle", "a canvas tote bag", "a sneaker toe box", "a silk scarf in motion",
+    "a varsity jacket chest", "a ribbed sock cuff", "a pleated skirt in wind", "a technical shell jacket zipper garage",
+    # outdoor displays & signage
+    "a stadium scoreboard LED panel", "a highway gantry sign at night", "a bus-stop lightbox in rain", "a painted brick wall mural",
+    "a rooftop neon sign", "a pedestrian crossing stencil", "a flip-dot display board", "a giant LED cube in a plaza",
+    "a split-flap departure board", "a cinema marquee", "a shop-window vinyl lettering", "a drone-light show in the night sky",
+    # on-screen / digital
+    "a macro of an OLED phone screen", "a laptop screen in a dark room", "a CRT with scanlines", "a smartwatch face",
+    "a wall of surveillance monitors", "a vintage computer terminal with phosphor glow", "a tablet showing a drawing app",
+    "a car dashboard display", "an e-ink reader page", "a pixelated game screen", "a video-call grid on a monitor",
+    "a smart-home panel on a wall", "a camera viewfinder overlay", "a loading spinner on a huge screen",
+    # nature
+    "a moss-covered boulder", "a fern unrolling", "a tide pool at low tide", "a canyon wall with striations", "a lightning field",
+    "a spider web with dew", "a bioluminescent bay", "a field of tall grass in wind", "an aurora over a frozen lake",
+    "a cross-section of a tree trunk", "a cave opening with a light shaft", "a close-up of a leaf's veins", "a murmuration of birds",
+    "a geyser basin", "a lava crust cracking", "a cloud inversion over a valley", "a coral reef shallows", "wet river stones",
 ]
 
 MATERIALS = [
@@ -76,8 +94,17 @@ COLOR_WORLDS = [
     "all-white on white tonal",
 ]
 
+TEXTURES = [
+    "visible fabric weave", "fine film grain and halation", "brushed metal anisotropic streaks", "orange-peel lacquer", "pitted concrete with bug holes",
+    "cracked dried mud", "frost crystals", "fogged glass with droplets", "matte paper fibers", "pixel grid visible at macro",
+    "knurled metal", "wet asphalt sheen", "moss and lichen", "ribbed rubber", "embossed leather grain", "scratched acrylic",
+    "peeling paint layers", "woven wicker", "perforated mesh moire", "stippled halftone dots", "ripples on water", "sand ripples",
+    "velvet pile catching light", "ceramic crazing", "sandblasted frosted glass", "carbon twill", "terry cloth loops", "soap film iridescence",
+    "oil slick rainbow", "chipped enamel", "bark furrows", "basalt columns",
+]
+
 AXES = {
-    "subject": SUBJECTS, "material": MATERIALS, "setting": SETTINGS, "lighting": LIGHTING,
+    "subject": SUBJECTS, "material": MATERIALS, "texture": TEXTURES, "setting": SETTINGS, "lighting": LIGHTING,
     "camera": CAMERAS, "logo": LOGO_TREATMENTS, "color": COLOR_WORLDS,
 }
 
@@ -99,6 +126,6 @@ def sample_shots(count: int, recent: dict | None = None) -> list[dict]:
 
 def describe(shot: dict) -> str:
     return (
-        f"subject: {shot['subject']}; material: {shot['material']}; setting: {shot['setting']}; "
+        f"subject: {shot['subject']}; material: {shot['material']}; surface texture: {shot['texture']}; setting: {shot['setting']}; "
         f"light: {shot['lighting']}; camera: {shot['camera']}; logo treatment: {shot['logo']}; palette: {shot['color']}"
     )
