@@ -36,8 +36,9 @@ def test_secrets_win_over_env(srv, monkeypatch):
 
 def test_load_state_defaults_when_missing(srv):
     st = srv.load_state()
-    for k in ("trashed", "titles", "prompts", "models", "history", "order"):
+    for k in ("trashed", "titles", "prompts", "models", "history"):
         assert st[k] in ([], {})
+    assert [q["kind"] for q in st["sequences"]] == ["manual"] and st["active_sequence"] == st["sequences"][0]["id"]
     assert st["kimi_model"] == "kimi-k3"
     assert srv.CURATION_FILE.exists()
 
@@ -50,16 +51,16 @@ def test_load_state_recovers_from_corrupt_file(srv):
 def test_load_state_fills_missing_keys(srv):
     srv.CURATION_FILE.write_text(json.dumps({"trashed": ["a"]}))
     st = srv.load_state()
-    assert st["trashed"] == ["a"] and st["order"] == [] and st["history"] == []
+    assert st["trashed"] == ["a"] and st["history"] == [] and len(st["sequences"]) == 1
 
 
 def test_state_roundtrip_preserves_extra_keys(srv):
     st = srv.load_state()
-    st["order"] = ["b", "a"]
+    st["history_demo"] = ["b", "a"]
     st["custom_worlds"] = [{"name": "X"}]
     srv.save_state(st)
     again = srv.load_state()
-    assert again["order"] == ["b", "a"] and again["custom_worlds"][0]["name"] == "X"
+    assert again["history_demo"] == ["b", "a"] and again["custom_worlds"][0]["name"] == "X"
 
 
 # ---------- prompt wrapper (position wording must never be softened) ----------
@@ -76,7 +77,7 @@ def test_build_full_prompt_keeps_exact_position_wording(srv):
 def test_ordered_plate_files_respects_order_then_appends_new(srv, make_plate):
     for n in ("1_a.jpg", "2_b.jpg", "3_c.jpg"):
         make_plate(srv.PLATES_DIR / n)
-    st = {"order": ["3_c.jpg", "gone.jpg", "1_a.jpg"]}
+    st = {"order": ["3_c.jpg", "gone.jpg", "1_a.jpg"]}   # a save without sequences still works (legacy order)
     assert [p.name for p in srv.ordered_plate_files(st)] == ["3_c.jpg", "1_a.jpg", "2_b.jpg"]
 
 
@@ -144,19 +145,6 @@ def test_get_cached_qa_flush_is_throttled(srv, make_plate, monkeypatch):
 
 # ---------- restoring from trash ----------
 
-def test_moved_to_end_puts_restored_images_last_and_keeps_the_rest(srv):
-    assert srv.moved_to_end(["a", "b", "c", "d"], {"b"}) == ["a", "c", "d", "b"]
-
-
-def test_moved_to_end_keeps_the_relative_order_of_several_restored_images(srv):
-    assert srv.moved_to_end(["c", "a", "x", "b"], {"a", "b", "c"}) == ["x", "c", "a", "b"]
-
-
-def test_moved_to_end_handles_names_missing_from_the_order(srv):
-    assert srv.moved_to_end(["a", "b"], {"zzz"}) == ["a", "b", "zzz"]
-    assert srv.moved_to_end([], {"a"}) == ["a"]
-
-
 # ---------- purging the trash ----------
 
 def prepared(srv, make_plate, names=("20_a.jpg", "21_b.jpg", "22_c.jpg")):
@@ -184,7 +172,7 @@ def test_purge_keeps_the_learning_record_but_drops_order_and_qa_cache(srv, make_
         assert "20_a.jpg" in st[key]                        # taste and territory scores still see it
     assert "20_a.jpg" in st["trashed"] and "21_b.jpg" in st["qa_failed"]
     assert st["purged"] == ["20_a.jpg", "21_b.jpg"]
-    assert st["order"] == ["22_c.jpg"]
+    assert st["order"] == ["22_c.jpg"]                      # legacy order list is cleaned too
     assert not any(k.startswith(("20_a.jpg:", "21_b.jpg:")) for k in srv.QA_CACHE)
     assert any(k.startswith("22_c.jpg:") for k in srv.QA_CACHE)
 
@@ -217,3 +205,40 @@ def test_next_plate_number_never_reuses_a_purged_number(srv, make_plate):
     for f in srv.PLATES_DIR.glob("*.jpg"):
         f.unlink()
     assert srv.next_plate_number({}) == 16               # an empty library starts at 16
+
+
+# ---------- sequences wired into the server ----------
+
+def test_ordered_plate_files_follows_the_active_sequence(srv, make_plate):
+    import sequences
+    for n in ("1_a.jpg", "2_b.jpg", "3_c.jpg"):
+        make_plate(srv.PLATES_DIR / n)
+    st = srv.load_state()
+    manual = st["active_sequence"]
+    sequences.set_order(st, ["3_c.jpg", "1_a.jpg", "2_b.jpg"])
+    ai = sequences.add(st, "ai", ["2_b.jpg", "3_c.jpg", "1_a.jpg"])
+    assert [p.name for p in srv.ordered_plate_files(st)] == ["2_b.jpg", "3_c.jpg", "1_a.jpg"]
+    sequences.activate(st, manual)
+    assert [p.name for p in srv.ordered_plate_files(st)] == ["3_c.jpg", "1_a.jpg", "2_b.jpg"]
+
+
+def test_sequences_survive_save_and_load(srv):
+    import sequences
+    st = srv.load_state()
+    sequences.add(st, "ai", ["x", "y"], summary="s")
+    srv.save_state(st)
+    again = srv.load_state()
+    assert [s["name"] for s in again["sequences"]] == ["Manual 1", "AI 1"] and again["active_sequence"] == st["active_sequence"]
+    assert "order" not in again
+
+
+def test_purge_removes_images_from_every_sequence(srv, make_plate):
+    import sequences
+    for n in ("20_a.jpg", "21_b.jpg"):
+        make_plate(srv.PLATES_DIR / n)
+    st = srv.load_state()
+    st["trashed"] = ["20_a.jpg"]
+    sequences.set_order(st, ["20_a.jpg", "21_b.jpg"])
+    sequences.add(st, "ai", ["21_b.jpg", "20_a.jpg"])
+    srv.purge_plates(st, ["20_a.jpg"])
+    assert all("20_a.jpg" not in s["order"] for s in st["sequences"])

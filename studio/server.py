@@ -27,6 +27,7 @@ from PIL import Image
 import chapters
 import critic
 import cutplan
+import sequences
 import diversity
 import taste
 
@@ -241,6 +242,7 @@ def _load_state_raw() -> dict:
             st.setdefault("order", [])
             st.setdefault("kimi_api_key", os.environ.get("KIMI_API_KEY", os.environ.get("MOONSHOT_API_KEY", "")))
             st.setdefault("kimi_model", "kimi-k3")
+            sequences.ensure(st)
             return st
         except Exception:
             pass
@@ -254,6 +256,7 @@ def _load_state_raw() -> dict:
         "kimi_api_key": os.environ.get("KIMI_API_KEY", os.environ.get("MOONSHOT_API_KEY", "")),
         "kimi_model": "kimi-k3",
     }
+    sequences.ensure(state)
     CURATION_FILE.write_text(json.dumps(state, indent=2))
     return state
 
@@ -267,16 +270,9 @@ def save_state(state: dict) -> None:
     CURATION_FILE.write_text(json.dumps(state, indent=2))
 
 
-def moved_to_end(order: list[str], names) -> list[str]:
-    """`names` go to the end (keeping their relative order); everything else keeps its order."""
-    moving = set(names)
-    tail = sorted(moving, key=lambda n: (n not in order, order.index(n) if n in order else 0))
-    return [n for n in order if n not in moving] + tail
-
-
 def ordered_plate_files(st: dict) -> list[Path]:
     all_files = {p.name: p for p in sorted(PLATES_DIR.glob("*.jpg"))}
-    order = st.get("order", [])
+    order = sequences.get_order(st)
     result = []
     seen = set()
     for fname in order:
@@ -540,7 +536,7 @@ def purge_plates(st: dict, requested) -> tuple[int, int]:
         for key in [k for k in QA_CACHE if k.rpartition(":")[0] == n]:
             QA_CACHE.pop(key, None)
     st["purged"] = sorted(set(st.get("purged", [])) | set(names))
-    st["order"] = [n for n in st.get("order", []) if n not in set(names)]
+    sequences.remove_everywhere(st, names)
     return deleted, freed
 
 
@@ -696,6 +692,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 "kimi_model": st.get("kimi_model", "kimi-k3"),
                 "critic_enabled": st.get("critic_enabled", True),
                 "critic_autotrash": st.get("critic_autotrash", False),
+                "sequences": sequences.public(st, {p["filename"] for p in plates if not p["trashed"]}),
+                "active_sequence": st.get("active_sequence"),
             })
             return
 
@@ -726,11 +724,31 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
         if parsed.path == "/api/reorder":
             new_order = body.get("order", [])
+            forked = None
             if isinstance(new_order, list):
+                with STATE_LOCK:
+                    st = load_state()
+                    forked = sequences.reorder_active(st, new_order)
+                    save_state(st)
+            self.send_json({"ok": True, "forked": {"id": forked["id"], "name": forked["name"]} if forked else None})
+            return
+
+        if parsed.path == "/api/sequence":
+            with STATE_LOCK:
                 st = load_state()
-                st["order"] = [str(x) for x in new_order]
-                save_state(st)
-            self.send_json({"ok": True})
+                action, sid = body.get("action"), body.get("id", "")
+                ok = False
+                if action == "activate":
+                    ok = sequences.activate(st, sid)
+                elif action == "rename":
+                    ok = sequences.rename(st, sid, body.get("name", ""))
+                elif action == "duplicate":
+                    ok = sequences.duplicate(st, sid) is not None
+                elif action == "delete":
+                    ok = sequences.delete(st, sid)
+                if ok:
+                    save_state(st)
+            self.send_json({"ok": ok} if ok else {"ok": False, "error": "Could not do that (the last order cannot be deleted)."}, 200 if ok else 400)
             return
 
         if parsed.path == "/api/invent-prompts":
@@ -817,15 +835,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         st.setdefault("trashed_at", {})[filename] = time.time()
                         st["qa_failed"] = sorted(set(st.get("qa_failed", [])) | {filename})
 
-                    cur_order = [p.name for p in ordered_plate_files(st)]
-                    if filename in cur_order:
-                        cur_order.remove(filename)
-                    if after_filename and after_filename in cur_order:
-                        idx = cur_order.index(after_filename) + 1
-                        cur_order.insert(idx, filename)
-                    else:
-                        cur_order.append(filename)
-                    st["order"] = cur_order
+                    sequences.append_everywhere(st, filename)
                     save_state(st)
                 threading.Thread(target=apply_critic, args=(filename,), daemon=True).start()
 
@@ -871,7 +881,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 for f in group:
                     st.get("trashed_at", {}).pop(f, None)
                 # a restored image joins the end of the order; it does not return to where it was
-                st["order"] = moved_to_end([p.name for p in ordered_plate_files(st)], group)
+                sequences.move_to_end_everywhere(st, sorted(group), universe=[p.name for p in PLATES_DIR.glob("*.jpg")])
             st["trashed"] = sorted(cur)
             save_state(st)
             self.send_json({"ok": True})

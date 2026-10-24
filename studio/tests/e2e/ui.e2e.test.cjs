@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { chromium } = require('playwright-core');
-const { start, makeState } = require('./fakeapi.cjs');
+const { start, makeState, addSeq } = require('./fakeapi.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const PORT = 5410 + Math.floor(Math.random() * 400);
@@ -46,7 +46,9 @@ test.after(async () => {
 });
 
 async function fresh(opts = {}) {
-  api.state.plates = makeState().plates;
+  const fresh_state = makeState();
+  Object.assign(api.state, { plates: fresh_state.plates, sequences: fresh_state.sequences, active: fresh_state.active, counter: fresh_state.counter });
+  if (opts.setup) opts.setup(api.state);
   api.state.delays = { purge: 0, generate: 0, invent: 0, export: 0, ...opts.delays };
   api.state.genCount = 0;
   api.state.calls.length = 0;
@@ -111,7 +113,7 @@ test('trash: select, shift-select, cancel, delete with a loader, empty trash', {
   await page.waitForSelector('#confirmModal.open');
   assert.match(await text('#confirmTitle'), /Delete 3 images permanently\?/);
   await shot('03-confirm');
-  await page.click('.confirm-foot button >> text=Cancel');
+  await page.click('#confirmModal .confirm-foot button >> text=Cancel');
   await page.waitForSelector('#confirmModal.open', { state: 'detached' }).catch(() => {});
   assert.equal(await page.locator('#confirmModal.open').count(), 0);
   assert.equal(api.state.calls.filter(c => c.path === '/api/purge').length, 0);
@@ -238,5 +240,101 @@ test('narrow window: the header wraps without squeezing the Generate button', { 
   assert.ok(gen.x >= world.x, 'still in the header');
   assert.ok(gen.x + gen.width <= 900, 'not clipped by the window edge');
   await shot('10-narrow');
+  await ctx.close();
+});
+
+const names = async () => page.locator('.card').evaluateAll(els => els.map(e => e.dataset.filename));
+
+test('orders: switch between Manual and AI without losing either', { skip }, async () => {
+  const ctx = await fresh({ setup: st => { st.sequences[0].order = ['k3', 'k1', 'k2', 't1', 't2', 't3', 't4']; addSeq(st, 'ai', ['k2', 'k3', 'k1'], { summary: 'Hook on k2, lands on k1.' }); st.active = 's1'; } });
+  assert.deepEqual(await names(), ['k3', 'k1', 'k2']);
+  assert.equal(await page.locator('#seqSelect option').count(), 2);
+  assert.match(await page.locator('#seqSelect option').nth(0).innerText(), /✋ Manual 1 \(3\)/);
+  assert.match(await page.locator('#seqSelect option').nth(1).innerText(), /✨ AI 1 \(3\)/);
+  await shot('11-orders-manual');
+  await page.selectOption('#seqSelect', { label: '✨ AI 1 (3)' });
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k2');
+  assert.deepEqual(await names(), ['k2', 'k3', 'k1']);
+  assert.equal(await text('#seqSummary'), 'Hook on k2, lands on k1.');
+  await shot('12-orders-ai');
+  await page.selectOption('#seqSelect', { label: '✋ Manual 1 (3)' });
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
+  assert.deepEqual(await names(), ['k3', 'k1', 'k2']);
+  assert.equal(await text('#seqSummary'), '');
+  await ctx.close();
+});
+
+test('orders: dragging in an AI order forks a manual copy and keeps the AI order', { skip }, async () => {
+  const ctx = await fresh({ setup: st => { addSeq(st, 'ai', ['k2', 'k3', 'k1'], { summary: 'x' }); } });   // AI 1 is active
+  assert.deepEqual(await names(), ['k2', 'k3', 'k1']);
+  await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));     // drag k1 onto k2
+  await page.waitForFunction(() => /Manual 2 \(from AI 1\)/.test(document.getElementById('seqSelect').selectedOptions[0].textContent));
+  assert.match(await text('#toast'), /Saved as “Manual 2 \(from AI 1\)”/);
+  const forked = await names();
+  assert.notDeepEqual(forked, ['k2', 'k3', 'k1']);
+  await page.selectOption('#seqSelect', { label: '✨ AI 1 (3)' });
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k2');
+  assert.deepEqual(await names(), ['k2', 'k3', 'k1']);                         // untouched
+  await shot('13-orders-forked');
+  await ctx.close();
+});
+
+test('orders: rename, duplicate and delete from the menu; the last order cannot be deleted', { skip }, async () => {
+  const ctx = await fresh();
+  await page.click('#seqMenuBtn');
+  await page.click('#seqMenu >> text=Rename');
+  await page.waitForSelector('#textModal.open');
+  await page.fill('#textInput', 'Opening cut');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => /Opening cut/.test(document.getElementById('seqSelect').selectedOptions[0].textContent));
+  await page.click('#seqMenuBtn');
+  await page.click('#seqMenu >> text=Duplicate');
+  await page.waitForFunction(() => /Opening cut copy/.test(document.getElementById('seqSelect').selectedOptions[0].textContent));
+  assert.equal(await page.locator('#seqSelect option').count(), 2);
+  await page.click('#seqMenuBtn');
+  await page.click('#seqMenu >> text=Delete');
+  assert.match(await text('#confirmTitle'), /Delete “Opening cut copy”\?/);
+  await page.click('#confirmYes');
+  await page.waitForFunction(() => document.querySelectorAll('#seqSelect option').length === 1);
+  await page.click('#seqMenuBtn');
+  await page.click('#seqMenu >> text=Delete');
+  await page.click('#confirmYes');
+  await page.waitForFunction(() => document.getElementById('toast').classList.contains('show') && /last order/.test(document.getElementById('toast').textContent));
+  assert.equal(await page.locator('#seqSelect option').count(), 1);
+  await ctx.close();
+});
+
+test('orders: a restored image lands at the end of every order, and the order bar hides in the trash view', { skip }, async () => {
+  const ctx = await fresh({ setup: st => { addSeq(st, 'ai', ['k3', 'k2', 'k1'], { summary: 'x' }); st.active = 's1'; } });
+  await page.click('#tabTrash');
+  await page.waitForSelector('#trashBar:not([hidden])');
+  assert.equal(await page.locator('#seqBox').isHidden(), true);
+  await page.locator('.card[data-filename="t2"]').hover();
+  await page.locator('.card[data-filename="t2"] .action-btn', { hasText: 'Restore' }).click();
+  await page.waitForFunction(() => document.getElementById('tabSelection').textContent.includes('(4)'));
+  await page.click('#tabSelection');
+  await page.waitForFunction(() => document.querySelectorAll('.card').length === 4);
+  assert.equal(await page.locator('#seqBox').isVisible(), true);
+  assert.equal(await page.locator('#trashBar').isHidden(), true);
+  assert.deepEqual(await names(), ['k1', 'k2', 'k3', 't2']);
+  await page.selectOption('#seqSelect', { label: '✨ AI 1 (4)' });
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
+  assert.deepEqual(await names(), ['k3', 'k2', 'k1', 't2']);
+  await ctx.close();
+});
+
+test('orders: the selector sits on the right of the gallery bar, where the trash buttons take over in the trash tab', { skip }, async () => {
+  const ctx = await fresh();
+  const bar = await page.locator('.gallery-head').boundingBox();
+  const tabs = await page.locator('.seg').boundingBox();
+  const seq = await page.locator('#seqBox').boundingBox();
+  assert.ok(seq.x > tabs.x + tabs.width, 'right of the tabs');
+  assert.ok(seq.x + seq.width > bar.x + bar.width - 40, 'pushed to the right edge');
+  await page.click('#tabTrash');
+  await page.waitForSelector('#trashBar:not([hidden])');
+  const trash = await page.locator('#trashBar').boundingBox();
+  assert.ok(trash.x + trash.width > bar.x + bar.width - 40, 'trash buttons on the same right edge');
+  assert.equal(await page.locator('#seqBox').isHidden(), true);
+  await shot('14-orders-right');
   await ctx.close();
 });

@@ -8,6 +8,7 @@ import pytest
 from PIL import Image
 
 import bench
+import sequences
 import bench_status
 import dev
 import diegetic_engine as de
@@ -142,7 +143,7 @@ def test_bench_run_one_saves_plate_and_state(bench_env, monkeypatch):
     st = srv.load_state()
     f = files[0].name
     assert st["titles"][f] == "[bench] Cool Shot" and st["worlds"][f] == "Editorial Print" and st["ideas"][f] == "an idea"
-    assert st["models"][f] == "google/nano-banana-2.1" and f not in st["trashed"] and st["order"][-1] == f
+    assert st["models"][f] == "google/nano-banana-2.1" and f not in st["trashed"] and sequences.get_order(st)[-1] == f
 
 
 def test_bench_run_one_trashes_logo_failures(bench_env, monkeypatch):

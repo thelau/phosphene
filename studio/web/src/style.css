@@ -421,7 +421,7 @@
 .dl:hover { border-color: var(--orange); color: var(--orange); }
 .dl[hidden] { display: none; }
 
-.trash-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.trash-bar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-left: auto; }
 .trash-bar[hidden] { display: none; }
 button.danger { color: #fda4af; border-color: rgba(244,63,94,0.45); }
 button.danger:hover:not(:disabled) { border-color: #f43f5e; }
@@ -438,3 +438,12 @@ button.danger.solid { background: #c0263f; border-color: #c0263f; color: #fff; }
 .busy-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 160; }
 .busy-bg[hidden] { display: none; }
 .busy { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 26px 34px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; box-shadow: 0 24px 60px rgba(0,0,0,.6); }
+.seq { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: auto; }
+.seq[hidden] { display: none; }
+.seq-label { font-size: 12px; color: var(--muted); }
+.seq select { min-width: 150px; max-width: 260px; }
+.seq-summary { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 380px; }
+.seq-menu { position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 40; background: #18181d; border: 1px solid #2e2e38; border-radius: 8px; padding: 4px; display: flex; flex-direction: column; min-width: 140px; box-shadow: 0 14px 30px rgba(0,0,0,.55); }
+.seq-menu[hidden] { display: none; }
+.seq-menu button { border: 0; background: transparent; text-align: left; padding: 7px 10px; }
+.seq-menu button:hover { background: #26262e; }

@@ -58,8 +58,7 @@ def run_one(job):
             st["trashed"] = sorted(set(st.get("trashed", [])) | {filename})
             st["qa_failed"] = sorted(set(st.get("qa_failed", [])) | {filename})
             st.setdefault("trashed_at", {})[filename] = __import__("time").time()
-        order = [p.name for p in server.ordered_plate_files(st)]
-        st["order"] = [f for f in order if f != filename] + [filename]
+        server.sequences.append_everywhere(st, filename)
         server.save_state(st)
     server.apply_critic(filename)
     print(f"[BENCH] {filename} {model} qa={'PASS' if qa['qa_passed'] else 'FAIL'} score={qa['qa_score']}", flush=True)

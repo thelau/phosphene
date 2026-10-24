@@ -81,6 +81,8 @@
       const res = await fetch('/api/state');
       const data = await res.json();
       plates = data.plates || [];
+      sequences = data.sequences || [];
+      activeSeq = data.active_sequence || null;
 
       const kreaDot = document.getElementById('kreaDot');
       const kreaLbl = document.getElementById('kreaStatusLabel');
@@ -104,6 +106,7 @@
       document.getElementById('tabSelection').className = showTrash ? '' : 'on';
       document.getElementById('tabTrash').className = showTrash ? 'on' : '';
 
+      renderSequences();
       renderGrid();
       restartLoop();
       lastSig = plateSig(plates);
@@ -144,6 +147,63 @@
     }
 
     // ---- trash: select, delete selected, empty ----
+    // ---- orders (sequences): Manual and AI orders of the selection ----
+    let sequences = [];
+    let activeSeq = null;
+    function renderSequences() {
+      const sel = document.getElementById('seqSelect');
+      sel.innerHTML = sequences.map(s => `<option value="${s.id}">${s.kind === 'ai' ? '✨' : '✋'} ${escapeHtml(s.name)} (${s.count})</option>`).join('');
+      sel.value = activeSeq || '';
+      const cur = sequences.find(s => s.id === activeSeq);
+      document.getElementById('seqSummary').textContent = cur && cur.summary ? cur.summary : '';
+      document.getElementById('seqSummary').title = cur && cur.summary ? cur.summary : '';
+      document.getElementById('seqBox').hidden = showTrash;
+    }
+    async function seqCall(payload) {
+      const res = await (await fetch('/api/sequence', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
+      if (!res.ok) { setStatus(res.error || 'Could not do that.'); return false; }
+      await loadState();
+      return true;
+    }
+    function switchSequence() { return seqCall({ action: 'activate', id: document.getElementById('seqSelect').value }); }
+    function toggleSeqMenu(e) {
+      if (e) e.stopPropagation();
+      const m = document.getElementById('seqMenu');
+      m.hidden = !m.hidden;
+    }
+    document.addEventListener('click', () => { document.getElementById('seqMenu').hidden = true; });
+    async function renameSeq() {
+      document.getElementById('seqMenu').hidden = true;
+      const cur = sequences.find(s => s.id === activeSeq);
+      const name = await askText('Rename this order', cur ? cur.name : '');
+      if (name) await seqCall({ action: 'rename', id: activeSeq, name });
+    }
+    async function duplicateSeq() {
+      document.getElementById('seqMenu').hidden = true;
+      if (await seqCall({ action: 'duplicate', id: activeSeq })) setStatus('Duplicated. You are now editing the copy.');
+    }
+    async function deleteSeq() {
+      document.getElementById('seqMenu').hidden = true;
+      const cur = sequences.find(s => s.id === activeSeq);
+      if (!cur) return;
+      if (await askConfirm(`Delete “${cur.name}”?`, 'Only this order is removed. Your images and your other orders are not touched.', 'Delete order')) await seqCall({ action: 'delete', id: activeSeq });
+    }
+
+    let textResolve = null;
+    function askText(title, value) {
+      document.getElementById('textTitle').textContent = title;
+      const input = document.getElementById('textInput');
+      input.value = value || '';
+      document.getElementById('textModal').classList.add('open');
+      input.focus(); input.select();
+      return new Promise(res => { textResolve = res; });
+    }
+    function textAnswer(ok) {
+      document.getElementById('textModal').classList.remove('open');
+      if (textResolve) textResolve(ok ? document.getElementById('textInput').value.trim() : null);
+      textResolve = null;
+    }
+
     let trashSel = new Set();
     let lastSel = null;
     function cardClick(e, filename) {
@@ -321,11 +381,12 @@
       const [moved] = plates.splice(fromIdx, 1);
       plates.splice(toIdx, 0, moved);
 
-      await fetch('/api/reorder', {
+      const res = await (await fetch('/api/reorder', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ order: plates.map(p => p.filename) })
-      });
+      })).json();
+      if (res.forked) setStatus(`Saved as “${res.forked.name}”. The AI order is untouched.`);
       await loadState();
     }
     function onDragEnd(e) {
@@ -749,6 +810,12 @@
 
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
+  deleteSeq,
+  duplicateSeq,
+  renameSeq,
+  switchSequence,
+  textAnswer,
+  toggleSeqMenu,
   cardClick,
   confirmAnswer,
   deleteSelected,

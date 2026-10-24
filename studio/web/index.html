@@ -162,6 +162,17 @@
           <button id="tabSelection" onclick="setTrashView(false)">Selection (<span id="selCount">0</span>)</button>
           <button id="tabTrash" onclick="setTrashView(true)">🗑️ Trash (<span id="trashCount">0</span>)</button>
         </div>
+        <div class="seq" id="seqBox">
+          <span class="seq-summary" id="seqSummary"></span>
+          <span class="seq-label">Order</span>
+          <select id="seqSelect" onchange="switchSequence()" title="Switch between your saved orders"></select>
+          <button id="seqMenuBtn" onclick="toggleSeqMenu(event)" title="Rename, duplicate or delete this order">⋯</button>
+          <div class="seq-menu" id="seqMenu" hidden>
+            <button onclick="renameSeq()">Rename…</button>
+            <button onclick="duplicateSeq()">Duplicate</button>
+            <button class="danger" onclick="deleteSeq()">Delete…</button>
+          </div>
+        </div>
         <div class="trash-bar" id="trashBar" hidden>
           <span id="trashSelCount">0 selected</span>
           <button id="trashSelAll" onclick="selectAllTrash()">Select all</button>
@@ -178,6 +189,17 @@
 
   <div class="busy-bg" id="busy" hidden>
     <div class="busy"><div class="spin"></div><div id="busyMsg">Working…</div></div>
+  </div>
+
+  <div class="confirm-bg" id="textModal">
+    <div class="confirm">
+      <h3 id="textTitle"></h3>
+      <input id="textInput" type="text" maxlength="60" style="width:100%;margin-top:10px" onkeydown="if(event.key==='Enter')textAnswer(true);if(event.key==='Escape')textAnswer(false)" />
+      <div class="confirm-foot">
+        <button onclick="textAnswer(false)">Cancel</button>
+        <button class="primary" onclick="textAnswer(true)">Save</button>
+      </div>
+    </div>
   </div>
 
   <div class="confirm-bg" id="confirmModal">
