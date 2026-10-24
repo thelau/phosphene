@@ -415,6 +415,15 @@ QUALITY_BAR = (
 )
 
 
+def parse_llm_json(out: str, opener: str):
+    """First JSON value starting at `opener` ('{' or '['); ignores trailing text, fences or a second value."""
+    i = out.find(opener)
+    if i == -1:
+        raise RuntimeError(f"Kimi did not return JSON ({out[:120]!r})")
+    value, _ = json.JSONDecoder().raw_decode(out[i:])
+    return value
+
+
 def invent_world(st: dict, api_key: str, kimi_model: str, direction: str = "") -> dict:
     """Wildcard: Kimi authors a brand-new world in the same format as chapters.WORLDS."""
     known = ", ".join(w["name"] for w in chapters.all_worlds(st))
@@ -428,7 +437,7 @@ def invent_world(st: dict, api_key: str, kimi_model: str, direction: str = "") -
         f"applications (10 concrete photographable subjects), marks (5 ways the mark physically emerges from the scene). Example format: {json.dumps({k: ref[k] for k in ('name', 'brief', 'palette', 'marks')})[:400]}",
         api_key=api_key, preferred_model=kimi_model,
     )
-    w = json.loads(out[out.find("{"): out.rfind("}") + 1])
+    w = parse_llm_json(out, "{")
     for k in ("name", "brief", "palette", "applications", "marks"):
         if not w.get(k):
             raise RuntimeError(f"invented world missing '{k}'")
@@ -505,7 +514,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     s_idx, e_idx = out.find("["), out.rfind("]")
     if s_idx == -1 or e_idx == -1:
         raise RuntimeError("Kimi did not return a valid JSON array of prompts")
-    ideas = json.loads(out[s_idx : e_idx + 1])
+    ideas = parse_llm_json(out, "[")
 
     past = list(prompts.values())
     kept = []
@@ -685,6 +694,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 save_state(st)
                 self.send_json({"ok": True, "ideas": ideas})
             except Exception as e:
+                print(f"[KIMI] invent-prompts failed: {e!r}", flush=True)
                 self.send_json({"ok": False, "error": str(e)}, 500)
             return
 
