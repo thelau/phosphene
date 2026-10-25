@@ -78,3 +78,20 @@ test('closing or reloading the page during a batch asks first (and not when idle
   await ctx.close();
 });
 
+
+test('the batch size list offers up to 20 images and sends the chosen number', { skip }, async () => {
+  const ctx = await fresh({ delays: { invent: 50, generate: 20 } });
+  const options = await page.locator('#batchCountSelect option').evaluateAll(els => els.map(e => e.value));
+  assert.deepEqual(options, ['2', '4', '6', '8', '12', '16', '20']);
+  assert.equal(await page.locator('#batchCountSelect option[value="20"]').innerText(), '20 images');
+  await page.selectOption('#batchCountSelect', '12');
+  await page.click('#generateBtn');
+  await page.waitForFunction(() => /Done — 12 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
+  assert.equal(api.state.calls.find(c => c.path === '/api/invent-prompts').body.count, 12);
+  assert.equal(await page.locator('#statusText .slot.ok').count(), 12);
+  assert.equal(await page.locator('#tabSelection').innerText().then(t => /\(15\)/.test(t)), true);          // 3 kept + 12 new
+  await page.reload();
+  await page.waitForSelector('.card');
+  assert.equal(await page.inputValue('#batchCountSelect'), '12');                                          // remembered
+  await ctx.close();
+});

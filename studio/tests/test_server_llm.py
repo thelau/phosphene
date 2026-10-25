@@ -326,3 +326,93 @@ def test_fewer_ideas_than_asked_from_kimi_gives_what_there_is(srv, monkeypatch):
     batch = [{"title": f"T{i}", "idea": "i", "guide": "dark", "prompt": f"{WORDS[i]} scene"} for i in range(3)]
     monkeypatch.setattr(srv, "call_kimi_llm", lambda *a, **k: json.dumps(batch))
     assert len(srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=8, world="Editorial Print")) == 3
+
+
+# ---------- you get the number you asked for ----------
+
+def tok(n):
+    """A distinct letters-only word per number (the duplicate filter only looks at letters)."""
+    return "".join(chr(97 + (n // 26 ** k) % 26) for k in range(4))
+
+
+def unique_scenes(start, n):
+    return [{"title": f"Scene {start + i}", "subject": f"s{start + i}", "idea": "i", "guide": "dark" if i % 2 == 0 else "light",
+             "prompt": " ".join(tok((start + i) * 11 + j) for j in range(6))} for i in range(n)]
+
+
+def scripted_kimi(srv, monkeypatch, answers):
+    """Kimi answers with the next scripted list each time it is asked for scenes."""
+    asked, it = [], iter(answers)
+
+    def llm(prompt, **k):
+        asked.append(prompt)
+        try:
+            return json.dumps(next(it))
+        except StopIteration:
+            return json.dumps([])
+    monkeypatch.setattr(srv, "call_kimi_llm", llm)
+    return asked
+
+
+def test_a_short_answer_from_kimi_is_followed_up_for_just_the_missing_scenes(srv, monkeypatch):
+    asked = scripted_kimi(srv, monkeypatch, [unique_scenes(0, 6), unique_scenes(100, 4)])           # asked for 10, only 6 written
+    stats = {}
+    out = srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=8, world="Fashion & Apparel", stats=stats)
+    assert len(out) == 8 and len({o["title"] for o in out}) == 8
+    assert len(asked) == 2 and " of 4 objects" in asked[1]                                           # the follow-up asks for the missing 2 (+2 spare)
+    assert "Scene 0" in asked[1]                                                                      # and is told what already exists
+    assert stats["wanted"] == 8 and stats["returned"] == 8 and stats["kimi_calls"] == 2
+
+
+def test_big_batches_are_asked_in_chunks_of_at_most_ten(srv, monkeypatch):
+    asked = scripted_kimi(srv, monkeypatch, [unique_scenes(0, 12), unique_scenes(200, 12)])
+    out = srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=20, world="Fashion & Apparel")
+    assert len(out) == 20 and len({o["title"] for o in out}) == 20
+    assert len(asked) == 2 and "12 objects" in asked[0] and "12 objects" in asked[1]                  # 10 + 2 spare, twice
+    assert all(o["world"] == "Fashion & Apparel" for o in out)
+
+
+def test_a_batch_of_exactly_ten_or_fewer_is_one_request(srv, monkeypatch):
+    asked = scripted_kimi(srv, monkeypatch, [unique_scenes(0, 10)])
+    assert len(srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=8, world="Fashion & Apparel")) == 8
+    assert len(asked) == 1 and "10 objects" in asked[0]
+
+
+def test_kimi_repeating_itself_does_not_loop_forever_or_duplicate_scenes(srv, monkeypatch):
+    same = unique_scenes(0, 3)
+    asked = scripted_kimi(srv, monkeypatch, [same] * 10)
+    out = srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=8, world="Fashion & Apparel")
+    assert len(out) == 3 and len({o["title"] for o in out}) == 3                                      # what exists, once each
+    assert len(asked) <= 4
+
+
+def test_a_failing_follow_up_still_returns_what_was_written(srv, monkeypatch):
+    calls = []
+
+    def llm(prompt, **k):
+        calls.append(1)
+        if len(calls) == 1:
+            return json.dumps(unique_scenes(0, 5))
+        raise RuntimeError("Kimi timed out")
+    monkeypatch.setattr(srv, "call_kimi_llm", llm)
+    assert len(srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=8, world="Fashion & Apparel")) == 5
+
+
+def test_a_failing_first_request_is_reported_not_swallowed(srv, monkeypatch):
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda *a, **k: "no json")
+    with pytest.raises(RuntimeError):
+        srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=4, world="Fashion & Apparel")
+
+
+def test_topping_up_never_adds_a_copy_of_a_scene_already_in_the_batch(srv, monkeypatch):
+    dup = unique_scenes(0, 1)
+    asked = scripted_kimi(srv, monkeypatch, [dup + [dict(dup[0], title="Same again")] + unique_scenes(50, 2)])
+    out = srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=4, world="Fashion & Apparel")
+    assert "Same again" not in [o["title"] for o in out] and len(out) == 3
+
+
+def test_the_log_line_explains_the_spare_scenes(srv, monkeypatch, capsys):
+    scripted_kimi(srv, monkeypatch, [unique_scenes(0, 10)])
+    srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=8, world="Fashion & Apparel")
+    out = capsys.readouterr().out
+    assert "asking Kimi for 10 scenes (8 wanted + 2 spare in case some are near-duplicates)" in out and "sending 8 scenes to Krea" in out

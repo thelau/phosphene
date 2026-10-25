@@ -334,20 +334,14 @@ def match_world(st: dict, api_key: str, kimi_model: str, direction: str) -> dict
     return None
 
 
-def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, world: str | None = None, direction: str = "", stats: dict | None = None) -> list[dict]:
-    """One authored creative world per batch (shots cohere), idea-first, steered by taste, near-duplicates dropped."""
+def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list) -> tuple[list, dict]:
+    """One Kimi request for up to `count` scenes in territory `w`; `batch` = scenes already collected for this batch (never repeated)."""
     titles = st.get("titles", {})
     prompts = st.get("prompts", {})
     brief = taste.taste_brief(st, titles, prompts)
-    ban_str = ", ".join(list(dict.fromkeys(list(titles.values()) + st.get("history", [])))[-80:])
+    ban_str = ", ".join(list(dict.fromkeys(list(titles.values()) + st.get("history", []) + [b["title"] for b in batch]))[-80:])
 
-    w = chapters.choose_world(st, world or "")
-    if direction and not world:
-        w = match_world(st, api_key, kimi_model, direction) or invent_world(st, api_key, kimi_model, direction)
-    elif w is None:
-        w = invent_world(st, api_key, kimi_model, direction)
-
-    n_ask = count + 2  # over-ask so near-duplicates can be dropped
+    n_ask = count + 2  # a little spare: some scenes come back as near-copies of past images and are dropped
     shots = diversity.sample_shots(n_ask, st.get("recent_axes"))
     seen_subjects = st.get("recent_subjects", {}).get(w["name"], [])[-60:]
     avoid_block = ""
@@ -389,31 +383,32 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
         f"2. Each prompt: 2-4 sentences, concrete visual language, name lens/light/material, end by stating the mark's treatment and dead-center position.\n"
         f"3. All shots must look clearly different from each other and from these past scenes: [{ban_str}]."
     )
-    print(f"[KIMI] world='{w['name']}' requesting {n_ask} prompts using {kimi_model}...", flush=True)
+    print(f"[KIMI] world='{w['name']}': asking Kimi for {n_ask} scenes ({count} wanted + {n_ask - count} spare in case some are near-duplicates), model {kimi_model}...", flush=True)
     out = call_kimi_llm(llm_prompt, api_key=api_key, preferred_model=kimi_model)
     s_idx, e_idx = out.find("["), out.rfind("]")
     if s_idx == -1 or e_idx == -1:
         raise RuntimeError("Kimi did not return a valid JSON array of prompts")
     ideas = parse_llm_json(out, "[")
 
-    past = list(prompts.values())
+    past = list(prompts.values()) + [b["prompt"] for b in batch]
     kept, dropped = [], []
     for idea in ideas:
         p = idea.get("prompt", "")
         nov = taste.novelty(p, past)
         if nov < 0.45:
-            print(f"[DIVERSITY] dropped near-duplicate '{idea.get('title')}' (novelty={nov:.2f})", flush=True)
-            dropped.append((nov, idea))
+            same_batch = taste.novelty(p, [b["prompt"] for b in batch] + [k.get("prompt", "") for k in kept])
+            print(f"[DIVERSITY] near-duplicate '{idea.get('title')}' (novelty={nov:.2f})", flush=True)
+            dropped.append((nov, idea, same_batch))
             continue
         past.append(p)
         kept.append(idea)
     fresh = len(kept)
     if len(kept) < count:  # the batch size you asked for is respected: top up with the least-similar of the dropped ones
-        dropped.sort(key=lambda x: -x[0])
-        kept += [idea for _, idea in dropped[: count - len(kept)]]
+        # (copies of a past image are acceptable stand-ins; copies of something already in THIS batch are not)
+        spare = sorted((d for d in dropped if d[2] >= 0.25), key=lambda x: -x[0])
+        kept += [idea for _, idea, _ in spare[: count - len(kept)]]
     kept = kept[:count]
-    if stats is not None:
-        stats.update(world=w["name"], asked_kimi=n_ask, from_kimi=len(ideas), dropped_duplicates=len(dropped), topped_up=max(0, len(kept) - fresh), returned=len(kept))
+    info = {"asked_kimi": n_ask, "from_kimi": len(ideas), "dropped_duplicates": len(dropped), "topped_up": max(0, len(kept) - fresh)}
 
     flat = [{"title": i.get("title", "Untitled"), "guide": i.get("guide", "dark"), "prompt": i["prompt"], "idea": i.get("idea", ""), "world": w["name"], "subject": str(i.get("subject", "")).strip()} for i in kept]
 
@@ -427,8 +422,46 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
         for axis, val in sh.items():
             recent.setdefault(axis, []).append(val)
             recent[axis] = recent[axis][-12:]
-    print(f"[KIMI] titles: {[x['title'] for x in flat]}", flush=True)
-    return flat
+    print(f"[KIMI] sending {len(flat)} scenes to Krea: {[x['title'] for x in flat]}", flush=True)
+    return flat, info
+
+
+def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, world: str | None = None, direction: str = "", stats: dict | None = None) -> list[dict]:
+    """
+    One authored territory per batch (shots cohere), idea-first, steered by taste, near-duplicates dropped.
+    Returns exactly `count` scenes whenever Kimi can supply them: large batches are asked in chunks of up to 10,
+    and a short answer is followed up with a request for just the missing ones.
+    """
+    w = chapters.choose_world(st, world or "")
+    if direction and not world:
+        w = match_world(st, api_key, kimi_model, direction) or invent_world(st, api_key, kimi_model, direction)
+    elif w is None:
+        w = invent_world(st, api_key, kimi_model, direction)
+
+    out: list = []
+    totals = {"asked_kimi": 0, "from_kimi": 0, "dropped_duplicates": 0, "topped_up": 0, "kimi_calls": 0}
+    for _ in range(4):                                    # chunks plus at most a couple of follow-ups
+        need = count - len(out)
+        if need <= 0:
+            break
+        try:
+            got, info = _ask_chunk(st, api_key, kimi_model, w, min(need, 10), direction, out)
+        except Exception:
+            if not out:
+                raise                                      # nothing at all: let the caller report it
+            print("[KIMI] a follow-up request failed; sending what we have", flush=True)
+            break
+        totals["kimi_calls"] += 1
+        for k, v in info.items():
+            totals[k] += v
+        if not got:
+            break
+        out += got
+    if len(out) < count:
+        print(f"[KIMI] only {len(out)} of the {count} scenes you asked for could be written", flush=True)
+    if stats is not None:
+        stats.update(world=w["name"], returned=len(out), wanted=count, **totals)
+    return out[:count]
 
 
 AI_JOBS: dict = {}
