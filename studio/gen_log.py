@@ -72,6 +72,8 @@ def summarize(events: list) -> dict:
         "logo_check_failed": sum(1 for e in ok if e.get("qa_passed") is False),
         "retried": sum(1 for e in images if len(e.get("attempts") or []) > 1),
         "interrupted": len(interrupted(events)),
+        "moderated": sum(1 for e in images if e.get("error_code") == "content_policy"),
+        "softened_ok": sum(1 for e in ok if e.get("softened")),
         "avg_seconds": round(sum(secs) / len(secs), 1) if secs else None,
         "restarts": sum(1 for e in events if e["event"] == "server_start"),
     }
@@ -95,8 +97,10 @@ def describe(e: dict) -> str:
         retry = f", {len(tries)} attempts" if len(tries) > 1 else ""
         if e.get("ok"):
             qa = "logo check passed" if e.get("qa_passed") else f"LOGO CHECK FAILED -> trash ({'; '.join(e.get('qa_issues') or [])[:80]})"
-            return f"{head} OK     {e.get('filename')} {e.get('seconds')}s{retry}  {qa} ({e.get('qa_score')}%)  [{e.get('world') or '-'}]"
-        return f"{head} FAILED {e.get('title')} after {e.get('seconds')}s{retry}: {str(e.get('error'))[:150]}"
+            soft = "  [prompt softened after a moderation rejection]" if e.get("softened") else ""
+            return f"{head} OK     {e.get('filename')} {e.get('seconds')}s{retry}  {qa} ({e.get('qa_score')}%)  [{e.get('world') or '-'}]{soft}"
+        why = "REJECTED BY KREA MODERATION" if e.get("error_code") == "content_policy" else str(e.get("error"))[:150]
+        return f"{head} FAILED {e.get('title')} after {e.get('seconds')}s{retry}: {why}"
     if ev == "ai_order":
         if e.get("ok"):
             return f"{head} {e.get('images')} images in {e.get('seconds')}s{'' if e.get('kimi_ok', True) else '  (Kimi unavailable: measurements only)'}  {str(e.get('summary'))[:100]}"
@@ -119,7 +123,7 @@ def main() -> None:
         return
     s = summarize(events)
     print(f"{len(events)} events since {events[0]['ts']}:  {s['images']} images ({s['ok']} ok, {s['failed']} failed, {s['logo_check_failed']} failed the logo check, "
-          f"{s['retried']} needed retries, {s['interrupted']} interrupted by a restart), average {s['avg_seconds']}s, {s['restarts']} server starts\n")
+          f"{s['retried']} needed retries, {s['moderated']} rejected by Krea moderation, {s['interrupted']} interrupted by a restart), average {s['avg_seconds']}s, {s['restarts']} server starts\n")
     lost = {e.get("id") for e in interrupted(events)}
     shown = events
     if a.failures:

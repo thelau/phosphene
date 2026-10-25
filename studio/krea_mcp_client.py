@@ -223,6 +223,44 @@ def get_or_upload_guide_url(guide_type: str = "dark", sid: str = None) -> str:
     return url
 
 
+class KreaError(RuntimeError):
+    """A Krea job that failed. `retryable` is False for rejections that will never succeed with the same prompt."""
+
+    def __init__(self, message: str, code: str | None = None, retryable: bool = True, job_id: str | None = None):
+        super().__init__(message)
+        self.code, self.retryable, self.job_id = code, retryable, job_id
+
+
+# Krea / provider rejections that a retry of the same request cannot fix
+NON_RETRYABLE_CODES = {"content_policy", "invalid_input", "invalid_request", "insufficient_credits", "unauthorized", "forbidden"}
+FAILED_STATES = {"failed", "error", "errored", "canceled", "cancelled"}
+
+
+def job_state(res: dict) -> dict:
+    """{'status', 'code', 'message', 'job_id'} from a generate_image or get_job reply (any field may be None)."""
+    result_obj = res.get("result", {})
+    structured = result_obj.get("structuredContent") or {}
+    if not structured:
+        for c in result_obj.get("content", []):
+            if c.get("type") == "text":
+                try:
+                    structured = json.loads(c.get("text", ""))
+                except Exception:
+                    structured = {}
+                break
+    job = structured.get("job") if isinstance(structured.get("job"), dict) else structured
+    err = job.get("error") if isinstance(job.get("error"), dict) else {}
+    return {"status": (job.get("status") or "").lower() or None, "code": err.get("code"), "message": err.get("message") or (job.get("error") if isinstance(job.get("error"), str) else None),
+            "job_id": structured.get("job_id") or job.get("job_id")}
+
+
+def raise_if_failed(res: dict, model: str) -> None:
+    st = job_state(res)
+    if st["status"] in FAILED_STATES:
+        code = st["code"] or st["status"]
+        raise KreaError(f"Krea job failed ({code}): {st['message'] or 'no message'}", code=code, retryable=code not in NON_RETRYABLE_CODES, job_id=st["job_id"])
+
+
 def extract_urls_from_mcp_result(res: dict) -> tuple[list[str], str]:
     result_obj = res.get("result", {})
     structured = result_obj.get("structuredContent") or {}
@@ -335,6 +373,8 @@ def generate_plate_via_krea_mcp(
     )
 
     urls, job_id = extract_urls_from_mcp_result(res)
+    if not urls:
+        raise_if_failed(res, model)                       # a job that already failed (e.g. moderation) is reported now, not polled
     if not urls and job_id:
         for _ in range(45):
             time.sleep(2)
@@ -342,9 +382,13 @@ def generate_plate_via_krea_mcp(
             urls, _ = extract_urls_from_mcp_result(j_res)
             if urls:
                 break
+            raise_if_failed(j_res, model)                 # stop polling the moment Krea says the job failed
+        else:
+            # still running after ~90s: do not submit it again (that would pay twice); the job id is in the message and the log
+            raise KreaError(f"Krea job {job_id} still not finished after 90s ({model})", code="timeout", retryable=False, job_id=job_id)
 
     if not urls:
-        raise RuntimeError(f"No image URL returned from Krea MCP ({model}): {res}")
+        raise KreaError(f"No image URL returned from Krea MCP ({model}): {str(res)[:300]}", code="no_url", retryable=True, job_id=job_id or None)
 
     img_req = urllib.request.Request(urls[0], headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(img_req, timeout=60) as img_resp:

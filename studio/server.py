@@ -494,14 +494,32 @@ def generate_with_retry(attempts: int = 3, pause=(3.0, 8.0), sleep=None, log=pri
             last = e
             text = str(e)
             if trace is not None:
-                trace.append({"n": i + 1, "ok": False, "seconds": round(time.time() - t0, 1), "error": text[:300]})
-            if "not connected" in text.lower() or "401" in text or "403" in text:
-                break
+                trace.append({"n": i + 1, "ok": False, "seconds": round(time.time() - t0, 1), "error": text[:300], "code": getattr(e, "code", None)})
+            if not getattr(e, "retryable", True) or "not connected" in text.lower() or "401" in text or "403" in text:
+                break                                   # moderation rejections, a job still running, a missing login: retrying cannot help
             if i < attempts - 1:
                 wait = pause[min(i, len(pause) - 1)]
                 log(f"[GENERATE] attempt {i + 1}/{attempts} failed ({kw.get('model')}): {text[:200]} - retrying in {wait:.0f}s", flush=True)
                 (sleep or time.sleep)(wait)
     raise last
+
+
+SOFTEN_ASK = (
+    "An image model's content moderation rejected the prompt below without saying why. Rewrite it so the same composition, subject type and mood survive, "
+    "but anything a moderation system could object to is removed or made generic: real place names and landmarks, brand names and trademarks, named people, "
+    "readable text or slogans on signs, political or religious symbols, violence, weapons, drugs, nudity, anything involving children. "
+    "Keep the sentence about the single circular mark at the exact dead-center untouched. Return ONLY the rewritten prompt, no commentary.\n\nPROMPT:\n"
+)
+
+
+def soften_prompt(raw_prompt: str, api_key: str, model: str, call_llm=None) -> str | None:
+    """A more neutral wording of a prompt that moderation refused, or None if Kimi cannot provide one."""
+    try:
+        out = (call_llm or call_kimi_llm)(SOFTEN_ASK + raw_prompt, api_key=api_key, preferred_model=model).strip().strip('"').strip()
+    except Exception as e:
+        print(f"[GENERATE] could not soften the prompt: {e!r}", flush=True)
+        return None
+    return out if len(out) > 40 and out != raw_prompt else None
 
 
 def ai_busy() -> bool:
@@ -875,9 +893,23 @@ class StudioHandler(SimpleHTTPRequestHandler):
             job_id = uuid.uuid4().hex[:8]
             trace: list = []
             gen_log.record("image_start", id=job_id, title=title, model=model, guide=guide_type, world=body.get("world"))
+            softened = None
             try:
                 with inflight():
-                    img_bytes = generate_with_retry(prompt=full_prompt, guide_type=guide_type, model=model, trace=trace)
+                    try:
+                        img_bytes = generate_with_retry(prompt=full_prompt, guide_type=guide_type, model=model, trace=trace)
+                    except Exception as refused:
+                        key = load_state().get("kimi_api_key", "")
+                        if getattr(refused, "code", None) != "content_policy" or not key:
+                            raise
+                        # moderation said no: one more try with a more neutral wording (the rejected job costs nothing to try again)
+                        softened = soften_prompt(raw_prompt, key, load_state().get("kimi_model", "kimi-k3"))
+                        if not softened:
+                            raise
+                        print(f"[GENERATE] moderation rejected '{title}': retrying once with a softened prompt", flush=True)
+                        img_bytes = generate_with_retry(attempts=1, prompt=build_full_prompt(softened), guide_type=guide_type, model=model, trace=trace)
+                        trace[-1]["softened"] = True
+                        raw_prompt = softened
                 im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
 
                 with STATE_LOCK:
@@ -920,8 +952,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 threading.Thread(target=apply_critic, args=(filename,), daemon=True).start()
                 took = round(time.time() - t_start, 1)
                 gen_log.record("image", id=job_id, ok=True, title=title, filename=filename, model=model, guide=guide_type, world=body.get("world"), seconds=took,
-                               attempts=trace, qa_passed=qa["qa_passed"], qa_score=qa["qa_score"], qa_issues=qa.get("issues", []))
-                print(f"[GENERATE] OK {filename} ({model}) {took}s, attempt {len(trace)}/3" + ("" if qa["qa_passed"] else "  LOGO CHECK FAILED -> trash"), flush=True)
+                               attempts=trace, qa_passed=qa["qa_passed"], qa_score=qa["qa_score"], qa_issues=qa.get("issues", []), softened=bool(softened))
+                print(f"[GENERATE] OK {filename} ({model}) {took}s, attempt {len(trace)}/3" + ("  (prompt softened after a moderation rejection)" if softened else "") + ("" if qa["qa_passed"] else "  LOGO CHECK FAILED -> trash"), flush=True)
 
                 self.send_json({
                     "ok": True,
@@ -931,12 +963,15 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "title": title,
                     "model": model,
                     "qa_issues": qa.get("issues", []),
+                    "softened": bool(softened),
                 })
             except Exception as e:
                 print(f"[GENERATE] FAILED '{title}' ({model}, guide={guide_type}) after {time.time() - t_start:.0f}s: {str(e)[:300]}", flush=True)
+                code = getattr(e, "code", None)
+                message = ("Krea's moderation rejected this image" + (" even after the prompt was softened" if softened else "") + " (content policy). Regenerate it, or change the wording." if code == "content_policy" else str(e))
                 gen_log.record("image", id=job_id, ok=False, title=title, model=model, guide=guide_type, world=body.get("world"), seconds=round(time.time() - t_start, 1),
-                               attempts=trace, error=str(e)[:500])
-                self.send_json({"ok": False, "error": str(e)}, 500)
+                               attempts=trace, error=str(e)[:500], error_code=code, krea_job=getattr(e, "job_id", None), prompt=raw_prompt[:700], softened=bool(softened))
+                self.send_json({"ok": False, "error": message, "code": code}, 500)
             return
 
         if parsed.path == "/api/purge":

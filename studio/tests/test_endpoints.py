@@ -348,3 +348,82 @@ def test_the_ai_order_is_recorded(live, srv, monkeypatch):
         _t.sleep(0.1)
     ev = [e for e in gen_log.read(None) if e["event"] == "ai_order"][0]
     assert ev["ok"] and ev["images"] == 4 and ev["direction"] == "start soft" and ev["kimi_ok"] is False
+
+
+def test_a_moderation_rejection_is_not_retried_explained_and_written_down(live, srv, monkeypatch):
+    import krea_mcp_client as kc
+    calls = []
+
+    def moderated(**kw):
+        calls.append(1)
+        raise kc.KreaError("Krea job failed (content_policy): rejected", code="content_policy", retryable=False, job_id="J-42")
+    monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", moderated)
+    monkeypatch.setattr(srv.time, "sleep", lambda s: pytest.fail("no waiting for a rejection"))
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("Kimi is down")))     # no rewrite possible
+    status, res = live("POST", "/api/generate-image", {"title": "Neon Roundel", "prompt": "a neon tube roundel on a signboard", "guide": "dark", "model": "m"})
+    assert status == 500 and res["code"] == "content_policy" and "moderation rejected" in res["error"] and "even after" not in res["error"]
+    assert len(calls) == 1                                                       # one attempt, not three
+    ev = gen_log.read(None)[-1]
+    assert ev["error_code"] == "content_policy" and ev["krea_job"] == "J-42" and ev["prompt"] == "a neon tube roundel on a signboard"
+    assert len(ev["attempts"]) == 1 and ev["attempts"][0]["code"] == "content_policy"
+    assert "REJECTED BY KREA MODERATION" in gen_log.describe(ev)
+    assert gen_log.summarize(gen_log.read(None))["moderated"] == 1
+
+
+def test_a_moderation_rejection_gets_one_retry_with_a_softened_prompt_that_can_succeed(live, srv, monkeypatch):
+    import krea_mcp_client as kc
+    seen = []
+    real = srv.generate_plate_via_krea_mcp
+
+    def picky(**kw):
+        seen.append(kw["prompt"])
+        if "Shibuya" in kw["prompt"]:
+            raise kc.KreaError("Krea job failed (content_policy): rejected", code="content_policy", retryable=False, job_id="J1")
+        return real(**kw)
+    monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", picky)
+    asked = []
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda prompt, **k: asked.append(prompt) or "A neon-lit rooftop gantry at night with a bold glowing circular mark at the exact dead-center of the frame, cinematic wide shot.")
+    status, res = live("POST", "/api/generate-image", {"title": "Shibuya Gantry", "prompt": "Shibuya Crossing rooftop with the Nike swoosh sign and a circular mark at dead-center", "guide": "dark", "model": "m"})
+    assert status == 200 and res["ok"] and res["softened"] is True
+    assert len(seen) == 2 and "Shibuya" in seen[0] and "Shibuya" not in seen[1]                 # the second try used the neutral wording
+    assert "moderation" in asked[0] and "Shibuya Crossing rooftop" in asked[0]                  # Kimi was shown the refused prompt
+    st = srv.load_state()
+    assert "neon-lit rooftop gantry" in st["prompts"][res["filename"]]                          # the plate remembers the wording that worked
+    ev = [e for e in gen_log.read(None) if e["event"] == "image"][0]
+    assert ev["ok"] and ev["softened"] is True and [a.get("softened") for a in ev["attempts"]] == [None, True]
+    assert "softened" in gen_log.describe(ev) and gen_log.summarize(gen_log.read(None))["softened_ok"] == 1
+
+
+def test_if_the_softened_prompt_is_refused_too_the_image_is_reported_as_moderated(live, srv, monkeypatch):
+    import krea_mcp_client as kc
+    calls = []
+
+    def refuse(**kw):
+        calls.append(1)
+        raise kc.KreaError("rejected", code="content_policy", retryable=False, job_id="J")
+    monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", refuse)
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda *a, **k: "A perfectly neutral rewritten prompt that is long enough to be accepted as a rewrite.")
+    status, res = live("POST", "/api/generate-image", {"title": "Still Refused", "prompt": "original wording of the prompt", "model": "m"})
+    assert status == 500 and "even after the prompt was softened" in res["error"] and len(calls) == 2
+    ev = gen_log.read(None)[-1]
+    assert ev["softened"] is True and ev["error_code"] == "content_policy"
+
+
+def test_without_a_kimi_key_or_a_usable_rewrite_a_rejection_is_just_reported(live, srv, monkeypatch):
+    import krea_mcp_client as kc
+    calls = []
+
+    def refuse(**kw):
+        calls.append(1)
+        raise kc.KreaError("rejected", code="content_policy", retryable=False)
+    monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", refuse)
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda *a, **k: "original wording of the prompt")        # Kimi returns it unchanged: nothing to retry with
+    status, res = live("POST", "/api/generate-image", {"title": "Same", "prompt": "original wording of the prompt", "model": "m"})
+    assert status == 500 and res["code"] == "content_policy" and len(calls) == 1 and "even after" not in res["error"]
+
+
+def test_soften_prompt_refuses_empty_or_failed_rewrites(srv):
+    assert srv.soften_prompt("abc", "k", "m", call_llm=lambda *a, **k: "short") is None
+    assert srv.soften_prompt("x" * 60, "k", "m", call_llm=lambda *a, **k: "x" * 60) is None
+    assert srv.soften_prompt("x", "k", "m", call_llm=lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))) is None
+    assert srv.soften_prompt("x", "k", "m", call_llm=lambda *a, **k: '"' + "a neutral rewrite " * 4 + '"') == ("a neutral rewrite " * 4).strip()

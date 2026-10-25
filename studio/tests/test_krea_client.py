@@ -309,3 +309,68 @@ def test_generate_plate_raises_when_no_urls(monkeypatch):
     monkeypatch.setattr(k, "call_krea_mcp_tool", lambda *a, **kw: {"result": {"structuredContent": {}}})
     with pytest.raises(RuntimeError, match="No image URL"):
         k.generate_plate_via_krea_mcp("p")
+
+
+# ---------- failed jobs are reported at once, not polled ----------
+
+def reply(structured):
+    return {"result": {"structuredContent": structured}}
+
+
+MODERATED = {"mode": "sync", "completed": False, "timedOut": False, "job_id": "J1",
+             "job": {"status": "failed", "job_id": "J1", "error": {"code": "content_policy", "message": "An external provider's moderation systems rejected the generation."}}}
+
+
+def test_job_state_reads_status_code_and_message():
+    st = k.job_state(reply(MODERATED))
+    assert (st["status"], st["code"], st["job_id"]) == ("failed", "content_policy", "J1") and "moderation" in st["message"]
+    assert k.job_state(reply({"job_id": "J2", "job": {"status": "running"}}))["status"] == "running"
+    assert k.job_state({})["status"] is None
+    text_only = {"result": {"content": [{"type": "text", "text": json.dumps(MODERATED)}]}}
+    assert k.job_state(text_only)["code"] == "content_policy"
+
+
+def test_a_moderation_rejection_raises_at_once_and_is_not_retryable(monkeypatch):
+    monkeypatch.setattr(k, "init_mcp_session", lambda: "S")
+    monkeypatch.setattr(k, "get_or_upload_guide_url", lambda *a, **kw: GUIDE)
+    monkeypatch.setattr(k.time, "sleep", lambda s: pytest.fail("must not poll a job that already failed"))
+    monkeypatch.setattr(k, "call_krea_mcp_tool", lambda name, args, sid=None, timeout=0: reply(MODERATED))
+    with pytest.raises(k.KreaError) as e:
+        k.generate_plate_via_krea_mcp("p")
+    assert e.value.code == "content_policy" and e.value.retryable is False and e.value.job_id == "J1" and "moderation" in str(e.value)
+
+
+def test_a_job_that_fails_while_polling_stops_the_polling(monkeypatch):
+    monkeypatch.setattr(k, "init_mcp_session", lambda: "S")
+    monkeypatch.setattr(k, "get_or_upload_guide_url", lambda *a, **kw: GUIDE)
+    monkeypatch.setattr(k.time, "sleep", lambda s: None)
+    polls = []
+
+    def tool(name, args, sid=None, timeout=0):
+        if name == "generate_image":
+            return reply({"job_id": "J9", "job": {"status": "running"}})
+        polls.append(1)
+        return reply({"job_id": "J9", "job": {"status": "running" if len(polls) < 3 else "failed", "error": {"code": "internal", "message": "boom"}}})
+    monkeypatch.setattr(k, "call_krea_mcp_tool", tool)
+    with pytest.raises(k.KreaError) as e:
+        k.generate_plate_via_krea_mcp("p")
+    assert len(polls) == 3 and e.value.code == "internal" and e.value.retryable is True
+
+
+def test_a_job_still_running_after_90_seconds_is_not_submitted_again(monkeypatch):
+    monkeypatch.setattr(k, "init_mcp_session", lambda: "S")
+    monkeypatch.setattr(k, "get_or_upload_guide_url", lambda *a, **kw: GUIDE)
+    monkeypatch.setattr(k.time, "sleep", lambda s: None)
+    n = []
+    monkeypatch.setattr(k, "call_krea_mcp_tool", lambda name, args, sid=None, timeout=0: n.append(name) or reply({"job_id": "J7", "job": {"status": "running"}}))
+    with pytest.raises(k.KreaError) as e:
+        k.generate_plate_via_krea_mcp("p")
+    assert e.value.code == "timeout" and e.value.retryable is False and "J7" in str(e.value) and n.count("get_job") == 45
+
+
+@pytest.mark.parametrize("code,retryable", [("content_policy", False), ("invalid_input", False), ("insufficient_credits", False), ("internal", True), ("rate_limited", True)])
+def test_which_codes_are_worth_retrying(code, retryable):
+    res = reply({"job_id": "J", "job": {"status": "failed", "error": {"code": code, "message": "m"}}})
+    with pytest.raises(k.KreaError) as e:
+        k.raise_if_failed(res, "m")
+    assert e.value.retryable is retryable
