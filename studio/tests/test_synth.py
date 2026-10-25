@@ -4,7 +4,6 @@ import wave
 import numpy as np
 import pytest
 
-import rhythm
 import synth
 
 
@@ -15,10 +14,9 @@ def decode(wav_bytes):
     return x
 
 
-def starts_for(seconds=6.0, n_images=30, rhythm_mode="decel", paired=True):
-    s = rhythm.cut_starts(n_images * (2 if paired else 1), rhythm_mode, paired)
-    k = seconds / s[-1]
-    return [v * k for v in s]
+def starts_for(seconds=6.0, n_images=30, paired=True):
+    n = n_images * (2 if paired else 1)
+    return [seconds * i / n for i in range(n + 1)]
 
 
 def band_shares(x, a=0.0, b=None):
@@ -118,11 +116,10 @@ def test_the_bed_pumps_with_the_cuts_and_slows_when_the_cuts_slow():
 
 
 def test_the_landing_gives_way_the_last_hold_is_quieter():
-    starts = starts_for(8.0)
-    x = decode(synth.render(starts, True)).mean(axis=1)
-    last = starts[-3]
-    body = np.sqrt((x[int(3 * synth.RATE):int(5 * synth.RATE)] ** 2).mean())
-    tail = np.sqrt((x[int((last + 0.8) * synth.RATE):int((starts[-1] - 0.15) * synth.RATE)] ** 2).mean())
+    starts = [i * 0.1 for i in range(41)] + [4.0 + 2.5]           # forty short cuts, then one long final hold
+    x = decode(synth.render(starts, False)).mean(axis=1)
+    body = np.sqrt((x[int(2 * synth.RATE):int(3.5 * synth.RATE)] ** 2).mean())
+    tail = np.sqrt((x[int(5.0 * synth.RATE):int(6.3 * synth.RATE)] ** 2).mean())
     assert tail < body
 
 

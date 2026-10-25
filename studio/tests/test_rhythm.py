@@ -3,62 +3,6 @@ import pytest
 import cutplan
 import rhythm
 
-# Shared with tests/js/ui.test.cjs: the page's timeline must give the same answers.
-RHYTHM_VECTORS = [
-    # n_cuts, rhythm, paired, starts[min(7, n)], total
-    (10, "decel", False, 7.974487, 25.772028),
-    (10, "accel", False, 22.772028, 25.772028),
-    (10, "accel", True, 30.0747, 33.0747),
-    (20, "decel", True, 7.002568, 51.544056),
-    (1, "accel", False, 1.4, 1.4),
-    (6, "flat", False, 6.0, 6.0),
-]
-
-
-@pytest.mark.parametrize("n,r,paired,at7,total", RHYTHM_VECTORS)
-def test_cut_starts_vectors(n, r, paired, at7, total):
-    s = rhythm.cut_starts(n, r, paired)
-    assert len(s) == n + 1 and s[0] == 0
-    assert s[min(7, n)] == pytest.approx(at7, abs=1e-5) and s[-1] == pytest.approx(total, abs=1e-5)
-
-
-def test_flat_is_exactly_the_old_uniform_cuts():
-    assert rhythm.cut_starts(5, "flat") == [0, 1, 2, 3, 4, 5]
-    assert rhythm.cut_starts(5, "nonsense") == [0, 1, 2, 3, 4, 5]
-
-
-def lengths(starts):
-    return [b - a for a, b in zip(starts, starts[1:])]
-
-
-def test_decelerating_is_steady_then_slows_and_ends_on_the_longest_hold():
-    d = lengths(rhythm.cut_starts(100, "decel"))
-    assert all(x == 1.0 for x in d[:30]) and d[60] > 1.2
-    assert all(y >= x - 1e-9 for x, y in zip(d, d[1:])) and d[-1] == max(d) and d[-2] > 6      # the references: the last cuts are 7-11x the first
-
-
-def test_accelerating_is_the_same_curve_backwards():
-    dec, acc = lengths(rhythm.cut_starts(100, "decel")), lengths(rhythm.cut_starts(100, "accel"))
-    assert acc[0] == max(acc) and all(y <= x + 1e-9 for x, y in zip(acc, acc[1:]))
-    assert all(x == 1.0 for x in acc[-30:])                                                        # it ends steady, at the tempo you set
-    assert acc[1:] == pytest.approx(dec[:-1][::-1])                                                # only the held first/last image differs
-
-
-def test_old_names_and_unknown_names_are_flat():
-    for old in ("burst", "land", "long", "sideways"):
-        assert rhythm.cut_starts(5, old) == [0, 1, 2, 3, 4, 5]
-
-
-def test_an_image_and_its_inverted_copy_share_one_length():
-    s = rhythm.cut_starts(40, "decel", paired=True)
-    d = [b - a for a, b in zip(s, s[1:])]
-    assert all(d[i] == pytest.approx(d[i + 1]) for i in range(0, 40, 2))
-
-
-def test_min_len_keeps_every_cut_at_least_one_frame():
-    s = rhythm.cut_starts(100, "decel", min_len=1.5)
-    assert min(b - a for a, b in zip(s, s[1:])) >= 1.5 - 1e-9
-
 
 def test_cut_at_finds_the_cut_and_wraps():
     s = [0, 1, 3, 4.5]
@@ -68,19 +12,97 @@ def test_cut_at_finds_the_cut_and_wraps():
     assert rhythm.cut_at(s, 4.5 + 1.5) == (1, 0.25)   # wraps around the sequence
 
 
-def test_plan_at_with_a_timeline_and_flat_agree_with_the_old_plan():
-    flat = cutplan.timeline(4, 7.5)
+def test_flat_timeline_is_one_base_cut_each_and_invert_doubles_it():
+    assert cutplan.timeline(3) == [0, 1, 2, 3]
+    assert cutplan.timeline(3, "mono") == [0, 1, 2, 3, 4, 5, 6]
+
+
+def test_plan_at_with_a_timeline_agrees_with_the_plain_plan_when_flat():
+    flat = cutplan.timeline(4)
     for pos in (0.0, 0.4, 1.0, 2.7, 3.99):
         a = cutplan.plan_at(pos, 4)
         b = cutplan.plan_at(pos, 4, "off", flat)
         assert (a["cut"], a["plate"]) == (b["cut"], b["plate"]) and a["p"] == pytest.approx(b["p"])
 
 
-def test_export_length_follows_the_curve_and_still_shows_every_image_once():
-    starts = cutplan.timeline(10, 4.0, "off", "decel")
-    n_cuts, frames = cutplan.export_length(10, 4.0, "off", starts)
-    assert n_cuts == 10 and frames == int(starts[-1] * 4.0) and frames > 40
-    plates = {cutplan.frame_plan(f, 4.0, 10, "off", starts)["plate"] for f in range(frames)}
-    assert plates == set(range(10))
-    # the last frame is on the last image: the curve ends on its long hold
-    assert cutplan.frame_plan(frames - 1, 4.0, 10, "off", starts)["plate"] == 9
+def test_music_driven_cuts_become_frame_positions_and_every_image_still_shows_once():
+    starts_sec = [0.0, 0.2, 0.5, 0.6, 1.4]                       # four uneven cuts: 0.2, 0.3, 0.1, 0.8 s
+    starts = cutplan.timeline_from_seconds(starts_sec)
+    assert starts == pytest.approx([0, 6, 15, 18, 42])
+    n_cuts, frames = cutplan.export_length(4, 1.0, "off", starts)
+    assert (n_cuts, frames) == (4, 42)
+    plates = [cutplan.frame_plan(f, 1.0, 4, "off", starts)["plate"] for f in range(frames)]
+    assert plates[:6] == [0] * 6 and plates[6:15] == [1] * 9 and plates[15:18] == [2] * 3 and plates[18:] == [3] * 24
+    assert cutplan.frame_plan(0, 1.0, 4, "off", starts)["p"] == pytest.approx(0.5 / 6)
+
+
+# ---------- following a track ----------
+
+def test_select_hits_keeps_the_strongest_and_never_two_within_the_minimum_gap():
+    hits = [[1.0, 5.0], [1.03, 9.0], [2.0, 1.0], [3.0, 4.0], [4.0, 3.0]]
+    assert rhythm.select_hits(hits, 1.0) == [1.03, 2.0, 3.0, 4.0]          # 1.0 lost to the stronger hit 30 ms away
+    assert rhythm.select_hits(hits, 0.0) == [1.03]                         # the top 10% (at least one)
+    assert rhythm.select_hits(hits, 0.5) == [1.03, 3.0]                    # the strongest three, minus the one next to a stronger hit
+    assert rhythm.select_hits([], 0.5) == []
+
+
+def test_more_sensitivity_never_gives_fewer_cuts():
+    import random
+    rng = random.Random(3)
+    hits = [[i * 0.15 + rng.random() * 0.05, rng.random() * 10] for i in range(200)]
+    counts = [len(rhythm.select_hits(hits, s / 10)) for s in range(11)]
+    assert counts == sorted(counts) and counts[0] < counts[-1]
+
+
+def test_beat_time_interpolates_and_carries_on_past_the_end():
+    beats = [1.0, 1.5, 2.1]
+    assert rhythm.beat_time(beats, 0) == 1.0
+    assert rhythm.beat_time(beats, 0.5) == pytest.approx(1.25)
+    assert rhythm.beat_time(beats, 1.5) == pytest.approx(1.8)
+    assert rhythm.beat_time(beats, 4) == pytest.approx(2.1 + 2 * 0.6)       # the last interval continues
+
+
+def test_beat_events_follow_the_beats_not_a_rigid_grid_and_the_multiple_divides_them():
+    beats = [0.0, 0.5, 1.1, 1.6]                                             # a drifting tempo
+    assert rhythm.beat_events(beats, 1.0, 1.6) == pytest.approx([0.0, 0.5, 1.1, 1.6])
+    assert rhythm.beat_events(beats, 2.0, 1.6) == pytest.approx([0.0, 0.25, 0.5, 0.8, 1.1, 1.35, 1.6])
+    assert rhythm.beat_events(beats, 0.5, 1.6) == pytest.approx([0.0, 1.1])
+    assert rhythm.beat_events([1.0], 1.0, 5.0) == []
+
+
+ANALYSIS = {"duration": 10.0, "bpm": 120.0, "beats": [0.5 + 0.5 * i for i in range(19)],
+            "hits": [[2.0, 5.0], [2.3, 4.0], [2.31, 1.0], [3.0, 6.0], [5.5, 3.0], [9.0, 2.0]]}
+
+
+def test_track_cuts_start_on_the_first_event_and_sound_starts_there_too():
+    r = rhythm.track_cuts(ANALYSIS, 3, "hits", sensitivity=1.0)
+    assert r["starts"] == pytest.approx([0.0, 0.3, 1.0, 3.5]) and r["audio_start"] == 2.0 and r["total"] == pytest.approx(3.5)
+
+
+def test_nudge_moves_the_sound_start_and_keeps_the_picture_times():
+    base = rhythm.track_cuts(ANALYSIS, 3, "hits", sensitivity=1.0)
+    later = rhythm.track_cuts(ANALYSIS, 3, "hits", sensitivity=1.0, nudge=0.1)
+    earlier = rhythm.track_cuts(ANALYSIS, 3, "hits", sensitivity=1.0, nudge=-0.1)
+    assert later["starts"] == base["starts"] and later["audio_start"] == pytest.approx(2.1) and earlier["audio_start"] == pytest.approx(1.9)
+    assert rhythm.track_cuts({**ANALYSIS, "hits": [[0.02, 5.0], [0.5, 4.0]]}, 1, "hits", sensitivity=1.0, nudge=-0.3)["audio_start"] == 0.0   # never before the file
+
+
+def test_a_track_shorter_than_the_clip_loops_and_the_pictures_keep_landing_on_hits():
+    r = rhythm.track_cuts(ANALYSIS, 12, "hits", sensitivity=1.0)
+    assert len(r["starts"]) == 13 and r["starts"] == sorted(r["starts"]) and len(set(r["starts"])) == 13
+    first_loop = r["starts"][:5]                                           # five events fit in the track
+    second_loop = r["starts"][5:10]
+    assert [b - a for a, b in zip(second_loop, second_loop[1:])] == pytest.approx([b - a for a, b in zip(first_loop, first_loop[1:])])
+    assert second_loop[0] - first_loop[0] == pytest.approx(r["loop"]) and r["loop"] == pytest.approx(10.0 - 2.0)    # one pass of the sound, from its start to the end of the file
+
+
+def test_beat_mode_uses_the_beat_grid_and_the_multiple():
+    r = rhythm.track_cuts(ANALYSIS, 4, "beats", multiple=2.0)
+    assert r["starts"] == pytest.approx([0.0, 0.25, 0.5, 0.75, 1.0]) and r["audio_start"] == 0.5
+
+
+def test_a_track_with_nothing_to_cut_on_is_refused():
+    with pytest.raises(ValueError, match="Not enough"):
+        rhythm.track_cuts({**ANALYSIS, "hits": [[1.0, 1.0]]}, 3, "hits")
+    with pytest.raises(ValueError, match="Not enough"):
+        rhythm.track_cuts({**ANALYSIS, "beats": []}, 3, "beats")

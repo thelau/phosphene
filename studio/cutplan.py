@@ -14,10 +14,14 @@ INVERT_MODES = ("off", "mono", "colour")
 ZOOM_MODES = ("off", "out", "in")
 
 
-def timeline(n_plates: int, frames_per_cut: float, invert_mode: str = "off", rhythm: str = "flat") -> list[float]:
-    """Where each cut starts (in base cuts) for one pass over every image; see rhythm.py."""
-    paired = invert_mode in ("mono", "colour")
-    return rhythm_mod.cut_starts(n_plates * (2 if paired else 1), rhythm, paired, min_len=1.0 / frames_per_cut)
+def timeline(n_plates: int, invert_mode: str = "off") -> list[float]:
+    """Flat: where each cut starts (in base cuts) for one pass over every image."""
+    return [float(i) for i in range(n_plates * (2 if invert_mode in ("mono", "colour") else 1) + 1)]
+
+
+def timeline_from_seconds(starts_sec: list[float], fps: int = 30) -> list[float]:
+    """A timeline in seconds (music-driven cuts) as cut positions in frames: use it with frames_per_cut = 1."""
+    return [s * fps for s in starts_sec]
 
 
 def frame_plan(frame: int, frames_per_cut: float, n_plates: int, invert_mode: str = "off", starts: list | None = None) -> dict:

@@ -242,6 +242,8 @@
     .music-state { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
     .music-state.busy::before { content: ""; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--orange); animation: spin 0.8s linear infinite; }
     .music-state.err { color: #ff8a8a; }
+    .track-name { font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tabpane[hidden], .tabpane .control-line[hidden] { display: none; }
     .music-hint { font-size: 10px; line-height: 1.4; color: var(--muted); margin-top: -2px; }
 
     /* Right: Reorderable Image Grid */

@@ -55,9 +55,10 @@ function load({ routes = {}, storage = {} } = {}) {
     CSS: { escape: s => s },
     Promise, JSON, Math, Date, parseInt, parseFloat, Number, String, Array, Object, Set, Map, Error,
     fetch: async (url, opts = {}) => {
-      const body = opts.body ? JSON.parse(opts.body) : undefined;
+      let body = opts.body;
+      try { body = opts.body ? JSON.parse(opts.body) : undefined; } catch (e) { /* a file upload: keep it as it is */ }
       calls.push({ url, body });
-      const route = routes[url];
+      const route = routes[url] ?? routes[url.split('?')[0]];
       if (!route) throw new Error(`no route for ${url}`);
       const out = typeof route === 'function' ? await route(body, calls) : route;
       if (out && out.__fail) return { ok: false, status: out.__fail, json: async () => ({}), blob: async () => ({}) };

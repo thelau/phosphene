@@ -50,9 +50,12 @@ def live(srv, monkeypatch):
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     port = httpd.server_address[1]
 
-    def call(method, path, body=None):
-        c = http.client.HTTPConnection("127.0.0.1", port, timeout=20)
-        c.request(method, path, body=json.dumps(body or {}) if method == "POST" else None, headers={"Content-Type": "application/json"})
+    def call(method, path, body=None, raw=None):
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=60)
+        if raw is not None:        # a file sent as it is (the music track)
+            c.request(method, path, body=raw, headers={"Content-Type": "application/octet-stream"})
+        else:
+            c.request(method, path, body=json.dumps(body or {}) if method == "POST" else None, headers={"Content-Type": "application/json"})
         r = c.getresponse()
         raw = r.read()
         try:
@@ -70,7 +73,7 @@ def live(srv, monkeypatch):
 
 
 GET_ENDPOINTS = ["/api/state", "/api/worlds", "/api/stats", "/api/version"]
-POST_ENDPOINTS = ["/api/save-settings", "/api/reorder", "/api/sequence", "/api/trash", "/api/purge", "/api/invent-prompts", "/api/generate-image", "/api/order-ai", "/api/export-video", "/api/music"]
+POST_ENDPOINTS = ["/api/save-settings", "/api/reorder", "/api/sequence", "/api/trash", "/api/purge", "/api/invent-prompts", "/api/generate-image", "/api/order-ai", "/api/export-video", "/api/music", "/api/track", "/api/track-cuts"]
 
 
 @pytest.mark.parametrize("path", GET_ENDPOINTS)
@@ -446,30 +449,128 @@ def test_music_endpoint_answers_a_wav_as_long_as_the_picture_will_be(live):
     import io
     import wave
     _three_plates(live)
-    status, wav = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "rhythm": "flat"})
+    status, wav = live("POST", "/api/music", {"bpm": 120, "multiple": 2})
     assert status == 200 and wav[:4] == b"RIFF"
     with wave.open(io.BytesIO(wav)) as w:
         assert w.getnframes() / w.getframerate() == pytest.approx(3 * 7.5 / 30, abs=0.01)    # 3 images x 7.5 frames at 30fps
-    status, longer = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "rhythm": "decel"})
-    assert status == 200 and len(longer) > len(wav)                                          # the landing hold makes it longer
 
 
 def test_export_with_music_has_an_audio_track_and_without_it_does_not(live, srv):
     _three_plates(live)
     status, plain = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2})
     assert status == 200 and _streams(srv.OUTPUTS_DIR / plain["filename"])[0] == ["video"] and "music" not in plain["filename"]
-    status, withm = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth", "rhythm": "decel"})
-    assert status == 200 and withm["music"] is True and withm["rhythm"] == "decel" and "decel" in withm["filename"] and "music" in withm["filename"]
+    status, withm = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth"})
+    assert status == 200 and withm["music"] is True and withm["music_mode"] == "synth" and "music" in withm["filename"]
     kinds, seconds = _streams(srv.OUTPUTS_DIR / withm["filename"])
     assert sorted(kinds) == ["audio", "video"]
-    assert seconds > _streams(srv.OUTPUTS_DIR / plain["filename"])[1]                        # same images, but the curve ends on a long hold
-    assert gen_log.read(None)[-1]["music"] is True
+    assert gen_log.read(None)[-1]["music"] == "synth"
 
 
-def test_export_ignores_an_unknown_rhythm(live, srv):
+# ---------- a music track that drives the cuts ----------
+
+def _click_track_bytes(bpm=120, seconds=12, lead=0.5, fmt="wav", tmp_path=None):
+    import numpy as np
+    import beats as beats_mod
+    sr = 44100
+    t = np.arange(int(0.25 * sr)) / sr
+    k = np.sin(2 * np.pi * (50 * t + 90 * (1 - np.exp(-40 * t)) / 40)) * np.exp(-t * 18)
+    x = np.zeros(int(seconds * sr))
+    for hit in np.arange(lead, seconds - 0.3, 60 / bpm):
+        i = int(hit * sr)
+        x[i:i + len(k)] += k[:len(x) - i]
+    x = x / np.abs(x).max() * 0.8 + 0.01 * np.random.default_rng(0).standard_normal(len(x))
+    path = tmp_path / "t.wav"
+    import wave
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes((x * 32767).astype("<i2").tobytes())
+    if fmt == "mp3":
+        out = tmp_path / "t.mp3"
+        subprocess.run([beats_mod.FFMPEG, "-v", "error", "-y", "-i", str(path), "-b:a", "128k", str(out)], check=True)
+        path = out
+    return path.read_bytes()
+
+
+def test_uploading_a_track_analyses_it_and_it_is_remembered(live, srv, tmp_path):
+    assert live("GET", "/api/track")[1] == {"ok": True, "track": None}
+    status, res = live("POST", "/api/track?name=My%20Track.mp3", raw=_click_track_bytes(tmp_path=tmp_path, fmt="mp3"))
+    assert status == 200 and res["ok"] and res["track"]["name"] == "My Track.mp3"
+    assert res["track"]["bpm"] == pytest.approx(120, rel=0.02) and res["track"]["n_hits"] >= 15 and res["track"]["duration"] == pytest.approx(12, abs=0.2)
+    assert live("GET", "/api/track")[1]["track"]["name"] == "My Track.mp3"
+    assert gen_log.read(None)[-1]["event"] == "track"
+    assert live("POST", "/api/track", {"clear": True})[1]["track"] is None and live("GET", "/api/track")[1]["track"] is None
+
+
+def test_a_bad_upload_is_refused_with_a_reason_and_keeps_the_previous_track(live, srv, tmp_path):
+    live("POST", "/api/track?name=good.wav", raw=_click_track_bytes(tmp_path=tmp_path))
+    status, res = live("POST", "/api/track?name=bad.mp3", raw=b"this is not music at all")
+    assert status == 400 and "Could not read" in res["error"]
+    assert live("GET", "/api/track")[1]["track"]["name"] == "good.wav"
+    status, res = live("POST", "/api/track?name=empty.mp3", raw=b"")
+    assert status == 413
+
+
+def test_track_cuts_land_on_the_hits_and_follow_the_settings(live, tmp_path):
     _three_plates(live)
-    status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "rhythm": "sideways"})
-    assert status == 200 and res["rhythm"] == "flat"
+    live("POST", "/api/track?name=t.wav", raw=_click_track_bytes(tmp_path=tmp_path))
+    status, res = live("POST", "/api/track-cuts", {"cut_on": "hits", "sensitivity": 1.0})
+    assert status == 200 and res["ok"] and len(res["starts"]) == 4 and res["starts"][0] == 0.0
+    gaps = [b - a for a, b in zip(res["starts"], res["starts"][1:])]
+    assert all(g == pytest.approx(0.5, abs=0.05) for g in gaps)                 # a 120 BPM click: a cut every half second
+    assert res["audio_start"] == pytest.approx(0.5, abs=0.05)                    # the sound starts on its first hit
+    _, inv = live("POST", "/api/track-cuts", {"cut_on": "hits", "sensitivity": 1.0, "invert_mode": "mono"})
+    assert len(inv["starts"]) == 7                                               # every image takes two cuts
+    _, nudged = live("POST", "/api/track-cuts", {"cut_on": "hits", "sensitivity": 1.0, "nudge": 0.1})
+    assert nudged["audio_start"] == pytest.approx(res["audio_start"] + 0.1) and nudged["starts"] == res["starts"]
+    _, beats_ = live("POST", "/api/track-cuts", {"cut_on": "beats", "multiple": 2.0})
+    assert [b - a for a, b in zip(beats_["starts"], beats_["starts"][1:])] == pytest.approx([0.25] * 3, abs=0.05)
+
+
+def test_track_cuts_without_a_track_say_so(live):
+    _three_plates(live)
+    status, res = live("POST", "/api/track-cuts", {})
+    assert status == 400 and "No music track" in res["error"]
+
+
+def test_the_player_sound_for_a_track_is_as_long_as_the_cuts(live, tmp_path):
+    import io
+    import wave
+    _three_plates(live)
+    live("POST", "/api/track?name=t.wav", raw=_click_track_bytes(tmp_path=tmp_path))
+    params = {"music": "track", "cut_on": "hits", "sensitivity": 1.0}
+    cuts = live("POST", "/api/track-cuts", params)[1]
+    status, wav = live("POST", "/api/music", params)
+    assert status == 200 and wav[:4] == b"RIFF"
+    with wave.open(io.BytesIO(wav)) as w:
+        assert w.getnframes() / w.getframerate() == pytest.approx(cuts["total"], abs=0.05)
+
+
+def test_a_clip_longer_than_the_track_loops_the_track(live, tmp_path):
+    import io
+    import wave
+    for i in range(14):
+        live("POST", "/api/generate-image", {"title": f"L{i}", "prompt": "p", "model": "m"})
+    live("POST", "/api/track?name=short.wav", raw=_click_track_bytes(seconds=4, tmp_path=tmp_path))
+    params = {"music": "track", "cut_on": "hits", "sensitivity": 1.0}
+    cuts = live("POST", "/api/track-cuts", params)[1]
+    assert cuts["total"] > 4.0                                                   # 14 cuts do not fit in 4 s of music
+    with wave.open(io.BytesIO(live("POST", "/api/music", params)[1])) as w:
+        assert w.getnframes() / w.getframerate() == pytest.approx(cuts["total"], abs=0.05)
+
+
+def test_export_with_a_track_cuts_on_its_hits_and_carries_its_sound(live, srv, tmp_path):
+    _three_plates(live)
+    live("POST", "/api/track?name=t.wav", raw=_click_track_bytes(tmp_path=tmp_path))
+    status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "track", "cut_on": "hits", "sensitivity": 1.0})
+    assert status == 200 and res["music_mode"] == "track" and "track" in res["filename"]
+    kinds, seconds = _streams(srv.OUTPUTS_DIR / res["filename"])
+    assert sorted(kinds) == ["audio", "video"] and seconds == pytest.approx(1.5, abs=0.15)      # three cuts of half a second
+    assert gen_log.read(None)[-1]["music"] == "track"
+
+
+def test_export_with_a_track_but_no_track_fails_cleanly(live):
+    _three_plates(live)
+    status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "track"})
+    assert status == 500 and "No music track" in res["error"]
 
 
 def test_music_options_are_clamped_and_defaults_fill_the_gaps(srv):
@@ -490,12 +591,15 @@ def test_music_endpoint_uses_the_settings_and_the_seed(live):
 def test_music_says_how_to_fix_it_when_numpy_is_missing(live, monkeypatch):
     import sys
     _three_plates(live)
-    monkeypatch.setitem(sys.modules, "synth", None)          # makes `import synth` fail like a machine without numpy
+    monkeypatch.setitem(sys.modules, "synth", None)
+    monkeypatch.setitem(sys.modules, "beats", None)
     status, res = live("POST", "/api/music", {"bpm": 120, "multiple": 2})
     assert status == 500 and "pip3 install numpy" in res["error"]
     status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2})   # the picture alone still exports
     assert status == 200
     status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth"})
+    assert status == 500 and "pip3 install numpy" in res["error"]
+    status, res = live("POST", "/api/track?name=t.mp3", raw=b"x" * 500)           # reading a track needs numpy too, and says so
     assert status == 500 and "pip3 install numpy" in res["error"]
 
 

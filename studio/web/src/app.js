@@ -102,7 +102,7 @@
       const trashedCount = plates.filter(p => p.trashed).length;
       document.getElementById('trashCount').textContent = trashedCount;
       document.getElementById('selCount').textContent = plates.length - trashedCount;
-      if (typeof drawRhythm === 'function') drawRhythm();
+      if (typeof drawInfo === 'function') drawInfo();
       refreshIdle();
       document.getElementById('tabSelection').className = showTrash ? '' : 'on';
       document.getElementById('tabTrash').className = showTrash ? 'on' : '';
@@ -473,28 +473,7 @@
       const paired = invertMode === 'mono' || invertMode === 'colour';
       return { cut, p, plate: (paired ? Math.floor(cut / 2) : cut) % nPlates, inverted: paired && cut % 2 === 1 };
     }
-    // ---- the cut timeline (mirrored in studio/rhythm.py): where each cut starts, in base cuts ----
-    const CURVE = [0.30, 8.0, 2.2];   // where the speed change starts, the slowest cut, the shape (same as rhythm.py)
-    const isCurve = r => r === 'accel' || r === 'decel';
-    function rhythmFactor(rhythm, u) {
-      if (!isCurve(rhythm)) return 1;
-      if (rhythm === 'accel') u = 1 - u;
-      return u > CURVE[0] ? Math.pow(CURVE[1], Math.pow((u - CURVE[0]) / (1 - CURVE[0]), CURVE[2])) : 1;
-    }
-    function cutStarts(nCuts, rhythm, paired, minLen = 0) {
-      const out = [0];
-      if (!isCurve(rhythm)) { for (let i = 1; i <= nCuts; i++) out.push(i); return out; }
-      const nImg = Math.max(1, paired ? Math.floor(nCuts / 2) : nCuts);
-      let t = 0;
-      for (let i = 0; i < nCuts; i++) {
-        const img = paired ? Math.floor(i / 2) : i;
-        let f = rhythmFactor(rhythm, nImg > 1 ? img / (nImg - 1) : 1);
-        if (img === (rhythm === 'accel' ? 0 : nImg - 1)) f *= 1.4;
-        t += Math.max(minLen, f);
-        out.push(t);
-      }
-      return out;
-    }
+    // ---- the cut timeline: where each cut starts. Flat = every cut one base cut; music-driven = the times the server found on the track ----
     function cutAt(starts, t) {
       const total = starts[starts.length - 1];
       t = total > 0 ? ((t % total) + total) % total : 0;
@@ -506,45 +485,72 @@
     let timelineCache = { key: '', starts: null };
     function timelineFor(nPlates) {
       const invert = document.getElementById('invertSelect').value;
-      const rhythm = document.getElementById('rhythmSelect').value;
-      const key = `${nPlates}|${invert}|${rhythm}|${framesPerCut}`;
+      const paired = invert === 'mono' || invert === 'colour';
+      const nCuts = nPlates * (paired ? 2 : 1);
+      const driven = trackDriven() && trackCuts && trackCuts.starts.length === nCuts + 1;
+      const key = `${nCuts}|${framesPerCut}|${driven ? trackCuts.id : 'flat'}`;
       if (timelineCache.key !== key) {
-        const paired = invert === 'mono' || invert === 'colour';
-        timelineCache = { key, starts: cutStarts(nPlates * (paired ? 2 : 1), rhythm, paired, 1 / framesPerCut) };
+        // positions are in base cuts (one base cut = framesPerCut frames), the unit the player counts in
+        const starts = driven ? trackCuts.starts.map(sec => (sec * 30) / framesPerCut) : Array.from({ length: nCuts + 1 }, (_, i) => i);
+        timelineCache = { key, starts };
       }
       return timelineCache.starts;
     }
 
-    // ---- synthesized music: rendered by the server for exactly this timeline; while it plays it is the player's clock ----
-    function musicOn() { return document.getElementById('musicSelect').value === 'on'; }
-    function musicParams() {
-      const unit = id => (parseInt(document.getElementById(id).value, 10) || 0) / 100;
+    // ---- music: the synthesized drone, or the user's own track (which also sets the cuts) ----
+    const MUSIC_HINT = 'A dark, wide drone around 54 Hz in a big room, as in Soiltone and Ecwora. It breathes with every cut.';
+    let track = null;            // the uploaded track: {name, duration, bpm, n_beats, n_hits}
+    let trackCuts = null;        // where the cuts fall on it: {starts (seconds), audio_start, total, id}
+    let trackCutsSeq = 0;
+    function musicMode() { return document.getElementById('musicSelect').value || 'off'; }
+    function musicOn() { return musicMode() === 'on'; }                    // the synthesized drone
+    function trackDriven() { return musicMode() === 'track' && !!track; }  // cuts and sound come from the track
+    function musicActive() { return musicOn() || trackDriven(); }
+    function unit(id) { return (parseInt(document.getElementById(id).value, 10) || 0) / 100; }
+    function trackParams() {
       return {
+        cut_on: document.getElementById('cutOnSelect').value || 'hits',
+        multiple: parseFloat(document.getElementById('multSelect').value),
+        sensitivity: unit('sensRange'),
+        nudge: (parseInt(document.getElementById('nudgeRange').value, 10) || 0) / 1000,
+        invert_mode: document.getElementById('invertSelect').value
+      };
+    }
+    function musicParams() {
+      if (trackDriven()) return { music: 'track', ...trackParams() };
+      return {
+        music: 'synth',
         bpm: parseInt(document.getElementById('bpmSlider').value, 10),
         multiple: parseFloat(document.getElementById('multSelect').value),
         invert_mode: document.getElementById('invertSelect').value,
-        rhythm: document.getElementById('rhythmSelect').value,
         pulse: unit('pulseRange'), low: unit('lowRange'), bright: unit('brightRange'), width: unit('widthRange'), space: unit('spaceRange'), power: unit('powerRange'),
         seed: parseInt(document.getElementById('seedVal').value, 10) || 7
       };
     }
-    const STYLE_HINT = 'A dark, wide drone around 54 Hz in a big room, as in Soiltone and Ecwora. It breathes with every cut.';
     function setMusicState(kind, text) {
       const el = document.getElementById('musicState');
       el.hidden = !text;
       el.textContent = text || '';
       el.className = `music-state ${kind || ''}`;
     }
+    function fmtDuration(sec) { return sec >= 60 ? `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}` : `${Math.round(sec)} s`; }
     function updateMusic() {
-      const on = musicOn();
-      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power']) {
-        const el = document.getElementById(`${k}Range`);
-        document.getElementById(`${k}Val`).textContent = el.value;
-        el.disabled = !on;
-      }
-      document.getElementById('seedBtn').disabled = !on;
-      document.getElementById('styleHint').textContent = on ? STYLE_HINT : 'No music: the preview and the export stay silent.';
+      const mode = musicMode();
+      document.getElementById('synthBox').hidden = mode !== 'on';
+      document.getElementById('trackBox').hidden = mode !== 'track';
+      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'sens']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
+      document.getElementById('nudgeVal').textContent = `${document.getElementById('nudgeRange').value} ms`;
+      document.getElementById('styleHint').textContent = mode === 'on' ? MUSIC_HINT : mode === 'track' ? '' : 'No music: the preview and the export stay silent.';
       document.getElementById('seedNum').textContent = document.getElementById('seedVal').value;
+      const hits = document.getElementById('cutOnSelect').value !== 'beats';
+      document.getElementById('sensRow').hidden = !hits;
+      document.getElementById('trackName').textContent = track ? track.name : 'No track yet';
+      document.getElementById('trackInfo').textContent = track ? `${track.bpm.toFixed(0)} BPM · ${fmtDuration(track.duration)} · ${track.n_hits} hits found` : 'Choose an mp3, wav or m4a: the cuts follow its hits.';
+      document.getElementById('trackClear').hidden = !track;
+      // the tempo only drives the flat grid; with a track the cuts come from the music
+      document.getElementById('bpmSlider').disabled = trackDriven();
+      document.getElementById('multSelect').disabled = trackDriven() && !(!hits);
+      document.getElementById('speedVal').textContent = trackDriven() ? 'from the music' : `${framesPerCut.toFixed(1)}f`;
       saveSettings();
       musicChanged();
     }
@@ -561,50 +567,87 @@
       document.getElementById('fxTabVal').value = music ? 'music' : 'video';
       saveSettings();
     }
-    // the cut-length curve of the whole sequence (taller = a longer hold), only for the curves; and how long the result runs
-    function drawRhythm() {
+    // how many images, how long the result runs, and how long the cuts are
+    function drawInfo() {
       const n = activePlates().length;
-      const graph = document.getElementById('rhythmGraph');
-      const line = document.getElementById('rhythmLine');
       const info = document.getElementById('rhythmInfo');
-      const curved = isCurve(document.getElementById('rhythmSelect').value);
-      graph.style.display = curved && n ? '' : 'none';   // (the hidden attribute does nothing on an SVG element)
-      if (!n) { line.setAttribute('points', ''); info.textContent = ''; return; }
+      if (!n) { info.textContent = ''; return; }
       const starts = timelineFor(n);
       const cuts = starts.length - 1;
-      const lens = starts.slice(1).map((s, i) => s - starts[i]);
-      const top = Math.max(...lens);
-      const pts = [];
-      const step = Math.max(1, Math.floor(cuts / 200));
-      for (let i = 0; i < cuts; i += step) pts.push(`${((i / cuts) * 200).toFixed(1)},${(34 - (lens[i] / top) * 32).toFixed(1)}`);
-      pts.push(`200,${(34 - (lens[cuts - 1] / top) * 32).toFixed(1)}`);
-      line.setAttribute('points', pts.join(' '));
       const sec = c => (c * framesPerCut) / 30;
-      const total = sec(starts[cuts]);
+      const lens = starts.slice(1).map((v, i) => sec(v - starts[i]));
       const f = v => (v < 1 ? `${Math.round(v * 1000)} ms` : `${v.toFixed(1)} s`);
-      info.textContent = `${n} images · ${total >= 60 ? `${Math.floor(total / 60)}:${String(Math.round(total % 60)).padStart(2, '0')}` : `${total.toFixed(0)} s`} · cuts ${f(sec(lens[0]))}${top > lens[0] * 1.05 ? ` → ${f(sec(top))}` : ''}`;
+      const lo = Math.min(...lens), hi = Math.max(...lens);
+      info.textContent = `${n} images · ${fmtDuration(sec(starts[cuts]))} · cuts ${hi > lo * 1.05 ? `${f(lo)} – ${f(hi)}` : f(lo)}`;
     }
-    function moveRhythmHead(starts) {
-      const total = starts[starts.length - 1];
-      const x = total > 0 ? ((((cutPos % total) + total) % total) / total) * 200 : 0;
-      const h = document.getElementById('rhythmHead');
-      h.setAttribute('x1', x.toFixed(1)); h.setAttribute('x2', x.toFixed(1));
+    // ---- the track: upload (analysed on the server), the cuts that fall on it, and the sound the player plays ----
+    async function loadTrack() {
+      try {
+        const res = await fetch('/api/track');
+        track = (await res.json()).track || null;
+      } catch (e) { track = null; }
+      updateMusic();
+    }
+    function chooseTrack() { document.getElementById('trackFile').click(); }
+    async function uploadTrack(file) {
+      if (!file) return;
+      setMusicState('busy', 'Listening to the track…');
+      try {
+        const res = await fetch(`/api/track?name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        track = data.track;
+        trackCuts = null;
+        document.getElementById('musicSelect').value = 'track';
+        setMusicState('', '');
+        updateMusic();
+      } catch (e) {
+        setMusicState('err', `Could not use that track: ${e.message}`);
+      }
+    }
+    async function clearTrack() {
+      await fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clear: true }) });
+      track = null; trackCuts = null; musicAudio = null; musicKey = '';
+      if (musicMode() === 'track') document.getElementById('musicSelect').value = 'off';
+      updateMusic();
+    }
+    // asks the server where the cuts fall on the track for this many images; true when they are known
+    async function ensureTrackCuts() {
+      if (!trackDriven()) return false;
+      const n = activePlates().length;
+      const key = JSON.stringify(trackParams()) + `|${n}|${track.name}`;
+      if (trackCuts && trackCuts.key === key) return true;
+      const mine = ++trackCutsSeq;
+      try {
+        const res = await fetch('/api/track-cuts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(trackParams()) });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        if (mine !== trackCutsSeq) return false;
+        trackCuts = { ...data, key, id: key };
+        timelineCache = { key: '', starts: null };
+        drawInfo();
+        return true;
+      } catch (e) {
+        if (mine === trackCutsSeq) { trackCuts = null; setMusicState('err', e.message); }
+        return false;
+      }
     }
 
-    // ---- synthesized music: rendered by the server for exactly this timeline; while it plays it is the player's clock ----
+    // ---- while music plays it is the player's clock ----
     let musicAudio = null, musicKey = '', musicPending = false, musicTimer = null, musicRender = 0;
-    function musicKeyNow() { return JSON.stringify(musicParams()) + '|' + activePlates().length; }
+    function musicKeyNow() { return JSON.stringify(musicParams()) + '|' + activePlates().length + (trackDriven() ? '|' + track.name : ''); }
     function stopMusic() {
       if (musicAudio) { try { musicAudio.pause(); } catch (e) {} }
       musicPending = false;
       document.getElementById('playBtn').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
     }
-    // makes sure the track for the current settings is rendered (a few seconds); true when it is ready
+    // makes sure the sound for the current settings is rendered (a few seconds); true when it is ready
     async function ensureMusic() {
+      if (trackDriven() && !(await ensureTrackCuts())) return false;
       const key = musicKeyNow();
       if (musicAudio && key === musicKey) return true;
       const mine = ++musicRender;
-      setMusicState('busy', 'Rendering the music…');
+      setMusicState('busy', trackDriven() ? 'Preparing the track…' : 'Rendering the music…');
       try {
         const res = await fetch('/api/music', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(musicParams()) });
         if (!res.ok) {
@@ -633,20 +676,22 @@
         const ok = await ensureMusic();
         musicPending = false;
         btn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
-        if (!ok || !isPlaying || !musicOn() || musicKey !== musicKeyNow()) return;
+        if (!ok || !isPlaying || !musicActive() || musicKey !== musicKeyNow()) return;
       }
       cutPos = 0;
       lastTick = performance.now();
       musicAudio.currentTime = 0;
       try { await musicAudio.play(); } catch (e) { setStatus('The browser blocked the audio. Press Play again.'); }
     }
-    // tempo, multiple, invert, rhythm or any music setting changed: the track no longer matches. Render the new one in the
-    // background (so Play is instant), and restart it if the preview is playing.
+    // tempo, multiple, invert or any music setting changed: the sound no longer matches. Render the new one in the background
+    // (so Play is instant), and restart it if the preview is playing.
     function musicChanged() {
       stopMusic();
       clearTimeout(musicTimer);
-      if (!musicOn()) { musicRender++; setMusicState('', ''); return; }
+      if (!musicActive()) { musicRender++; setMusicState('', ''); drawInfo(); return; }
+      if (trackDriven()) { trackCuts = null; timelineCache = { key: '', starts: null }; }
       musicTimer = setTimeout(() => (isPlaying ? startMusic() : ensureMusic()), isPlaying ? 350 : 700);
+      drawInfo();
     }
     function zoomScale(mode, amountPct, p) {
       const a = amountPct / 100;
@@ -678,7 +723,6 @@
       document.getElementById('zoomAmt').disabled = document.getElementById('zoomSelect').value === 'off';
       document.getElementById('zoomAmtRow').hidden = document.getElementById('zoomSelect').value === 'off';
       if (!isPlaying) clearFx();
-      drawRhythm();
       musicChanged();   // invert changes the cuts, so the track must follow
     }
 
@@ -697,12 +741,11 @@
         if (!active.length || stageImg.style.display === 'none') return;
         if (musicPending) return;
         const cutMs = Math.max(16, (framesPerCut / 30) * 1000);
-        if (musicAudio && !musicAudio.paused && musicOn()) cutPos = (musicAudio.currentTime * 1000) / cutMs;   // the track is the clock
+        if (musicAudio && !musicAudio.paused && musicActive()) cutPos = (musicAudio.currentTime * 1000) / cutMs;   // the track is the clock
         else cutPos += dt / cutMs;
         const fx = fxSettings();
         const tl = timelineFor(active.length);
         const plan = planAt(cutPos, active.length, fx.invert, tl);
-        moveRhythmHead(tl);
         currentIdx = plan.plate;
         const url = active[plan.plate].preview || active[plan.plate].url;
         if (stageImg.getAttribute('src') !== url) stageImg.src = url;
@@ -717,7 +760,7 @@
       if (isPlaying) { cutPos = 0; lastTick = performance.now(); } else { clearFx(); }
       document.getElementById('playBtn').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
       if (!isPlaying) stopMusic();
-      else if (musicOn()) startMusic();
+      else if (musicActive()) startMusic();
     }
 
     function toggleReticle() {
@@ -725,7 +768,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['bpmSlider', 'multSelect', 'rhythmSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['bpmSlider', 'multSelect', 'musicSelect', 'cutOnSelect', 'sensRange', 'nudgeRange', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -750,10 +793,9 @@
       const bpm = parseInt(document.getElementById('bpmSlider').value, 10);
       const mult = parseFloat(document.getElementById('multSelect').value);
       framesPerCut = Math.max(1, (30 * 60) / (bpm * mult));
-      document.getElementById('bpmVal').textContent = `${bpm} BPM`;
+      document.getElementById('bpmVal').textContent = trackDriven() ? `${Math.round(track.bpm)} BPM · track` : `${bpm} BPM`;
       document.getElementById('speedVal').textContent = `${framesPerCut.toFixed(1)}f`;
       restartLoop();
-      drawRhythm();
       musicChanged();
     }
 
@@ -1022,9 +1064,8 @@
             bpm: parseInt(document.getElementById('bpmSlider').value, 10),
             multiple: parseFloat(document.getElementById('multSelect').value),
             invert_mode: document.getElementById('invertSelect').value,
-            rhythm: document.getElementById('rhythmSelect').value,
-            music: musicOn() ? 'synth' : 'off',
             ...musicParams(),
+            music: trackDriven() ? 'track' : musicOn() ? 'synth' : 'off',
             zoom_mode: document.getElementById('zoomSelect').value,
             zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0
           })
@@ -1053,6 +1094,7 @@
     updateFx();
     updateTempo();
     updateMusic();
+    loadTrack();
     showFxTab(document.getElementById('fxTabVal').value);
     ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'].forEach(id => document.getElementById(id).addEventListener('change', saveSettings));
     document.getElementById('worldSelect').addEventListener('change', () => { document.getElementById('directionInput').value = ''; saveSettings(); updateDirectionHint(); });
@@ -1121,6 +1163,9 @@ Object.assign(window, {
   setTrashView,
   togglePlay,
   updateMusic,
+  chooseTrack,
+  uploadTrack,
+  clearTrack,
   newVariation,
   showFxTab,
   togglePromptOverlay,

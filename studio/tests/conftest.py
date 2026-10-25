@@ -24,6 +24,7 @@ def srv(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "QA_CACHE", {})
     monkeypatch.setattr(server, "PLATES_DIR", plates)
     monkeypatch.setattr(server, "THUMBS_DIR", tmp_path / "thumbs")
+    monkeypatch.setattr(server, "TRACK_DIR", tmp_path / "tracks")
     for var in ("KIMI_API_KEY", "MOONSHOT_API_KEY"):
         monkeypatch.delenv(var, raising=False)
     return server

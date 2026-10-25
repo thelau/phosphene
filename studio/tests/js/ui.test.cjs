@@ -361,21 +361,7 @@ const ZOOM_VECTORS = [
   ['off', 5, 0.5, 1.0], ['out', 1, 0.0, 1.01], ['out', 1, 1.0, 1.0], ['in', 1, 0.0, 1.0], ['in', 1, 1.0, 1.01], ['out', 0.6, 0.5, 1.003],
 ];
 
-const RHYTHM_VECTORS = [   // same as tests/test_rhythm.py: nCuts, rhythm, paired, starts[min(7, n)], total
-  [10, 'decel', false, 7.974487, 25.772028], [10, 'accel', false, 22.772028, 25.772028], [10, 'accel', true, 30.0747, 33.0747],
-  [20, 'decel', true, 7.002568, 51.544056], [1, 'accel', false, 1.4, 1.4], [6, 'flat', false, 6.0, 6.0],
-];
-
-test('cutStarts matches the server timeline vectors', () => {
-  const { run } = load({ routes: baseRoutes() });
-  for (const [n, r, paired, at7, total] of RHYTHM_VECTORS) {
-    const s = run(`cutStarts(${n}, '${r}', ${paired})`);
-    assert.equal(s.length, n + 1);
-    assert.ok(Math.abs(s[Math.min(7, n)] - at7) < 1e-5 && Math.abs(s[n] - total) < 1e-5, `${n} ${r} ${paired}`);
-  }
-});
-
-test('planAt follows a tempo curve and wraps around the sequence', () => {
+test('planAt follows uneven cuts (music-driven) and wraps around the sequence', () => {
   const { run } = load({ routes: baseRoutes() });
   assert.deepEqual(JSON.parse(JSON.stringify(run('planAt(2.0, 4, "off", [0, 1, 3, 4.5])'))).cut, 1);
   const r = run('planAt(2.0, 4, "off", [0, 1, 3, 4.5])');
@@ -648,13 +634,13 @@ test('with music off, Play never asks for music or creates audio', async () => {
 
 test('with music on, Play renders the track for the current settings, then plays it from the top', async () => {
   const h = await playerWith();
-  h.$('musicSelect').value = 'on'; h.$('rhythmSelect').value = 'decel'; h.$('invertSelect').value = 'colour';
+  h.$('musicSelect').value = 'on'; h.$('invertSelect').value = 'colour';
   h.$('pulseRange').value = '40'; h.$('lowRange').value = '80'; h.$('brightRange').value = '20'; h.$('widthRange').value = '90'; h.$('spaceRange').value = '75'; h.$('powerRange').value = '55'; h.$('seedVal').value = '42';
   h.run('togglePlay()');
   assert.equal(h.$('playBtn').textContent, '♪ Rendering…');
   await settle(); await settle();
   const call = h.calls.find(c => c.url === '/api/music');
-  assert.deepEqual(call.body, { bpm: 120, multiple: 2, invert_mode: 'colour', rhythm: 'decel', pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, seed: 42 });
+  assert.deepEqual(call.body, { music: 'synth', bpm: 120, multiple: 2, invert_mode: 'colour', pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, seed: 42 });
   assert.equal(h.ctx.__audios.length, 1);
   const a = h.ctx.__audios[0];
   assert.equal(a.paused, false); assert.equal(a.loop, true); assert.equal(a.currentTime, 0);
@@ -678,14 +664,14 @@ test('while the music plays it is the clock: the picture follows the audio posit
   assert.equal(h.$('stageImg').src, '/p/a');
 });
 
-test('changing the tempo or rhythm while playing stops the old track and renders a new one', async () => {
+test('changing the tempo or invert while playing stops the old track and renders a new one', async () => {
   const h = await playerWith();
   h.$('musicSelect').value = 'on';
   h.run('togglePlay()');
   await settle(); await settle();
   const first = h.ctx.__audios[0];
-  h.$('rhythmSelect').value = 'decel';
-  h.run('updateTempo()');
+  h.$('invertSelect').value = 'mono';
+  h.run('updateFx()');
   assert.equal(first.paused, true);                                          // the old track no longer matches
   const wait = h.timers.timeouts[h.timers.timeouts.length - 1];
   assert.ok(wait.ms >= 200);                                                 // debounced: dragging the slider does not hammer the server
@@ -710,23 +696,23 @@ test('when the music cannot be rendered the player says so and the picture still
   assert.ok(h.run('cutPos') > 0);
 });
 
-test('export sends the rhythm and the music choice', async () => {
+test('export sends the music choice', async () => {
   const r = baseRoutes();
   r['/api/export-video'] = { ok: true, images: 3, seconds: 2, video_url: '/outputs/x.mp4', filename: 'x.mp4' };
   const h = load({ routes: r });
   await settle(); await settle();
-  h.$('rhythmSelect').value = 'decel'; h.$('musicSelect').value = 'on';
+  h.$('musicSelect').value = 'on';
   await h.run('exportVideo()');
   const body = h.calls.find(c => c.url === '/api/export-video').body;
-  assert.deepEqual([body.rhythm, body.music, body.style], ['decel', 'synth', undefined]);
+  assert.equal(body.music, 'synth');
 });
 
-test('rhythm and music choices are remembered', () => {
+test('music choices are remembered', () => {
   const h = load({ routes: baseRoutes() });
-  h.$('rhythmSelect').value = 'decel'; h.$('musicSelect').value = 'on';
-  h.run('updateTempo()');
+  h.$('musicSelect').value = 'track'; h.$('cutOnSelect').value = 'beats'; h.$('sensRange').value = '70';
+  h.run('updateMusic()');
   const saved = JSON.parse(h.store.studioSettings);
-  assert.deepEqual([saved.rhythmSelect, saved.musicSelect], ['decel', 'on']);
+  assert.deepEqual([saved.musicSelect, saved.cutOnSelect, saved.sensRange], ['track', 'beats', '70']);
 });
 
 
@@ -740,16 +726,15 @@ test('the Video and Music tabs show one pane at a time and remember which', () =
   assert.equal(h.$('paneVideo').hidden, false); assert.equal(h.$('paneMusic').hidden, true);
 });
 
-test('music settings: sliders show their value, lock when music is off, and a new variation changes the seed', () => {
+test('music settings: sliders show their value, only show for the synthesized music, and a new variation changes the seed', () => {
   const h = load({ routes: baseRoutes() });
   h.$('musicSelect').value = 'off'; h.$('pulseRange').value = '35';
   h.run('updateMusic()');
   assert.equal(h.$('pulseVal').textContent, '35');
-  assert.equal(h.$('pulseRange').disabled, true); assert.equal(h.$('seedBtn').disabled, true);
+  assert.equal(h.$('synthBox').hidden, true); assert.match(h.$('styleHint').textContent, /No music/);
   h.$('musicSelect').value = 'on';
   h.run('updateMusic()');
-  assert.equal(h.$('pulseRange').disabled, false);
-  assert.equal(h.$('spaceRange').disabled, false); assert.equal(h.$('powerRange').disabled, false);
+  assert.equal(h.$('synthBox').hidden, false);
   assert.match(h.$('styleHint').textContent, /drone/);
   h.$('seedVal').value = '7';
   h.run('newVariation()');
@@ -759,26 +744,18 @@ test('music settings: sliders show their value, lock when music is off, and a ne
   assert.deepEqual([saved.musicSelect, saved.pulseRange, saved.seedVal], ['on', '35', h.$('seedVal').value]);
 });
 
-test('the rhythm graph draws the cut lengths of the whole sequence and says how long it runs', async () => {
+test('the info line says how many images, how long, and how long the cuts are', async () => {
   const r = baseRoutes();
   r['/api/state'] = { plates: Array.from({ length: 40 }, (_, i) => mkPlate('p' + i)) };
   const h = load({ routes: r });
   await settle(); await settle();
   h.run('framesPerCut = 3');
-  h.$('rhythmSelect').value = 'flat';
-  h.run('drawRhythm()');
-  const flat = h.$('rhythmLine').points.split(' ').map(p => parseFloat(p.split(',')[1]));
-  assert.ok(Math.max(...flat) - Math.min(...flat) < 0.01);
-  assert.equal(h.$('rhythmGraph').style.display, 'none');                                 // a flat rhythm has nothing to draw: the graph stays out of the way
-  assert.match(h.$('rhythmInfo').textContent, /^40 images · 4 s · cuts 100 ms$/);
-  h.$('rhythmSelect').value = 'decel';
-  h.run('drawRhythm()');
-  assert.equal(h.$('rhythmGraph').style.display, '');
-  const land = h.$('rhythmLine').points.split(' ').map(p => parseFloat(p.split(',')[1]));
-  assert.ok(land[0] > land[land.length - 1] + 20);                               // the line falls as the holds grow (taller = longer)
-  assert.match(h.$('rhythmInfo').textContent, /^40 images · \d+ s · cuts 100 ms → \d/);
+  h.run('drawInfo()');
+  assert.equal(h.$('rhythmInfo').textContent, '40 images · 4 s · cuts 100 ms');
+  h.$('invertSelect').value = 'mono';
+  h.run('drawInfo()');
+  assert.equal(h.$('rhythmInfo').textContent, '40 images · 8 s · cuts 100 ms');
 });
-
 
 test('the grid uses small thumbnails and the player the preview size, falling back to the full image', async () => {
   const r = baseRoutes();
@@ -842,4 +819,141 @@ test('turning the music off clears its state and stops the sound', async () => {
   h.run('updateMusic()');
   assert.equal(h.ctx.__audios[0].paused, true);
   assert.equal(h.$('musicState').hidden, true);
+});
+
+
+// ---------- a music track that drives the cuts ----------
+
+const TRACK = { name: 'glitch.mp3', duration: 62, bpm: 128, n_beats: 130, n_hits: 410 };
+
+async function trackPlayer(cuts = { ok: true, starts: [0, 0.2, 0.5, 0.6], audio_start: 1.5, total: 0.6, events: 80, bpm: 128 }, extra = {}) {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: [mkPlate('a'), mkPlate('b'), mkPlate('c')] };
+  r['/api/track'] = (body) => (body && body.clear ? { ok: true, track: null } : body && body.name ? { ok: true, track: TRACK } : { ok: true, track: extra.noTrack ? null : TRACK });
+  r['/api/track-cuts'] = cuts;
+  r['/api/music'] = { ok: true };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('stageImg').style.display = 'block';
+  h.run('loadTrack()');
+  await settle(); await settle();
+  return h;
+}
+
+test('the saved track is shown in the Music tab when the page opens', async () => {
+  const h = await trackPlayer();
+  assert.equal(h.$('trackName').textContent, 'glitch.mp3');
+  assert.match(h.$('trackInfo').textContent, /128 BPM · 1:02 · 410 hits found/);
+  assert.equal(h.$('trackClear').hidden, false);
+});
+
+test('choosing My track shows its controls, hides the synth ones, and the tempo stops driving the cuts', async () => {
+  const h = await trackPlayer();
+  h.$('musicSelect').value = 'on'; h.run('updateMusic()');
+  assert.equal(h.$('synthBox').hidden, false); assert.equal(h.$('trackBox').hidden, true); assert.equal(h.$('bpmSlider').disabled, false);
+  h.$('musicSelect').value = 'track'; h.run('updateMusic()');
+  assert.equal(h.$('synthBox').hidden, true); assert.equal(h.$('trackBox').hidden, false);
+  assert.equal(h.$('bpmSlider').disabled, true); assert.equal(h.$('speedVal').textContent, 'from the music');
+  h.$('cutOnSelect').value = 'beats'; h.run('updateMusic()');
+  assert.equal(h.$('sensRow').hidden, true);                                  // sensitivity only means something for hits
+  assert.equal(h.$('multSelect').disabled, false);                            // beats use the multiple; hits do not
+  h.$('cutOnSelect').value = 'hits'; h.run('updateMusic()');
+  assert.equal(h.$('sensRow').hidden, false); assert.equal(h.$('multSelect').disabled, true);
+});
+
+test('uploading a track sends the file as it is with its name, then switches to it', async () => {
+  const h = await trackPlayer(undefined, { noTrack: true });
+  assert.equal(h.$('trackName').textContent, 'No track yet');
+  const file = { name: 'my mix.wav', size: 3 };
+  await h.run('uploadTrack({ name: "my mix.wav", size: 3 })');
+  const call = h.calls.filter(c => c.url.startsWith('/api/track?')).pop();
+  assert.equal(call.url, '/api/track?name=my%20mix.wav');
+  assert.equal(h.$('musicSelect').value, 'track');
+  assert.equal(h.$('trackName').textContent, 'glitch.mp3');
+});
+
+test('a track the server cannot use is explained and nothing changes', async () => {
+  const r = baseRoutes();
+  r['/api/track'] = { ok: false, error: 'Could not read that audio file' };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  await h.run('uploadTrack({ name: "x.mp3" })');
+  assert.match(h.$('musicState').textContent, /Could not use that track: Could not read that audio file/);
+  assert.match(h.$('musicState').className, /err/);
+  assert.equal(h.$('musicSelect').value, '');
+});
+
+test('with a track the cuts come from the server: Play asks for them, then the picture changes on those times', async () => {
+  const h = await trackPlayer();
+  h.$('musicSelect').value = 'track'; h.$('cutOnSelect').value = 'hits'; h.$('sensRange').value = '40'; h.$('nudgeRange').value = '-20';
+  h.run('framesPerCut = 3');                                                   // 100 ms per base cut
+  h.run('updateMusic()');
+  h.run('togglePlay()');
+  await settle(); await settle(); await settle();
+  const cuts = h.calls.find(c => c.url === '/api/track-cuts');
+  assert.equal(cuts.body.cut_on, 'hits'); assert.equal(cuts.body.sensitivity, 0.4); assert.equal(cuts.body.nudge, -0.02);
+  const music = h.calls.find(c => c.url === '/api/music');
+  assert.equal(music.body.music, 'track');
+  // the sound is the clock: cuts at 0, 0.2, 0.5 s -> images a, b, c
+  const tick = h.timers.intervals[h.timers.intervals.length - 1].fn;
+  const audio = h.ctx.__audios[0];
+  for (const [t, img] of [[0.05, '/p/a'], [0.3, '/p/b'], [0.55, '/p/c'], [0.65, '/p/a']]) {   // 0.65 is past the end (0.6): wraps to the start
+    audio.currentTime = t; tick();
+    assert.equal(h.$('stageImg').src, img, `at ${t}s`);
+  }
+});
+
+test('the info line reflects the uneven cuts of a track', async () => {
+  const h = await trackPlayer();
+  h.$('musicSelect').value = 'track'; h.run('framesPerCut = 3'); h.run('updateMusic()');
+  await h.run('ensureTrackCuts()');
+  h.run('drawInfo()');
+  assert.equal(h.$('rhythmInfo').textContent, '3 images · 1 s · cuts 100 ms – 300 ms');
+});
+
+test('changing a track setting asks for new cuts (debounced) and a new sound', async () => {
+  const h = await trackPlayer();
+  h.$('musicSelect').value = 'track'; h.run('updateMusic()');
+  h.timers.timeouts[h.timers.timeouts.length - 1].fn();
+  await settle(); await settle(); await settle();
+  const before = h.calls.filter(c => c.url === '/api/track-cuts').length;
+  h.$('sensRange').value = '80'; h.run('updateMusic()');
+  assert.equal(h.calls.filter(c => c.url === '/api/track-cuts').length, before);      // not yet: the slider may still be moving
+  h.timers.timeouts[h.timers.timeouts.length - 1].fn();
+  await settle(); await settle(); await settle();
+  assert.equal(h.calls.filter(c => c.url === '/api/track-cuts').length, before + 1);
+  assert.equal(h.calls.filter(c => c.url === '/api/music').length, 2);
+});
+
+test('track cuts the server refuses show a reason and Play falls back to the plain tempo', async () => {
+  const h = await trackPlayer({ ok: false, error: 'Not enough hits or beats in that track to cut on.' });
+  h.$('musicSelect').value = 'track'; h.run('updateMusic()');
+  h.run('togglePlay()');
+  await settle(); await settle(); await settle();
+  assert.match(h.$('musicState').textContent, /Not enough hits/);
+  assert.equal(h.ctx.__audios.length, 0);
+  assert.equal(h.$('playBtn').textContent, '⏸ Pause');                              // the picture still plays on the tempo grid
+});
+
+test('removing the track returns to silence and forgets its cuts', async () => {
+  const h = await trackPlayer();
+  h.$('musicSelect').value = 'track'; h.run('updateMusic()');
+  await h.run('clearTrack()');
+  assert.equal(h.$('musicSelect').value, 'off');
+  assert.equal(h.$('trackName').textContent, 'No track yet');
+  assert.equal(h.$('bpmSlider').disabled, false);
+});
+
+test('export with a track sends the cut settings and says track', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: [mkPlate('a'), mkPlate('b')] };
+  r['/api/track'] = { ok: true, track: TRACK };
+  r['/api/export-video'] = { ok: true, images: 2, seconds: 2, video_url: '/outputs/x.mp4', filename: 'x.mp4' };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  await h.run('loadTrack()');
+  h.$('musicSelect').value = 'track'; h.$('cutOnSelect').value = 'beats'; h.$('multSelect').value = '2'; h.$('sensRange').value = '30';
+  await h.run('exportVideo()');
+  const body = h.calls.find(c => c.url === '/api/export-video').body;
+  assert.deepEqual([body.music, body.cut_on, body.multiple, body.sensitivity], ['track', 'beats', 2, 0.3]);
 });

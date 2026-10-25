@@ -51,6 +51,8 @@ from qa_engine import (
 STUDIO_DIR = Path(__file__).resolve().parent
 THUMBS_DIR = STUDIO_DIR / ".thumbs"   # resized copies for the grid and the preview (gitignored)
 THUMB_WIDTHS = (360, 540)
+TRACK_DIR = STUDIO_DIR / ".tracks"      # the music track that drives the cuts: the file and its analysis (gitignored)
+TRACK_MAX_BYTES = 60 * 1024 * 1024
 WEB_DIST = STUDIO_DIR / "web" / "dist"  # built page (npm run build); in dev Vite serves it instead
 OUTPUTS_DIR = ROOT_DIR / "outputs"
 CURATION_FILE = STUDIO_DIR / "curation_state.json"
@@ -649,7 +651,7 @@ def music_options(body: dict) -> dict:
             "space": unit("space", 0.6), "power": unit("power", 0.6), "seed": seed}
 
 
-def music_wav(n_images: int, bpm: float, multiple: float, invert_mode: str, rhythm_mode: str, opts: dict | None = None) -> tuple[bytes, float]:
+def music_wav(n_images: int, bpm: float, multiple: float, invert_mode: str, opts: dict | None = None) -> tuple[bytes, float]:
     """The synthesized track for one pass over n_images, cut for cut like the picture. Returns (wav bytes, seconds)."""
     try:
         import synth                                    # needs numpy: the rest of the studio runs without it
@@ -657,16 +659,91 @@ def music_wav(n_images: int, bpm: float, multiple: float, invert_mode: str, rhyt
         raise RuntimeError("The music needs numpy. Run: pip3 install numpy") from e
     fps = 30
     fpc = max(1.0, fps * 60.0 / (bpm * multiple))
-    starts = cutplan.timeline(n_images, fpc, invert_mode, rhythm_mode)
+    starts = cutplan.timeline(n_images, invert_mode)
     secs = [x * fpc / fps for x in starts]
     return synth.render(secs, paired=invert_mode in ("mono", "colour"), **(opts or music_options({}))), secs[-1]
 
 
-def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "off", zoom_mode: str = "off", rhythm_mode: str = "flat", music: bool = False) -> str:
+def track_file() -> Path:
+    return TRACK_DIR / "track.bin"
+
+
+def track_info() -> dict | None:
+    """The uploaded track and its analysis ({name, duration, bpm, beats, hits}), or None."""
+    try:
+        return json.loads((TRACK_DIR / "track.json").read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def track_summary(info: dict | None) -> dict | None:
+    if not info:
+        return None
+    return {"name": info["name"], "duration": info["duration"], "bpm": info["bpm"], "n_beats": len(info["beats"]), "n_hits": len(info["hits"])}
+
+
+def save_track(raw: bytes, name: str) -> dict:
+    """Stores an uploaded audio file as the current track and analyses it. Raises ValueError for something that is not usable audio."""
+    try:
+        import beats
+    except ImportError as e:
+        raise RuntimeError("Reading a music track needs numpy. Run: pip3 install numpy") from e
+    TRACK_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = TRACK_DIR / "incoming.bin"
+    tmp.write_bytes(raw)
+    try:
+        analysis = beats.analyse(str(tmp))
+    except RuntimeError as e:
+        tmp.unlink(missing_ok=True)
+        raise ValueError(str(e)) from e
+    if analysis["duration"] < 2.0 or len(analysis["hits"]) < 4:
+        tmp.unlink(missing_ok=True)
+        raise ValueError("That track is too short or too quiet to cut on.")
+    tmp.replace(track_file())
+    info = {"name": (name or "track")[:120], **analysis}
+    (TRACK_DIR / "track.json").write_text(json.dumps(info))
+    return info
+
+
+def track_cut_params(body: dict) -> dict:
+    def num(key, default, lo, hi):
+        try:
+            return min(hi, max(lo, float(body.get(key, default))))
+        except (TypeError, ValueError):
+            return default
+    return {"mode": body.get("cut_on") if body.get("cut_on") in rhythm.MODES else "hits", "multiple": num("multiple", 1.0, 0.125, 16.0),
+            "sensitivity": num("sensitivity", 0.5, 0.0, 1.0), "nudge": num("nudge", 0.0, -0.3, 0.3)}
+
+
+def track_plan(n_images: int, invert_mode: str, body: dict) -> dict:
+    """Where the clip's cuts fall on the uploaded track (see rhythm.track_cuts)."""
+    info = track_info()
+    if not info:
+        raise ValueError("No music track yet: choose one in the Music tab.")
+    n_cuts = n_images * (2 if invert_mode in ("mono", "colour") else 1)
+    return rhythm.track_cuts(info, n_cuts, **track_cut_params(body))
+
+
+def track_clip_wav(plan: dict) -> bytes:
+    """The track as one clip-long WAV: from the start point, looped if the clip is longer than the track."""
+    info = track_info()
+    start = plan["audio_start"]
+    segment = max(1, int((info["duration"] - start) * 44100))
+    graph = f"atrim=start={start:.4f},asetpts=PTS-STARTPTS,aloop=loop=-1:size={segment},atrim=duration={plan['total']:.4f},aresample=44100"
+    out = TRACK_DIR / "clip.wav"                         # a file, not a pipe: only a file gets a WAV header with the real length
+    p = subprocess.run(["/opt/homebrew/bin/ffmpeg", "-v", "error", "-y", "-i", str(track_file()), "-vn", "-af", graph, "-ac", "2", str(out)], capture_output=True)
+    if p.returncode != 0 or not out.exists():
+        raise RuntimeError("Could not prepare the track: " + p.stderr.decode("utf-8", "replace")[-200:])
+    data = out.read_bytes()
+    out.unlink(missing_ok=True)
+    return data
+
+
+def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "off", zoom_mode: str = "off", music: str = "off") -> str:
     """Unique, descriptive name per export so nothing is overwritten: Demo-136bpm-x4-invert-zoomout-20261025-0930.mp4"""
     mult = f"{multiple:.2f}".rstrip("0").rstrip(".")
     fx = ("-invert" if invert_mode in ("mono", "colour") else "") + (f"-zoom{zoom_mode}" if zoom_mode != "off" else "")
-    fx += (f"-{rhythm_mode}" if rhythm_mode != "flat" else "") + ("-music" if music else "")
+    fx += {"synth": "-music", "track": "-track"}.get(music, "")
     return f"Demo-{int(round(bpm))}bpm-x{mult}{fx}-{time.strftime('%Y%m%d-%H%M%S', time.localtime(ts))}.mp4"
 
 
@@ -742,6 +819,10 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/track":
+            self.send_json({"ok": True, "track": track_summary(track_info())})
+            return
+
         if parsed.path == "/api/thumb":
             q = parse_qs(parsed.query)
             try:
@@ -889,6 +970,25 @@ class StudioHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         length = int(self.headers.get("Content-Length", "0"))
+        if parsed.path == "/api/track" and "json" not in (self.headers.get("Content-Type") or ""):
+            # an audio file (any format ffmpeg reads), sent as it is; its name travels in ?name=
+            if length <= 0 or length > TRACK_MAX_BYTES:
+                self.rfile.read(min(length, TRACK_MAX_BYTES))
+                self.send_json({"ok": False, "error": f"Choose an audio file under {TRACK_MAX_BYTES // 1024 // 1024} MB."}, 413)
+                return
+            raw = self.rfile.read(length)
+            try:
+                info = save_track(raw, (parse_qs(parsed.query).get("name") or ["track"])[0])
+            except ValueError as e:
+                self.send_json({"ok": False, "error": str(e)}, 400)
+                return
+            except Exception as e:
+                print(f"[TRACK] FAILED: {str(e)[:300]}", flush=True)
+                self.send_json({"ok": False, "error": str(e)[:200]}, 500)
+                return
+            gen_log.record("track", name=info["name"], duration=info["duration"], bpm=info["bpm"], hits=len(info["hits"]))
+            self.send_json({"ok": True, "track": track_summary(info)})
+            return
         body = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
         if parsed.path in LOCKED_DURING_AI and ai_busy():
             self.send_json({"ok": False, "busy": True, "error": "The AI is ordering your selection. Wait until it finishes."}, 409)
@@ -1129,8 +1229,16 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True})
             return
 
-        if parsed.path == "/api/music":
-            # the synthesized track the player plays: same timeline (tempo, multiple, invert, rhythm) as the picture and the export
+        if parsed.path == "/api/track":
+            if body.get("clear"):
+                for f in TRACK_DIR.glob("track.*"):
+                    f.unlink(missing_ok=True)
+            self.send_json({"ok": True, "track": track_summary(track_info())})
+            return
+
+        if parsed.path in ("/api/music", "/api/track-cuts"):
+            # /api/track-cuts: where the cuts fall on the uploaded track; /api/music: the sound the player plays, cut for cut like the
+            # picture (the synthesized drone, or the track itself from its start point, looped to the length of the clip)
             st = load_state()
             trashed_set = set(st.get("trashed", []))
             n_images = len(sequences.edit_files([p for p in ordered_plate_files(st) if p.name not in trashed_set], st))
@@ -1138,9 +1246,18 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "No active plates"}, 400)
                 return
             invert_mode = body.get("invert_mode") if body.get("invert_mode") in cutplan.INVERT_MODES else "off"
-            rhythm_mode = body.get("rhythm") if body.get("rhythm") in rhythm.RHYTHMS else "flat"
             try:
-                wav, secs = music_wav(n_images, float(body.get("bpm", 136.0)), float(body.get("multiple", 1.0)), invert_mode, rhythm_mode, music_options(body))
+                if parsed.path == "/api/track-cuts" or body.get("music") == "track":
+                    plan = track_plan(n_images, invert_mode, body)
+                    if parsed.path == "/api/track-cuts":
+                        self.send_json({"ok": True, **{k: plan[k] for k in ("starts", "audio_start", "total", "events")}, "bpm": track_info()["bpm"]})
+                        return
+                    wav = track_clip_wav(plan)
+                else:
+                    wav, _ = music_wav(n_images, float(body.get("bpm", 136.0)), float(body.get("multiple", 1.0)), invert_mode, music_options(body))
+            except ValueError as e:
+                self.send_json({"ok": False, "error": str(e)}, 400)
+                return
             except Exception as e:
                 print(f"[MUSIC] FAILED: {str(e)[:300]}", flush=True)
                 self.send_json({"ok": False, "error": f"Music failed: {str(e)[:200]}"}, 500)
@@ -1163,7 +1280,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 with inflight():
                     fps = 30
                     frames_per_cut = max(1.0, fps * 60.0 / (bpm * multiple))
-                    tmp_dir = ROOT_DIR / "outputs" / "_tmp_export_frames"
+                    tmp_dir = OUTPUTS_DIR / "_tmp_export_frames"
                     if tmp_dir.exists():
                         shutil.rmtree(tmp_dir)
                     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -1171,17 +1288,22 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     invert_mode = body.get("invert_mode", "off") if body.get("invert_mode") in cutplan.INVERT_MODES else "off"
                     zoom_mode = body.get("zoom_mode", "off") if body.get("zoom_mode") in cutplan.ZOOM_MODES else "off"
                     zoom_amount = max(0.0, min(10.0, float(body.get("zoom_amount", 0.6))))
-                    rhythm_mode = body.get("rhythm") if body.get("rhythm") in rhythm.RHYTHMS else "flat"
-                    with_music = body.get("music") == "synth"
-                    starts = cutplan.timeline(len(active_files), frames_per_cut, invert_mode, rhythm_mode)
+                    music_mode = body.get("music") if body.get("music") in ("synth", "track") else "off"
+                    plan = None
+                    if music_mode == "track":                              # the cuts follow the uploaded track
+                        plan = track_plan(len(active_files), invert_mode, body)
+                        frames_per_cut = 1.0
+                        starts = cutplan.timeline_from_seconds(plan["starts"], fps)
+                    else:
+                        starts = cutplan.timeline(len(active_files), invert_mode)
                     n_cuts, total_frames = cutplan.export_length(len(active_files), frames_per_cut, invert_mode, starts)  # every selected image, once
                     write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount, starts)
 
-                    out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode, rhythm_mode, with_music)
+                    out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode, music_mode)
                     # cut length follows the tempo, multiple, rhythm and effects chosen in the player; music only when asked for
                     cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp_dir / "f_%04d.jpg")]
-                    if with_music:
-                        wav, _ = music_wav(len(active_files), bpm, multiple, invert_mode, rhythm_mode, music_options(body))
+                    if music_mode != "off":
+                        wav = track_clip_wav(plan) if plan else music_wav(len(active_files), bpm, multiple, invert_mode, music_options(body))[0]
                         (tmp_dir / "music.wav").write_bytes(wav)
                         cmd += ["-i", str(tmp_dir / "music.wav"), "-c:a", "aac", "-b:a", "192k", "-shortest"]
                     else:
@@ -1191,8 +1313,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     shutil.rmtree(tmp_dir, ignore_errors=True)
                     prune_exports(OUTPUTS_DIR, keep=12)
                     self.send_json({"ok": True, "video_url": f"/outputs/{out_mp4.name}", "filename": out_mp4.name, "frames_per_cut": round(frames_per_cut, 2),
-                                    "images": len(active_files), "cuts": n_cuts, "seconds": round(total_frames / fps, 1), "music": with_music, "rhythm": rhythm_mode})
-                gen_log.record("export", ok=True, rhythm=rhythm_mode, music=with_music, filename=out_mp4.name, images=len(active_files), seconds=round(total_frames / fps, 1), took=round(time.time() - t_export, 1))
+                                    "images": len(active_files), "cuts": n_cuts, "seconds": round(total_frames / fps, 1), "music": music_mode != "off", "music_mode": music_mode})
+                gen_log.record("export", ok=True, music=music_mode, filename=out_mp4.name, images=len(active_files), seconds=round(total_frames / fps, 1), took=round(time.time() - t_export, 1))
             except Exception as e:
                 print(f"[EXPORT] FAILED: {str(e)[:300]}", flush=True)
                 gen_log.record("export", ok=False, images=len(active_files), error=str(e)[:300], took=round(time.time() - t_export, 1))

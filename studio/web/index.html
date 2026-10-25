@@ -142,19 +142,6 @@
             </select>
             <span id="speedVal">~4f</span>
           </div>
-          <div class="control-line">
-            <span>Rhythm</span>
-            <select id="rhythmSelect" onchange="updateTempo()" style="flex:1" title="Flat: every cut the same (Helione, Moverunion). Decelerating: steady, then the cuts keep getting longer until the last, longest hold (Ecwora, Soiltone). Accelerating is the same curve backwards. With many images a curve takes a while: it works best with fewer.">
-              <option value="flat">Flat · Helione, Moverunion</option>
-              <option value="accel">Accelerating · slow to fast</option>
-              <option value="decel">Decelerating · Ecwora, Soiltone</option>
-            </select>
-          </div>
-          <svg id="rhythmGraph" class="rhythm-graph" viewBox="0 0 200 36" preserveAspectRatio="none" aria-label="How long each cut is held, from the first image to the last (taller = longer). The white line is where the preview is." style="display:none">
-            <title>How long each cut is held, from the first image to the last (taller = longer). The white line is where the preview is.</title>
-            <polyline id="rhythmLine" fill="none" points="" />
-            <line id="rhythmHead" x1="0" y1="0" x2="0" y2="36" />
-          </svg>
           <div class="rhythm-info" id="rhythmInfo"></div>
           <div class="control-line">
             <span>Invert</span>
@@ -181,50 +168,81 @@
 
         <div class="tabpane" id="paneMusic" hidden>
           <div class="control-line">
-            <span>Music</span>
-            <select id="musicSelect" onchange="updateMusic()" style="flex:1" title="A dark sub-bass bed synthesized for exactly these cuts. It is also added to the export.">
-              <option value="off">Off</option>
-              <option value="on">On · deep drone, as in Soiltone and Ecwora</option>
+            <span>Source</span>
+            <select id="musicSelect" onchange="updateMusic()" style="flex:1" title="Synthesized: a dark drone for the tempo you set. My track: your own music sets the cuts and is the sound of the preview and the export.">
+              <option value="off">Off · silent</option>
+              <option value="on">Synthesized · follows the tempo</option>
+              <option value="track">My track · drives the cuts</option>
             </select>
           </div>
           <div class="music-hint" id="styleHint"></div>
-          <div class="control-line">
-            <span>Pulse</span>
-            <input type="range" id="pulseRange" min="0" max="100" value="50" oninput="updateMusic()" title="How much the music breathes with every cut. It slows down when the cuts slow down." />
-            <span id="pulseVal">50</span>
-          </div>
-          <div class="control-line">
-            <span>Low end</span>
-            <input type="range" id="lowRange" min="0" max="100" value="70" oninput="updateMusic()" title="How much sub-bass" />
-            <span id="lowVal">70</span>
-          </div>
-          <div class="control-line">
-            <span>Power</span>
-            <input type="range" id="powerRange" min="0" max="100" value="60" oninput="updateMusic()" title="Thicker and heavier: a stack of detuned voices and saturation" />
-            <span id="powerVal">60</span>
-          </div>
-          <div class="control-line">
-            <span>Space</span>
-            <input type="range" id="spaceRange" min="0" max="100" value="60" oninput="updateMusic()" title="The size of the room: reverb length and amount" />
-            <span id="spaceVal">60</span>
-          </div>
-          <details class="more" id="moreMusic">
-            <summary>More</summary>
+
+          <div class="tabpane" id="synthBox" hidden>
             <div class="control-line">
-              <span>Bright</span>
-              <input type="range" id="brightRange" min="0" max="100" value="30" oninput="updateMusic()" title="How far the tone opens up above the bass" />
-              <span id="brightVal">30</span>
+              <span>Pulse</span>
+              <input type="range" id="pulseRange" min="0" max="100" value="50" oninput="updateMusic()" title="How much the music breathes with every cut" />
+              <span id="pulseVal">50</span>
             </div>
             <div class="control-line">
-              <span>Width</span>
-              <input type="range" id="widthRange" min="0" max="100" value="60" oninput="updateMusic()" title="Stereo spread and room" />
-              <span id="widthVal">60</span>
+              <span>Low end</span>
+              <input type="range" id="lowRange" min="0" max="100" value="70" oninput="updateMusic()" title="How much sub-bass" />
+              <span id="lowVal">70</span>
             </div>
             <div class="control-line">
-              <span>Variation</span>
-              <button id="seedBtn" onclick="newVariation()" style="flex:1" title="Same sound, different pitch and movement">🎲 New variation <span id="seedNum">7</span></button>
+              <span>Power</span>
+              <input type="range" id="powerRange" min="0" max="100" value="60" oninput="updateMusic()" title="Thicker and heavier: a stack of detuned voices and saturation" />
+              <span id="powerVal">60</span>
             </div>
-          </details>
+            <div class="control-line">
+              <span>Space</span>
+              <input type="range" id="spaceRange" min="0" max="100" value="60" oninput="updateMusic()" title="The size of the room: reverb length and amount" />
+              <span id="spaceVal">60</span>
+            </div>
+            <details class="more" id="moreMusic">
+              <summary>More</summary>
+              <div class="control-line">
+                <span>Bright</span>
+                <input type="range" id="brightRange" min="0" max="100" value="30" oninput="updateMusic()" title="How far the tone opens up above the bass" />
+                <span id="brightVal">30</span>
+              </div>
+              <div class="control-line">
+                <span>Width</span>
+                <input type="range" id="widthRange" min="0" max="100" value="60" oninput="updateMusic()" title="Stereo spread" />
+                <span id="widthVal">60</span>
+              </div>
+              <div class="control-line">
+                <span>Variation</span>
+                <button id="seedBtn" onclick="newVariation()" style="flex:1" title="Same sound, different pitch and movement">🎲 New variation <span id="seedNum">7</span></button>
+              </div>
+            </details>
+          </div>
+
+          <div class="tabpane" id="trackBox" hidden>
+            <div class="control-line">
+              <button id="trackBtn" onclick="chooseTrack()" style="flex:1" title="mp3, wav, m4a… up to 60 MB">🎵 Choose a track…</button>
+              <button id="trackClear" onclick="clearTrack()" title="Forget this track" hidden>✕</button>
+              <input type="file" id="trackFile" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" hidden onchange="uploadTrack(this.files[0]); this.value = ''" />
+            </div>
+            <div class="track-name" id="trackName"></div>
+            <div class="music-hint" id="trackInfo"></div>
+            <div class="control-line">
+              <span>Cut on</span>
+              <select id="cutOnSelect" onchange="updateMusic()" style="flex:1" title="Hits: every transient in the music, however irregular (glitch, IDM). Beats: a steady grid, with the Multiple from the Video tab.">
+                <option value="hits">Hits · every peak</option>
+                <option value="beats">Beats · the steady grid</option>
+              </select>
+            </div>
+            <div class="control-line" id="sensRow">
+              <span>Sensitivity</span>
+              <input type="range" id="sensRange" min="0" max="100" value="50" oninput="updateMusic()" title="How many of the hits to cut on: low = only the strongest" />
+              <span id="sensVal">50</span>
+            </div>
+            <div class="control-line">
+              <span>Nudge</span>
+              <input type="range" id="nudgeRange" min="-150" max="150" step="10" value="0" oninput="updateMusic()" title="Shift the sound against the pictures (milliseconds)" />
+              <span id="nudgeVal">0 ms</span>
+            </div>
+          </div>
           <div class="music-state" id="musicState" hidden></div>
         </div>
 
