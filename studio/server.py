@@ -21,7 +21,7 @@ import uuid
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from PIL import Image
 
@@ -49,6 +49,8 @@ from qa_engine import (
 )
 
 STUDIO_DIR = Path(__file__).resolve().parent
+THUMBS_DIR = STUDIO_DIR / ".thumbs"   # resized copies for the grid and the preview (gitignored)
+THUMB_WIDTHS = (360, 540)
 WEB_DIST = STUDIO_DIR / "web" / "dist"  # built page (npm run build); in dev Vite serves it instead
 OUTPUTS_DIR = ROOT_DIR / "outputs"
 CURATION_FILE = STUDIO_DIR / "curation_state.json"
@@ -623,6 +625,8 @@ def purge_plates(st: dict, requested) -> tuple[int, int]:
             freed += f.stat().st_size
             f.unlink()
             deleted += 1
+        for w in THUMB_WIDTHS:
+            (THUMBS_DIR / str(w) / n).unlink(missing_ok=True)
         for key in [k for k in QA_CACHE if k.rpartition(":")[0] == n]:
             QA_CACHE.pop(key, None)
     st["purged"] = sorted(set(st.get("purged", [])) | set(names))
@@ -701,6 +705,25 @@ def write_export_frames(files, tmp_dir: Path, total_frames: int, frames_per_cut:
     return total_frames
 
 
+def thumb_file(name: str, width: int) -> Path | None:
+    """A resized copy of one plate, made on first request and kept. None when the name or width is not valid."""
+    if width not in THUMB_WIDTHS or not name or "/" in name or "\\" in name or name.startswith("."):
+        return None
+    src = PLATES_DIR / name
+    if not src.is_file():
+        return None
+    out = THUMBS_DIR / str(width) / name
+    if not out.exists() or out.stat().st_mtime < src.stat().st_mtime:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with Image.open(src) as im:
+            im = im.convert("RGB")
+            im.thumbnail((width, width * 4), Image.Resampling.LANCZOS)
+            tmp = out.with_suffix(".tmp")
+            im.save(tmp, "JPEG", quality=84)
+        tmp.replace(out)
+    return out
+
+
 class StudioHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT_DIR), **kwargs)
@@ -719,6 +742,23 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/thumb":
+            q = parse_qs(parsed.query)
+            try:
+                f = thumb_file((q.get("f") or [""])[0], int((q.get("w") or ["0"])[0]))
+            except Exception:
+                f = None
+            if f is None:
+                self.send_json({"ok": False, "error": "No such image"}, 404)
+                return
+            data = f.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")   # a plate's file name never changes content
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if parsed.path.startswith("/static/") and (WEB_DIST / parsed.path.lstrip("/")).is_file():
             f = WEB_DIST / parsed.path.lstrip("/")
             data = f.read_bytes()
@@ -803,6 +843,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 plates.append({
                     "filename": p.name,
                     "url": f"/assets/ai-plates/{p.name}?t={int(p.stat().st_mtime)}",
+                    "thumb": f"/api/thumb?f={quote(p.name)}&w=360",       # the grid: 134 full-size plates would be over 1 GB decoded
+                    "preview": f"/api/thumb?f={quote(p.name)}&w=540",     # the player: the stage is ~250 px wide
                     "title": titles.get(p.name, p.stem.split("_", 1)[-1].replace("_", " ").title()),
                     "prompt": prompts.get(p.name, titles.get(p.name, "")),
                     "model": models.get(p.name, "google/nano-banana-pro"),

@@ -157,10 +157,17 @@ test('the player panel: preview, play / target, then Video and Music tabs with t
   assert.ok(Math.abs(play.y - target.y) < 4, 'Play and Target share a row');
   assert.equal(await text('#targetBtn'), '🎯 Target');
   // Video tab is open: its settings are visible, the music ones are not
-  for (const id of ['#bpmSlider', '#multSelect', '#rhythmSelect', '#invertSelect', '#zoomSelect', '#zoomAmt']) assert.ok(await page.locator(id).isVisible(), id);
-  assert.ok(!(await page.locator('#styleSelect').isVisible()));
+  for (const id of ['#bpmSlider', '#multSelect', '#rhythmSelect', '#invertSelect', '#zoomSelect']) assert.ok(await page.locator(id).isVisible(), id);
+  assert.ok(!(await page.locator('#zoomAmt').isVisible()), 'Amount appears only once a zoom is chosen');
+  await page.selectOption('#zoomSelect', 'out');
+  assert.ok(await page.locator('#zoomAmt').isVisible());
+  await page.selectOption('#zoomSelect', 'off');
+  assert.ok(!(await page.locator('#pulseRange').isVisible()));
   await page.click('#tabMusic');
-  for (const id of ['#musicSelect', '#styleSelect', '#pulseRange', '#lowRange', '#brightRange', '#widthRange', '#seedBtn']) assert.ok(await page.locator(id).isVisible(), id);
+  for (const id of ['#musicSelect', '#pulseRange', '#lowRange']) assert.ok(await page.locator(id).isVisible(), id);
+  for (const id of ['#brightRange', '#widthRange', '#seedBtn']) assert.ok(!(await page.locator(id).isVisible()), `${id} sits under More`);
+  await page.click('#moreMusic summary');
+  for (const id of ['#brightRange', '#widthRange', '#seedBtn']) assert.ok(await page.locator(id).isVisible(), id);
   assert.ok(!(await page.locator('#bpmSlider').isVisible()));
   const exp2 = await box('#exportBtn');
   assert.ok(exp2.y > (await box('#seedBtn')).y, 'export stays below whichever tab is open');
@@ -174,7 +181,9 @@ test('rhythm and music: curves are drawn, Play renders the track, settings and e
   const ctx = await fresh();
   assert.deepEqual(await page.locator('#rhythmSelect option').allTextContents(), ['Flat · Helione, Moverunion', 'Slow landing · Ecwora, Soiltone', 'Long landing · slows early']);
   const flatInfo = await text('#rhythmInfo');
+  assert.ok(!(await page.locator('#rhythmGraph').isVisible()), 'a flat rhythm shows no graph');
   await page.selectOption('#rhythmSelect', 'long');
+  assert.ok(await page.locator('#rhythmGraph').isVisible(), 'a curve shows its graph');
   assert.notEqual(await text('#rhythmInfo'), flatInfo, 'the length readout follows the curve');
   const ys = await page.locator('#rhythmLine').getAttribute('points').then(p => p.split(' ').map(q => parseFloat(q.split(',')[1])));
   assert.ok(ys[0] > ys[ys.length - 1] + 10, 'the drawn line falls: the holds grow');
@@ -183,8 +192,7 @@ test('rhythm and music: curves are drawn, Play renders the track, settings and e
   for (const id of ['#rhythmSelect', '#multSelect', '#invertSelect', '#zoomSelect']) { const b = await page.locator(id).boundingBox(); assert.ok(b.x + b.width <= panel.x + panel.width, `${id} stays inside the panel`); }
   await page.click('#tabMusic');
   assert.equal(await page.locator('#pulseRange').isDisabled(), true, 'music settings are locked while music is off');
-  await page.selectOption('#musicSelect', 'synth');
-  await page.selectOption('#styleSelect', 'swell');
+  await page.selectOption('#musicSelect', 'swell');
   await page.fill('#pulseRange', '80');
   assert.equal(await page.locator('#pulseRange').isDisabled(), false);
   await page.click('#playBtn');

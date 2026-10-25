@@ -497,3 +497,32 @@ def test_music_says_how_to_fix_it_when_numpy_is_missing(live, monkeypatch):
     assert status == 200
     status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth"})
     assert status == 500 and "pip3 install numpy" in res["error"]
+
+
+def test_state_gives_every_plate_a_thumbnail_and_a_preview_url(live):
+    _three_plates(live)
+    plates = live("GET", "/api/state")[1]["plates"]
+    assert all(p["thumb"].startswith("/api/thumb?f=") and p["thumb"].endswith("&w=360") and p["preview"].endswith("&w=540") for p in plates)
+
+
+def test_thumbnails_are_small_cached_jpegs_and_bad_requests_are_refused(live, srv):
+    _three_plates(live)
+    p = live("GET", "/api/state")[1]["plates"][0]
+    status, data = live("GET", p["thumb"])
+    assert status == 200 and data[:3] == b"\xff\xd8\xff"
+    im = Image.open(io.BytesIO(data))
+    assert im.size[0] <= 360 and im.size[0] < im.size[1]                       # portrait, never bigger than asked
+    assert (srv.THUMBS_DIR / "360" / p["filename"]).exists()                    # made once, kept
+    assert live("GET", f"/api/thumb?f={p['filename']}&w=999")[0] == 404          # only the sizes the page uses
+    assert live("GET", "/api/thumb?f=../curation_state.json&w=360")[0] == 404
+    assert live("GET", "/api/thumb?f=nope.jpg&w=360")[0] == 404
+    assert live("GET", "/api/thumb")[0] == 404
+
+
+def test_purging_a_plate_removes_its_thumbnails(live, srv):
+    _three_plates(live)
+    p = live("GET", "/api/state")[1]["plates"][0]
+    live("GET", p["thumb"]); live("GET", p["preview"])
+    live("POST", "/api/trash", {"filename": p["filename"], "trashed": True})
+    live("POST", "/api/purge", {"filenames": [p["filename"]]})
+    assert not (srv.THUMBS_DIR / "360" / p["filename"]).exists() and not (srv.THUMBS_DIR / "540" / p["filename"]).exists()

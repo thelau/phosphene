@@ -357,7 +357,7 @@
              ondragend="onDragEnd(event)"
              onclick="cardClick(event, '${p.filename}')">
           <div class="card-thumb">
-            <img src="${p.url}" loading="lazy" />
+            <img src="${p.thumb || p.url}" loading="lazy" decoding="async" />
             <button class="info-btn" title="View prompt & model" onclick="togglePromptOverlay(event, '${p.filename}')">i</button>
             <div class="card-actions">
               ${p.trashed
@@ -456,7 +456,7 @@
       clearFx();
       const p = plates.find(x => x.filename === filename);
       if (p) {
-        stageImg.src = p.url;
+        stageImg.src = p.preview || p.url;
         if (p.trashed && isPlaying) {
           isPlaying = false;
           document.getElementById('playBtn').textContent = '▶ Play';
@@ -515,8 +515,7 @@
     }
 
     // ---- synthesized music: rendered by the server for exactly this timeline; while it plays it is the player's clock ----
-    let musicAudio = null, musicKey = '', musicPending = false, musicTimer = null;
-    function musicOn() { return document.getElementById('musicSelect').value === 'synth'; }
+    function musicOn() { const v = document.getElementById('musicSelect').value; return !!v && v !== 'off'; }
     function musicParams() {
       const unit = id => (parseInt(document.getElementById(id).value, 10) || 0) / 100;
       return {
@@ -524,7 +523,7 @@
         multiple: parseFloat(document.getElementById('multSelect').value),
         invert_mode: document.getElementById('invertSelect').value,
         rhythm: document.getElementById('rhythmSelect').value,
-        style: document.getElementById('styleSelect').value || 'soil',
+        style: musicOn() ? document.getElementById('musicSelect').value : 'soil',
         pulse: unit('pulseRange'), low: unit('lowRange'), bright: unit('brightRange'), width: unit('widthRange'),
         seed: parseInt(document.getElementById('seedVal').value, 10) || 7
       };
@@ -534,6 +533,12 @@
       swell: 'A pure mono 43 Hz sub with a bass swell every ~1.7 s and two bright bursts, as in Helione.',
       bass: 'A pulsing mono bass line that changes note on every cut, as in Moverunion.'
     };
+    function setMusicState(kind, text) {
+      const el = document.getElementById('musicState');
+      el.hidden = !text;
+      el.textContent = text || '';
+      el.className = `music-state ${kind || ''}`;
+    }
     function updateMusic() {
       const on = musicOn();
       for (const k of ['pulse', 'low', 'bright', 'width']) {
@@ -541,9 +546,8 @@
         document.getElementById(`${k}Val`).textContent = el.value;
         el.disabled = !on;
       }
-      document.getElementById('styleSelect').disabled = !on;
       document.getElementById('seedBtn').disabled = !on;
-      document.getElementById('styleHint').textContent = STYLE_HINTS[document.getElementById('styleSelect').value] || '';
+      document.getElementById('styleHint').textContent = on ? (STYLE_HINTS[document.getElementById('musicSelect').value] || '') : 'No music: the preview and the export stay silent.';
       document.getElementById('seedNum').textContent = document.getElementById('seedVal').value;
       saveSettings();
       musicChanged();
@@ -561,11 +565,14 @@
       document.getElementById('fxTabVal').value = music ? 'music' : 'video';
       saveSettings();
     }
-    // the cut-length curve of the whole sequence (taller = a longer hold) and how long the result runs
+    // the cut-length curve of the whole sequence (taller = a longer hold), only for the curves; and how long the result runs
     function drawRhythm() {
       const n = activePlates().length;
+      const graph = document.getElementById('rhythmGraph');
       const line = document.getElementById('rhythmLine');
       const info = document.getElementById('rhythmInfo');
+      const curved = !!CURVES[document.getElementById('rhythmSelect').value];
+      graph.style.display = curved && n ? '' : 'none';   // (the hidden attribute does nothing on an SVG element)
       if (!n) { line.setAttribute('points', ''); info.textContent = ''; return; }
       const starts = timelineFor(n);
       const cuts = starts.length - 1;
@@ -587,47 +594,63 @@
       const h = document.getElementById('rhythmHead');
       h.setAttribute('x1', x.toFixed(1)); h.setAttribute('x2', x.toFixed(1));
     }
+
+    // ---- synthesized music: rendered by the server for exactly this timeline; while it plays it is the player's clock ----
+    let musicAudio = null, musicKey = '', musicPending = false, musicTimer = null, musicRender = 0;
+    function musicKeyNow() { return JSON.stringify(musicParams()) + '|' + activePlates().length; }
     function stopMusic() {
       if (musicAudio) { try { musicAudio.pause(); } catch (e) {} }
       musicPending = false;
       document.getElementById('playBtn').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
     }
+    // makes sure the track for the current settings is rendered (a few seconds); true when it is ready
+    async function ensureMusic() {
+      const key = musicKeyNow();
+      if (musicAudio && key === musicKey) return true;
+      const mine = ++musicRender;
+      setMusicState('busy', 'Rendering the music…');
+      try {
+        const res = await fetch('/api/music', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(musicParams()) });
+        if (!res.ok) {
+          let why = `HTTP ${res.status}`;
+          try { why = (await res.json()).error || why; } catch (e) {}
+          throw new Error(why);
+        }
+        const url = URL.createObjectURL(await res.blob());
+        if (mine !== musicRender) return false;                             // the settings changed while rendering: a newer render is on its way
+        if (musicAudio) URL.revokeObjectURL(musicAudio.src);
+        musicAudio = new Audio(url);
+        musicAudio.loop = true;
+        musicKey = key;
+        setMusicState('', 'Music ready');
+        return true;
+      } catch (e) {
+        if (mine === musicRender) { musicAudio = null; musicKey = ''; setMusicState('err', `Could not render the music: ${e.message}`); setStatus(`Could not render the music: ${e.message}`); }
+        return false;
+      }
+    }
     async function startMusic() {
-      const key = JSON.stringify(musicParams()) + '|' + activePlates().length;
       const btn = document.getElementById('playBtn');
-      if (key !== musicKey || !musicAudio) {
+      if (!musicAudio || musicKey !== musicKeyNow()) {
         musicPending = true;
         btn.textContent = '♪ Rendering…';
-        try {
-          const res = await fetch('/api/music', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(musicParams()) });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const url = URL.createObjectURL(await res.blob());
-          if (musicAudio) URL.revokeObjectURL(musicAudio.src);
-          musicAudio = new Audio(url);
-          musicAudio.loop = true;
-          musicKey = key;
-        } catch (e) {
-          musicPending = false;
-          musicAudio = null;
-          musicKey = '';
-          btn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
-          setStatus(`Could not render the music: ${e.message}`);
-          return;
-        }
-        if (!isPlaying || !musicOn() || key !== JSON.stringify(musicParams()) + '|' + activePlates().length) { musicPending = false; btn.textContent = isPlaying ? '⏸ Pause' : '▶ Play'; return; }
+        const ok = await ensureMusic();
+        musicPending = false;
+        btn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+        if (!ok || !isPlaying || !musicOn() || musicKey !== musicKeyNow()) return;
       }
-      musicPending = false;
-      btn.textContent = '⏸ Pause';
       cutPos = 0;
       lastTick = performance.now();
       musicAudio.currentTime = 0;
       try { await musicAudio.play(); } catch (e) { setStatus('The browser blocked the audio. Press Play again.'); }
     }
-    // tempo, multiple, invert, rhythm or the music switch changed: the track no longer matches; restart it from the top
+    // tempo, multiple, invert, rhythm or any music setting changed: the track no longer matches. Render the new one in the
+    // background (so Play is instant), and restart it if the preview is playing.
     function musicChanged() {
       stopMusic();
       clearTimeout(musicTimer);
-      if (isPlaying && musicOn()) musicTimer = setTimeout(startMusic, 350);
+      if (!musicOn()) { musicRender++; setMusicState('', ''); return; }
+      musicTimer = setTimeout(() => (isPlaying ? startMusic() : ensureMusic()), isPlaying ? 350 : 700);
     }
     function zoomScale(mode, amountPct, p) {
       const a = amountPct / 100;
@@ -657,6 +680,7 @@
       saveSettings();
       document.getElementById('zoomAmtVal').textContent = `${parseFloat(document.getElementById('zoomAmt').value).toFixed(1)}%`;
       document.getElementById('zoomAmt').disabled = document.getElementById('zoomSelect').value === 'off';
+      document.getElementById('zoomAmtRow').hidden = document.getElementById('zoomSelect').value === 'off';
       if (!isPlaying) clearFx();
       drawRhythm();
       musicChanged();   // invert changes the cuts, so the track must follow
@@ -684,7 +708,7 @@
         const plan = planAt(cutPos, active.length, fx.invert, tl);
         moveRhythmHead(tl);
         currentIdx = plan.plate;
-        const url = active[plan.plate].url;
+        const url = active[plan.plate].preview || active[plan.plate].url;
         if (stageImg.getAttribute('src') !== url) stageImg.src = url;
         applyFx(plan, fx);
       }, 16);
@@ -705,7 +729,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['bpmSlider', 'multSelect', 'rhythmSelect', 'musicSelect', 'styleSelect', 'pulseRange', 'lowRange', 'brightRange', 'widthRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['bpmSlider', 'multSelect', 'rhythmSelect', 'musicSelect', 'pulseRange', 'lowRange', 'brightRange', 'widthRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -1003,7 +1027,7 @@
             multiple: parseFloat(document.getElementById('multSelect').value),
             invert_mode: document.getElementById('invertSelect').value,
             rhythm: document.getElementById('rhythmSelect').value,
-            music: document.getElementById('musicSelect').value,
+            music: musicOn() ? 'synth' : 'off',
             ...musicParams(),
             zoom_mode: document.getElementById('zoomSelect').value,
             zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0

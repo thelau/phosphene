@@ -267,3 +267,14 @@ def test_dev_defers_the_restart_while_busy(monkeypatch):
     monkeypatch.setattr(dev.time, "sleep", fake_sleep)
     dev.main()
     assert events == ["start", "waited", "start"]                    # it waited for idle before the second start
+
+
+def test_dev_starts_the_server_with_the_repo_venv_python_when_there_is_one(tmp_path, monkeypatch):
+    """The venv has numpy (the music); the system Python may not."""
+    fake_root = tmp_path / "repo"
+    (fake_root / "studio").mkdir(parents=True)
+    monkeypatch.setattr(dev, "HERE", fake_root / "studio")
+    assert dev.server_python() == dev.sys.executable                       # no venv: the Python running dev.py
+    (fake_root / ".venv" / "bin").mkdir(parents=True)
+    (fake_root / ".venv" / "bin" / "python").write_text("")
+    assert dev.server_python() == str(fake_root / ".venv" / "bin" / "python")

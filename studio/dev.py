@@ -22,8 +22,14 @@ def snapshot() -> dict:
     return {p: p.stat().st_mtime for p in HERE.glob("*.py") if p.name != "dev.py"}
 
 
+def server_python() -> str:
+    """The repo's .venv Python when there is one (it has numpy for the music), otherwise the Python that runs this script."""
+    venv = HERE.parent / ".venv" / "bin" / "python"
+    return str(venv) if venv.exists() else sys.executable
+
+
 def start() -> subprocess.Popen:
-    return subprocess.Popen([sys.executable, str(HERE / "server.py")], cwd=str(HERE))
+    return subprocess.Popen([server_python(), str(HERE / "server.py")], cwd=str(HERE))
 
 
 def server_busy() -> bool:
@@ -61,9 +67,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))  # npm / concurrently stop us with SIGTERM
     proc, seen = start(), snapshot()
     started, waiting_for_edit = time.time(), False
-    try:
-        import numpy  # noqa: F401
-    except ImportError:
+    if subprocess.run([server_python(), "-c", "import numpy"], capture_output=True).returncode != 0:
         print("[dev] numpy is missing: everything works except the synthesized music. Install it with: pip3 install numpy", flush=True)
     print("[dev] watching studio/*.py (Ctrl-C to stop)", flush=True)
     try:

@@ -648,8 +648,8 @@ test('with music off, Play never asks for music or creates audio', async () => {
 
 test('with music on, Play renders the track for the current settings, then plays it from the top', async () => {
   const h = await playerWith();
-  h.$('musicSelect').value = 'synth'; h.$('rhythmSelect').value = 'long'; h.$('invertSelect').value = 'colour';
-  h.$('styleSelect').value = 'bass'; h.$('pulseRange').value = '40'; h.$('lowRange').value = '80'; h.$('brightRange').value = '20'; h.$('widthRange').value = '90'; h.$('seedVal').value = '42';
+  h.$('musicSelect').value = 'bass'; h.$('rhythmSelect').value = 'long'; h.$('invertSelect').value = 'colour';
+  h.$('pulseRange').value = '40'; h.$('lowRange').value = '80'; h.$('brightRange').value = '20'; h.$('widthRange').value = '90'; h.$('seedVal').value = '42';
   h.run('togglePlay()');
   assert.equal(h.$('playBtn').textContent, '♪ Rendering…');
   await settle(); await settle();
@@ -665,7 +665,7 @@ test('with music on, Play renders the track for the current settings, then plays
 
 test('while the music plays it is the clock: the picture follows the audio position', async () => {
   const h = await playerWith();
-  h.$('musicSelect').value = 'synth'; h.$('invertSelect').value = 'off';
+  h.$('musicSelect').value = 'soil'; h.$('invertSelect').value = 'off';
   h.run('framesPerCut = 3');                                                // 100 ms per cut
   h.run('togglePlay()');
   await settle(); await settle();
@@ -680,7 +680,7 @@ test('while the music plays it is the clock: the picture follows the audio posit
 
 test('changing the tempo or rhythm while playing stops the old track and renders a new one', async () => {
   const h = await playerWith();
-  h.$('musicSelect').value = 'synth';
+  h.$('musicSelect').value = 'soil';
   h.run('togglePlay()');
   await settle(); await settle();
   const first = h.ctx.__audios[0];
@@ -698,7 +698,7 @@ test('changing the tempo or rhythm while playing stops the old track and renders
 
 test('when the music cannot be rendered the player says so and the picture still plays', async () => {
   const h = await playerWith({ music: { __fail: 500 } });
-  h.$('musicSelect').value = 'synth';
+  h.$('musicSelect').value = 'soil';
   h.run('togglePlay()');
   await settle(); await settle();
   assert.match(h.$('toast').textContent, /Could not render the music/);
@@ -715,18 +715,18 @@ test('export sends the rhythm and the music choice', async () => {
   r['/api/export-video'] = { ok: true, images: 3, seconds: 2, video_url: '/outputs/x.mp4', filename: 'x.mp4' };
   const h = load({ routes: r });
   await settle(); await settle();
-  h.$('rhythmSelect').value = 'land'; h.$('musicSelect').value = 'synth';
+  h.$('rhythmSelect').value = 'land'; h.$('musicSelect').value = 'swell';
   await h.run('exportVideo()');
   const body = h.calls.find(c => c.url === '/api/export-video').body;
-  assert.deepEqual([body.rhythm, body.music], ['land', 'synth']);
+  assert.deepEqual([body.rhythm, body.music, body.style], ['land', 'synth', 'swell']);
 });
 
 test('rhythm and music choices are remembered', () => {
   const h = load({ routes: baseRoutes() });
-  h.$('rhythmSelect').value = 'long'; h.$('musicSelect').value = 'synth';
+  h.$('rhythmSelect').value = 'long'; h.$('musicSelect').value = 'bass';
   h.run('updateTempo()');
   const saved = JSON.parse(h.store.studioSettings);
-  assert.deepEqual([saved.rhythmSelect, saved.musicSelect], ['long', 'synth']);
+  assert.deepEqual([saved.rhythmSelect, saved.musicSelect], ['long', 'bass']);
 });
 
 
@@ -745,8 +745,8 @@ test('music settings: sliders show their value, lock when music is off, and a ne
   h.$('musicSelect').value = 'off'; h.$('pulseRange').value = '35';
   h.run('updateMusic()');
   assert.equal(h.$('pulseVal').textContent, '35');
-  assert.equal(h.$('pulseRange').disabled, true); assert.equal(h.$('styleSelect').disabled, true); assert.equal(h.$('seedBtn').disabled, true);
-  h.$('musicSelect').value = 'synth'; h.$('styleSelect').value = 'swell';
+  assert.equal(h.$('pulseRange').disabled, true); assert.equal(h.$('seedBtn').disabled, true);
+  h.$('musicSelect').value = 'swell';
   h.run('updateMusic()');
   assert.equal(h.$('pulseRange').disabled, false);
   assert.match(h.$('styleHint').textContent, /Helione/);
@@ -755,7 +755,7 @@ test('music settings: sliders show their value, lock when music is off, and a ne
   assert.notEqual(h.$('seedVal').value, '7');
   assert.equal(h.$('seedNum').textContent, h.$('seedVal').value);
   const saved = JSON.parse(h.store.studioSettings);
-  assert.deepEqual([saved.styleSelect, saved.pulseRange, saved.seedVal], ['swell', '35', h.$('seedVal').value]);
+  assert.deepEqual([saved.musicSelect, saved.pulseRange, saved.seedVal], ['swell', '35', h.$('seedVal').value]);
 });
 
 test('the rhythm graph draws the cut lengths of the whole sequence and says how long it runs', async () => {
@@ -767,11 +767,78 @@ test('the rhythm graph draws the cut lengths of the whole sequence and says how 
   h.$('rhythmSelect').value = 'flat';
   h.run('drawRhythm()');
   const flat = h.$('rhythmLine').points.split(' ').map(p => parseFloat(p.split(',')[1]));
-  assert.ok(Math.max(...flat) - Math.min(...flat) < 0.01);                       // flat = a straight line
+  assert.ok(Math.max(...flat) - Math.min(...flat) < 0.01);
+  assert.equal(h.$('rhythmGraph').style.display, 'none');                                 // a flat rhythm has nothing to draw: the graph stays out of the way
   assert.match(h.$('rhythmInfo').textContent, /^40 images · 4 s · cuts 100 ms$/);
   h.$('rhythmSelect').value = 'land';
   h.run('drawRhythm()');
+  assert.equal(h.$('rhythmGraph').style.display, '');
   const land = h.$('rhythmLine').points.split(' ').map(p => parseFloat(p.split(',')[1]));
   assert.ok(land[0] > land[land.length - 1] + 20);                               // the line falls as the holds grow (taller = longer)
   assert.match(h.$('rhythmInfo').textContent, /^40 images · \d+ s · cuts 100 ms → \d/);
+});
+
+
+test('the grid uses small thumbnails and the player the preview size, falling back to the full image', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: [{ ...mkPlate('a'), thumb: '/api/thumb?f=a&w=360', preview: '/api/thumb?f=a&w=540' }, mkPlate('b')] };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  const html = h.$('grid').innerHTML;
+  assert.match(html, /src="\/api\/thumb\?f=a&w=360"/);
+  assert.match(html, /src="\/p\/b"/);
+  h.$('stageImg').style.display = 'block';
+  h.run('framesPerCut = 3; isPlaying = true; cutPos = 0');
+  const tick = h.timers.intervals[h.timers.intervals.length - 1].fn;
+  h.ctx.performance.now = (() => { let t = 0; return () => (t += 10); })();
+  h.run('lastTick = performance.now()');
+  tick();
+  assert.equal(h.$('stageImg').src, '/api/thumb?f=a&w=540');
+});
+
+test('zoom amount only shows while a zoom is chosen', () => {
+  const h = load({ routes: baseRoutes() });
+  h.$('zoomSelect').value = 'off'; h.run('updateFx()');
+  assert.equal(h.$('zoomAmtRow').hidden, true);
+  h.$('zoomSelect').value = 'in'; h.run('updateFx()');
+  assert.equal(h.$('zoomAmtRow').hidden, false);
+});
+
+test('changing a music setting renders the track in the background with a loader, so Play is instant', async () => {
+  const h = await playerWith();
+  h.$('musicSelect').value = 'soil';
+  h.run('updateMusic()');
+  assert.equal(h.calls.some(c => c.url === '/api/music'), false);             // debounced: dragging a slider does not hammer the server
+  const wait = h.timers.timeouts[h.timers.timeouts.length - 1];
+  assert.ok(wait.ms >= 500);
+  wait.fn();
+  assert.equal(h.$('musicState').hidden, false); assert.match(h.$('musicState').textContent, /Rendering/); assert.match(h.$('musicState').className, /busy/);
+  await settle(); await settle();
+  assert.match(h.$('musicState').textContent, /ready/i);
+  assert.equal(h.ctx.__audios.length, 1);
+  h.run('togglePlay()');                                                      // already rendered: no second render, plays straight away
+  await settle();
+  assert.equal(h.calls.filter(c => c.url === '/api/music').length, 1);
+  assert.equal(h.ctx.__audios[0].paused, false);
+});
+
+test('a music failure explains itself in the Music tab', async () => {
+  const h = await playerWith({ music: { __fail: 500 } });
+  h.$('musicSelect').value = 'soil';
+  h.run('updateMusic()');
+  h.timers.timeouts[h.timers.timeouts.length - 1].fn();
+  await settle(); await settle();
+  assert.match(h.$('musicState').textContent, /Could not render the music/);
+  assert.match(h.$('musicState').className, /err/);
+});
+
+test('turning the music off clears its state and stops the sound', async () => {
+  const h = await playerWith();
+  h.$('musicSelect').value = 'soil';
+  h.run('togglePlay()');
+  await settle(); await settle();
+  h.$('musicSelect').value = 'off';
+  h.run('updateMusic()');
+  assert.equal(h.ctx.__audios[0].paused, true);
+  assert.equal(h.$('musicState').hidden, true);
 });

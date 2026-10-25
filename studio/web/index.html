@@ -150,7 +150,8 @@
               <option value="long">Long landing · slows early</option>
             </select>
           </div>
-          <svg id="rhythmGraph" class="rhythm-graph" viewBox="0 0 200 36" preserveAspectRatio="none" aria-label="Cut length across the sequence">
+          <svg id="rhythmGraph" class="rhythm-graph" viewBox="0 0 200 36" preserveAspectRatio="none" aria-label="How long each cut is held, from the first image to the last (taller = longer). The white line is where the preview is." style="display:none">
+            <title>How long each cut is held, from the first image to the last (taller = longer). The white line is where the preview is.</title>
             <polyline id="rhythmLine" fill="none" points="" />
             <line id="rhythmHead" x1="0" y1="0" x2="0" y2="36" />
           </svg>
@@ -171,7 +172,7 @@
               <option value="in">Slow zoom in</option>
             </select>
           </div>
-          <div class="control-line">
+          <div class="control-line" id="zoomAmtRow" hidden>
             <span>Amount</span>
             <input type="range" id="zoomAmt" min="0.2" max="6" step="0.1" value="0.6" oninput="updateFx()" />
             <span id="zoomAmtVal">0.6%</span>
@@ -183,12 +184,6 @@
             <span>Music</span>
             <select id="musicSelect" onchange="updateMusic()" style="flex:1" title="A dark sub-bass bed synthesized for exactly these cuts. It is also added to the export.">
               <option value="off">Off</option>
-              <option value="synth">On · synthesized</option>
-            </select>
-          </div>
-          <div class="control-line">
-            <span>Style</span>
-            <select id="styleSelect" onchange="updateMusic()" style="flex:1">
               <option value="soil">Deep drone · Soiltone, Ecwora</option>
               <option value="swell">Sub swells · Helione</option>
               <option value="bass">Bass line · Moverunion</option>
@@ -205,20 +200,24 @@
             <input type="range" id="lowRange" min="0" max="100" value="70" oninput="updateMusic()" title="How much sub-bass" />
             <span id="lowVal">70</span>
           </div>
-          <div class="control-line">
-            <span>Bright</span>
-            <input type="range" id="brightRange" min="0" max="100" value="30" oninput="updateMusic()" title="How far the tone opens up above the bass" />
-            <span id="brightVal">30</span>
-          </div>
-          <div class="control-line">
-            <span>Width</span>
-            <input type="range" id="widthRange" min="0" max="100" value="60" oninput="updateMusic()" title="Stereo spread and room" />
-            <span id="widthVal">60</span>
-          </div>
-          <div class="control-line">
-            <span>Variation</span>
-            <button id="seedBtn" onclick="newVariation()" style="flex:1" title="Same style, different notes and swell positions">🎲 New variation <span id="seedNum">7</span></button>
-          </div>
+          <details class="more" id="moreMusic">
+            <summary>More</summary>
+            <div class="control-line">
+              <span>Bright</span>
+              <input type="range" id="brightRange" min="0" max="100" value="30" oninput="updateMusic()" title="How far the tone opens up above the bass" />
+              <span id="brightVal">30</span>
+            </div>
+            <div class="control-line">
+              <span>Width</span>
+              <input type="range" id="widthRange" min="0" max="100" value="60" oninput="updateMusic()" title="Stereo spread and room" />
+              <span id="widthVal">60</span>
+            </div>
+            <div class="control-line">
+              <span>Variation</span>
+              <button id="seedBtn" onclick="newVariation()" style="flex:1" title="Same style, different notes and swell positions">🎲 New variation <span id="seedNum">7</span></button>
+            </div>
+          </details>
+          <div class="music-state" id="musicState" hidden></div>
         </div>
 
         <button class="primary" onclick="exportVideo()" id="exportBtn" style="width:100%;margin-top:4px">Export MP4</button>

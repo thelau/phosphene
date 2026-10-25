@@ -23,6 +23,7 @@ def srv(tmp_path, monkeypatch):
     monkeypatch.setattr(gen_log, "LOG_FILE", tmp_path / "generation_log.jsonl")        # tests never write the real log
     monkeypatch.setattr(server, "QA_CACHE", {})
     monkeypatch.setattr(server, "PLATES_DIR", plates)
+    monkeypatch.setattr(server, "THUMBS_DIR", tmp_path / "thumbs")
     for var in ("KIMI_API_KEY", "MOONSHOT_API_KEY"):
         monkeypatch.delenv(var, raising=False)
     return server
