@@ -790,9 +790,9 @@ test('changing a music setting renders the track in the background with a loader
   const wait = h.timers.timeouts[h.timers.timeouts.length - 1];
   assert.ok(wait.ms >= 500);
   wait.fn();
-  assert.equal(h.$('musicState').hidden, false); assert.match(h.$('musicState').textContent, /Rendering/); assert.match(h.$('musicState').className, /busy/);
+  assert.equal(h.$('musicState').hidden, false); assert.match(h.$('musicState').textContent, /Preparing the sound/); assert.match(h.$('musicState').className, /working/);
   await settle(); await settle();
-  assert.match(h.$('musicState').textContent, /ready/i);
+  assert.equal(h.$('musicState').hidden, true);
   assert.equal(h.ctx.__audios.length, 1);
   h.run('togglePlay()');                                                      // already rendered: no second render, plays straight away
   await settle();

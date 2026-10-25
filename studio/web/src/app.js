@@ -531,7 +531,7 @@
       const el = document.getElementById('musicState');
       el.hidden = !text;
       el.textContent = text || '';
-      el.className = `music-state ${kind || ''}`;
+      el.className = `music-state ${kind === 'busy' ? 'working' : kind || ''}`;
     }
     function fmtDuration(sec) { return sec >= 60 ? `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}` : `${Math.round(sec)} s`; }
     function updateMusic() {
@@ -647,7 +647,7 @@
       const key = musicKeyNow();
       if (musicAudio && key === musicKey) return true;
       const mine = ++musicRender;
-      setMusicState('busy', trackDriven() ? 'Preparing the track…' : 'Rendering the music…');
+      setMusicState('busy', trackDriven() ? 'Preparing the track…' : 'Preparing the sound…');
       try {
         const res = await fetch('/api/music', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(musicParams()) });
         if (!res.ok) {
@@ -661,7 +661,7 @@
         musicAudio = new Audio(url);
         musicAudio.loop = true;
         musicKey = key;
-        setMusicState('', 'Music ready');
+        setMusicState('', '');
         return true;
       } catch (e) {
         if (mine === musicRender) { musicAudio = null; musicKey = ''; setMusicState('err', `Could not render the music: ${e.message}`); setStatus(`Could not render the music: ${e.message}`); }

@@ -198,7 +198,7 @@
               <input type="range" id="spaceRange" min="0" max="100" value="60" oninput="updateMusic()" title="The size of the room: reverb length and amount" />
               <span id="spaceVal">60</span>
             </div>
-            <details class="more" id="moreMusic">
+            <details class="more" id="moreMusic" open>
               <summary>More</summary>
               <div class="control-line">
                 <span>Bright</span>
@@ -244,9 +244,9 @@
               <span id="nudgeVal">0 ms</span>
             </div>
           </div>
-          <div class="music-state" id="musicState" hidden></div>
         </div>
 
+        <div class="music-state" id="musicState" hidden></div>
         <button class="primary" onclick="exportVideo()" id="exportBtn" style="width:100%;margin-top:4px">Export MP4</button>
         <a id="downloadLink" class="dl" hidden download></a>
       </div>

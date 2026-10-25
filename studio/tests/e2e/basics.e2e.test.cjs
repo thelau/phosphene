@@ -168,8 +168,7 @@ test('the player panel: preview, play / target, then Video and Music tabs with t
   assert.ok(!(await page.locator('#pulseRange').isVisible()), 'no synth settings while the music is off');
   await page.selectOption('#musicSelect', 'on');
   for (const id of ['#pulseRange', '#lowRange', '#powerRange', '#spaceRange']) assert.ok(await page.locator(id).isVisible(), id);
-  for (const id of ['#brightRange', '#widthRange', '#seedBtn']) assert.ok(!(await page.locator(id).isVisible()), `${id} sits under More`);
-  await page.click('#moreMusic summary');
+  for (const id of ['#brightRange', '#widthRange', '#seedBtn']) assert.ok(await page.locator(id).isVisible(), `${id} is there at once`);
   for (const id of ['#brightRange', '#widthRange', '#seedBtn']) assert.ok(await page.locator(id).isVisible(), id);
   assert.ok(!(await page.locator('#bpmSlider').isVisible()));
   const exp2 = await box('#exportBtn');
@@ -187,7 +186,8 @@ test('synthesized music: settings render in the background with a loader, Play i
   assert.deepEqual(await page.locator('#musicSelect option').allTextContents(), ['Off · silent', 'Synthesized · follows the tempo', 'My track · drives the cuts']);
   await page.selectOption('#musicSelect', 'on');
   await page.fill('#pulseRange', '80');
-  await page.waitForFunction(() => /ready/i.test(document.getElementById('musicState').textContent), null, { timeout: 5000 });
+  for (let i = 0; i < 100 && !api.state.calls.some(c => c.path === '/api/music'); i++) await page.waitForTimeout(50);
+  await page.waitForFunction(() => document.getElementById('musicState').hidden, null, { timeout: 5000 });
   const before = api.state.calls.filter(c => c.path === '/api/music').length;
   await page.click('#playBtn');
   await page.waitForFunction(() => document.getElementById('playBtn').textContent.includes('Pause'));
@@ -215,7 +215,8 @@ test('music-driven: choose a track, the cuts follow it, Play uses its sound, exp
   await page.fill('#sensRange', '70');
   await page.fill('#nudgeRange', '40');
   assert.equal(await text('#nudgeVal'), '40 ms');
-  await page.waitForFunction(() => /ready/i.test(document.getElementById('musicState').textContent), null, { timeout: 5000 });
+  for (let i = 0; i < 100 && !api.state.calls.some(c => c.path === '/api/track-cuts' && /"nudge":0\.04|"nudge":40/.test(JSON.stringify(c.body || ''))); i++) await page.waitForTimeout(50);
+  await page.waitForFunction(() => document.getElementById('musicState').hidden, null, { timeout: 5000 });
   const cuts = api.state.calls.filter(c => c.path === '/api/track-cuts').pop();
   assert.equal(cuts.body.cut_on, 'hits'); assert.equal(cuts.body.sensitivity, 0.7); assert.equal(cuts.body.nudge, 0.04);
   await page.click('#tabVideo');
