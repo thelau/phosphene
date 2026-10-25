@@ -1,6 +1,8 @@
 """
 Finds what to cut on in a music track (numpy; ffmpeg decodes any format).
   hits  - the transients (peaks of the onset curve), with their strength: the way to follow glitch / IDM, where there is no steady grid
+  notes - where the pitch changes (a bass line, an arpeggio, a sequencer), found by following the fundamental: for music whose notes
+          have soft attacks and so barely register as transients
   beats - a tracked beat grid (tempo from the onset curve's autocorrelation, then dynamic programming as in Ellis 2007): for regular music
 Times are seconds from the start of the file.
 """
@@ -63,6 +65,83 @@ def hits(curve: np.ndarray, raw: np.ndarray, loud: np.ndarray, floor: float = 0.
              if curve[i] > floor and raw[i] >= FLUX_FLOOR and curve[i] == curve[i - side:i + side + 1].max()]
     out = [(float(_t(i)), float(loud[i] / top)) for i in peaks]
     return [h for h in out if h[1] >= MIN_STRENGTH]       # the faint echoes of a hit's own decay are not hits
+
+
+PITCH_FRAME = 1536          # 70 ms: at least two periods of a 40 Hz bass
+PITCH_MIN_HZ, PITCH_MAX_HZ = 40.0, 600.0
+
+
+def pitch_track(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(midi, confidence) per frame (hop HOP): the strongest periodicity of the sound between 40 and 600 Hz, by autocorrelation
+    (corrected for its natural fall-off, which would otherwise favour high octaves). Confidence 0 where nothing pitched is playing."""
+    if len(x) < PITCH_FRAME * 2:
+        return np.zeros(1), np.zeros(1)
+    n = 1 + (len(x) - PITCH_FRAME) // HOP
+    frames = np.lib.stride_tricks.as_strided(x, shape=(n, PITCH_FRAME), strides=(x.strides[0] * HOP, x.strides[0])).astype(np.float64)
+    frames = (frames - frames.mean(axis=1, keepdims=True)) * np.hanning(PITCH_FRAME)
+    size = 4096
+    spec = np.fft.rfft(frames, size, axis=1)
+    r = np.fft.irfft(np.abs(spec) ** 2, size, axis=1)
+    lo, hi = int(SR / PITCH_MAX_HZ), int(SR / PITCH_MIN_HZ)
+    r0 = r[:, 0] + 1e-12
+    norm = r[:, lo - 1:hi + 2] / r0[:, None]
+    lags = np.arange(lo - 1, hi + 2)
+    # the window is a hann: undo its triangular-ish fall-off of the autocorrelation
+    win_ac = np.fft.irfft(np.abs(np.fft.rfft(np.hanning(PITCH_FRAME), size)) ** 2, size)
+    norm = norm / (win_ac[lags] / win_ac[0])[None, :]
+    peaks = (norm[:, 1:-1] > norm[:, :-2]) & (norm[:, 1:-1] >= norm[:, 2:])
+    score = np.where(peaks, norm[:, 1:-1], -1.0)
+    best = score.max(axis=1)
+    midi = np.zeros(n)
+    conf = np.zeros(n)
+    loud = np.sqrt(r0 / PITCH_FRAME)
+    gate = loud > 0.02 * (np.percentile(loud, 95) + 1e-9)
+    for i in range(n):
+        if best[i] < 0.55 or not gate[i]:
+            continue
+        cand = np.flatnonzero(score[i] >= 0.9 * best[i])      # the shortest lag that is nearly as strong as the best: not a sub-harmonic
+        j = cand[0]
+        a, b, c = norm[i, j], norm[i, j + 1], norm[i, j + 2]
+        shift = 0.5 * (a - c) / (a - 2 * b + c) if (a - 2 * b + c) != 0 else 0.0
+        lag = lags[j + 1] + float(np.clip(shift, -1, 1))
+        midi[i] = 69 + 12 * np.log2((SR / lag) / 440.0)
+        conf[i] = best[i]
+    return midi, conf
+
+
+def note_changes(midi: np.ndarray, conf: np.ndarray, min_jump: float = 0.7, hold: int = 3) -> list[tuple[float, float]]:
+    """(time, strength) of every change of note: the pitch moving by at least min_jump semitones and staying there for `hold`
+    frames, or a pitched sound starting after silence. Strength grows with the size of the jump."""
+    voiced = conf > 0
+    out: list[tuple[float, float]] = []
+    cur = None
+    i, n = 0, len(midi)
+    while i < n:
+        if not voiced[i]:
+            if cur is not None and not voiced[i:i + hold].any():
+                cur = None                                    # silence ends the note
+            i += 1
+            continue
+        if cur is None:
+            seg = midi[i:i + hold]
+            if len(seg) == hold and voiced[i:i + hold].all() and np.ptp(seg) < min_jump:
+                cur = float(np.median(seg))
+                out.append((float(_t(i)), 0.5))
+                i += hold
+                continue
+            i += 1
+            continue
+        if abs(midi[i] - cur) >= min_jump:
+            seg = midi[i:i + hold]
+            if len(seg) == hold and voiced[i:i + hold].all() and np.ptp(seg) < min_jump and abs(float(np.median(seg)) - cur) >= min_jump:
+                out.append((float(_t(i)), float(min(1.0, 0.25 + abs(float(np.median(seg)) - cur) / 12.0))))
+                cur = float(np.median(seg))
+                i += hold
+                continue
+        else:
+            cur = 0.9 * cur + 0.1 * float(midi[i])            # follow slow drift (vibrato, detune) without calling it a new note
+        i += 1
+    return out
 
 
 def tempo(curve: np.ndarray) -> float:
@@ -128,5 +207,7 @@ def analyse(path: str) -> dict:
     beats = track_beats(curve, bpm)
     if len(beats) > 4:                                   # the tempo the tracker actually followed (a fit over all beats, not one gap)
         bpm = float(60.0 / np.polyfit(np.arange(len(beats)), beats, 1)[0])
+    midi, conf = pitch_track(x)
     return {"duration": round(len(x) / SR, 3), "bpm": round(bpm, 2), "beats": [round(b, 4) for b in beats],
-            "hits": [[round(t, 4), round(s, 2)] for t, s in hits(curve, raw, loud)]}
+            "hits": [[round(t, 4), round(s, 2)] for t, s in hits(curve, raw, loud)],
+            "notes": [[round(t, 4), round(s, 2)] for t, s in note_changes(midi, conf)]}

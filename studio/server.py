@@ -679,7 +679,7 @@ def track_info() -> dict | None:
 def track_summary(info: dict | None) -> dict | None:
     if not info:
         return None
-    return {"name": info["name"], "duration": info["duration"], "bpm": info["bpm"], "n_beats": len(info["beats"]), "n_hits": len(info["hits"])}
+    return {"name": info["name"], "duration": info["duration"], "bpm": info["bpm"], "n_beats": len(info["beats"]), "n_hits": len(info["hits"]), "n_notes": len(info.get("notes", []))}
 
 
 def save_track(raw: bytes, name: str) -> dict:
@@ -986,7 +986,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 print(f"[TRACK] FAILED: {str(e)[:300]}", flush=True)
                 self.send_json({"ok": False, "error": str(e)[:200]}, 500)
                 return
-            gen_log.record("track", name=info["name"], duration=info["duration"], bpm=info["bpm"], hits=len(info["hits"]))
+            gen_log.record("track", name=info["name"], duration=info["duration"], bpm=info["bpm"], hits=len(info["hits"]), notes=len(info["notes"]))
             self.send_json({"ok": True, "track": track_summary(info)})
             return
         body = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}

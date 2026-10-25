@@ -824,7 +824,7 @@ test('turning the music off clears its state and stops the sound', async () => {
 
 // ---------- a music track that drives the cuts ----------
 
-const TRACK = { name: 'glitch.mp3', duration: 62, bpm: 128, n_beats: 130, n_hits: 410 };
+const TRACK = { name: 'glitch.mp3', duration: 62, bpm: 128, n_beats: 130, n_hits: 410, n_notes: 96 };
 
 async function trackPlayer(cuts = { ok: true, starts: [0, 0.2, 0.5, 0.6], audio_start: 1.5, total: 0.6, events: 80, bpm: 128 }, extra = {}) {
   const r = baseRoutes();
@@ -843,7 +843,7 @@ async function trackPlayer(cuts = { ok: true, starts: [0, 0.2, 0.5, 0.6], audio_
 test('the saved track is shown in the Music tab when the page opens', async () => {
   const h = await trackPlayer();
   assert.equal(h.$('trackName').textContent, 'glitch.mp3');
-  assert.match(h.$('trackInfo').textContent, /128 BPM · 1:02 · 410 hits found/);
+  assert.match(h.$('trackInfo').textContent, /128 BPM · 1:02 · 410 hits · 96 notes found/);
   assert.equal(h.$('trackClear').hidden, false);
 });
 

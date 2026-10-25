@@ -106,3 +106,16 @@ def test_a_track_with_nothing_to_cut_on_is_refused():
         rhythm.track_cuts({**ANALYSIS, "hits": [[1.0, 1.0]]}, 3, "hits")
     with pytest.raises(ValueError, match="Not enough"):
         rhythm.track_cuts({**ANALYSIS, "beats": []}, 3, "beats")
+
+
+def test_notes_mode_cuts_on_pitch_changes_and_only_the_clearly_percussive_hits():
+    analysis = {**ANALYSIS, "notes": [[1.0, 0.6], [1.5, 0.9], [2.4, 0.5]], "hits": [[1.2, 0.9], [1.7, 0.2], [2.9, 0.4]]}
+    r = rhythm.track_cuts(analysis, 4, "notes", sensitivity=1.0)
+    # events: 1.0 and 1.5 and 2.4 (notes), 1.2 and 2.9 (hits above 0.35); the weak hit at 1.7 is left out
+    assert r["events"] == 5 and r["audio_start"] == 1.0
+    assert r["starts"] == pytest.approx([0.0, 0.2, 0.5, 1.4, 1.9])
+
+
+def test_notes_mode_asks_for_the_track_again_when_it_was_loaded_without_notes():
+    with pytest.raises(ValueError, match="choose it again"):
+        rhythm.track_cuts(ANALYSIS, 3, "notes")

@@ -227,8 +227,9 @@
             <div class="music-hint" id="trackInfo"></div>
             <div class="control-line">
               <span>Cut on</span>
-              <select id="cutOnSelect" onchange="updateMusic()" style="flex:1" title="Hits: every transient in the music, however irregular (glitch, IDM). Beats: a steady grid, with the Multiple from the Video tab.">
-                <option value="hits">Hits · every peak</option>
+              <select id="cutOnSelect" onchange="updateMusic()" style="flex:1" title="Hits: every transient, however irregular (glitch, IDM). Notes: every change of pitch, for bass lines and sequences with soft attacks, plus the clearly percussive hits. Beats: a steady grid, with the Multiple from the Video tab.">
+                <option value="hits">Hits · every transient</option>
+                <option value="notes">Notes · pitch changes</option>
                 <option value="beats">Beats · the steady grid</option>
               </select>
             </div>

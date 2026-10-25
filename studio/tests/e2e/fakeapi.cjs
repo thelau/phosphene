@@ -142,7 +142,7 @@ function start(state = makeState()) {
         return send({ ok: true, video_url: '/outputs/Demo-test.mp4', filename: 'Demo-test.mp4', images: n, seconds: n * 0.5, cuts: n });
       }
       case '/api/track': {
-        if (req.method === 'POST' && url.searchParams.get('name')) state.track = { name: url.searchParams.get('name'), duration: 30, bpm: 126, n_beats: 60, n_hits: 210 };
+        if (req.method === 'POST' && url.searchParams.get('name')) state.track = { name: url.searchParams.get('name'), duration: 30, bpm: 126, n_beats: 60, n_hits: 210, n_notes: 64 };
         else if (req.method === 'POST' && body.clear) state.track = null;
         return send({ ok: true, track: state.track || null });
       }

@@ -210,7 +210,7 @@ test('music-driven: choose a track, the cuts follow it, Play uses its sound, exp
   assert.equal(await text('#trackName'), 'No track yet');
   await page.setInputFiles('#trackFile', { name: 'glitch-loop.mp3', mimeType: 'audio/mpeg', buffer: Buffer.from('not really audio, the fake server accepts anything') });
   await page.waitForFunction(() => document.getElementById('trackName').textContent === 'glitch-loop.mp3');
-  assert.match(await text('#trackInfo'), /126 BPM · 30 s · 210 hits found/);
+  assert.match(await text('#trackInfo'), /126 BPM · 30 s · 210 hits · 64 notes found/);
   await page.selectOption('#cutOnSelect', 'hits');
   await page.fill('#sensRange', '70');
   await page.fill('#nudgeRange', '40');

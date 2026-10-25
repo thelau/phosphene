@@ -1,12 +1,14 @@
 """
 Cut timelines. Flat is the plain tempo grid (every cut the same length, as in Helione and Moverunion). Music-driven cuts follow a track
-(see beats.py): either its hits (the transients: the way to follow glitch / IDM, where there is no steady grid) or its beat grid.
+(see beats.py): its hits (the transients: the way to follow glitch / IDM, where there is no steady grid), its notes (pitch changes: bass
+lines and sequences with soft attacks) or its beat grid.
 Times are seconds from the start of the clip; `cut_at` finds the cut at a time, wrapping around the sequence.
 """
 import bisect
 
 MIN_GAP = 0.066          # two cuts are never closer than 2 frames at 30 fps
-MODES = ("hits", "beats")
+MODES = ("hits", "notes", "beats")
+NOTE_HIT_MIN = 0.35      # in notes mode a transient only counts when it is clearly percussive (repeated notes, plucks)
 
 
 def cut_at(starts: list[float], t: float) -> tuple[int, float]:
@@ -67,6 +69,11 @@ def track_cuts(analysis: dict, n_cuts: int, mode: str = "hits", multiple: float 
     duration = float(analysis["duration"])
     if mode == "beats":
         events = beat_events(analysis.get("beats", []), multiple, duration)
+    elif mode == "notes":
+        if "notes" not in analysis:
+            raise ValueError("This track was loaded before note detection existed: choose it again to find its notes.")
+        strong = [h for h in analysis.get("hits", []) if h[1] >= NOTE_HIT_MIN]
+        events = select_hits(list(analysis["notes"]) + strong, sensitivity)
     else:
         events = select_hits(analysis.get("hits", []), sensitivity)
     if len(events) < 2:

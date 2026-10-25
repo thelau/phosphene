@@ -542,10 +542,10 @@
       document.getElementById('nudgeVal').textContent = `${document.getElementById('nudgeRange').value} ms`;
       document.getElementById('styleHint').textContent = mode === 'on' ? MUSIC_HINT : mode === 'track' ? '' : 'No music: the preview and the export stay silent.';
       document.getElementById('seedNum').textContent = document.getElementById('seedVal').value;
-      const hits = document.getElementById('cutOnSelect').value !== 'beats';
+      const hits = document.getElementById('cutOnSelect').value !== 'beats';   // hits and notes both use the sensitivity
       document.getElementById('sensRow').hidden = !hits;
       document.getElementById('trackName').textContent = track ? track.name : 'No track yet';
-      document.getElementById('trackInfo').textContent = track ? `${track.bpm.toFixed(0)} BPM · ${fmtDuration(track.duration)} · ${track.n_hits} hits found` : 'Choose an mp3, wav or m4a: the cuts follow its hits.';
+      document.getElementById('trackInfo').textContent = track ? `${track.bpm.toFixed(0)} BPM · ${fmtDuration(track.duration)} · ${track.n_hits} hits · ${track.n_notes || 0} notes found` : 'Choose an mp3, wav or m4a: the cuts follow its hits.';
       document.getElementById('trackClear').hidden = !track;
       // the tempo only drives the flat grid; with a track the cuts come from the music
       document.getElementById('bpmSlider').disabled = trackDriven();

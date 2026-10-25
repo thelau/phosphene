@@ -525,6 +525,19 @@ def test_track_cuts_land_on_the_hits_and_follow_the_settings(live, tmp_path):
     assert [b - a for a, b in zip(beats_["starts"], beats_["starts"][1:])] == pytest.approx([0.25] * 3, abs=0.05)
 
 
+def test_notes_mode_finds_the_pitch_changes_of_a_bass_line(live, tmp_path):
+    import wave
+    import test_beats
+    _three_plates(live)
+    x, times = test_beats.legato_line([(36, 0.5), (43, 0.25), (41, 0.375), (36, 0.5), (46, 0.5), (43, 0.5), (41, 0.5), (36, 1.0)], 4.5)
+    path = tmp_path / "bass.wav"
+    test_beats.save(x, path)
+    live("POST", "/api/track?name=bass.wav", raw=path.read_bytes())
+    assert live("GET", "/api/track")[1]["track"]["n_notes"] >= 6
+    res = live("POST", "/api/track-cuts", {"cut_on": "notes", "sensitivity": 1.0})[1]
+    assert res["ok"] and [b - a for a, b in zip(res["starts"], res["starts"][1:])] == pytest.approx([0.5, 0.25, 0.375], abs=0.05)
+
+
 def test_track_cuts_without_a_track_say_so(live):
     _three_plates(live)
     status, res = live("POST", "/api/track-cuts", {})
