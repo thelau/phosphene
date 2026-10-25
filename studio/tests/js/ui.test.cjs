@@ -728,3 +728,41 @@ test('music choices are remembered', () => {
   const saved = JSON.parse(h.store.studioSettings);
   assert.deepEqual([saved.musicSelect, saved.echoRange, saved.chordSelect], ['on', '30', '2']);
 });
+
+// ---------- variable speed (same vectors as tests/test_cutplan.py) ----------
+
+test('variableStarts matches the server timeline', () => {
+  const h = load({ routes: baseRoutes() });
+  const near = (a, b) => assert.ok(a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 0.001), `${a} vs ${b}`);
+  for (const [n, a, b, c, exp] of [[4, 400, 100, 0, [0, 12, 19.559, 24.322, 27.322]], [4, 400, 100, 50, [0, 12, 22.287, 28.767, 31.767]],
+    [4, 400, 100, -50, [0, 12, 17.390, 21.259, 24.259]], [3, 200, 200, 0, [0, 6, 12, 18]], [1, 300, 100, 0, [0, 9]]]) {
+    near(JSON.parse(JSON.stringify(h.run(`variableStarts(${n}, ${a}, ${b}, ${c})`))), exp);
+  }
+});
+
+test('Variable speed swaps the controls, drives the timeline in frames, the sound and the export', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: [mkPlate('a'), mkPlate('b'), mkPlate('c')] };
+  r['/api/export-video'] = { ok: true, images: 3, seconds: 2, video_url: '/outputs/x.mp4', filename: 'x.mp4' };
+  r['/api/export-audio'] = { ok: true, bytes: 44 };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '300'; h.$('endMsRange').value = '100'; h.$('curveRange').value = '0';
+  h.run('updateRhythm()');
+  assert.equal(h.$('flatBox').hidden, true); assert.equal(h.$('varBox').hidden, false);
+  assert.equal(h.$('startMsVal').textContent, '300 ms'); assert.equal(h.$('curveVal').textContent, 'even');
+  assert.match(h.$('rhythmInfo').textContent, /^3 images · \d+(\.\d)? s · cuts 300 ms → 100 ms$/);
+  const starts = JSON.parse(JSON.stringify(h.run('timelineFor(3)')));
+  assert.equal(starts.length, 4);
+  assert.ok(starts[1] - starts[0] > starts[3] - starts[2]);                    // accelerating
+  h.$('musicSelect').value = 'on';
+  await h.run('exportVideo()');
+  const sent = h.ctx.__drone.exports[0].starts;
+  assert.ok(Math.abs(sent[1] - 0.3) < 1e-9);                                // seconds, not frames
+  assert.ok(Math.abs(sent[sent.length - 1] - starts[3] / 30) < 1e-9);
+  const body = h.calls.find(c => c.url === '/api/export-video').body;
+  assert.deepEqual([body.rhythm, body.start_ms, body.end_ms, body.curve], ['variable', 300, 100, 0]);
+  h.$('rhythmSelect').value = 'flat'; h.run('updateRhythm()');
+  assert.equal(h.$('flatBox').hidden, false); assert.equal(h.$('varBox').hidden, true);
+  assert.equal(JSON.parse(JSON.stringify(h.run('timelineFor(3)'))).join(), '0,1,2,3');
+});

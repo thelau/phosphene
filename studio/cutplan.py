@@ -7,6 +7,7 @@ Which image is on screen at which moment, and how it is treated: shared by the e
 """
 
 import bisect
+import math
 
 from PIL import Image, ImageOps
 
@@ -17,6 +18,25 @@ ZOOM_MODES = ("off", "out", "in")
 def timeline(n_plates: int, invert_mode: str = "off") -> list[float]:
     """Flat: where each cut starts (in base cuts) for one pass over every image."""
     return [float(i) for i in range(n_plates * (2 if invert_mode in ("mono", "colour") else 1) + 1)]
+
+
+VARIABLE_MS = (50.0, 1500.0)     # the shortest and longest cut a variable run may use
+FPS = 30
+
+
+def variable_timeline(n_cuts: int, start_ms: float, end_ms: float, curve: float = 0.0) -> list[float]:
+    """Variable speed: where each cut starts, in frames (use it with frames_per_cut = 1). The first cut is start_ms long, the last
+    end_ms, and the length in between follows `curve` (-100..100; 0 = an even change, > 0 stays near the start longer and changes
+    late, < 0 changes early). Lengths change geometrically, so an acceleration feels even. start == end is a flat run."""
+    lo, hi = VARIABLE_MS
+    a, b = (min(hi, max(lo, float(v))) for v in (start_ms, end_ms))
+    gamma = 2.0 ** (min(100.0, max(-100.0, float(curve))) / 50.0)
+    starts = [0.0]
+    for i in range(n_cuts):
+        u = i / (n_cuts - 1) if n_cuts > 1 else 0.0
+        ms = math.exp(math.log(a) + (math.log(b) - math.log(a)) * (u ** gamma))
+        starts.append(starts[-1] + max(1.0, ms * FPS / 1000.0))
+    return starts
 
 
 def cut_at(starts: list[float], t: float) -> tuple[int, float]:

@@ -482,12 +482,37 @@
       const span = starts[lo + 1] - starts[lo];
       return [lo, span > 0 ? (t - starts[lo]) / span : 0];
     }
-    let timelineCache = { key: -1, starts: null };
-    // positions are in base cuts (one base cut = framesPerCut frames), the unit the player counts in
+    function rhythmMode() { return document.getElementById('rhythmSelect').value === 'variable' ? 'variable' : 'flat'; }
+    function variableParams() {
+      return {
+        start_ms: parseInt(document.getElementById('startMsRange').value, 10) || 400,
+        end_ms: parseInt(document.getElementById('endMsRange').value, 10) || 100,
+        curve: parseInt(document.getElementById('curveRange').value, 10) || 0
+      };
+    }
+    // Variable speed: where each cut starts, in frames (mirrors cutplan.variable_timeline: geometric change, shaped by the curve)
+    function variableStarts(nCuts, startMs, endMs, curve) {
+      const clamp = v => Math.min(1500, Math.max(50, v));
+      const a = Math.log(clamp(startMs)), b = Math.log(clamp(endMs));
+      const gamma = Math.pow(2, Math.min(100, Math.max(-100, curve)) / 50);
+      const starts = [0];
+      for (let i = 0; i < nCuts; i++) {
+        const u = nCuts > 1 ? i / (nCuts - 1) : 0;
+        starts.push(starts[i] + Math.max(1, (Math.exp(a + (b - a) * Math.pow(u, gamma)) * 30) / 1000));
+      }
+      return starts;
+    }
+    // frames in one unit of the timeline: flat counts in base cuts (framesPerCut frames each), variable in frames
+    function cutFrames() { return rhythmMode() === 'variable' ? 1 : framesPerCut; }
+    let timelineCache = { key: '', starts: null };
     function timelineFor(nPlates) {
       const invert = document.getElementById('invertSelect').value;
       const nCuts = nPlates * (invert === 'mono' || invert === 'colour' ? 2 : 1);
-      if (timelineCache.key !== nCuts) timelineCache = { key: nCuts, starts: Array.from({ length: nCuts + 1 }, (_, i) => i) };
+      const v = rhythmMode() === 'variable' ? variableParams() : null;
+      const key = v ? `${nCuts}|${v.start_ms}|${v.end_ms}|${v.curve}` : `${nCuts}|flat`;
+      if (timelineCache.key !== key) {
+        timelineCache = { key, starts: v ? variableStarts(nCuts, v.start_ms, v.end_ms, v.curve) : Array.from({ length: nCuts + 1 }, (_, i) => i) };
+      }
       return timelineCache.starts;
     }
 
@@ -504,7 +529,7 @@
         seed: parseInt(document.getElementById('seedVal').value, 10) || 7, paired
       };
     }
-    function synthStartsSec() { return timelineFor(activePlates().length).map(x => (x * framesPerCut) / 30); }
+    function synthStartsSec() { return timelineFor(activePlates().length).map(x => (x * cutFrames()) / 30); }
     function setMusicState(kind, text) {
       const el = document.getElementById('musicState');
       el.hidden = !text;
@@ -546,11 +571,12 @@
       if (!n) { info.textContent = ''; return; }
       const starts = timelineFor(n);
       const cuts = starts.length - 1;
-      const sec = c => (c * framesPerCut) / 30;
+      const sec = c => (c * cutFrames()) / 30;
       const lens = starts.slice(1).map((v, i) => sec(v - starts[i]));
       const f = v => (v < 1 ? `${Math.round(v * 1000)} ms` : `${v.toFixed(1)} s`);
       const lo = Math.min(...lens), hi = Math.max(...lens);
-      info.textContent = `${n} images · ${fmtDuration(sec(starts[cuts]))} · cuts ${hi > lo * 1.05 ? `${f(lo)} – ${f(hi)}` : f(lo)}`;
+      const pace = rhythmMode() === 'variable' ? `${f(lens[0])} → ${f(lens[lens.length - 1])}` : hi > lo * 1.05 ? `${f(lo)} – ${f(hi)}` : f(lo);
+      info.textContent = `${n} images · ${fmtDuration(sec(starts[cuts]))} · cuts ${pace}`;
     }
     // ---- while the drone plays it is the player's clock ----
     const droneLive = new window.Drone.Live();
@@ -572,7 +598,7 @@
       if (!isPlaying) return;
       if (!musicOn()) { droneLive.stop(); return; }
       if (droneLive.playing) {
-        const cutMs = Math.max(16, (framesPerCut / 30) * 1000);
+        const cutMs = Math.max(16, (cutFrames() / 30) * 1000);
         droneLive.update(synthParams(), synthStartsSec(), () => (cutPos * cutMs) / 1000);
       } else startMusic();
     }
@@ -623,7 +649,7 @@
         const stageImg = document.getElementById('stageImg');
         if (!active.length || stageImg.style.display === 'none') return;
         if (musicPending) return;
-        const cutMs = Math.max(16, (framesPerCut / 30) * 1000);
+        const cutMs = Math.max(16, (cutFrames() / 30) * 1000);
         if (musicOn() && droneLive.playing && !droneLive.holding) cutPos = (droneLive.pos() * 1000) / cutMs;           // the drone is the clock
         else cutPos += dt / cutMs;
         const fx = fxSettings();
@@ -651,7 +677,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['bpmSlider', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'curveRange', 'bpmSlider', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -671,6 +697,19 @@
       } catch (e) {}
     }
 
+    // flat or variable speed: which controls show, and the cuts follow
+    function updateRhythm() {
+      const variable = rhythmMode() === 'variable';
+      document.getElementById('flatBox').hidden = variable;
+      document.getElementById('varBox').hidden = !variable;
+      const v = variableParams();
+      document.getElementById('startMsVal').textContent = `${v.start_ms} ms`;
+      document.getElementById('endMsVal').textContent = `${v.end_ms} ms`;
+      document.getElementById('curveVal').textContent = v.curve === 0 ? 'even' : v.curve > 0 ? `late ${v.curve}` : `early ${-v.curve}`;
+      saveSettings();
+      restartLoop();
+      musicChanged();
+    }
     function updateTempo() {
       saveSettings();
       const bpm = parseInt(document.getElementById('bpmSlider').value, 10);
@@ -955,6 +994,8 @@
             bpm: parseInt(document.getElementById('bpmSlider').value, 10),
             multiple: parseFloat(document.getElementById('multSelect').value),
             invert_mode: document.getElementById('invertSelect').value,
+            rhythm: rhythmMode(),
+            ...variableParams(),
             music: musicOn() ? 'synth' : 'off',
             zoom_mode: document.getElementById('zoomSelect').value,
             zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0
@@ -984,6 +1025,7 @@
     restoreSettings();
     updateFx();
     updateTempo();
+    updateRhythm();
     updateMusic();
     showFxTab(document.getElementById('fxTabVal').value);
     ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'].forEach(id => document.getElementById(id).addEventListener('change', saveSettings));
@@ -1059,5 +1101,6 @@ Object.assign(window, {
   toggleReticle,
   toggleSettings,
   updateTempo,
+  updateRhythm,
   updateFx,
 });

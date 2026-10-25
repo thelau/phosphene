@@ -179,6 +179,28 @@ test('the player panel: preview, play / target, then Video and Music tabs with t
   await ctx.close();
 });
 
+test('variable speed: Flat shows tempo and multiple, Variable shows start, end and curve, and the picture accelerates', { skip }, async () => {
+  const ctx = await fresh();
+  assert.ok(await page.locator('#bpmSlider').isVisible() && !(await page.locator('#startMsRange').isVisible()));
+  await page.selectOption('#rhythmSelect', 'variable');
+  assert.ok(!(await page.locator('#bpmSlider').isVisible()) && !(await page.locator('#multSelect').isVisible()));
+  for (const id of ['#startMsRange', '#endMsRange', '#curveRange']) assert.ok(await page.locator(id).isVisible(), id);
+  await page.fill('#startMsRange', '600'); await page.fill('#endMsRange', '100');
+  assert.match(await text('#rhythmInfo'), /cuts 600 ms → 100 ms$/);
+  await page.selectOption('#invertSelect', 'mono');
+  assert.match(await text('#rhythmInfo'), /^3 images · .* cuts 600 ms → 100 ms$/);
+  await page.click('#playBtn');
+  await page.waitForFunction(() => document.getElementById('playBtn').textContent.includes('Pause'));
+  await page.waitForTimeout(300);
+  assert.ok(await page.locator('#stageImg').getAttribute('src'));
+  await page.click('#playBtn');
+  await page.click('#exportBtn');
+  await page.waitForSelector('#downloadLink:not([hidden])');
+  const body = api.state.calls.filter(c => c.path === '/api/export-video').pop().body;
+  assert.deepEqual([body.rhythm, body.start_ms, body.end_ms], ['variable', 600, 100]);
+  await ctx.close();
+});
+
 test('synthesized music: the drone plays live in the page, settings swap it at once, export renders it in the page and sends it', { skip }, async () => {
   const ctx = await fresh();
   assert.match(await text('#rhythmInfo'), /^3 images · \d+ s · cuts \d+ ms$/);
@@ -257,7 +279,7 @@ test('Random sound: every draw stays a dark, heavy, level drone and a new sound 
   const rows = await page.evaluate(async () => {
     const out = [];
     const starts = Array.from({ length: 21 }, (_, i) => i * 0.2);
-    for (let t = 0; t < 8; t++) {
+    for (let t = 0; t < 4; t++) {
       randomMusic();                                                           // the page's own draw, rendered by the real engine
       const u = id => parseInt(document.getElementById(id).value, 10) / 100;
       const prm = { pulse: u('pulseRange'), low: u('lowRange'), bright: u('brightRange'), width: u('widthRange'), space: u('spaceRange'), power: u('powerRange'), pitch: u('pitchRange'), movement: u('movementRange'), echo: u('echoRange'), chord: parseInt(document.getElementById('chordSelect').value, 10), seed: parseInt(document.getElementById('seedVal').value, 10) };

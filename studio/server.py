@@ -642,12 +642,13 @@ def export_audio_file() -> Path:
     return EXPORT_DIR / "export-music.wav"
 
 
-def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "off", zoom_mode: str = "off", music: str = "off") -> str:
+def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "off", zoom_mode: str = "off", music: str = "off", variable: tuple | None = None) -> str:
     """Unique, descriptive name per export so nothing is overwritten: Demo-136bpm-x4-invert-zoomout-20261025-0930.mp4"""
     mult = f"{multiple:.2f}".rstrip("0").rstrip(".")
     fx = ("-invert" if invert_mode in ("mono", "colour") else "") + (f"-zoom{zoom_mode}" if zoom_mode != "off" else "")
     fx += "-music" if music == "synth" else ""
-    return f"Demo-{int(round(bpm))}bpm-x{mult}{fx}-{time.strftime('%Y%m%d-%H%M%S', time.localtime(ts))}.mp4"
+    pace = f"var{int(round(variable[0]))}to{int(round(variable[1]))}ms" if variable else f"{int(round(bpm))}bpm-x{mult}"
+    return f"Demo-{pace}{fx}-{time.strftime('%Y%m%d-%H%M%S', time.localtime(ts))}.mp4"
 
 
 def prune_exports(folder: Path, keep: int = 12) -> None:
@@ -1147,11 +1148,23 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     zoom_mode = body.get("zoom_mode", "off") if body.get("zoom_mode") in cutplan.ZOOM_MODES else "off"
                     zoom_amount = max(0.0, min(10.0, float(body.get("zoom_amount", 0.6))))
                     music_mode = "synth" if body.get("music") == "synth" else "off"
-                    starts = cutplan.timeline(len(active_files), invert_mode)
+                    variable = None
+                    if body.get("rhythm") == "variable":                   # accelerating or decelerating: an entry and an exit cut length, and the curve between
+                        lo, hi = cutplan.VARIABLE_MS
+                        def num(key, default, a, b):
+                            try:
+                                return min(b, max(a, float(body.get(key, default))))
+                            except (TypeError, ValueError):
+                                return default
+                        variable = (num("start_ms", 400.0, lo, hi), num("end_ms", 100.0, lo, hi), num("curve", 0.0, -100.0, 100.0))
+                        frames_per_cut = 1.0
+                        starts = cutplan.variable_timeline(len(active_files) * (2 if invert_mode in ("mono", "colour") else 1), *variable)
+                    else:
+                        starts = cutplan.timeline(len(active_files), invert_mode)
                     n_cuts, total_frames = cutplan.export_length(len(active_files), frames_per_cut, invert_mode, starts)  # every selected image, once
                     write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount, starts)
 
-                    out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode, music_mode)
+                    out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode, music_mode, variable)
                     # cut length follows the tempo, multiple, rhythm and effects chosen in the player; music only when asked for
                     cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp_dir / "f_%04d.jpg")]
                     if music_mode != "off":

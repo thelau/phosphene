@@ -122,6 +122,14 @@
 
         <div class="tabpane" id="paneVideo">
           <div class="control-line">
+            <span>Speed</span>
+            <select id="rhythmSelect" onchange="updateRhythm()" style="flex:1" title="Flat: every cut the same length, set by a tempo. Variable: the cuts speed up or slow down from an entry length to an exit length.">
+              <option value="flat">Flat · tempo</option>
+              <option value="variable">Variable · accelerate / decelerate</option>
+            </select>
+          </div>
+          <div id="flatBox">
+          <div class="control-line">
             <span>Tempo</span>
             <input type="range" id="bpmSlider" min="60" max="220" value="136" oninput="updateTempo()" />
             <span id="bpmVal">136 BPM</span>
@@ -141,6 +149,24 @@
               <option value="9">×9 (9 cuts / beat)</option>
             </select>
             <span id="speedVal">~4f</span>
+          </div>
+          </div>
+          <div id="varBox" hidden>
+            <div class="control-line">
+              <span>Start</span>
+              <input type="range" id="startMsRange" min="50" max="1000" step="10" value="400" oninput="updateRhythm()" title="How long the first cut is" />
+              <span id="startMsVal">400 ms</span>
+            </div>
+            <div class="control-line">
+              <span>End</span>
+              <input type="range" id="endMsRange" min="50" max="1000" step="10" value="100" oninput="updateRhythm()" title="How long the last cut is" />
+              <span id="endMsVal">100 ms</span>
+            </div>
+            <div class="control-line">
+              <span>Curve</span>
+              <input type="range" id="curveRange" min="-100" max="100" step="5" value="0" oninput="updateRhythm()" title="0: an even change. Right: stays near the start, changes late. Left: changes early, then settles near the end." />
+              <span id="curveVal">even</span>
+            </div>
           </div>
           <div class="rhythm-info" id="rhythmInfo"></div>
           <div class="control-line">
