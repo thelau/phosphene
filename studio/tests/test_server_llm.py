@@ -432,3 +432,22 @@ def test_kimi_error_keeps_the_first_endpoints_failure(srv, monkeypatch):
     with pytest.raises(RuntimeError) as e:
         srv.call_kimi_llm("hi", "sk-abc")
     assert "read timed out" in str(e.value) and "HTTP 401" in str(e.value)
+
+
+def test_kimi_timeout_is_retried_once_on_the_same_model(srv, monkeypatch):
+    import io
+    calls = []
+
+    class Resp(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def fake_open(req, timeout=0):
+        calls.append((json.loads(req.data)["model"], timeout))
+        if len(calls) == 1:
+            raise TimeoutError("The read operation timed out")
+        return Resp(json.dumps({"choices": [{"message": {"content": " done "}}]}).encode())
+
+    monkeypatch.setattr(srv.urllib.request, "urlopen", fake_open)
+    assert srv.call_kimi_llm("hi", "sk-abc") == "done"
+    assert [m for m, _ in calls] == ["kimi-k3", "kimi-k3"] and calls[0][1] >= 120

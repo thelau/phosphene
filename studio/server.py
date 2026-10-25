@@ -199,6 +199,9 @@ def ordered_plate_files(st: dict) -> list[Path]:
     return result
 
 
+KIMI_TIMEOUT = 150  # seconds per attempt
+
+
 def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", images: list | None = None, system: str | None = None) -> str:
     """Calls Kimi API (Moonshot .ai, .cn, or Kimi Coding) with automatic model/endpoint fallback."""
     key = (api_key or "").strip()
@@ -254,17 +257,21 @@ def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", i
                     "User-Agent": "KimiCLI/1.0",
                 },
             )
-            try:
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    return data["choices"][0]["message"]["content"].strip()
-            except urllib.error.HTTPError as e:
-                err_body = e.read().decode("utf-8", errors="replace")
-                errors.append(f"HTTP {e.code} ({model} @ {ep.split('/')[2]}): {err_body[:180]}")
-                if e.code == 401:
-                    break  # this endpoint does not accept the key: another model will not change that
-            except Exception as e:
-                errors.append(f"{ep.split('/')[2]} ({model}): {e}")
+            for attempt in (1, 2):  # a timeout is retried once on the same model: writing 10 scenes can take over a minute
+                try:
+                    with urllib.request.urlopen(req, timeout=KIMI_TIMEOUT) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        return data["choices"][0]["message"]["content"].strip()
+                except urllib.error.HTTPError as e:
+                    err_body = e.read().decode("utf-8", errors="replace")
+                    errors.append(f"HTTP {e.code} ({model} @ {ep.split('/')[2]}): {err_body[:180]}")
+                    break
+                except Exception as e:
+                    errors.append(f"{ep.split('/')[2]} ({model}): {e}")
+                    if "timed out" not in str(e) or attempt == 2:
+                        break
+            if errors and (errors[-1].startswith("HTTP 401") or "timed out" in errors[-1]):
+                break  # the key is refused here, or the endpoint is too slow: another model will not change that
 
     # Every attempt, not just the last: a key that only fits the first endpoint fails with 401 on the others,
     # which used to hide what really went wrong on the endpoint that matters.
