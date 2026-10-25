@@ -132,8 +132,8 @@ def test_ask_kimi_trims_to_count_and_tags_world(srv, fake_llm):
 def test_ask_kimi_drops_near_duplicates_of_past_prompts(srv, fake_llm, monkeypatch):
     st = srv.load_state()
     st["prompts"]["old.jpg"] = shots(8)[0]["prompt"]
-    out = srv.ask_kimi_for_prompts(st, "k", "kimi-k3", count=8, world="Editorial Print")
-    assert shots(8)[0]["prompt"] not in [o["prompt"] for o in out]
+    out = srv.ask_kimi_for_prompts(st, "k", "kimi-k3", count=7, world="Editorial Print")      # 7 fresh ones exist: the copy is left out
+    assert shots(8)[0]["prompt"] not in [o["prompt"] for o in out] and len(out) == 7
 
 
 def test_ask_kimi_direction_with_named_world_is_injected(srv, fake_llm):
@@ -308,3 +308,21 @@ def test_apply_critic_swallows_llm_errors(srv, monkeypatch, make_plate):
 def test_call_kimi_llm_requires_key(srv):
     with pytest.raises(RuntimeError, match="NEEDS_KIMI_KEY"):
         srv.call_kimi_llm("hi", api_key="  ")
+
+
+def test_the_batch_size_you_ask_for_is_respected_even_when_near_duplicates_are_dropped(srv, monkeypatch):
+    # 10 asked of Kimi, 4 of them near-copies of past prompts: the 8 requested must still come back
+    st = srv.load_state()
+    batch = [{"title": f"T{i}", "subject": f"s{i}", "idea": "i", "guide": "dark", "prompt": f"{WORDS[i]} scene"} for i in range(10)]
+    for i in range(4):
+        st["prompts"][f"old{i}.jpg"] = batch[i]["prompt"]
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda *a, **k: json.dumps(batch))
+    out = srv.ask_kimi_for_prompts(st, "k", "kimi-k3", count=8, world="Editorial Print")
+    assert len(out) == 8
+    assert {o["title"] for o in out} >= {f"T{i}" for i in range(4, 10)}                  # the fresh ones come first
+
+
+def test_fewer_ideas_than_asked_from_kimi_gives_what_there_is(srv, monkeypatch):
+    batch = [{"title": f"T{i}", "idea": "i", "guide": "dark", "prompt": f"{WORDS[i]} scene"} for i in range(3)]
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda *a, **k: json.dumps(batch))
+    assert len(srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=8, world="Editorial Print")) == 3

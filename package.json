@@ -7,7 +7,8 @@
     "web": "vite studio/web",
     "api": "python3 studio/dev.py",
     "build": "vite build studio/web",
-    "test": "node --test studio/tests/js/ui.test.cjs"
+    "test": "node --test studio/tests/js/ui.test.cjs",
+    "test:e2e": "node --test studio/tests/e2e/*.e2e.test.cjs"
   },
   "devDependencies": {
     "concurrently": "^9.0.0",

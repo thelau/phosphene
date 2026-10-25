@@ -586,3 +586,17 @@ test('selection forgets images that are no longer in the trash (restored)', asyn
   h.run('updateTrashBar()');
   assert.equal(h.run('trashSel.size'), 0);
 });
+
+test('beforeunload asks only while a job is running', async () => {
+  const h = load({ routes: baseRoutes() });
+  const handler = h.ctx.__listeners.beforeunload;
+  assert.equal(typeof handler, 'function');
+  const ev = () => { const e = { prevented: false, preventDefault() { this.prevented = true; }, returnValue: undefined }; return e; };
+  let e = ev(); handler(e); assert.equal(e.prevented, false);
+  for (const flag of ['generating', 'aiRunning', 'exporting', 'purging']) {
+    h.run(`${flag} = true`);
+    e = ev(); handler(e); assert.equal(e.prevented, true, flag);
+    h.run(`${flag} = false`);
+  }
+  assert.equal(h.run('isBusy()'), false);
+});

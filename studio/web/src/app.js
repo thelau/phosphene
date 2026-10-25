@@ -187,7 +187,7 @@
       applyLocks();
       renderSequences();
       document.getElementById('statusText').dataset.idle = '';
-      Object.assign(prog, { t0: Date.now(), stage: 'render', world: 'AI order', total: steps.length, titles: steps, slots: steps.map((_, i) => (i === 0 ? 'run' : 'wait')), summary: '', note: steps[0] || '' });
+      Object.assign(prog, { t0: Date.now(), stage: 'render', world: 'AI order', total: steps.length, titles: steps, why: [], slots: steps.map((_, i) => (i === 0 ? 'run' : 'wait')), summary: '', note: steps[0] || '' });
       clearInterval(prog.timer); prog.timer = setInterval(progRender, 1000); progRender();
       try {
         for (;;) {
@@ -311,6 +311,7 @@
       const btns = ['trashDelSel', 'trashEmpty', 'trashSelAll'].map(id => document.getElementById(id));
       btns.forEach(b => { b.disabled = true; });
       const count = payload.all ? plates.filter(p => p.trashed).length : payload.filenames.length;
+      purging = true;
       showBusy(`Deleting ${count} image${count === 1 ? '' : 's'}…`);
       try {
         const res = await (await fetch('/api/purge', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
@@ -321,6 +322,7 @@
       } catch (e) {
         setStatus(`Delete failed: ${e.message}`);
       } finally {
+        purging = false;
         hideBusy();
         btns.forEach(b => { b.disabled = false; });
         updateTrashBar();
@@ -644,7 +646,7 @@
       const el = document.getElementById('statusText');
       const done = prog.slots.filter(x => x === 'ok' || x === 'trash' || x === 'err').length;
       const running = prog.slots.filter(x => x === 'run').length;
-      const dots = prog.slots.map((st, i) => `<i class="slot ${st}" title="${escapeHtml(prog.titles[i] || '')}"></i>`).join('');
+      const dots = prog.slots.map((st, i) => `<i class="slot ${st}" title="${escapeHtml((prog.titles[i] || '') + (prog.why && prog.why[i] ? ' — ' + prog.why[i] : ''))}"></i>`).join('');
       const bar = prog.stage === 'invent' ? '<span class="slots indeterminate"><i></i></span>' : `<span class="slots">${dots}</span>`;
       const count = prog.stage === 'invent' ? '' : `<b>${done}/${prog.total}</b>`;
       el.innerHTML = `<div class="prog">
@@ -654,7 +656,7 @@
       </div>`;
     }
     function progStart(count) {
-      prog.t0 = Date.now(); prog.slots = []; prog.titles = []; prog.world = ''; prog.stage = 'invent';
+      prog.t0 = Date.now(); prog.slots = []; prog.titles = []; prog.why = []; prog.world = ''; prog.stage = 'invent';
       prog.total = count; prog.summary = ''; prog.note = `Choosing a territory and writing ${count} scenes…`;
       document.getElementById('statusText').dataset.idle = '';
       clearInterval(prog.timer); prog.timer = setInterval(progRender, 1000); progRender();
@@ -676,6 +678,11 @@
       updateTrashBar();
     }
     function setGenerating(on) { generating = on; applyLocks(); }
+    let exporting = false;
+    let purging = false;
+    const isBusy = () => generating || aiRunning || exporting || purging;
+    // a manual or automatic reload in the middle of a batch would lose the images still waiting to be generated
+    window.addEventListener('beforeunload', e => { if (isBusy()) { e.preventDefault(); e.returnValue = ''; } });
     function blockedByAi(e) {
       if (!aiRunning) return false;
       if (e && e.stopPropagation) e.stopPropagation();
@@ -723,12 +730,14 @@
         let added = 0;
         let trashedByQa = 0;
         let lastRejectReason = '';
+        const reasons = [];
         let authFailed = false;
         prog.stage = 'render';
         prog.total = ideas.length;
         prog.world = (ideas[0] && ideas[0].world) || '';
         prog.slots = ideas.map(() => 'wait');
         prog.titles = ideas.map(i => i.title);
+        prog.why = ideas.map(() => '');
         prog.note = `${formatModelShort(model)} · 3 at a time`;
         progRender();
 
@@ -746,8 +755,8 @@
             })
           });
           const genData = await genRes.json();
-          if (genData.needs_auth) { authFailed = true; prog.slots[idx] = 'err'; lastRejectReason = 'Krea login needed'; return; }
-          if (!genData.ok) { prog.slots[idx] = 'err'; lastRejectReason = genData.error || 'Generation failed'; return; }
+          if (genData.needs_auth) { authFailed = true; prog.slots[idx] = 'err'; lastRejectReason = 'Krea login needed'; prog.why[idx] = lastRejectReason; reasons.push(lastRejectReason); return; }
+          if (!genData.ok) { prog.slots[idx] = 'err'; lastRejectReason = genData.error || 'Generation failed'; prog.why[idx] = lastRejectReason; reasons.push(lastRejectReason); return; }
           if (genData.qa_passed) {
             added++;
             prog.slots[idx] = 'ok';
@@ -766,14 +775,17 @@
         await Promise.all([0, 1, 2].map(async () => {
           while (queue.length) {
             const [item, idx] = queue.shift();
-            try { await runOne(item, idx); } catch (e) { prog.slots[idx] = 'err'; lastRejectReason = e.message; }
+            try { await runOne(item, idx); } catch (e) { prog.slots[idx] = 'err'; lastRejectReason = e.message; prog.why[idx] = e.message; reasons.push(e.message); }
           }
         }));
         loadWorlds();
         const failed = prog.slots.filter(x => x === 'err').length;
         const parts = [`${added} added`];
         if (trashedByQa) parts.push(`${trashedByQa} in Trash (${lastRejectReason})`);
-        if (failed) parts.push(`${failed} failed (${lastRejectReason})`);
+        if (failed) {
+          const distinct = [...new Set(reasons.map(r => String(r).slice(0, 90)))].slice(0, 2);
+          parts.push(`${failed} failed (${distinct.join(' · ') || lastRejectReason}) — hover the red bars for each reason`);
+        }
         progStop(`Done — ${parts.join(', ')}`);
       } catch (e) {
         progStop(`Error: ${e.message}`);
@@ -813,6 +825,7 @@
       if (blockedByAi()) return;
       const btn = document.getElementById('exportBtn');
       btn.disabled = true;
+      exporting = true;
       btn.textContent = 'Rendering...';
       try {
         const res = await fetch('/api/export-video', {
@@ -840,6 +853,7 @@
       } catch (e) {
         setStatus(`Export failed: ${e.message}`);
       } finally {
+        exporting = false;
         btn.disabled = false;
         btn.textContent = 'Export MP4';
       }
@@ -875,8 +889,11 @@
         try {
           const v = await (await fetch('/api/version', { cache: 'no-store' })).json();
           const sig = v.boot + ':' + v.html;
-          if (seen && sig !== seen) location.reload();
-          seen = sig;
+          if (seen && sig !== seen) {
+            if (isBusy()) setStatus('The server restarted. Your running job continues; the page will reload when it ends.');
+            else location.reload();
+          }
+          if (seen === null || !isBusy()) seen = sig;   // while busy keep the old signature so the reload still happens afterwards
         } catch (e) {}  // server restarting: try again next tick
       }, 1500);
     })();

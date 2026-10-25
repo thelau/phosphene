@@ -7,9 +7,11 @@ Dev runner: restarts server.py when any studio/*.py changes, and when it dies (k
 
 import os
 import signal
+import json
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -22,6 +24,32 @@ def snapshot() -> dict:
 
 def start() -> subprocess.Popen:
     return subprocess.Popen([sys.executable, str(HERE / "server.py")], cwd=str(HERE))
+
+
+def server_busy() -> bool:
+    """True while a generation, AI order or export is running on the server (restarting now would lose it and its Krea credits)."""
+    port = os.environ.get("PORT", "8765")
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/busy", timeout=2) as r:
+            return bool(json.loads(r.read()).get("busy"))
+    except Exception:
+        return False
+
+
+def wait_until_idle(max_wait: float = 900.0, poll: float = 1.5) -> None:
+    """Hold a restart until the server has been idle for two checks in a row (or max_wait passed)."""
+    t0, said = time.time(), False
+    idle = 0
+    while idle < 2 and time.time() - t0 < max_wait:
+        if server_busy():
+            idle = 0
+            if not said:
+                print("[dev] files changed, but a generation / AI order is running: restarting when it finishes", flush=True)
+                said = True
+        else:
+            idle += 1
+        if idle < 2:
+            time.sleep(poll)
 
 
 def respawn_now(uptime: float) -> bool:
@@ -54,6 +82,9 @@ def main() -> None:
                         break
                     now = again
                 changed = [p.name for p in now if now[p] != seen.get(p)]
+                if proc.poll() is None:
+                    wait_until_idle()
+                    now = snapshot()
                 print(f"[dev] {', '.join(changed)} changed -> restarting", flush=True)
                 if proc.poll() is None:
                     proc.send_signal(signal.SIGINT)

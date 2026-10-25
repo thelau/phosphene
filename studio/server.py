@@ -395,16 +395,20 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     ideas = parse_llm_json(out, "[")
 
     past = list(prompts.values())
-    kept = []
+    kept, dropped = [], []
     for idea in ideas:
         p = idea.get("prompt", "")
         nov = taste.novelty(p, past)
         if nov < 0.45:
             print(f"[DIVERSITY] dropped near-duplicate '{idea.get('title')}' (novelty={nov:.2f})", flush=True)
+            dropped.append((nov, idea))
             continue
         past.append(p)
         kept.append(idea)
-    kept = kept[:count] or ideas[:count]
+    if len(kept) < count:  # the batch size you asked for is respected: top up with the least-similar of the dropped ones
+        dropped.sort(key=lambda x: -x[0])
+        kept += [idea for _, idea in dropped[: count - len(kept)]]
+    kept = kept[:count]
 
     flat = [{"title": i.get("title", "Untitled"), "guide": i.get("guide", "dark"), "prompt": i["prompt"], "idea": i.get("idea", ""), "world": w["name"], "subject": str(i.get("subject", "")).strip()} for i in kept]
 
@@ -450,6 +454,43 @@ def build_ai_order(st: dict, call_llm, api_key: str, model: str, length: int | N
     progress(3, "writing the summary")
     titles = st.get("titles", {})
     return {"result": result, "summary": note + editor.summarize(titles, result, brief.get("summary"))}
+
+
+_INFLIGHT = {"n": 0}
+_INFLIGHT_LOCK = threading.Lock()
+
+
+class inflight:
+    """Marks 'a long job is running' so the dev runner and the page know not to restart / reload underneath it."""
+    def __enter__(self):
+        with _INFLIGHT_LOCK:
+            _INFLIGHT["n"] += 1
+
+    def __exit__(self, *a):
+        with _INFLIGHT_LOCK:
+            _INFLIGHT["n"] -= 1
+
+
+def busy() -> bool:
+    return _INFLIGHT["n"] > 0 or ai_busy()
+
+
+def generate_with_retry(attempts: int = 3, pause=(3.0, 8.0), sleep=None, log=print, **kw) -> bytes:
+    """One Krea image, retried on transient errors (rate limits, timeouts, empty replies). Never retries a missing login."""
+    last = None
+    for i in range(attempts):
+        try:
+            return generate_plate_via_krea_mcp(**kw)
+        except Exception as e:
+            last = e
+            text = str(e)
+            if "not connected" in text.lower() or "401" in text or "403" in text:
+                break
+            if i < attempts - 1:
+                wait = pause[min(i, len(pause) - 1)]
+                log(f"[GENERATE] attempt {i + 1}/{attempts} failed ({kw.get('model')}): {text[:200]} - retrying in {wait:.0f}s", flush=True)
+                (sleep or time.sleep)(wait)
+    raise last
 
 
 def ai_busy() -> bool:
@@ -617,6 +658,10 @@ class StudioHandler(SimpleHTTPRequestHandler):
             except OSError:
                 html_mtime = 0
             self.send_json({"boot": BOOT_ID, "html": html_mtime})
+            return
+
+        if parsed.path == "/api/busy":
+            self.send_json({"ok": True, "busy": busy()})
             return
 
         if parsed.path == "/api/order-ai-status":
@@ -795,8 +840,10 @@ class StudioHandler(SimpleHTTPRequestHandler):
             after_filename = body.get("after_filename")
 
             full_prompt = build_full_prompt(raw_prompt)
+            t_start = time.time()
             try:
-                img_bytes = generate_plate_via_krea_mcp(prompt=full_prompt, guide_type=guide_type, model=model)
+                with inflight():
+                    img_bytes = generate_with_retry(prompt=full_prompt, guide_type=guide_type, model=model)
                 im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
 
                 with STATE_LOCK:
@@ -848,6 +895,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "qa_issues": qa.get("issues", []),
                 })
             except Exception as e:
+                print(f"[GENERATE] FAILED '{title}' ({model}, guide={guide_type}) after {time.time() - t_start:.0f}s: {str(e)[:300]}", flush=True)
                 self.send_json({"ok": False, "error": str(e)}, 500)
             return
 

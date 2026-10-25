@@ -105,6 +105,7 @@ def test_dev_restarts_once_for_several_quick_saves(monkeypatch):
     started = []
     monkeypatch.setattr(dev, "start", lambda: started.append(1) or P())
     monkeypatch.setattr(dev, "snapshot", snapshot)
+    monkeypatch.setattr(dev, "server_busy", lambda: False)
     ticks = []
 
     def fake_sleep(s):
@@ -208,3 +209,61 @@ def test_exports_have_no_audio_options_left(srv):
     import inspect
     src = inspect.getsource(srv)
     assert "atempo" not in src and "MUSIC_BPM" not in src and '"-an"' in src
+
+
+# ---------- never restart under a running job ----------
+
+def test_dev_waits_for_a_running_job_before_restarting(monkeypatch, capsys):
+    states = iter([True, True, True, False, False])                  # busy for three checks, then idle twice
+    monkeypatch.setattr(dev, "server_busy", lambda: next(states))
+    slept = []
+    monkeypatch.setattr(dev.time, "sleep", slept.append)
+    dev.wait_until_idle(max_wait=60, poll=0.5)
+    assert len(slept) == 4                                           # it kept waiting until two idle checks in a row
+    assert capsys.readouterr().out.count("restarting when it finishes") == 1       # and said so once
+
+
+def test_dev_does_not_wait_forever(monkeypatch):
+    monkeypatch.setattr(dev, "server_busy", lambda: True)
+    clock = [0.0]
+    monkeypatch.setattr(dev.time, "time", lambda: clock[0])
+    monkeypatch.setattr(dev.time, "sleep", lambda s: clock.__setitem__(0, clock[0] + 100))
+    dev.wait_until_idle(max_wait=250, poll=1)
+    assert clock[0] >= 250
+
+
+def test_dev_treats_an_unreachable_server_as_idle(monkeypatch):
+    monkeypatch.setenv("PORT", "1")                                  # nothing listens there
+    assert dev.server_busy() is False
+
+
+def test_dev_defers_the_restart_while_busy(monkeypatch):
+    from pathlib import Path as P_
+    snaps = iter([{}, {P_("a.py"): 1}, {P_("a.py"): 1}, {P_("a.py"): 1}])
+    last = {}
+
+    def snapshot():
+        nonlocal last
+        last = next(snaps, last)
+        return last
+
+    class Proc:
+        returncode = None
+        def poll(self): return None
+        def send_signal(self, s): pass
+        def wait(self, t): pass
+        def kill(self): pass
+
+    events = []
+    monkeypatch.setattr(dev, "start", lambda: events.append("start") or Proc())
+    monkeypatch.setattr(dev, "snapshot", snapshot)
+    monkeypatch.setattr(dev, "wait_until_idle", lambda *a, **k: events.append("waited"))
+    ticks = []
+
+    def fake_sleep(s):
+        ticks.append(1)
+        if len(ticks) > 8:
+            raise KeyboardInterrupt
+    monkeypatch.setattr(dev.time, "sleep", fake_sleep)
+    dev.main()
+    assert events == ["start", "waited", "start"]                    # it waited for idle before the second start

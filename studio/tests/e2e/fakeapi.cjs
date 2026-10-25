@@ -13,6 +13,9 @@ function makeState() {
     sequences: [{ id: 's1', name: 'Manual', kind: 'manual', order: plates.map(p => p.filename), summary: null }],
     active: 's1',
     delays: { purge: 0, generate: 0, invent: 0, export: 0, ai: 600 },
+    boot: 'fake',
+    failGen: null,
+    genAttempts: 0,
     jobs: [],
     aiFail: null,
     calls: [],
@@ -68,7 +71,7 @@ function start(state = makeState()) {
       }
       case '/api/worlds':
         return send({ ok: true, worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', n: 7, kept: 3, wildcard: false }, { name: 'Matter & Elements', brief: 'Fluids and fire.', n: 10, kept: 2, wildcard: false }] });
-      case '/api/version': return send({ boot: 'fake', html: 0 });
+      case '/api/version': return send({ boot: state.boot || 'fake', html: 0 });
       case '/api/stats': return send({ ok: true, models: {} });
       case '/api/save-settings': case '/api/krea-auth': return send({ ok: true });
       case '/api/reorder': {
@@ -126,6 +129,8 @@ function start(state = makeState()) {
       }
       case '/api/generate-image': {
         await sleep(state.delays.generate);
+        state.genAttempts = (state.genAttempts || 0) + 1;
+        if (state.failGen && state.failGen(state.genAttempts, body)) return send({ ok: false, error: `Krea 429: too many requests (${body.title})` }, 500);
         const name = `g${++state.genCount}`;
         for (const q of state.sequences) q.order.push(name);
         state.plates.push({ filename: name, url: `/assets/ai-plates/${name}.svg`, title: body.title, prompt: body.prompt, model: body.model, trashed: false, qa_passed: true, qa_score: 90, qa_issues: [], world: body.world });

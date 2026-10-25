@@ -51,6 +51,7 @@ function load({ routes = {}, storage = {} } = {}) {
     clearTimeout: () => {},
     requestAnimationFrame: fn => fn(),
     performance: { now: () => Date.now() },
+    addEventListener(ev, fn) { (ctx.__listeners ||= {})[ev] = fn; },
     CSS: { escape: s => s },
     Promise, JSON, Math, Date, parseInt, parseFloat, Number, String, Array, Object, Set, Map, Error,
     fetch: async (url, opts = {}) => {
