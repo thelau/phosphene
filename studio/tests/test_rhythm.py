@@ -6,11 +6,11 @@ import rhythm
 # Shared with tests/js/ui.test.cjs: the page's timeline must give the same answers.
 RHYTHM_VECTORS = [
     # n_cuts, rhythm, paired, starts[min(7, n)], total
-    (10, "land", False, 7.0, 15.213763),
-    (10, "burst", False, 5.37037, 12.41358),
-    (10, "burst", True, 5.5, 15.0),
-    (20, "land", True, 7.0, 30.427526),
-    (1, "burst", False, 4.5, 4.5),
+    (10, "land", False, 7.974487, 25.772028),
+    (10, "long", False, 11.282615, 40.009128),
+    (10, "long", True, 12.165979, 49.940753),
+    (20, "land", True, 7.002568, 51.544056),
+    (1, "long", False, 16.8, 16.8),
     (6, "flat", False, 6.0, 6.0),
 ]
 
@@ -27,29 +27,36 @@ def test_flat_is_exactly_the_old_uniform_cuts():
     assert rhythm.cut_starts(5, "nonsense") == [0, 1, 2, 3, 4, 5]
 
 
-@pytest.mark.parametrize("r", ["land", "burst"])
+@pytest.mark.parametrize("r", ["land", "long"])
 def test_curves_end_on_the_longest_hold_and_never_go_backwards(r):
     s = rhythm.cut_starts(60, r)
     d = [b - a for a, b in zip(s, s[1:])]
-    assert all(x > 0 for x in d) and d[-1] == max(d) and d[-1] > 2 * d[0]
+    assert all(y >= x - 1e-9 for x, y in zip(d, d[1:])) and d[-1] == max(d) and d[-1] > 6 * d[0]   # slows down and keeps slowing, like Ecwora / Soiltone
 
 
-def test_burst_is_faster_than_the_opening_and_land_is_not():
-    b = rhythm.cut_starts(100, "burst")
+def test_land_stays_steady_for_a_quarter_then_slows_and_long_starts_earlier():
     land = rhythm.cut_starts(100, "land")
-    assert min(y - x for x, y in zip(b, b[1:])) == pytest.approx(0.5)
-    assert min(y - x for x, y in zip(land, land[1:])) == pytest.approx(1.0)
+    long_ = rhythm.cut_starts(100, "long")
+    dl = [b - a for a, b in zip(land, land[1:])]
+    dg = [b - a for a, b in zip(long_, long_[1:])]
+    assert all(x == 1.0 for x in dl[:30]) and dl[60] > 1.2 and dl[-2] > 6          # the reference: the last cuts are 7-11x the first
+    assert dg[30] > dl[30] and dg[-2] > dl[-2]                                     # long slows earlier and further
+    assert sum(1 for x in dl if x == 1.0) >= 30
+
+
+def test_the_old_burst_name_is_just_flat_now():
+    assert rhythm.cut_starts(5, "burst") == [0, 1, 2, 3, 4, 5]
 
 
 def test_an_image_and_its_inverted_copy_share_one_length():
-    s = rhythm.cut_starts(40, "burst", paired=True)
+    s = rhythm.cut_starts(40, "land", paired=True)
     d = [b - a for a, b in zip(s, s[1:])]
     assert all(d[i] == pytest.approx(d[i + 1]) for i in range(0, 40, 2))
 
 
 def test_min_len_keeps_every_cut_at_least_one_frame():
-    s = rhythm.cut_starts(100, "burst", min_len=0.8)
-    assert min(b - a for a, b in zip(s, s[1:])) >= 0.8 - 1e-9
+    s = rhythm.cut_starts(100, "land", min_len=1.5)
+    assert min(b - a for a, b in zip(s, s[1:])) >= 1.5 - 1e-9
 
 
 def test_cut_at_finds_the_cut_and_wraps():

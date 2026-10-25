@@ -470,3 +470,30 @@ def test_export_ignores_an_unknown_rhythm(live, srv):
     _three_plates(live)
     status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "rhythm": "sideways"})
     assert status == 200 and res["rhythm"] == "flat"
+
+
+def test_music_options_are_clamped_and_unknown_styles_fall_back(srv):
+    o = srv.music_options({"style": "nonsense", "pulse": 9, "low": -3, "bright": "x", "width": 0.25, "seed": "12"})
+    assert o == {"style": "soil", "pulse": 1.0, "low": 0.0, "bright": 0.3, "width": 0.25, "seed": 12}
+    assert srv.music_options({"style": "bass"})["style"] == "bass"
+
+
+def test_music_endpoint_uses_the_style_and_the_seed(live):
+    _three_plates(live)
+    a = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "style": "soil", "seed": 1})[1]
+    b = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "style": "soil", "seed": 1})[1]
+    c = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "style": "soil", "seed": 2})[1]
+    d = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "style": "swell", "seed": 1})[1]
+    assert a == b and a != c and a != d
+
+
+def test_music_says_how_to_fix_it_when_numpy_is_missing(live, monkeypatch):
+    import sys
+    _three_plates(live)
+    monkeypatch.setitem(sys.modules, "synth", None)          # makes `import synth` fail like a machine without numpy
+    status, res = live("POST", "/api/music", {"bpm": 120, "multiple": 2})
+    assert status == 500 and "pip3 install numpy" in res["error"]
+    status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2})   # the picture alone still exports
+    assert status == 200
+    status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth"})
+    assert status == 500 and "pip3 install numpy" in res["error"]

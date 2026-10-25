@@ -362,8 +362,8 @@ const ZOOM_VECTORS = [
 ];
 
 const RHYTHM_VECTORS = [   // same as tests/test_rhythm.py: nCuts, rhythm, paired, starts[min(7, n)], total
-  [10, 'land', false, 7.0, 15.213763], [10, 'burst', false, 5.37037, 12.41358], [10, 'burst', true, 5.5, 15.0],
-  [20, 'land', true, 7.0, 30.427526], [1, 'burst', false, 4.5, 4.5], [6, 'flat', false, 6.0, 6.0],
+  [10, 'land', false, 7.974487, 25.772028], [10, 'long', false, 11.282615, 40.009128], [10, 'long', true, 12.165979, 49.940753],
+  [20, 'land', true, 7.002568, 51.544056], [1, 'long', false, 16.8, 16.8], [6, 'flat', false, 6.0, 6.0],
 ];
 
 test('cutStarts matches the server timeline vectors', () => {
@@ -648,12 +648,13 @@ test('with music off, Play never asks for music or creates audio', async () => {
 
 test('with music on, Play renders the track for the current settings, then plays it from the top', async () => {
   const h = await playerWith();
-  h.$('musicSelect').value = 'synth'; h.$('rhythmSelect').value = 'burst'; h.$('invertSelect').value = 'colour';
+  h.$('musicSelect').value = 'synth'; h.$('rhythmSelect').value = 'long'; h.$('invertSelect').value = 'colour';
+  h.$('styleSelect').value = 'bass'; h.$('pulseRange').value = '40'; h.$('lowRange').value = '80'; h.$('brightRange').value = '20'; h.$('widthRange').value = '90'; h.$('seedVal').value = '42';
   h.run('togglePlay()');
   assert.equal(h.$('playBtn').textContent, '♪ Rendering…');
   await settle(); await settle();
   const call = h.calls.find(c => c.url === '/api/music');
-  assert.deepEqual(call.body, { bpm: 120, multiple: 2, invert_mode: 'colour', rhythm: 'burst' });
+  assert.deepEqual(call.body, { bpm: 120, multiple: 2, invert_mode: 'colour', rhythm: 'long', style: 'bass', pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, seed: 42 });
   assert.equal(h.ctx.__audios.length, 1);
   const a = h.ctx.__audios[0];
   assert.equal(a.paused, false); assert.equal(a.loop, true); assert.equal(a.currentTime, 0);
@@ -722,8 +723,55 @@ test('export sends the rhythm and the music choice', async () => {
 
 test('rhythm and music choices are remembered', () => {
   const h = load({ routes: baseRoutes() });
-  h.$('rhythmSelect').value = 'burst'; h.$('musicSelect').value = 'synth';
+  h.$('rhythmSelect').value = 'long'; h.$('musicSelect').value = 'synth';
   h.run('updateTempo()');
   const saved = JSON.parse(h.store.studioSettings);
-  assert.deepEqual([saved.rhythmSelect, saved.musicSelect], ['burst', 'synth']);
+  assert.deepEqual([saved.rhythmSelect, saved.musicSelect], ['long', 'synth']);
+});
+
+
+test('the Video and Music tabs show one pane at a time and remember which', () => {
+  const h = load({ routes: baseRoutes() });
+  h.run("showFxTab('music')");
+  assert.equal(h.$('paneVideo').hidden, true); assert.equal(h.$('paneMusic').hidden, false);
+  assert.ok(h.$('tabMusic').classList.contains('on') && !h.$('tabVideo').classList.contains('on'));
+  assert.equal(JSON.parse(h.store.studioSettings).fxTabVal, 'music');
+  h.run("showFxTab('video')");
+  assert.equal(h.$('paneVideo').hidden, false); assert.equal(h.$('paneMusic').hidden, true);
+});
+
+test('music settings: sliders show their value, lock when music is off, and a new variation changes the seed', () => {
+  const h = load({ routes: baseRoutes() });
+  h.$('musicSelect').value = 'off'; h.$('pulseRange').value = '35';
+  h.run('updateMusic()');
+  assert.equal(h.$('pulseVal').textContent, '35');
+  assert.equal(h.$('pulseRange').disabled, true); assert.equal(h.$('styleSelect').disabled, true); assert.equal(h.$('seedBtn').disabled, true);
+  h.$('musicSelect').value = 'synth'; h.$('styleSelect').value = 'swell';
+  h.run('updateMusic()');
+  assert.equal(h.$('pulseRange').disabled, false);
+  assert.match(h.$('styleHint').textContent, /Helione/);
+  h.$('seedVal').value = '7';
+  h.run('newVariation()');
+  assert.notEqual(h.$('seedVal').value, '7');
+  assert.equal(h.$('seedNum').textContent, h.$('seedVal').value);
+  const saved = JSON.parse(h.store.studioSettings);
+  assert.deepEqual([saved.styleSelect, saved.pulseRange, saved.seedVal], ['swell', '35', h.$('seedVal').value]);
+});
+
+test('the rhythm graph draws the cut lengths of the whole sequence and says how long it runs', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: 40 }, (_, i) => mkPlate('p' + i)) };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.run('framesPerCut = 3');
+  h.$('rhythmSelect').value = 'flat';
+  h.run('drawRhythm()');
+  const flat = h.$('rhythmLine').points.split(' ').map(p => parseFloat(p.split(',')[1]));
+  assert.ok(Math.max(...flat) - Math.min(...flat) < 0.01);                       // flat = a straight line
+  assert.match(h.$('rhythmInfo').textContent, /^40 images · 4 s · cuts 100 ms$/);
+  h.$('rhythmSelect').value = 'land';
+  h.run('drawRhythm()');
+  const land = h.$('rhythmLine').points.split(' ').map(p => parseFloat(p.split(',')[1]));
+  assert.ok(land[0] > land[land.length - 1] + 20);                               // the line falls as the holds grow (taller = longer)
+  assert.match(h.$('rhythmInfo').textContent, /^40 images · \d+ s · cuts 100 ms → \d/);
 });

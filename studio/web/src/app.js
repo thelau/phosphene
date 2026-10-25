@@ -102,6 +102,7 @@
       const trashedCount = plates.filter(p => p.trashed).length;
       document.getElementById('trashCount').textContent = trashedCount;
       document.getElementById('selCount').textContent = plates.length - trashedCount;
+      if (typeof drawRhythm === 'function') drawRhythm();
       refreshIdle();
       document.getElementById('tabSelection').className = showTrash ? '' : 'on';
       document.getElementById('tabTrash').className = showTrash ? 'on' : '';
@@ -473,21 +474,21 @@
       return { cut, p, plate: (paired ? Math.floor(cut / 2) : cut) % nPlates, inverted: paired && cut % 2 === 1 };
     }
     // ---- the cut timeline (mirrored in studio/rhythm.py): where each cut starts, in base cuts ----
+    const CURVES = { land: [0.30, 8.0, 2.2], long: [0.10, 12.0, 1.7] };   // slowing starts at, grows to, shape
     function rhythmFactor(rhythm, u) {
-      const sm = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
-      if (rhythm === 'land') return 1 + 2 * sm((u - 0.7) / 0.3);
-      if (rhythm === 'burst') return u < 0.75 ? 1 - 0.5 * sm((u - 0.30) / 0.10) : 0.5 + 2.5 * sm((u - 0.75) / 0.25);
+      const c = CURVES[rhythm];
+      if (c && u > c[0]) return Math.pow(c[1], Math.pow((u - c[0]) / (1 - c[0]), c[2]));
       return 1;
     }
     function cutStarts(nCuts, rhythm, paired, minLen = 0) {
       const out = [0];
-      if (rhythm !== 'land' && rhythm !== 'burst') { for (let i = 1; i <= nCuts; i++) out.push(i); return out; }
+      if (!CURVES[rhythm]) { for (let i = 1; i <= nCuts; i++) out.push(i); return out; }
       const nImg = Math.max(1, paired ? Math.floor(nCuts / 2) : nCuts);
       let t = 0;
       for (let i = 0; i < nCuts; i++) {
         const img = paired ? Math.floor(i / 2) : i;
         let f = rhythmFactor(rhythm, nImg > 1 ? img / (nImg - 1) : 1);
-        if (img === nImg - 1) f *= 1.5;
+        if (img === nImg - 1) f *= 1.4;
         t += Math.max(minLen, f);
         out.push(t);
       }
@@ -517,12 +518,74 @@
     let musicAudio = null, musicKey = '', musicPending = false, musicTimer = null;
     function musicOn() { return document.getElementById('musicSelect').value === 'synth'; }
     function musicParams() {
+      const unit = id => (parseInt(document.getElementById(id).value, 10) || 0) / 100;
       return {
         bpm: parseInt(document.getElementById('bpmSlider').value, 10),
         multiple: parseFloat(document.getElementById('multSelect').value),
         invert_mode: document.getElementById('invertSelect').value,
-        rhythm: document.getElementById('rhythmSelect').value
+        rhythm: document.getElementById('rhythmSelect').value,
+        style: document.getElementById('styleSelect').value || 'soil',
+        pulse: unit('pulseRange'), low: unit('lowRange'), bright: unit('brightRange'), width: unit('widthRange'),
+        seed: parseInt(document.getElementById('seedVal').value, 10) || 7
       };
+    }
+    const STYLE_HINTS = {
+      soil: 'A wide, dark drone around 54 Hz with a tonal mid cluster, as in Soiltone and Ecwora (they share this track). The bed breathes with every cut.',
+      swell: 'A pure mono 43 Hz sub with a bass swell every ~1.7 s and two bright bursts, as in Helione.',
+      bass: 'A pulsing mono bass line that changes note on every cut, as in Moverunion.'
+    };
+    function updateMusic() {
+      const on = musicOn();
+      for (const k of ['pulse', 'low', 'bright', 'width']) {
+        const el = document.getElementById(`${k}Range`);
+        document.getElementById(`${k}Val`).textContent = el.value;
+        el.disabled = !on;
+      }
+      document.getElementById('styleSelect').disabled = !on;
+      document.getElementById('seedBtn').disabled = !on;
+      document.getElementById('styleHint').textContent = STYLE_HINTS[document.getElementById('styleSelect').value] || '';
+      document.getElementById('seedNum').textContent = document.getElementById('seedVal').value;
+      saveSettings();
+      musicChanged();
+    }
+    function newVariation() {
+      document.getElementById('seedVal').value = String(1 + Math.floor(Math.random() * 99999));
+      updateMusic();
+    }
+    function showFxTab(which) {
+      const music = which === 'music';
+      document.getElementById('paneVideo').hidden = music;
+      document.getElementById('paneMusic').hidden = !music;
+      document.getElementById('tabVideo').classList.toggle('on', !music);
+      document.getElementById('tabMusic').classList.toggle('on', music);
+      document.getElementById('fxTabVal').value = music ? 'music' : 'video';
+      saveSettings();
+    }
+    // the cut-length curve of the whole sequence (taller = a longer hold) and how long the result runs
+    function drawRhythm() {
+      const n = activePlates().length;
+      const line = document.getElementById('rhythmLine');
+      const info = document.getElementById('rhythmInfo');
+      if (!n) { line.setAttribute('points', ''); info.textContent = ''; return; }
+      const starts = timelineFor(n);
+      const cuts = starts.length - 1;
+      const lens = starts.slice(1).map((s, i) => s - starts[i]);
+      const top = Math.max(...lens);
+      const pts = [];
+      const step = Math.max(1, Math.floor(cuts / 200));
+      for (let i = 0; i < cuts; i += step) pts.push(`${((i / cuts) * 200).toFixed(1)},${(34 - (lens[i] / top) * 32).toFixed(1)}`);
+      pts.push(`200,${(34 - (lens[cuts - 1] / top) * 32).toFixed(1)}`);
+      line.setAttribute('points', pts.join(' '));
+      const sec = c => (c * framesPerCut) / 30;
+      const total = sec(starts[cuts]);
+      const f = v => (v < 1 ? `${Math.round(v * 1000)} ms` : `${v.toFixed(1)} s`);
+      info.textContent = `${n} images · ${total >= 60 ? `${Math.floor(total / 60)}:${String(Math.round(total % 60)).padStart(2, '0')}` : `${total.toFixed(0)} s`} · cuts ${f(sec(lens[0]))}${top > lens[0] * 1.05 ? ` → ${f(sec(top))}` : ''}`;
+    }
+    function moveRhythmHead(starts) {
+      const total = starts[starts.length - 1];
+      const x = total > 0 ? ((((cutPos % total) + total) % total) / total) * 200 : 0;
+      const h = document.getElementById('rhythmHead');
+      h.setAttribute('x1', x.toFixed(1)); h.setAttribute('x2', x.toFixed(1));
     }
     function stopMusic() {
       if (musicAudio) { try { musicAudio.pause(); } catch (e) {} }
@@ -595,6 +658,8 @@
       document.getElementById('zoomAmtVal').textContent = `${parseFloat(document.getElementById('zoomAmt').value).toFixed(1)}%`;
       document.getElementById('zoomAmt').disabled = document.getElementById('zoomSelect').value === 'off';
       if (!isPlaying) clearFx();
+      drawRhythm();
+      musicChanged();   // invert changes the cuts, so the track must follow
     }
 
     let cutPos = 0;
@@ -615,7 +680,9 @@
         if (musicAudio && !musicAudio.paused && musicOn()) cutPos = (musicAudio.currentTime * 1000) / cutMs;   // the track is the clock
         else cutPos += dt / cutMs;
         const fx = fxSettings();
-        const plan = planAt(cutPos, active.length, fx.invert, timelineFor(active.length));
+        const tl = timelineFor(active.length);
+        const plan = planAt(cutPos, active.length, fx.invert, tl);
+        moveRhythmHead(tl);
         currentIdx = plan.plate;
         const url = active[plan.plate].url;
         if (stageImg.getAttribute('src') !== url) stageImg.src = url;
@@ -638,7 +705,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['bpmSlider', 'multSelect', 'rhythmSelect', 'musicSelect', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['bpmSlider', 'multSelect', 'rhythmSelect', 'musicSelect', 'styleSelect', 'pulseRange', 'lowRange', 'brightRange', 'widthRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -666,6 +733,7 @@
       document.getElementById('bpmVal').textContent = `${bpm} BPM`;
       document.getElementById('speedVal').textContent = `${framesPerCut.toFixed(1)}f`;
       restartLoop();
+      drawRhythm();
       musicChanged();
     }
 
@@ -936,6 +1004,7 @@
             invert_mode: document.getElementById('invertSelect').value,
             rhythm: document.getElementById('rhythmSelect').value,
             music: document.getElementById('musicSelect').value,
+            ...musicParams(),
             zoom_mode: document.getElementById('zoomSelect').value,
             zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0
           })
@@ -963,6 +1032,8 @@
     restoreSettings();
     updateFx();
     updateTempo();
+    updateMusic();
+    showFxTab(document.getElementById('fxTabVal').value);
     ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'].forEach(id => document.getElementById(id).addEventListener('change', saveSettings));
     document.getElementById('worldSelect').addEventListener('change', () => { document.getElementById('directionInput').value = ''; saveSettings(); updateDirectionHint(); });
     loadWorlds();
@@ -1029,6 +1100,9 @@ Object.assign(window, {
   setTrash,
   setTrashView,
   togglePlay,
+  updateMusic,
+  newVariation,
+  showFxTab,
   togglePromptOverlay,
   toggleReticle,
   toggleSettings,

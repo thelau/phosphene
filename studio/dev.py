@@ -61,6 +61,10 @@ def main() -> None:
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))  # npm / concurrently stop us with SIGTERM
     proc, seen = start(), snapshot()
     started, waiting_for_edit = time.time(), False
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        print("[dev] numpy is missing: everything works except the synthesized music. Install it with: pip3 install numpy", flush=True)
     print("[dev] watching studio/*.py (Ctrl-C to stop)", flush=True)
     try:
         while True:

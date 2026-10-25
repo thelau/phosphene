@@ -32,7 +32,6 @@ import editor
 import gen_log
 import features
 import rhythm
-import synth
 import sequences
 import diversity
 import taste
@@ -631,13 +630,32 @@ def purge_plates(st: dict, requested) -> tuple[int, int]:
     return deleted, freed
 
 
-def music_wav(n_images: int, bpm: float, multiple: float, invert_mode: str, rhythm_mode: str) -> tuple[bytes, float]:
+def music_options(body: dict) -> dict:
+    """The music settings from a request, each clamped to what synth.render accepts."""
+    def unit(key, default):
+        try:
+            return min(1.0, max(0.0, float(body.get(key, default))))
+        except (TypeError, ValueError):
+            return default
+    try:
+        seed = int(body.get("seed", 7)) % 100000
+    except (TypeError, ValueError):
+        seed = 7
+    style = body.get("style") if body.get("style") in ("soil", "swell", "bass") else "soil"
+    return {"style": style, "pulse": unit("pulse", 0.5), "low": unit("low", 0.7), "bright": unit("bright", 0.3), "width": unit("width", 0.6), "seed": seed}
+
+
+def music_wav(n_images: int, bpm: float, multiple: float, invert_mode: str, rhythm_mode: str, opts: dict | None = None) -> tuple[bytes, float]:
     """The synthesized track for one pass over n_images, cut for cut like the picture. Returns (wav bytes, seconds)."""
+    try:
+        import synth                                    # needs numpy: the rest of the studio runs without it
+    except ImportError as e:
+        raise RuntimeError("The music needs numpy. Run: pip3 install numpy") from e
     fps = 30
     fpc = max(1.0, fps * 60.0 / (bpm * multiple))
     starts = cutplan.timeline(n_images, fpc, invert_mode, rhythm_mode)
     secs = [x * fpc / fps for x in starts]
-    return synth.render(secs, paired=invert_mode in ("mono", "colour")), secs[-1]
+    return synth.render(secs, paired=invert_mode in ("mono", "colour"), **(opts or music_options({}))), secs[-1]
 
 
 def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "off", zoom_mode: str = "off", rhythm_mode: str = "flat", music: bool = False) -> str:
@@ -1080,7 +1098,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             invert_mode = body.get("invert_mode") if body.get("invert_mode") in cutplan.INVERT_MODES else "off"
             rhythm_mode = body.get("rhythm") if body.get("rhythm") in rhythm.RHYTHMS else "flat"
             try:
-                wav, secs = music_wav(n_images, float(body.get("bpm", 136.0)), float(body.get("multiple", 1.0)), invert_mode, rhythm_mode)
+                wav, secs = music_wav(n_images, float(body.get("bpm", 136.0)), float(body.get("multiple", 1.0)), invert_mode, rhythm_mode, music_options(body))
             except Exception as e:
                 print(f"[MUSIC] FAILED: {str(e)[:300]}", flush=True)
                 self.send_json({"ok": False, "error": f"Music failed: {str(e)[:200]}"}, 500)
@@ -1121,7 +1139,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     # cut length follows the tempo, multiple, rhythm and effects chosen in the player; music only when asked for
                     cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp_dir / "f_%04d.jpg")]
                     if with_music:
-                        wav, _ = music_wav(len(active_files), bpm, multiple, invert_mode, rhythm_mode)
+                        wav, _ = music_wav(len(active_files), bpm, multiple, invert_mode, rhythm_mode, music_options(body))
                         (tmp_dir / "music.wav").write_bytes(wav)
                         cmd += ["-i", str(tmp_dir / "music.wav"), "-c:a", "aac", "-b:a", "192k", "-shortest"]
                     else:

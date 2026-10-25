@@ -2,29 +2,28 @@
 Cut timeline: when each cut starts. Mirrored by `cutStarts` in studio/web/src/app.js (tests share vectors).
 
 Units are "base cuts": 1.0 is one hold at the tempo chosen in the player (BPM x multiple). Flat is exactly the old behaviour
-(every cut 1.0). The curves lengthen or shorten the cuts along the sequence, the way Ecwora and Soiltone do:
-  land  - steady, then the cuts ease out into a long final hold
-  burst - steady, a fast burst, then the cuts ease out into a long final hold
+(every cut 1.0). Measured on the reference clips (scene-change times):
+  - Helione (every cut 4 frames) and Moverunion (every cut 5 frames) are perfectly flat.
+  - Ecwora and Soiltone hold their first cut length for about a quarter of the cuts, then slow down smoothly and keep
+    slowing: the last cuts are 7-11x longer than the first (Ecwora 0.10s -> 0.70s, Soiltone 0.07s -> 0.77s), and the clip ends on the longest.
+So the curves are slowing curves: steady, then a growing hold:
+  land - steady for 30% of the images, then the cuts grow to 8x (Ecwora / Soiltone)
+  long - starts slowing at 10% and grows to 12x: a long, gradual ritardando
 With invert on, an image and its inverted copy always share one length.
 """
 
-RHYTHMS = ("flat", "land", "burst")
-LAST_HOLD = 1.5  # the final image is held this much longer than the curve says
-
-
-def _smooth(x: float) -> float:
-    x = min(1.0, max(0.0, x))
-    return x * x * (3 - 2 * x)
+RHYTHMS = ("flat", "land", "long")
+LAST_HOLD = 1.4  # the final image is held this much longer than the curve says (Soiltone: 0.56s -> 0.77s)
+# rhythm -> (position where the slowing starts, final growth factor, shape exponent)
+CURVES = {"land": (0.30, 8.0, 2.2), "long": (0.10, 12.0, 1.7)}
 
 
 def factor(rhythm: str, u: float) -> float:
     """Length of a cut (1.0 = base) at position u (0 = first image, 1 = last)."""
-    if rhythm == "land":
-        return 1 + 2 * _smooth((u - 0.7) / 0.3)
-    if rhythm == "burst":
-        if u < 0.75:
-            return 1 - 0.5 * _smooth((u - 0.30) / 0.10)
-        return 0.5 + 2.5 * _smooth((u - 0.75) / 0.25)
+    if rhythm in CURVES:
+        u0, top, power = CURVES[rhythm]
+        if u > u0:
+            return top ** (((u - u0) / (1 - u0)) ** power)
     return 1.0
 
 

@@ -99,6 +99,7 @@
 
   <div class="workspace">
     <div class="preview-col">
+      <div class="panel-title">Preview sequence</div>
       <div class="stage">
         <img id="stageImg" alt="" />
         <div class="reticle" id="reticle">
@@ -109,65 +110,117 @@
       <div class="controls">
         <div class="control-line">
           <button onclick="togglePlay()" id="playBtn" style="flex:1">▶ Play</button>
-          <button onclick="toggleReticle()">🎯 Guide</button>
+          <button onclick="toggleReticle()" id="targetBtn" title="Show where the logo must sit: dead-center, 18% of the width">🎯 Target</button>
         </div>
-        <div class="control-line">
-          <span>Tempo</span>
-          <input type="range" id="bpmSlider" min="60" max="220" value="136" oninput="updateTempo()" />
-          <span id="bpmVal">136 BPM</span>
+
+        <div class="seg fx-tabs" role="tablist">
+          <button id="tabVideo" class="on" onclick="showFxTab('video')">Video</button>
+          <button id="tabMusic" onclick="showFxTab('music')">Music</button>
         </div>
-        <div class="control-line">
-          <span>Multiple</span>
-          <select id="multSelect" onchange="updateTempo()" style="flex:1">
-            <option value="0.25">×¼ (1 cut / 4 beats)</option>
-            <option value="0.5">×½ (1 cut / 2 beats)</option>
-            <option value="1">×1 (1 cut / beat)</option>
-            <option value="1.3333333">×1⅓ (1 cut / ¾ beat)</option>
-            <option value="2">×2 (2 cuts / beat)</option>
-            <option value="3">×3 (triplets, 3 cuts / beat)</option>
-            <option value="4" selected>×4 (4 cuts / beat)</option>
-            <option value="6">×6 (6 cuts / beat)</option>
-            <option value="8">×8 (8 cuts / beat)</option>
-            <option value="9">×9 (9 cuts / beat)</option>
-          </select>
-          <span id="speedVal">~4f</span>
+        <input type="hidden" id="fxTabVal" value="video" />
+        <input type="hidden" id="seedVal" value="7" />
+
+        <div class="tabpane" id="paneVideo">
+          <div class="control-line">
+            <span>Tempo</span>
+            <input type="range" id="bpmSlider" min="60" max="220" value="136" oninput="updateTempo()" />
+            <span id="bpmVal">136 BPM</span>
+          </div>
+          <div class="control-line">
+            <span>Multiple</span>
+            <select id="multSelect" onchange="updateTempo()" style="flex:1">
+              <option value="0.25">×¼ (1 cut / 4 beats)</option>
+              <option value="0.5">×½ (1 cut / 2 beats)</option>
+              <option value="1">×1 (1 cut / beat)</option>
+              <option value="1.3333333">×1⅓ (1 cut / ¾ beat)</option>
+              <option value="2">×2 (2 cuts / beat)</option>
+              <option value="3">×3 (triplets, 3 cuts / beat)</option>
+              <option value="4" selected>×4 (4 cuts / beat)</option>
+              <option value="6">×6 (6 cuts / beat)</option>
+              <option value="8">×8 (8 cuts / beat)</option>
+              <option value="9">×9 (9 cuts / beat)</option>
+            </select>
+            <span id="speedVal">~4f</span>
+          </div>
+          <div class="control-line">
+            <span>Rhythm</span>
+            <select id="rhythmSelect" onchange="updateTempo()" style="flex:1" title="Measured on the reference clips: Helione and Moverunion are flat; Ecwora and Soiltone hold their cut length, then slow down and keep slowing until the last, longest hold.">
+              <option value="flat">Flat · Helione, Moverunion</option>
+              <option value="land">Slow landing · Ecwora, Soiltone</option>
+              <option value="long">Long landing · slows early</option>
+            </select>
+          </div>
+          <svg id="rhythmGraph" class="rhythm-graph" viewBox="0 0 200 36" preserveAspectRatio="none" aria-label="Cut length across the sequence">
+            <polyline id="rhythmLine" fill="none" points="" />
+            <line id="rhythmHead" x1="0" y1="0" x2="0" y2="36" />
+          </svg>
+          <div class="rhythm-info" id="rhythmInfo"></div>
+          <div class="control-line">
+            <span>Invert</span>
+            <select id="invertSelect" onchange="updateFx()" style="flex:1" title="Soiltone-style: every image is followed by an inverted copy of itself (same hold)">
+              <option value="off">Off</option>
+              <option value="mono">Image → inverted, grey</option>
+              <option value="colour">Image → inverted, colour</option>
+            </select>
+          </div>
+          <div class="control-line">
+            <span>Zoom</span>
+            <select id="zoomSelect" onchange="updateFx()" style="flex:1" title="Moverunion-style: a slow zoom inside every cut">
+              <option value="off">Off</option>
+              <option value="out">Slow zoom out</option>
+              <option value="in">Slow zoom in</option>
+            </select>
+          </div>
+          <div class="control-line">
+            <span>Amount</span>
+            <input type="range" id="zoomAmt" min="0.2" max="6" step="0.1" value="0.6" oninput="updateFx()" />
+            <span id="zoomAmtVal">0.6%</span>
+          </div>
         </div>
-        <div class="control-line">
-          <span>Rhythm</span>
-          <select id="rhythmSelect" onchange="updateTempo()" style="flex:1" title="Flat: every cut the same length. The curves change the cut length along the sequence and end on a long hold (Ecwora / Soiltone).">
-            <option value="flat">Flat (every cut the same)</option>
-            <option value="land">Slow landing</option>
-            <option value="burst">Burst, then landing</option>
-          </select>
+
+        <div class="tabpane" id="paneMusic" hidden>
+          <div class="control-line">
+            <span>Music</span>
+            <select id="musicSelect" onchange="updateMusic()" style="flex:1" title="A dark sub-bass bed synthesized for exactly these cuts. It is also added to the export.">
+              <option value="off">Off</option>
+              <option value="synth">On · synthesized</option>
+            </select>
+          </div>
+          <div class="control-line">
+            <span>Style</span>
+            <select id="styleSelect" onchange="updateMusic()" style="flex:1">
+              <option value="soil">Deep drone · Soiltone, Ecwora</option>
+              <option value="swell">Sub swells · Helione</option>
+              <option value="bass">Bass line · Moverunion</option>
+            </select>
+          </div>
+          <div class="music-hint" id="styleHint"></div>
+          <div class="control-line">
+            <span>Pulse</span>
+            <input type="range" id="pulseRange" min="0" max="100" value="50" oninput="updateMusic()" title="How much the music breathes with every cut. It slows down when the cuts slow down." />
+            <span id="pulseVal">50</span>
+          </div>
+          <div class="control-line">
+            <span>Low end</span>
+            <input type="range" id="lowRange" min="0" max="100" value="70" oninput="updateMusic()" title="How much sub-bass" />
+            <span id="lowVal">70</span>
+          </div>
+          <div class="control-line">
+            <span>Bright</span>
+            <input type="range" id="brightRange" min="0" max="100" value="30" oninput="updateMusic()" title="How far the tone opens up above the bass" />
+            <span id="brightVal">30</span>
+          </div>
+          <div class="control-line">
+            <span>Width</span>
+            <input type="range" id="widthRange" min="0" max="100" value="60" oninput="updateMusic()" title="Stereo spread and room" />
+            <span id="widthVal">60</span>
+          </div>
+          <div class="control-line">
+            <span>Variation</span>
+            <button id="seedBtn" onclick="newVariation()" style="flex:1" title="Same style, different notes and swell positions">🎲 New variation <span id="seedNum">7</span></button>
+          </div>
         </div>
-        <div class="control-line">
-          <span>Music</span>
-          <select id="musicSelect" onchange="updateTempo()" style="flex:1" title="A track synthesized for exactly these cuts: a hit on every cut, so any tempo, multiple or rhythm stays in sync. Also added to the export.">
-            <option value="off">Off</option>
-            <option value="synth">Synthesized, in sync</option>
-          </select>
-        </div>
-        <div class="control-line">
-          <span>Invert</span>
-          <select id="invertSelect" onchange="updateFx()" style="flex:1" title="Soiltone-style: every image is followed by an inverted copy of itself (same hold)">
-            <option value="off">Off</option>
-            <option value="mono">Image → inverted, grey</option>
-            <option value="colour">Image → inverted, colour</option>
-          </select>
-        </div>
-        <div class="control-line">
-          <span>Zoom</span>
-          <select id="zoomSelect" onchange="updateFx()" style="flex:1" title="Moverunion-style: a slow zoom inside every cut">
-            <option value="off">Off</option>
-            <option value="out">Slow zoom out</option>
-            <option value="in">Slow zoom in</option>
-          </select>
-        </div>
-        <div class="control-line">
-          <span>Amount</span>
-          <input type="range" id="zoomAmt" min="0.2" max="6" step="0.1" value="0.6" oninput="updateFx()" />
-          <span id="zoomAmtVal">0.6%</span>
-        </div>
+
         <button class="primary" onclick="exportVideo()" id="exportBtn" style="width:100%;margin-top:4px">Export MP4</button>
         <a id="downloadLink" class="dl" hidden download></a>
       </div>
