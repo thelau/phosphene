@@ -72,6 +72,15 @@
     return lo;
   }
 
+  // chords: the tonal cluster over the sub (ratios of the root) and the pad's partials; 0 is the measured Soiltone/Ecwora cluster
+  const CHORDS = [
+    { name: 'dark cluster', ratios: [4.0, 7.2, 9.2, 9.6], pad: [2, 3, 4] },
+    { name: 'open fifth', ratios: [4.0, 6.0, 8.0, 12.0], pad: [2, 3, 4] },
+    { name: 'minor', ratios: [4.0, 4.8, 6.0, 7.2], pad: [2, 3, 4] },
+    { name: 'suspended', ratios: [4.0, 4.5, 6.0, 9.0], pad: [2, 3, 5] }
+  ];
+  const rootHz = pitch => 38 * Math.pow(2, 0.9 * pitch);                // 38..71 Hz
+
   // Builds the drone into ctx and connects it to `dest` (stereo, before the final glue).
   // opts: offset (seconds into the clip where playing starts), t0 (context time of clip second 0), total (clip length, default starts end),
   // landing (the sub gives way on the last image), seed.
@@ -84,7 +93,10 @@
     const at = s => t0 + s;                                               // clip second -> context time
     const nCuts = starts.length - 1;
     const land = opts.landing === false ? Infinity : starts[Math.max(0, nCuts - (p.paired ? 2 : 1))];
-    const f0 = 51 + 6 * rand();
+    const f0 = Number.isFinite(+p.pitch) && p.pitch !== null && p.pitch !== undefined ? rootHz(clamp01(p.pitch)) : 51 + 6 * rand();
+    const chord = CHORDS[Math.max(0, Math.min(CHORDS.length - 1, Math.round(+p.chord || 0)))];
+    const echo = clamp01(p.echo === undefined ? 0 : p.echo);
+    const move = Math.pow(2, 2 * (clamp01(p.movement === undefined ? 0.5 : p.movement) - 0.5));   // 0.5 = as measured; 1 = twice as fast
     const nodes = [];                                                      // everything that must be stopped
     const keep = n => { nodes.push(n); return n; };
     const gain = (v, to) => { const g = ctx.createGain(); g.gain.value = v; if (to) g.connect(to); return g; };
@@ -139,13 +151,13 @@
     }
 
     // ---- shared sources for the mid body ----
-    const ratios = [4.0, 7.2, 9.2, 9.6], lfoGains = [0.2, 0.8, 1.0, 0.6];
+    const ratios = chord.ratios, lfoGains = [0.2, 0.8, 1.0, 0.6];
     const sides = [];
     const air = noiseLoop(ctx, rand, 4, (x, r) => { onePole(x, 1400, r, 2); const lowpassed = x.slice(); onePole(lowpassed, 250, r, 2); for (let i = 0; i < x.length; i++) x[i] -= lowpassed[i]; });
     keep(air);
-    const lfoRates = ratios.map(() => 0.15 + 0.55 * rand());
+    const lfoRates = ratios.map(() => (0.15 + 0.55 * rand()) * move);
     const driftPhase = TAU * rand();
-    const mixAt = t => Math.min(1, Math.max(0, 0.5 * (t / total) + 0.35 * (0.5 + 0.5 * Math.sin(TAU * 0.07 * t + driftPhase))));
+    const mixAt = t => Math.min(1, Math.max(0, 0.5 * (t / total) + 0.35 * (0.5 + 0.5 * Math.sin(TAU * 0.07 * move * t + driftPhase))));
     const spread = 0.003 + 0.006 * power;
     const breath = [];
 
@@ -154,7 +166,7 @@
       const body = gain(opts.noBody ? 0 : 0.6 * 0.25);                                        // 0.6 body scale, then 1/4 for the shaper
       // unison pad: dark and open copies, crossfaded over time
       const padBus = gain(1);
-      for (const [k, g] of [[2, 1.0], [3, 0.6], [4, 0.4]]) {
+      for (const [k, g] of [[chord.pad[0], 1.0], [chord.pad[1], 0.6], [chord.pad[2], 0.4]]) {
         for (const [v, vg] of [[-1, 0.6 * power], [0, 1.0], [1, 0.6 * power]]) {
           if (vg > 0.01) osc('sawtooth', f0 * k * det * (1 + v * spread), gain(g * vg, padBus));
         }
@@ -188,7 +200,7 @@
       const sum = gain(1);
       sat.connect(sum); subBus.connect(sum);
       const br = gain(1); sum.connect(br);
-      lfo(0.11, 0.07, br.gain);
+      lfo(0.11 * move, 0.07, br.gain);
       sides.push(br);
     }
 
@@ -200,6 +212,13 @@
       const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 140; hp.Q.value = 0.707;
       const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = roomBuffer(ctx, rand, seconds);
       br.connect(hp); hp.connect(conv); conv.connect(gain(wet, mix[i]));
+      if (echo > 0.01) {                                                   // a dark feedback echo, a different time each side
+        const avg = total / Math.max(1, nCuts);
+        const dl = ctx.createDelay(2); dl.delayTime.value = Math.min(0.75, Math.max(0.18, avg * 3)) * (i ? 1.33 : 1);
+        const fb = gain(0.3 + 0.3 * echo), dark = ctx.createBiquadFilter(); dark.type = 'lowpass'; dark.frequency.value = 900;
+        const hp2 = ctx.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = 140; hp2.Q.value = 0.707;
+        br.connect(hp2); hp2.connect(dl); dl.connect(dark); dark.connect(fb); fb.connect(dl); dark.connect(gain(0.7 * echo, mix[i]));
+      }
     });
     // stereo width: mid/side
     const w = 0.25 + 0.9 * width;
@@ -221,7 +240,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   async function level(p, starts) {
-    const key = JSON.stringify([p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired]);
+    const key = JSON.stringify([p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement]);
     if (levelCache.has(key)) return levelCache.get(key);
     const rate = 22050, secs = Math.min(4, starts[starts.length - 1]);
     const trimmed = starts.filter(s => s < secs); trimmed.push(secs);
@@ -332,5 +351,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, rootHz };
 })();

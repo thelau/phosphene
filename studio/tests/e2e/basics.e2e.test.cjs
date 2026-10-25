@@ -168,11 +168,11 @@ test('the player panel: preview, play / target, then Video and Music tabs with t
   assert.ok(!(await page.locator('#pulseRange').isVisible()), 'no synth settings while the music is off');
   await page.selectOption('#musicSelect', 'on');
   for (const id of ['#pulseRange', '#lowRange', '#powerRange', '#spaceRange']) assert.ok(await page.locator(id).isVisible(), id);
-  for (const id of ['#brightRange', '#widthRange', '#seedBtn']) assert.ok(await page.locator(id).isVisible(), `${id} is there at once`);
-  for (const id of ['#brightRange', '#widthRange', '#seedBtn']) assert.ok(await page.locator(id).isVisible(), id);
+  for (const id of ['#brightRange', '#widthRange', '#randomBtn']) assert.ok(await page.locator(id).isVisible(), `${id} is there at once`);
+  for (const id of ['#brightRange', '#widthRange', '#randomBtn']) assert.ok(await page.locator(id).isVisible(), id);
   assert.ok(!(await page.locator('#bpmSlider').isVisible()));
   const exp2 = await box('#exportBtn');
-  assert.ok(exp2.y > (await box('#seedBtn')).y, 'export stays below whichever tab is open');
+  assert.ok(exp2.y > (await box('#echoRange')).y, 'export stays below whichever tab is open');
   await shot('music-tab');
   await page.click('#tabVideo');
   assert.ok(await page.locator('#bpmSlider').isVisible());
@@ -183,7 +183,7 @@ test('synthesized music: the drone plays live in the page, settings swap it at o
   const ctx = await fresh();
   assert.match(await text('#rhythmInfo'), /^3 images · \d+ s · cuts \d+ ms$/);
   await page.click('#tabMusic');
-  assert.deepEqual(await page.locator('#musicSelect option').allTextContents(), ['Off · silent', 'Synthesized · follows the tempo', 'My track · drives the cuts']);
+  assert.deepEqual(await page.locator('#musicSelect option').allTextContents(), ['Off', 'Synthesized', 'My track']);
   await page.selectOption('#musicSelect', 'on');
   await page.fill('#pulseRange', '80');
   assert.ok(await page.locator('#musicState').isHidden(), 'no render, no loader');
@@ -243,6 +243,43 @@ test('the drone engine measures like the references: sub-bass bed, dark, level, 
   assert.ok(m.peak <= 0.97 + 1e-6);
   assert.ok(m.sideMid > 0.05 && m.sideMid < 1, `stereo ${m.sideMid}`);
   assert.equal(m.seconds, 7.5);
+  await ctx.close();
+});
+
+test('Random sound: every draw stays a dark, heavy, level drone and a new sound plays live', { skip }, async () => {
+  const ctx = await fresh();
+  await page.click('#tabMusic');
+  await page.selectOption('#musicSelect', 'on');
+  const before = await page.evaluate(() => JSON.stringify([...document.querySelectorAll('#synthBox input[type=range], #chordSelect')].map(e => e.value)));
+  await page.click('#randomBtn');
+  const after = await page.evaluate(() => JSON.stringify([...document.querySelectorAll('#synthBox input[type=range], #chordSelect')].map(e => e.value)));
+  assert.notEqual(before, after, 'the sliders moved');
+  const rows = await page.evaluate(async () => {
+    const out = [];
+    const starts = Array.from({ length: 21 }, (_, i) => i * 0.2);
+    for (let t = 0; t < 8; t++) {
+      randomMusic();                                                           // the page's own draw, rendered by the real engine
+      const u = id => parseInt(document.getElementById(id).value, 10) / 100;
+      const prm = { pulse: u('pulseRange'), low: u('lowRange'), bright: u('brightRange'), width: u('widthRange'), space: u('spaceRange'), power: u('powerRange'), pitch: u('pitchRange'), movement: u('movementRange'), echo: u('echoRange'), chord: parseInt(document.getElementById('chordSelect').value, 10), seed: parseInt(document.getElementById('seedVal').value, 10) };
+      const r = await window.Drone.renderExport(prm, starts);
+      const n = 1 << 16, re = new Float64Array(n), im = new Float64Array(n);
+      for (let i = 0; i < n; i++) re[i] = (r.left[i] + r.right[i]) / 2 * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)));
+      for (let i = 1, j = 0; i < n; i++) { let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) { [re[i], re[j]] = [re[j], re[i]]; } }
+      for (let len = 2; len <= n; len <<= 1) { const ang = (-2 * Math.PI) / len, wr = Math.cos(ang), wi = Math.sin(ang);
+        for (let i = 0; i < n; i += len) { let cr = 1, ci = 0; for (let k = 0; k < len / 2; k++) { const a = i + k, b = i + k + len / 2, tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr; re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti; const q = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = q; } } }
+      let tot = 0, low = 0, high = 0, pk = 0, pf = 0;
+      for (let k = 1; k < n / 2; k++) { const f = (k * 44100) / n, pw = re[k] ** 2 + im[k] ** 2; tot += pw; if (f < 80) low += pw; if (f > 2000) high += pw; if (pw > pk) { pk = pw; pf = f; } }
+      let s = 0, mx = 0; for (let i = 0; i < r.left.length; i++) { s += r.left[i] ** 2 + r.right[i] ** 2; mx = Math.max(mx, Math.abs(r.left[i]), Math.abs(r.right[i])); }
+      out.push({ dom: pf, low: low / tot, high: high / tot, rms: Math.sqrt(s / (2 * r.left.length)), peak: mx });
+    }
+    return out;
+  });
+  for (const m of rows) {
+    assert.ok(m.dom > 34 && m.dom < 76, `dominant ${m.dom}`);
+    assert.ok(m.low > 0.45, `energy below 80 Hz ${m.low}`);
+    assert.ok(m.high < 0.02, `above 2 kHz ${m.high}`);
+    assert.ok(Math.abs(m.rms - 0.17) < 0.01 && m.peak <= 0.97 + 1e-6, `level ${m.rms} peak ${m.peak}`);
+  }
   await ctx.close();
 });
 

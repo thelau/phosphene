@@ -636,12 +636,13 @@ test('with the drone on, Play starts it live from the top with the settings and 
   const h = await playerWith();
   h.$('musicSelect').value = 'on'; h.$('invertSelect').value = 'colour';
   h.$('pulseRange').value = '40'; h.$('lowRange').value = '80'; h.$('brightRange').value = '20'; h.$('widthRange').value = '90'; h.$('spaceRange').value = '75'; h.$('powerRange').value = '55'; h.$('seedVal').value = '42';
+  h.$('pitchRange').value = '50'; h.$('movementRange').value = '50'; h.$('echoRange').value = '0'; h.$('chordSelect').value = '0';
   h.run('framesPerCut = 3');                                                // 100 ms per cut
   h.run('togglePlay()');
   await settle(); await settle();
   assert.equal(h.calls.some(c => c.url === '/api/music'), false);           // nothing is rendered on the server
   const play = h.ctx.__drone.plays[0];
-  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, seed: 42, paired: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, movement: 0.5, echo: 0, seed: 42, paired: true });
   assert.equal(play.offset, 0);
   assert.equal(play.starts.length, 7);                                      // 3 images x 2 (colour pairs) + the end
   assert.ok(Math.abs(play.starts[6] - 0.6) < 1e-9 && Math.abs(play.starts[1] - 0.1) < 1e-9);
@@ -739,7 +740,7 @@ test('the Video and Music tabs show one pane at a time and remember which', () =
   assert.equal(h.$('paneVideo').hidden, false); assert.equal(h.$('paneMusic').hidden, true);
 });
 
-test('music settings: sliders show their value, only show for the synthesized music, and a new variation changes the seed', () => {
+test('music settings: sliders show their value, only show for the synthesized music', () => {
   const h = load({ routes: baseRoutes() });
   h.$('musicSelect').value = 'off'; h.$('pulseRange').value = '35';
   h.run('updateMusic()');
@@ -749,12 +750,8 @@ test('music settings: sliders show their value, only show for the synthesized mu
   h.run('updateMusic()');
   assert.equal(h.$('synthBox').hidden, false);
   assert.match(h.$('styleHint').textContent, /drone/);
-  h.$('seedVal').value = '7';
-  h.run('newVariation()');
-  assert.notEqual(h.$('seedVal').value, '7');
-  assert.equal(h.$('seedNum').textContent, h.$('seedVal').value);
   const saved = JSON.parse(h.store.studioSettings);
-  assert.deepEqual([saved.musicSelect, saved.pulseRange, saved.seedVal], ['on', '35', h.$('seedVal').value]);
+  assert.deepEqual([saved.musicSelect, saved.pulseRange], ['on', '35']);
 });
 
 test('the info line says how many images, how long, and how long the cuts are', async () => {
@@ -793,6 +790,33 @@ test('zoom amount only shows while a zoom is chosen', () => {
   assert.equal(h.$('zoomAmtRow').hidden, true);
   h.$('zoomSelect').value = 'in'; h.run('updateFx()');
   assert.equal(h.$('zoomAmtRow').hidden, false);
+});
+
+test('Random sound draws every setting inside its range, picks a chord, a new seed, and swaps the sound while playing', async () => {
+  const h = await playerWith();
+  h.$('musicSelect').value = 'on';
+  h.run('togglePlay()');
+  await settle(); await settle();
+  const ranges = h.run('RANDOM_RANGES');
+  const seen = new Set();
+  for (let i = 0; i < 30; i++) {
+    h.$('seedVal').value = '7';
+    const updates = h.ctx.__drone.updates.length;
+    h.run('randomMusic()');
+    for (const k of Object.keys(ranges)) {
+      const v = parseInt(h.$(`${k}Range`).value, 10);
+      assert.ok(v >= ranges[k][0] && v <= ranges[k][1], `${k} ${v} in ${ranges[k]}`);
+    }
+    const chord = parseInt(h.$('chordSelect').value, 10);
+    assert.ok(chord >= 0 && chord <= 3);
+    seen.add(chord);
+    assert.notEqual(h.$('seedVal').value, '7');
+    assert.equal(h.ctx.__drone.updates.length, updates + 1);               // the running sound follows at once
+    assert.equal(h.$('pitchVal').textContent, h.$('pitchRange').value);
+  }
+  assert.ok(seen.size > 1, 'the chord varies');
+  const saved = JSON.parse(h.store.studioSettings);
+  assert.equal(saved.chordSelect, h.$('chordSelect').value);
 });
 
 test('turning the music off stops the drone', async () => {

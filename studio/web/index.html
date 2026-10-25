@@ -170,14 +170,17 @@
           <div class="control-line">
             <span>Source</span>
             <select id="musicSelect" onchange="updateMusic()" style="flex:1" title="Synthesized: a dark drone for the tempo you set. My track: your own music sets the cuts and is the sound of the preview and the export.">
-              <option value="off">Off · silent</option>
-              <option value="on">Synthesized · follows the tempo</option>
-              <option value="track">My track · drives the cuts</option>
+              <option value="off">Off</option>
+              <option value="on">Synthesized</option>
+              <option value="track">My track</option>
             </select>
           </div>
           <div class="music-hint" id="styleHint"></div>
 
           <div class="tabpane" id="synthBox" hidden>
+            <div class="control-line">
+              <button id="randomBtn" onclick="randomMusic()" style="flex:1" title="Picks a new sound within what works: tuning, chord, movement, echo, room, weight">🎲 Random sound</button>
+            </div>
             <div class="control-line">
               <span>Pulse</span>
               <input type="range" id="pulseRange" min="0" max="100" value="50" oninput="updateMusic()" title="How much the music breathes with every cut" />
@@ -198,23 +201,40 @@
               <input type="range" id="spaceRange" min="0" max="100" value="60" oninput="updateMusic()" title="The size of the room: reverb length and amount" />
               <span id="spaceVal">60</span>
             </div>
-            <details class="more" id="moreMusic" open>
-              <summary>More</summary>
-              <div class="control-line">
-                <span>Bright</span>
-                <input type="range" id="brightRange" min="0" max="100" value="30" oninput="updateMusic()" title="How far the tone opens up above the bass" />
-                <span id="brightVal">30</span>
-              </div>
-              <div class="control-line">
-                <span>Width</span>
-                <input type="range" id="widthRange" min="0" max="100" value="60" oninput="updateMusic()" title="Stereo spread" />
-                <span id="widthVal">60</span>
-              </div>
-              <div class="control-line">
-                <span>Variation</span>
-                <button id="seedBtn" onclick="newVariation()" style="flex:1" title="Same sound, different pitch and movement">🎲 New variation <span id="seedNum">7</span></button>
-              </div>
-            </details>
+            <div class="control-line">
+              <span>Bright</span>
+              <input type="range" id="brightRange" min="0" max="100" value="30" oninput="updateMusic()" title="How far the tone opens up above the bass" />
+              <span id="brightVal">30</span>
+            </div>
+            <div class="control-line">
+              <span>Width</span>
+              <input type="range" id="widthRange" min="0" max="100" value="60" oninput="updateMusic()" title="Stereo spread" />
+              <span id="widthVal">60</span>
+            </div>
+            <div class="control-line">
+              <span>Pitch</span>
+              <input type="range" id="pitchRange" min="0" max="100" value="50" oninput="updateMusic()" title="The root of the drone, 38 to 71 Hz" />
+              <span id="pitchVal">50</span>
+            </div>
+            <div class="control-line">
+              <span>Chord</span>
+              <select id="chordSelect" onchange="updateMusic()" style="flex:1" title="The tonal layer above the sub">
+                <option value="0">Dark cluster</option>
+                <option value="1">Open fifth</option>
+                <option value="2">Minor</option>
+                <option value="3">Suspended</option>
+              </select>
+            </div>
+            <div class="control-line">
+              <span>Movement</span>
+              <input type="range" id="movementRange" min="0" max="100" value="50" oninput="updateMusic()" title="How fast the layers drift and breathe" />
+              <span id="movementVal">50</span>
+            </div>
+            <div class="control-line">
+              <span>Echo</span>
+              <input type="range" id="echoRange" min="0" max="100" value="0" oninput="updateMusic()" title="A dark echo, timed to the cuts" />
+              <span id="echoVal">0</span>
+            </div>
           </div>
 
           <div class="tabpane" id="trackBox" hidden>

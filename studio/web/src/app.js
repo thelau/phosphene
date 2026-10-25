@@ -524,6 +524,7 @@
       const paired = ['mono', 'colour'].includes(document.getElementById('invertSelect').value);
       return {
         pulse: unit('pulseRange'), low: unit('lowRange'), bright: unit('brightRange'), width: unit('widthRange'), space: unit('spaceRange'), power: unit('powerRange'),
+        pitch: unit('pitchRange'), chord: parseInt(document.getElementById('chordSelect').value, 10) || 0, movement: unit('movementRange'), echo: unit('echoRange'),
         seed: parseInt(document.getElementById('seedVal').value, 10) || 7, paired
       };
     }
@@ -539,10 +540,9 @@
       const mode = musicMode();
       document.getElementById('synthBox').hidden = mode !== 'on';
       document.getElementById('trackBox').hidden = mode !== 'track';
-      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'sens']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
+      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'sens']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
       document.getElementById('nudgeVal').textContent = `${document.getElementById('nudgeRange').value} ms`;
       document.getElementById('styleHint').textContent = mode === 'on' ? MUSIC_HINT : mode === 'track' ? '' : 'No music: the preview and the export stay silent.';
-      document.getElementById('seedNum').textContent = document.getElementById('seedVal').value;
       const hits = document.getElementById('cutOnSelect').value !== 'beats';   // hits and notes both use the sensitivity
       document.getElementById('sensRow').hidden = !hits;
       document.getElementById('trackName').textContent = track ? track.name : 'No track yet';
@@ -555,7 +555,13 @@
       saveSettings();
       musicChanged();
     }
-    function newVariation() {
+    // a random sound within what works: every setting is drawn from a range that stays a dark, heavy drone (the ranges are the taste)
+    const RANDOM_RANGES = { pulse: [30, 90], low: [65, 100], power: [30, 90], space: [5, 85], bright: [0, 55], width: [30, 100], pitch: [0, 100], movement: [15, 85], echo: [0, 55] };
+    function randomMusic() {
+      const pick = ([lo, hi]) => Math.round(lo + Math.random() * (hi - lo));
+      for (const [k, range] of Object.entries(RANDOM_RANGES)) document.getElementById(`${k}Range`).value = String(pick(range));
+      if (Math.random() < 0.4) document.getElementById('echoRange').value = '0';                  // often none: the echo is a flavour, not the rule
+      document.getElementById('chordSelect').value = String(Math.floor(Math.random() * 4));
       document.getElementById('seedVal').value = String(1 + Math.floor(Math.random() * 99999));
       updateMusic();
     }
@@ -791,7 +797,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['bpmSlider', 'multSelect', 'musicSelect', 'cutOnSelect', 'sensRange', 'nudgeRange', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['bpmSlider', 'multSelect', 'musicSelect', 'cutOnSelect', 'sensRange', 'nudgeRange', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -1198,7 +1204,7 @@ Object.assign(window, {
   chooseTrack,
   uploadTrack,
   clearTrack,
-  newVariation,
+  randomMusic,
   showFxTab,
   togglePromptOverlay,
   toggleReticle,
