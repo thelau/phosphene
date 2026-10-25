@@ -8,6 +8,7 @@ Demo 9:16 match-cut film project. Every shot places the circular orbital logo at
 - `studio/krea_mcp_client.py` — Krea image generation over MCP (`https://api.krea.ai/mcp`). OAuth token is read from `~/.local/share/opencode/mcp-auth.json`.
 - `studio/qa_engine.py` — logo QA on generated plates (needs `demo-info/design-system/logo-cream.png`). `demo-info/` also holds the design-system PDFs and the playbook: reference, not read by code.
 - `studio/chapters.py` (territories), `diversity.py` (random axes), `taste.py` (learning from kept/trashed), `critic.py` (optional AI scoring, off by default), `cutplan.py` (preview/export frame plan, invert, zoom), `sequences.py` (Manual/AI orders), `editor.py` + `features.py` (AI ordering), `bench.py` (scripted generation runs, optional).
+- `studio/gen_log.py` — the written record of what the server did (`studio/generation_log.jsonl`, gitignored, rotates at 5 MB): server starts, Kimi batches, every image (all retries, logo check, seconds), AI orders, exports, deletions. Read it with `npm run log` (or `python3 studio/gen_log.py --failures`), or `GET /api/log`. An `image_start` with no result followed by a `server_start` means a restart cut the image short.
 - `studio/curation_state.json` — approvals, trash, order, titles, prompts, per-plate model. Committed on purpose: it is the selection history.
 - `assets/ai-plates/` — generated plates (committed). `outputs/*.mp4` is gitignored.
 

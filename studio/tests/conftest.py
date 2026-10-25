@@ -8,6 +8,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import gen_log  # noqa: E402
 import server  # noqa: E402  (imports the real module, then every test redirects its paths to tmp)
 
 
@@ -19,6 +20,7 @@ def srv(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "CURATION_FILE", tmp_path / "curation_state.json")
     monkeypatch.setattr(server, "SECRETS_FILE", tmp_path / ".secrets.json")
     monkeypatch.setattr(server, "QA_CACHE_FILE", tmp_path / "qa_cache.json")
+    monkeypatch.setattr(gen_log, "LOG_FILE", tmp_path / "generation_log.jsonl")        # tests never write the real log
     monkeypatch.setattr(server, "QA_CACHE", {})
     monkeypatch.setattr(server, "PLATES_DIR", plates)
     for var in ("KIMI_API_KEY", "MOONSHOT_API_KEY"):

@@ -23,9 +23,12 @@ def live(srv, monkeypatch):
     monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", lambda **kw: calls["krea"].append(kw) or png.getvalue())
     monkeypatch.setattr(srv, "get_cached_qa", lambda p: {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2})
     monkeypatch.setattr(srv, "apply_critic", lambda f: None)
-    monkeypatch.setattr(srv.subprocess, "Popen", lambda *a, **k: None)
+    real_popen = srv.subprocess.Popen                                  # only the browser-login helper is faked, ffmpeg etc. stay real
+    monkeypatch.setattr(srv.subprocess, "Popen", lambda cmd, *a, **k: None if "opencode" in str(cmd) else real_popen(cmd, *a, **k))
     monkeypatch.setattr(srv, "TARGET_W", 54)
     monkeypatch.setattr(srv, "TARGET_H", 96)
+    monkeypatch.setattr(srv, "OUTPUTS_DIR", srv.PLATES_DIR.parent / "outputs")
+    (srv.PLATES_DIR.parent / "outputs").mkdir(exist_ok=True)
     monkeypatch.setattr(srv.features, "CACHE_FILE", srv.PLATES_DIR.parent / "feat.json")
     monkeypatch.setattr(srv.features, "_CACHE", {})
     shots = [{"title": f"Shot {i}", "subject": f"subject {i}", "idea": "an idea", "guide": "dark" if i % 2 == 0 else "light", "prompt": f"{w} scene"}
@@ -231,3 +234,117 @@ def test_busy_flag_follows_running_generation_and_ai_jobs(live, srv):
     srv.AI_JOBS["j"] = {"done": False}
     assert live("GET", "/api/busy")[1]["busy"] is True
     srv.AI_JOBS.clear()
+
+
+# ---------- the written record ----------
+
+import gen_log
+
+
+def test_a_generation_leaves_a_batch_record_and_an_image_record(live, srv, capsys):
+    live("POST", "/api/invent-prompts", {"count": 3, "world": "Fashion & Apparel", "direction": "wet"})
+    _, ideas = live("POST", "/api/invent-prompts", {"count": 3, "world": "Fashion & Apparel"})
+    status, res = live("POST", "/api/generate-image", {"title": ideas["ideas"][0]["title"], "prompt": "p", "guide": "light", "world": "Fashion & Apparel", "model": "google/nano-banana-2.1"})
+    assert res["ok"]
+    events = gen_log.read(None)
+    kinds = [e["event"] for e in events]
+    assert kinds == ["batch", "batch", "image_start", "image"]
+    batch = events[0]
+    assert batch["ok"] and batch["asked"] == 3 and batch["world"] == "Fashion & Apparel" and batch["direction"] == "wet" and batch["returned"] == 3
+    assert batch["titles"] == ["Shot 0", "Shot 1", "Shot 2"] and "seconds" in batch and batch["from_kimi"] == 6
+    start, done = events[2], events[3]
+    assert start["id"] == done["id"] and done["ok"] and done["filename"] == res["filename"] and done["model"] == "google/nano-banana-2.1"
+    assert done["attempts"] == [{"n": 1, "ok": True, "seconds": done["attempts"][0]["seconds"]}] and done["qa_passed"] is True and done["qa_score"] == 90
+    assert f"[GENERATE] OK {res['filename']}" in capsys.readouterr().out
+
+
+def test_a_failed_generation_is_written_down_with_every_attempt(live, srv, monkeypatch):
+    def broken(**kw):
+        raise RuntimeError("Krea 429: slow down")
+    monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", broken)
+    monkeypatch.setattr(srv.time, "sleep", lambda s: None)
+    status, res = live("POST", "/api/generate-image", {"title": "Lost One", "prompt": "p", "guide": "dark", "world": "W", "model": "google/nano-banana-2.1"})
+    assert status == 500
+    done = [e for e in gen_log.read(None) if e["event"] == "image"][0]
+    assert done["ok"] is False and "429" in done["error"] and done["title"] == "Lost One"
+    assert [a["n"] for a in done["attempts"]] == [1, 2, 3] and all(not a["ok"] for a in done["attempts"])
+    assert gen_log.summarize(gen_log.read(None))["failed"] == 1
+
+
+def test_a_retry_that_works_is_recorded_as_one_ok_image_with_two_attempts(live, srv, monkeypatch):
+    real, n = srv.generate_plate_via_krea_mcp, []
+
+    def flaky(**kw):
+        n.append(1)
+        if len(n) == 1:
+            raise RuntimeError("timeout")
+        return real(**kw)
+    monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", flaky)
+    monkeypatch.setattr(srv.time, "sleep", lambda s: None)
+    assert live("POST", "/api/generate-image", {"title": "Second Time", "prompt": "p", "model": "m"})[1]["ok"]
+    done = [e for e in gen_log.read(None) if e["event"] == "image"][0]
+    assert done["ok"] and [a["ok"] for a in done["attempts"]] == [False, True] and gen_log.summarize(gen_log.read(None))["retried"] == 1
+
+
+def test_a_logo_check_failure_is_recorded(live, srv, monkeypatch):
+    monkeypatch.setattr(srv, "get_cached_qa", lambda p: {"qa_passed": False, "qa_score": 12, "issues": ["Low center logo fidelity"], "center_corr": 0.1, "core_asymmetry": 0.0})
+    assert live("POST", "/api/generate-image", {"title": "Bad Logo", "prompt": "p", "model": "m"})[1]["trashed"] is True
+    done = [e for e in gen_log.read(None) if e["event"] == "image"][0]
+    assert done["ok"] and done["qa_passed"] is False and done["qa_issues"] == ["Low center logo fidelity"]
+    assert "LOGO CHECK FAILED" in gen_log.describe(done)
+
+
+def test_a_missing_krea_login_is_written_down(live, srv, monkeypatch):
+    monkeypatch.setattr(srv, "get_krea_oauth_token", lambda: {"connected": False})
+    assert live("POST", "/api/generate-image", {"title": "No Login", "prompt": "p"})[1]["needs_auth"] is True
+    done = gen_log.read(None)[-1]
+    assert done["event"] == "image" and done["ok"] is False and done["needs_auth"] is True
+
+
+def test_a_failed_batch_is_written_down(live, srv, monkeypatch):
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda *a, **k: "no json here")
+    status, res = live("POST", "/api/invent-prompts", {"count": 4, "world": "Editorial Print"})
+    assert status == 500
+    ev = gen_log.read(None)[-1]
+    assert ev["event"] == "batch" and ev["ok"] is False and ev["asked"] == 4 and ev["error"]
+
+
+def test_purge_ai_order_and_export_are_recorded_and_the_log_is_readable_over_http(live, srv):
+    for i in range(3):
+        live("POST", "/api/generate-image", {"title": f"T{i}", "prompt": "p", "model": "m"})
+    names = [p["filename"] for p in live("GET", "/api/state")[1]["plates"]]
+    live("POST", "/api/trash", {"filename": names[0], "trashed": True})
+    live("POST", "/api/purge", {"filenames": [names[0]]})
+    status, ex = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2})
+    assert status == 200 and ex["ok"] and ex["images"] == 2 and ex["filename"].endswith(".mp4") and (srv.OUTPUTS_DIR / ex["filename"]).exists()
+    kinds = [e["event"] for e in gen_log.read(None)]
+    assert kinds.count("image") == 3 and "purge" in kinds and "export" in kinds
+    status, data = live("GET", "/api/log?n=5")
+    assert status == 200 and data["ok"] and len(data["events"]) == 5 and len(data["lines"]) == 5
+    assert data["summary"]["images"] == 3 and data["summary"]["ok"] == 3
+    assert any("deleted 1 images" in l for l in data["lines"]) or any("export" in l for l in data["lines"])
+
+
+def test_a_failing_export_answers_with_a_json_error_and_a_log_line(live, srv, monkeypatch):
+    live("POST", "/api/generate-image", {"title": "One", "prompt": "p", "model": "m"})
+    monkeypatch.setattr(srv.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("ffmpeg exploded")))
+    status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 1})
+    assert status == 500 and res["ok"] is False and "ffmpeg exploded" in res["error"]
+    ev = gen_log.read(None)[-1]
+    assert ev["event"] == "export" and ev["ok"] is False and "ffmpeg" in ev["error"]
+    assert not srv.busy()                                   # the busy flag is released even when it failed
+
+
+def test_the_ai_order_is_recorded(live, srv, monkeypatch):
+    import time as _t
+    for i in range(4):
+        live("POST", "/api/generate-image", {"title": f"A{i}", "prompt": "p", "model": "m"})
+    monkeypatch.setattr(srv, "run_ai_order_job", live.real_job)
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda *a, **k: "sorry, no brief today")       # Kimi answers, but not with a usable brief
+    start = live("POST", "/api/order-ai", {"length": None, "direction": "start soft"})[1]
+    for _ in range(100):
+        if live("GET", f"/api/order-ai-status?job={start['job']}")[1].get("done"):
+            break
+        _t.sleep(0.1)
+    ev = [e for e in gen_log.read(None) if e["event"] == "ai_order"][0]
+    assert ev["ok"] and ev["images"] == 4 and ev["direction"] == "start soft" and ev["kimi_ok"] is False

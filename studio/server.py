@@ -17,6 +17,7 @@ import sys
 import threading
 import time
 import urllib.error
+import uuid
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -28,6 +29,7 @@ import chapters
 import critic
 import cutplan
 import editor
+import gen_log
 import features
 import sequences
 import diversity
@@ -332,7 +334,7 @@ def match_world(st: dict, api_key: str, kimi_model: str, direction: str) -> dict
     return None
 
 
-def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, world: str | None = None, direction: str = "") -> list[dict]:
+def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, world: str | None = None, direction: str = "", stats: dict | None = None) -> list[dict]:
     """One authored creative world per batch (shots cohere), idea-first, steered by taste, near-duplicates dropped."""
     titles = st.get("titles", {})
     prompts = st.get("prompts", {})
@@ -405,10 +407,13 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
             continue
         past.append(p)
         kept.append(idea)
+    fresh = len(kept)
     if len(kept) < count:  # the batch size you asked for is respected: top up with the least-similar of the dropped ones
         dropped.sort(key=lambda x: -x[0])
         kept += [idea for _, idea in dropped[: count - len(kept)]]
     kept = kept[:count]
+    if stats is not None:
+        stats.update(world=w["name"], asked_kimi=n_ask, from_kimi=len(ideas), dropped_duplicates=len(dropped), topped_up=max(0, len(kept) - fresh), returned=len(kept))
 
     flat = [{"title": i.get("title", "Untitled"), "guide": i.get("guide", "dark"), "prompt": i["prompt"], "idea": i.get("idea", ""), "world": w["name"], "subject": str(i.get("subject", "")).strip()} for i in kept]
 
@@ -442,18 +447,18 @@ def build_ai_order(st: dict, call_llm, api_key: str, model: str, length: int | N
     items = [{"name": p.name, "f": features.get(p), "world": world.get(p.name)} for p in files]
     features.save_cache()
     progress(1, "looking at the contact sheet")
-    note = ""
+    note, brief_ok = "", True
     try:
         sheet = editor.contact_sheet(files)
         brief = editor.brief_to_names(editor.ask_brief(call_llm, api_key, model, sheet, len(files), direction, length), [p.name for p in files])
     except Exception as e:                      # Kimi is optional here: the edit still works from the measurements alone
         print(f"[EDIT] brief failed, using measurements only: {e!r}", flush=True)
-        brief, note = {}, "Kimi was unavailable, so this edit uses measurements only. "
+        brief, note, brief_ok = {}, "Kimi was unavailable, so this edit uses measurements only. ", False
     progress(2, "choosing the order")
     result = editor.order_images(items, brief, length)
     progress(3, "writing the summary")
     titles = st.get("titles", {})
-    return {"result": result, "summary": note + editor.summarize(titles, result, brief.get("summary"))}
+    return {"result": result, "summary": note + editor.summarize(titles, result, brief.get("summary")), "brief_ok": brief_ok, "images": len(files)}
 
 
 _INFLIGHT = {"n": 0}
@@ -475,15 +480,21 @@ def busy() -> bool:
     return _INFLIGHT["n"] > 0 or ai_busy()
 
 
-def generate_with_retry(attempts: int = 3, pause=(3.0, 8.0), sleep=None, log=print, **kw) -> bytes:
+def generate_with_retry(attempts: int = 3, pause=(3.0, 8.0), sleep=None, log=print, trace: list | None = None, **kw) -> bytes:
     """One Krea image, retried on transient errors (rate limits, timeouts, empty replies). Never retries a missing login."""
     last = None
     for i in range(attempts):
+        t0 = time.time()
         try:
-            return generate_plate_via_krea_mcp(**kw)
+            data = generate_plate_via_krea_mcp(**kw)
+            if trace is not None:
+                trace.append({"n": i + 1, "ok": True, "seconds": round(time.time() - t0, 1)})
+            return data
         except Exception as e:
             last = e
             text = str(e)
+            if trace is not None:
+                trace.append({"n": i + 1, "ok": False, "seconds": round(time.time() - t0, 1), "error": text[:300]})
             if "not connected" in text.lower() or "401" in text or "403" in text:
                 break
             if i < attempts - 1:
@@ -512,6 +523,7 @@ def add_ai_sequence(st: dict, built: dict) -> dict:
 
 def run_ai_order_job(job_id: str, length, direction: str) -> None:
     job = AI_JOBS[job_id]
+    t_job = time.time()
     try:
         st = load_state()
         key, model = st.get("kimi_api_key", ""), st.get("kimi_model", "kimi-k3")
@@ -524,9 +536,11 @@ def run_ai_order_job(job_id: str, length, direction: str) -> None:
             seq = add_ai_sequence(fresh, built)
             save_state(fresh)
         job.update(done=True, step=len(AI_STEPS), stage="Done", sequence={"id": seq["id"], "name": seq["name"], "summary": seq["summary"]})
+        gen_log.record("ai_order", ok=True, images=built["images"], length=length, direction=direction, kimi_ok=built["brief_ok"], summary=seq["summary"], seconds=round(time.time() - t_job, 1))
     except Exception as e:
         print(f"[EDIT] failed: {e!r}", flush=True)
         job.update(done=True, error=str(e))
+        gen_log.record("ai_order", ok=False, length=length, direction=direction, error=str(e)[:300], seconds=round(time.time() - t_job, 1))
 
 
 def next_plate_number(st: dict) -> int:
@@ -658,6 +672,15 @@ class StudioHandler(SimpleHTTPRequestHandler):
             except OSError:
                 html_mtime = 0
             self.send_json({"boot": BOOT_ID, "html": html_mtime})
+            return
+
+        if parsed.path == "/api/log":
+            try:
+                n = max(1, min(500, int(parse_qs(parsed.query).get("n", ["50"])[0])))
+            except ValueError:
+                n = 50
+            events = gen_log.read(None)
+            self.send_json({"ok": True, "summary": gen_log.summarize(events), "events": events[-n:], "lines": [gen_log.describe(e) for e in events[-n:]]})
             return
 
         if parsed.path == "/api/busy":
@@ -803,6 +826,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
             if not kimi_key:
                 self.send_json({"ok": False, "needs_kimi_key": True, "error": "Enter your Kimi API key in ⚙️ Settings first"}, 400)
                 return
+            stats, t_batch = {}, time.time()
+            direction = (body.get("direction") or "").strip()[:300]
             try:
                 ideas = ask_kimi_for_prompts(
                     st,
@@ -810,16 +835,21 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     kimi_model=kimi_model,
                     count=int(body.get("count", 4)),
                     world=body.get("world") or None,
-                    direction=(body.get("direction") or "").strip()[:300],
+                    direction=direction,
+                    stats=stats,
                 )
                 for idea in ideas:
                     t = idea.get("title", "")
                     if t and t not in st["history"]:
                         st["history"].append(t)
                 save_state(st)
+                gen_log.record("batch", ok=True, asked=int(body.get("count", 4)), territory_choice=body.get("world") or "mix", direction=direction, kimi_model=kimi_model,
+                               seconds=round(time.time() - t_batch, 1), titles=[i.get("title") for i in ideas], **stats)
                 self.send_json({"ok": True, "ideas": ideas})
             except Exception as e:
                 print(f"[KIMI] invent-prompts failed: {e!r}", flush=True)
+                gen_log.record("batch", ok=False, asked=int(body.get("count", 4)), territory_choice=body.get("world") or "mix", direction=direction,
+                               seconds=round(time.time() - t_batch, 1), error=str(e)[:300])
                 self.send_json({"ok": False, "error": str(e)}, 500)
             return
 
@@ -827,6 +857,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             auth = get_krea_oauth_token()
             if not auth.get("connected") or auth.get("expired"):
                 subprocess.Popen(["/opt/homebrew/bin/opencode", "mcp", "auth", "krea"], cwd=str(ROOT_DIR))
+                gen_log.record("image", ok=False, title=body.get("title"), model=body.get("model"), seconds=0, error="Krea login needed", needs_auth=True)
                 self.send_json({"ok": False, "needs_auth": True, "error": "Approve Krea MCP OAuth in browser first"})
                 return
 
@@ -841,9 +872,12 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
             full_prompt = build_full_prompt(raw_prompt)
             t_start = time.time()
+            job_id = uuid.uuid4().hex[:8]
+            trace: list = []
+            gen_log.record("image_start", id=job_id, title=title, model=model, guide=guide_type, world=body.get("world"))
             try:
                 with inflight():
-                    img_bytes = generate_with_retry(prompt=full_prompt, guide_type=guide_type, model=model)
+                    img_bytes = generate_with_retry(prompt=full_prompt, guide_type=guide_type, model=model, trace=trace)
                 im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
 
                 with STATE_LOCK:
@@ -884,6 +918,10 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     sequences.append_everywhere(st, filename)
                     save_state(st)
                 threading.Thread(target=apply_critic, args=(filename,), daemon=True).start()
+                took = round(time.time() - t_start, 1)
+                gen_log.record("image", id=job_id, ok=True, title=title, filename=filename, model=model, guide=guide_type, world=body.get("world"), seconds=took,
+                               attempts=trace, qa_passed=qa["qa_passed"], qa_score=qa["qa_score"], qa_issues=qa.get("issues", []))
+                print(f"[GENERATE] OK {filename} ({model}) {took}s, attempt {len(trace)}/3" + ("" if qa["qa_passed"] else "  LOGO CHECK FAILED -> trash"), flush=True)
 
                 self.send_json({
                     "ok": True,
@@ -896,6 +934,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 })
             except Exception as e:
                 print(f"[GENERATE] FAILED '{title}' ({model}, guide={guide_type}) after {time.time() - t_start:.0f}s: {str(e)[:300]}", flush=True)
+                gen_log.record("image", id=job_id, ok=False, title=title, model=model, guide=guide_type, world=body.get("world"), seconds=round(time.time() - t_start, 1),
+                               attempts=trace, error=str(e)[:500])
                 self.send_json({"ok": False, "error": str(e)}, 500)
             return
 
@@ -909,6 +949,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     _flush_qa_cache()
                 except Exception:
                     pass
+            gen_log.record("purge", deleted=deleted, freed_mb=round(freed / 1e6, 1), all=bool(body.get("all")))
             self.send_json({"ok": True, "deleted": deleted, "freed_mb": round(freed / 1e6, 1)})
             return
 
@@ -944,28 +985,36 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "No active plates"}, 400)
                 return
 
-            fps = 30
-            frames_per_cut = max(1.0, fps * 60.0 / (bpm * multiple))
-            tmp_dir = ROOT_DIR / "outputs" / "_tmp_export_frames"
-            if tmp_dir.exists():
-                shutil.rmtree(tmp_dir)
-            tmp_dir.mkdir(parents=True, exist_ok=True)
+            t_export = time.time()
+            try:
+                with inflight():
+                    fps = 30
+                    frames_per_cut = max(1.0, fps * 60.0 / (bpm * multiple))
+                    tmp_dir = ROOT_DIR / "outputs" / "_tmp_export_frames"
+                    if tmp_dir.exists():
+                        shutil.rmtree(tmp_dir)
+                    tmp_dir.mkdir(parents=True, exist_ok=True)
 
-            invert_mode = body.get("invert_mode", "off") if body.get("invert_mode") in cutplan.INVERT_MODES else "off"
-            zoom_mode = body.get("zoom_mode", "off") if body.get("zoom_mode") in cutplan.ZOOM_MODES else "off"
-            zoom_amount = max(0.0, min(10.0, float(body.get("zoom_amount", 0.6))))
-            n_cuts, total_frames = cutplan.export_length(len(active_files), frames_per_cut, invert_mode)  # every selected image, once
-            write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount)
+                    invert_mode = body.get("invert_mode", "off") if body.get("invert_mode") in cutplan.INVERT_MODES else "off"
+                    zoom_mode = body.get("zoom_mode", "off") if body.get("zoom_mode") in cutplan.ZOOM_MODES else "off"
+                    zoom_amount = max(0.0, min(10.0, float(body.get("zoom_amount", 0.6))))
+                    n_cuts, total_frames = cutplan.export_length(len(active_files), frames_per_cut, invert_mode)  # every selected image, once
+                    write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount)
 
-            out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode)
-            # picture only: no music is attached; cut length follows the tempo, multiple and effects chosen in the player
-            cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp_dir / "f_%04d.jpg"),
-                   "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", str(out_mp4)]
-            subprocess.run(cmd, check=True, capture_output=True)
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            prune_exports(OUTPUTS_DIR, keep=12)
-            self.send_json({"ok": True, "video_url": f"/outputs/{out_mp4.name}", "filename": out_mp4.name, "frames_per_cut": round(frames_per_cut, 2),
-                            "images": len(active_files), "cuts": n_cuts, "seconds": round(total_frames / fps, 1)})
+                    out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode)
+                    # picture only: no music is attached; cut length follows the tempo, multiple and effects chosen in the player
+                    cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp_dir / "f_%04d.jpg"),
+                           "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", str(out_mp4)]
+                    subprocess.run(cmd, check=True, capture_output=True)
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                    prune_exports(OUTPUTS_DIR, keep=12)
+                    self.send_json({"ok": True, "video_url": f"/outputs/{out_mp4.name}", "filename": out_mp4.name, "frames_per_cut": round(frames_per_cut, 2),
+                                    "images": len(active_files), "cuts": n_cuts, "seconds": round(total_frames / fps, 1)})
+                gen_log.record("export", ok=True, filename=out_mp4.name, images=len(active_files), seconds=round(total_frames / fps, 1), took=round(time.time() - t_export, 1))
+            except Exception as e:
+                print(f"[EXPORT] FAILED: {str(e)[:300]}", flush=True)
+                gen_log.record("export", ok=False, images=len(active_files), error=str(e)[:300], took=round(time.time() - t_export, 1))
+                self.send_json({"ok": False, "error": f"Export failed: {str(e)[:200]}"}, 500)
             return
 
         self.send_json({"ok": False, "error": "Unknown endpoint"}, 404)
@@ -984,6 +1033,7 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8765"))
     server = QuietServer(("127.0.0.1", port), StudioHandler)
     print(f"Studio running at http://localhost:{port}")
+    gen_log.record("server_start", boot=BOOT_ID, port=port)
     try:
         server.serve_forever()
     except KeyboardInterrupt:  # Ctrl-C, or dev.py restarting us: exit quietly

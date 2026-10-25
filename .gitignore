@@ -12,3 +12,4 @@ studio/.bench_latest.log
 node_modules/
 studio/web/dist/
 .features_cache.json
+studio/generation_log.jsonl*
