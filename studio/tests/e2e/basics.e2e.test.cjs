@@ -179,26 +179,70 @@ test('the player panel: preview, play / target, then Video and Music tabs with t
   await ctx.close();
 });
 
-test('synthesized music: settings render in the background with a loader, Play is instant, settings and export carry the choices', { skip }, async () => {
+test('synthesized music: the drone plays live in the page, settings swap it at once, export renders it in the page and sends it', { skip }, async () => {
   const ctx = await fresh();
   assert.match(await text('#rhythmInfo'), /^3 images · \d+ s · cuts \d+ ms$/);
   await page.click('#tabMusic');
   assert.deepEqual(await page.locator('#musicSelect option').allTextContents(), ['Off · silent', 'Synthesized · follows the tempo', 'My track · drives the cuts']);
   await page.selectOption('#musicSelect', 'on');
   await page.fill('#pulseRange', '80');
-  for (let i = 0; i < 100 && !api.state.calls.some(c => c.path === '/api/music'); i++) await page.waitForTimeout(50);
-  await page.waitForFunction(() => document.getElementById('musicState').hidden, null, { timeout: 5000 });
-  const before = api.state.calls.filter(c => c.path === '/api/music').length;
+  assert.ok(await page.locator('#musicState').isHidden(), 'no render, no loader');
   await page.click('#playBtn');
   await page.waitForFunction(() => document.getElementById('playBtn').textContent.includes('Pause'));
-  assert.equal(api.state.calls.filter(c => c.path === '/api/music').length, before, 'already rendered: Play does not render again');
-  const call = api.state.calls.filter(c => c.path === '/api/music').pop();
-  assert.equal(call.body.music, 'synth'); assert.equal(call.body.pulse, 0.8); assert.equal(call.body.space, 0.6);
+  await page.waitForFunction(() => document.getElementById('stageImg').getAttribute('src'));
+  assert.equal(api.state.calls.filter(c => c.path === '/api/music').length, 0, 'the server renders nothing for the drone');
+  await page.fill('#lowRange', '30');                                        // swapped live while playing
+  await page.waitForTimeout(400);
+  assert.ok(await page.locator('#musicState').isHidden());
   await shot('music-synth');
   await page.click('#playBtn');
   await page.click('#exportBtn');
   await page.waitForSelector('#downloadLink:not([hidden])');
   assert.equal(api.state.calls.filter(c => c.path === '/api/export-video').pop().body.music, 'synth');
+  const wav = api.state.exportAudio;
+  assert.equal(wav.slice(0, 4).toString(), 'RIFF');
+  assert.equal(wav.readUInt16LE(22), 2); assert.equal(wav.readUInt32LE(24), 44100);   // stereo, 44.1 kHz
+  assert.ok(wav.length > 44100 * 4 * 0.2, `a clip-long sound: ${wav.length} bytes`);
+  await ctx.close();
+});
+
+test('the drone engine measures like the references: sub-bass bed, dark, level, wide', { skip }, async () => {
+  const ctx = await fresh();
+  const m = await page.evaluate(async () => {
+    const starts = Array.from({ length: 31 }, (_, i) => i * 0.25);
+    const r = await window.Drone.renderExport({ pulse: 0.65, low: 0.93, bright: 0.3, width: 0.6, space: 0.06, power: 0.6, seed: 7 }, starts);
+    const n = 1 << 18, mono = new Float32Array(n);                           // the first 5.9 s, summed to mono
+    for (let i = 0; i < n; i++) mono[i] = (r.left[i] + r.right[i]) / 2 * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)));
+    const re = Float64Array.from(mono), im = new Float64Array(n);            // iterative radix-2 FFT
+    for (let i = 1, j = 0; i < n; i++) { let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) { [re[i], re[j]] = [re[j], re[i]]; } }
+    for (let len = 2; len <= n; len <<= 1) {
+      const ang = (-2 * Math.PI) / len, wr = Math.cos(ang), wi = Math.sin(ang);
+      for (let i = 0; i < n; i += len) {
+        let cr = 1, ci = 0;
+        for (let k = 0; k < len / 2; k++) {
+          const a = i + k, b = i + k + len / 2, tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr;
+          re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+          const t = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = t;
+        }
+      }
+    }
+    let total = 0, low = 0, high = 0, peak = 0, peakF = 0;
+    for (let k = 1; k < n / 2; k++) {
+      const f = (k * 44100) / n, p = re[k] * re[k] + im[k] * im[k];
+      total += p; if (f < 80) low += p; if (f > 2000) high += p; if (p > peak) { peak = p; peakF = f; }
+    }
+    let s = 0, side = 0, mid = 0;
+    for (let i = 0; i < r.left.length; i++) { s += r.left[i] ** 2 + r.right[i] ** 2; side += ((r.left[i] - r.right[i]) / 2) ** 2; mid += ((r.left[i] + r.right[i]) / 2) ** 2; }
+    let max = 0; for (let i = 0; i < r.left.length; i++) max = Math.max(max, Math.abs(r.left[i]), Math.abs(r.right[i]));
+    return { dominant: peakF, low: low / total, high: high / total, rms: Math.sqrt(s / (2 * r.left.length)), sideMid: Math.sqrt(side / mid), peak: max, seconds: r.seconds };
+  });
+  assert.ok(m.dominant > 40 && m.dominant < 65, `dominant ${m.dominant} Hz is a sub`);
+  assert.ok(m.low > 0.6, `energy below 80 Hz ${m.low}`);
+  assert.ok(m.high < 0.02, `almost nothing above 2 kHz: ${m.high}`);
+  assert.ok(Math.abs(m.rms - 0.17) < 0.01, `level ${m.rms}`);
+  assert.ok(m.peak <= 0.97 + 1e-6);
+  assert.ok(m.sideMid > 0.05 && m.sideMid < 1, `stereo ${m.sideMid}`);
+  assert.equal(m.seconds, 7.5);
   await ctx.close();
 });
 

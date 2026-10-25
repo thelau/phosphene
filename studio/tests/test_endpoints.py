@@ -445,25 +445,42 @@ def _three_plates(live):
         live("POST", "/api/generate-image", {"title": f"M{i}", "prompt": "p", "model": "m"})
 
 
-def test_music_endpoint_answers_a_wav_as_long_as_the_picture_will_be(live):
+def _silent_wav(seconds: float = 1.5) -> bytes:
     import io
     import wave
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        w.writeframes(b"\x00\x00\x00\x00" * int(44100 * seconds))
+    return buf.getvalue()
+
+
+def test_music_endpoint_only_renders_tracks(live):
     _three_plates(live)
-    status, wav = live("POST", "/api/music", {"bpm": 120, "multiple": 2})
-    assert status == 200 and wav[:4] == b"RIFF"
-    with wave.open(io.BytesIO(wav)) as w:
-        assert w.getnframes() / w.getframerate() == pytest.approx(3 * 7.5 / 30, abs=0.01)    # 3 images x 7.5 frames at 30fps
+    status, res = live("POST", "/api/music", {"bpm": 120, "multiple": 2})
+    assert status == 400 and "made in the page" in res["error"]
 
 
 def test_export_with_music_has_an_audio_track_and_without_it_does_not(live, srv):
     _three_plates(live)
     status, plain = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2})
     assert status == 200 and _streams(srv.OUTPUTS_DIR / plain["filename"])[0] == ["video"] and "music" not in plain["filename"]
+    status, res = live("POST", "/api/export-audio", raw=_silent_wav())                  # the page renders the drone and sends it first
+    assert status == 200 and res["ok"]
     status, withm = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth"})
     assert status == 200 and withm["music"] is True and withm["music_mode"] == "synth" and "music" in withm["filename"]
     kinds, seconds = _streams(srv.OUTPUTS_DIR / withm["filename"])
     assert sorted(kinds) == ["audio", "video"]
     assert gen_log.read(None)[-1]["music"] == "synth"
+    status, again = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth"})   # the sound is used once
+    assert status == 500 and "did not arrive" in again["error"]
+
+
+def test_export_audio_refuses_what_is_not_a_wav(live):
+    assert live("POST", "/api/export-audio", raw=b"not audio at all, just some bytes that are long enough to pass the size check")[0] == 400
+    assert live("POST", "/api/export-audio", raw=b"")[0] == 413
 
 
 # ---------- a music track that drives the cuts ----------
@@ -586,32 +603,12 @@ def test_export_with_a_track_but_no_track_fails_cleanly(live):
     assert status == 500 and "No music track" in res["error"]
 
 
-def test_music_options_are_clamped_and_defaults_fill_the_gaps(srv):
-    o = srv.music_options({"pulse": 9, "low": -3, "bright": "x", "width": 0.25, "seed": "12", "style": "swell"})
-    assert o == {"pulse": 1.0, "low": 0.0, "bright": 0.3, "width": 0.25, "space": 0.6, "power": 0.6, "seed": 12}   # the old styles are gone: only the drone
-
-
-def test_music_endpoint_uses_the_settings_and_the_seed(live):
-    _three_plates(live)
-    base = {"bpm": 120, "multiple": 2, "seed": 1}
-    a = live("POST", "/api/music", base)[1]
-    assert a == live("POST", "/api/music", base)[1]
-    assert a != live("POST", "/api/music", {**base, "seed": 2})[1]
-    assert a != live("POST", "/api/music", {**base, "space": 0.0})[1]
-    assert a != live("POST", "/api/music", {**base, "power": 0.0})[1]
-
-
 def test_music_says_how_to_fix_it_when_numpy_is_missing(live, monkeypatch):
     import sys
     _three_plates(live)
-    monkeypatch.setitem(sys.modules, "synth", None)
     monkeypatch.setitem(sys.modules, "beats", None)
-    status, res = live("POST", "/api/music", {"bpm": 120, "multiple": 2})
-    assert status == 500 and "pip3 install numpy" in res["error"]
     status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2})   # the picture alone still exports
     assert status == 200
-    status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth"})
-    assert status == 500 and "pip3 install numpy" in res["error"]
     status, res = live("POST", "/api/track?name=t.mp3", raw=b"x" * 500)           # reading a track needs numpy too, and says so
     assert status == 500 and "pip3 install numpy" in res["error"]
 

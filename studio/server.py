@@ -636,32 +636,12 @@ def purge_plates(st: dict, requested) -> tuple[int, int]:
     return deleted, freed
 
 
-def music_options(body: dict) -> dict:
-    """The music settings from a request, each clamped to what synth.render accepts."""
-    def unit(key, default):
-        try:
-            return min(1.0, max(0.0, float(body.get(key, default))))
-        except (TypeError, ValueError):
-            return default
-    try:
-        seed = int(body.get("seed", 7)) % 100000
-    except (TypeError, ValueError):
-        seed = 7
-    return {"pulse": unit("pulse", 0.5), "low": unit("low", 0.7), "bright": unit("bright", 0.3), "width": unit("width", 0.6),
-            "space": unit("space", 0.6), "power": unit("power", 0.6), "seed": seed}
+EXPORT_AUDIO_MAX_BYTES = 80 * 1024 * 1024
 
 
-def music_wav(n_images: int, bpm: float, multiple: float, invert_mode: str, opts: dict | None = None) -> tuple[bytes, float]:
-    """The synthesized track for one pass over n_images, cut for cut like the picture. Returns (wav bytes, seconds)."""
-    try:
-        import synth                                    # needs numpy: the rest of the studio runs without it
-    except ImportError as e:
-        raise RuntimeError("The music needs numpy. Run: pip3 install numpy") from e
-    fps = 30
-    fpc = max(1.0, fps * 60.0 / (bpm * multiple))
-    starts = cutplan.timeline(n_images, invert_mode)
-    secs = [x * fpc / fps for x in starts]
-    return synth.render(secs, paired=invert_mode in ("mono", "colour"), **(opts or music_options({}))), secs[-1]
+def export_audio_file() -> Path:
+    """The drone rendered by the page (WebAudio) for the next export: the page sends it just before it asks for the video."""
+    return TRACK_DIR / "export-music.wav"
 
 
 def track_file() -> Path:
@@ -989,6 +969,20 @@ class StudioHandler(SimpleHTTPRequestHandler):
             gen_log.record("track", name=info["name"], duration=info["duration"], bpm=info["bpm"], hits=len(info["hits"]), notes=len(info["notes"]))
             self.send_json({"ok": True, "track": track_summary(info)})
             return
+        if parsed.path == "/api/export-audio":
+            # the synthesized sound, rendered in the page (the same WebAudio graph as the preview), kept until the export uses it
+            if length <= 44 or length > EXPORT_AUDIO_MAX_BYTES:
+                self.rfile.read(min(max(length, 0), EXPORT_AUDIO_MAX_BYTES))
+                self.send_json({"ok": False, "error": "That sound is empty or too large."}, 413)
+                return
+            raw = self.rfile.read(length)
+            if raw[:4] != b"RIFF" or raw[8:12] != b"WAVE":
+                self.send_json({"ok": False, "error": "That is not a WAV file."}, 400)
+                return
+            TRACK_DIR.mkdir(parents=True, exist_ok=True)
+            export_audio_file().write_bytes(raw)
+            self.send_json({"ok": True, "bytes": len(raw)})
+            return
         body = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
         if parsed.path in LOCKED_DURING_AI and ai_busy():
             self.send_json({"ok": False, "busy": True, "error": "The AI is ordering your selection. Wait until it finishes."}, 409)
@@ -1237,8 +1231,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path in ("/api/music", "/api/track-cuts"):
-            # /api/track-cuts: where the cuts fall on the uploaded track; /api/music: the sound the player plays, cut for cut like the
-            # picture (the synthesized drone, or the track itself from its start point, looped to the length of the clip)
+            # /api/track-cuts: where the cuts fall on the uploaded track; /api/music: the track itself from its start point, looped to the
+            # length of the clip (the synthesized drone is made in the page)
             st = load_state()
             trashed_set = set(st.get("trashed", []))
             n_images = len(sequences.edit_files([p for p in ordered_plate_files(st) if p.name not in trashed_set], st))
@@ -1254,7 +1248,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         return
                     wav = track_clip_wav(plan)
                 else:
-                    wav, _ = music_wav(n_images, float(body.get("bpm", 136.0)), float(body.get("multiple", 1.0)), invert_mode, music_options(body))
+                    self.send_json({"ok": False, "error": "Only a track is rendered here: the synthesized sound is made in the page."}, 400)
+                    return
             except ValueError as e:
                 self.send_json({"ok": False, "error": str(e)}, 400)
                 return
@@ -1303,13 +1298,20 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     # cut length follows the tempo, multiple, rhythm and effects chosen in the player; music only when asked for
                     cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp_dir / "f_%04d.jpg")]
                     if music_mode != "off":
-                        wav = track_clip_wav(plan) if plan else music_wav(len(active_files), bpm, multiple, invert_mode, music_options(body))[0]
+                        if plan:
+                            wav = track_clip_wav(plan)
+                        elif export_audio_file().exists():
+                            wav = export_audio_file().read_bytes()
+                        else:
+                            raise ValueError("The synthesized sound did not arrive. Press Export again.")
                         (tmp_dir / "music.wav").write_bytes(wav)
                         cmd += ["-i", str(tmp_dir / "music.wav"), "-c:a", "aac", "-b:a", "192k", "-shortest"]
                     else:
                         cmd += ["-an"]
                     cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", str(out_mp4)]
                     subprocess.run(cmd, check=True, capture_output=True)
+                    if not plan:
+                        export_audio_file().unlink(missing_ok=True)       # the next export gets its own sound
                     shutil.rmtree(tmp_dir, ignore_errors=True)
                     prune_exports(OUTPUTS_DIR, keep=12)
                     self.send_json({"ok": True, "video_url": f"/outputs/{out_mp4.name}", "filename": out_mp4.name, "frames_per_cut": round(frames_per_cut, 2),

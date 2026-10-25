@@ -53,7 +53,8 @@ function start(state = makeState()) {
     if (req.method === 'POST') {
       const chunks = [];
       for await (const c of req) chunks.push(c);
-      try { body = JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch { body = {}; }
+      req.raw = Buffer.concat(chunks);
+      try { body = JSON.parse(req.raw.toString() || '{}'); } catch { body = {}; }
     }
     const send = (obj, status = 200) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
     if (url.pathname.startsWith('/api/')) state.calls.push({ path: url.pathname, body });
@@ -140,6 +141,10 @@ function start(state = makeState()) {
         await sleep(state.delays.export);
         const n = state.plates.filter(p => !p.trashed).length;
         return send({ ok: true, video_url: '/outputs/Demo-test.mp4', filename: 'Demo-test.mp4', images: n, seconds: n * 0.5, cuts: n });
+      }
+      case '/api/export-audio': {    // the drone rendered in the page: keep what arrived so a test can look at it
+        state.exportAudio = req.raw;
+        return send({ ok: true, bytes: req.raw.length });
       }
       case '/api/track': {
         if (req.method === 'POST' && url.searchParams.get('name')) state.track = { name: url.searchParams.get('name'), duration: 30, bpm: 126, n_beats: 60, n_hits: 210, n_notes: 64 };

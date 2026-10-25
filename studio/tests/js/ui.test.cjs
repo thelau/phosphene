@@ -632,79 +632,92 @@ test('with music off, Play never asks for music or creates audio', async () => {
   assert.equal(h.$('playBtn').textContent, '⏸ Pause');
 });
 
-test('with music on, Play renders the track for the current settings, then plays it from the top', async () => {
+test('with the drone on, Play starts it live from the top with the settings and where every cut falls', async () => {
   const h = await playerWith();
   h.$('musicSelect').value = 'on'; h.$('invertSelect').value = 'colour';
   h.$('pulseRange').value = '40'; h.$('lowRange').value = '80'; h.$('brightRange').value = '20'; h.$('widthRange').value = '90'; h.$('spaceRange').value = '75'; h.$('powerRange').value = '55'; h.$('seedVal').value = '42';
+  h.run('framesPerCut = 3');                                                // 100 ms per cut
   h.run('togglePlay()');
-  assert.equal(h.$('playBtn').textContent, '♪ Rendering…');
   await settle(); await settle();
-  const call = h.calls.find(c => c.url === '/api/music');
-  assert.deepEqual(call.body, { music: 'synth', bpm: 120, multiple: 2, invert_mode: 'colour', pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, seed: 42 });
-  assert.equal(h.ctx.__audios.length, 1);
-  const a = h.ctx.__audios[0];
-  assert.equal(a.paused, false); assert.equal(a.loop, true); assert.equal(a.currentTime, 0);
+  assert.equal(h.calls.some(c => c.url === '/api/music'), false);           // nothing is rendered on the server
+  const play = h.ctx.__drone.plays[0];
+  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, seed: 42, paired: true });
+  assert.equal(play.offset, 0);
+  assert.equal(play.starts.length, 7);                                      // 3 images x 2 (colour pairs) + the end
+  assert.ok(Math.abs(play.starts[6] - 0.6) < 1e-9 && Math.abs(play.starts[1] - 0.1) < 1e-9);
   assert.equal(h.$('playBtn').textContent, '⏸ Pause');
   h.run('togglePlay()');                                                    // pause stops the sound
-  assert.equal(a.paused, true);
+  assert.equal(h.ctx.__drone.stops > 0, true);
 });
 
-test('while the music plays it is the clock: the picture follows the audio position', async () => {
+test('while the drone plays it is the clock: the picture follows its position', async () => {
   const h = await playerWith();
   h.$('musicSelect').value = 'on'; h.$('invertSelect').value = 'off';
   h.run('framesPerCut = 3');                                                // 100 ms per cut
   h.run('togglePlay()');
   await settle(); await settle();
   const tick = h.timers.intervals[h.timers.intervals.length - 1].fn;
-  h.ctx.__audios[0].currentTime = 0.25;                                     // cut 2 -> third image
+  h.ctx.__drone.position = 0.25;                                            // cut 2 -> third image
   tick();
   assert.equal(h.$('stageImg').src, '/p/c');
-  h.ctx.__audios[0].currentTime = 0.05;
+  h.ctx.__drone.position = 0.05;
   tick();
   assert.equal(h.$('stageImg').src, '/p/a');
 });
 
-test('changing the tempo or invert while playing stops the old track and renders a new one', async () => {
+test('changing the tempo or invert while playing swaps the sound live, from where the picture is, with no render', async () => {
+  const h = await playerWith();
+  h.$('musicSelect').value = 'on';
+  h.run('framesPerCut = 3');
+  h.run('togglePlay()');
+  await settle(); await settle();
+  h.run('cutPos = 1.5');                                                     // 150 ms into the clip
+  h.$('invertSelect').value = 'mono';
+  h.run('updateFx()');
+  const up = h.ctx.__drone.updates[h.ctx.__drone.updates.length - 1];
+  assert.equal(up.params.paired, true);
+  assert.equal(up.starts.length, 7);
+  assert.ok(Math.abs(up.offset - 0.15) < 1e-9);
+  assert.equal(h.calls.some(c => c.url === '/api/music'), false);
+  assert.equal(h.$('musicState').hidden, true);                              // no loader: it is instant
+});
+
+test('a slider moved while the drone plays updates it at once', async () => {
   const h = await playerWith();
   h.$('musicSelect').value = 'on';
   h.run('togglePlay()');
   await settle(); await settle();
-  const first = h.ctx.__audios[0];
-  h.$('invertSelect').value = 'mono';
-  h.run('updateFx()');
-  assert.equal(first.paused, true);                                          // the old track no longer matches
-  const wait = h.timers.timeouts[h.timers.timeouts.length - 1];
-  assert.ok(wait.ms >= 200);                                                 // debounced: dragging the slider does not hammer the server
-  wait.fn();
-  await settle(); await settle();
-  assert.equal(h.calls.filter(c => c.url === '/api/music').length, 2);
-  assert.equal(h.ctx.__audios.length, 2);
-  assert.equal(h.ctx.__audios[1].paused, false);
+  const before = h.ctx.__drone.updates.length;
+  h.$('lowRange').value = '10';
+  h.run('updateMusic()');
+  assert.equal(h.ctx.__drone.updates.length, before + 1);
+  assert.equal(h.ctx.__drone.updates[before].params.low, 0.1);
 });
 
-test('when the music cannot be rendered the player says so and the picture still plays', async () => {
-  const h = await playerWith({ music: { __fail: 500 } });
-  h.$('musicSelect').value = 'on';
-  h.run('togglePlay()');
-  await settle(); await settle();
-  assert.match(h.$('toast').textContent, /Could not render the music/);
-  assert.equal(h.$('playBtn').textContent, '⏸ Pause');
-  const tick = h.timers.intervals[h.timers.intervals.length - 1].fn;
-  h.ctx.performance.now = (() => { let t = 0; return () => (t += 100); })();
-  h.run('lastTick = performance.now()');
-  tick();                                                                    // not stuck waiting for audio
-  assert.ok(h.run('cutPos') > 0);
-});
-
-test('export sends the music choice', async () => {
+test('export renders the same drone in the page, sends it, then asks for the video with the music choice', async () => {
   const r = baseRoutes();
   r['/api/export-video'] = { ok: true, images: 3, seconds: 2, video_url: '/outputs/x.mp4', filename: 'x.mp4' };
+  r['/api/export-audio'] = { ok: true, bytes: 44 };
   const h = load({ routes: r });
   await settle(); await settle();
   h.$('musicSelect').value = 'on';
   await h.run('exportVideo()');
-  const body = h.calls.find(c => c.url === '/api/export-video').body;
-  assert.equal(body.music, 'synth');
+  assert.equal(h.ctx.__drone.exports.length, 1);
+  const urls = h.calls.map(c => c.url);
+  assert.ok(urls.indexOf('/api/export-audio') >= 0 && urls.indexOf('/api/export-audio') < urls.indexOf('/api/export-video'));
+  assert.equal(h.calls.find(c => c.url === '/api/export-video').body.music, 'synth');
+  assert.equal(h.$('musicState').hidden, true);
+});
+
+test('export without music does not render or send any sound', async () => {
+  const r = baseRoutes();
+  r['/api/export-video'] = { ok: true, images: 3, seconds: 2, video_url: '/outputs/x.mp4', filename: 'x.mp4' };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  await h.run('exportVideo()');
+  assert.equal(h.ctx.__drone.exports.length, 0);
+  assert.equal(h.calls.some(c => c.url === '/api/export-audio'), false);
+  assert.equal(h.calls.find(c => c.url === '/api/export-video').body.music, 'off');
 });
 
 test('music choices are remembered', () => {
@@ -782,42 +795,15 @@ test('zoom amount only shows while a zoom is chosen', () => {
   assert.equal(h.$('zoomAmtRow').hidden, false);
 });
 
-test('changing a music setting renders the track in the background with a loader, so Play is instant', async () => {
-  const h = await playerWith();
-  h.$('musicSelect').value = 'on';
-  h.run('updateMusic()');
-  assert.equal(h.calls.some(c => c.url === '/api/music'), false);             // debounced: dragging a slider does not hammer the server
-  const wait = h.timers.timeouts[h.timers.timeouts.length - 1];
-  assert.ok(wait.ms >= 500);
-  wait.fn();
-  assert.equal(h.$('musicState').hidden, false); assert.match(h.$('musicState').textContent, /Preparing the sound/); assert.match(h.$('musicState').className, /working/);
-  await settle(); await settle();
-  assert.equal(h.$('musicState').hidden, true);
-  assert.equal(h.ctx.__audios.length, 1);
-  h.run('togglePlay()');                                                      // already rendered: no second render, plays straight away
-  await settle();
-  assert.equal(h.calls.filter(c => c.url === '/api/music').length, 1);
-  assert.equal(h.ctx.__audios[0].paused, false);
-});
-
-test('a music failure explains itself in the Music tab', async () => {
-  const h = await playerWith({ music: { __fail: 500 } });
-  h.$('musicSelect').value = 'on';
-  h.run('updateMusic()');
-  h.timers.timeouts[h.timers.timeouts.length - 1].fn();
-  await settle(); await settle();
-  assert.match(h.$('musicState').textContent, /Could not render the music/);
-  assert.match(h.$('musicState').className, /err/);
-});
-
-test('turning the music off clears its state and stops the sound', async () => {
+test('turning the music off stops the drone', async () => {
   const h = await playerWith();
   h.$('musicSelect').value = 'on';
   h.run('togglePlay()');
   await settle(); await settle();
+  const stops = h.ctx.__drone.stops;
   h.$('musicSelect').value = 'off';
   h.run('updateMusic()');
-  assert.equal(h.ctx.__audios[0].paused, true);
+  assert.ok(h.ctx.__drone.stops > stops);
   assert.equal(h.$('musicState').hidden, true);
 });
 

@@ -23,7 +23,7 @@ def snapshot() -> dict:
 
 
 def server_python() -> str:
-    """The repo's .venv Python when there is one (it has numpy for the music), otherwise the Python that runs this script."""
+    """The repo's .venv Python when there is one (it has numpy for reading music tracks), otherwise the Python that runs this script."""
     venv = HERE.parent / ".venv" / "bin" / "python"
     return str(venv) if venv.exists() else sys.executable
 
@@ -68,7 +68,7 @@ def main() -> None:
     proc, seen = start(), snapshot()
     started, waiting_for_edit = time.time(), False
     if subprocess.run([server_python(), "-c", "import numpy"], capture_output=True).returncode != 0:
-        print("[dev] numpy is missing: everything works except the synthesized music. Install it with: pip3 install numpy", flush=True)
+        print("[dev] numpy is missing: everything works except reading your own music track. Install it with: pip3 install numpy", flush=True)
     print("[dev] watching studio/*.py (Ctrl-C to stop)", flush=True)
     try:
         while True:

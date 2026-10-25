@@ -243,7 +243,7 @@
     async function switchSequence(id) {
       if (blockedByAi() || id === activeSeq) return;
       const ok = await seqCall({ action: 'activate', id });
-      if (ok && isPlaying) { cutPos = 0; lastTick = performance.now(); currentIdx = 0; if (musicAudio && !musicAudio.paused) musicAudio.currentTime = 0; }   // the player follows: start the other order from its first image
+      if (ok && isPlaying) { cutPos = 0; lastTick = performance.now(); currentIdx = 0; if (musicAudio && !musicAudio.paused) musicAudio.currentTime = 0; if (droneLive.playing) droneLive.update(synthParams(), synthStartsSec(), () => 0); }   // the player follows: start the other order from its first image
       return ok;
     }
     function resetAi() { return blockedByAi() ? undefined : seqCall({ action: 'reset' }); }
@@ -517,16 +517,17 @@
       };
     }
     function musicParams() {
-      if (trackDriven()) return { music: 'track', ...trackParams() };
+      return trackDriven() ? { music: 'track', ...trackParams() } : { music: musicOn() ? 'synth' : 'off' };
+    }
+    // the drone is made in the page (WebAudio): its settings, and where each cut starts in seconds
+    function synthParams() {
+      const paired = ['mono', 'colour'].includes(document.getElementById('invertSelect').value);
       return {
-        music: 'synth',
-        bpm: parseInt(document.getElementById('bpmSlider').value, 10),
-        multiple: parseFloat(document.getElementById('multSelect').value),
-        invert_mode: document.getElementById('invertSelect').value,
         pulse: unit('pulseRange'), low: unit('lowRange'), bright: unit('brightRange'), width: unit('widthRange'), space: unit('spaceRange'), power: unit('powerRange'),
-        seed: parseInt(document.getElementById('seedVal').value, 10) || 7
+        seed: parseInt(document.getElementById('seedVal').value, 10) || 7, paired
       };
     }
+    function synthStartsSec() { return timelineFor(activePlates().length).map(x => (x * framesPerCut) / 30); }
     function setMusicState(kind, text) {
       const el = document.getElementById('musicState');
       el.hidden = !text;
@@ -635,19 +636,22 @@
 
     // ---- while music plays it is the player's clock ----
     let musicAudio = null, musicKey = '', musicPending = false, musicTimer = null, musicRender = 0;
+    const droneLive = new window.Drone.Live();
     function musicKeyNow() { return JSON.stringify(musicParams()) + '|' + activePlates().length + (trackDriven() ? '|' + track.name : ''); }
     function stopMusic() {
       if (musicAudio) { try { musicAudio.pause(); } catch (e) {} }
+      droneLive.stop();
       musicPending = false;
       document.getElementById('playBtn').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
     }
-    // makes sure the sound for the current settings is rendered (a few seconds); true when it is ready
+    // a track is fetched as one clip-long sound (a few seconds); true when it is ready. The drone needs nothing: it plays live.
     async function ensureMusic() {
-      if (trackDriven() && !(await ensureTrackCuts())) return false;
+      if (!trackDriven()) return musicOn();
+      if (!(await ensureTrackCuts())) return false;
       const key = musicKeyNow();
       if (musicAudio && key === musicKey) return true;
       const mine = ++musicRender;
-      setMusicState('busy', trackDriven() ? 'Preparing the track…' : 'Preparing the sound…');
+      setMusicState('busy', 'Preparing the track…');
       try {
         const res = await fetch('/api/music', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(musicParams()) });
         if (!res.ok) {
@@ -664,15 +668,23 @@
         setMusicState('', '');
         return true;
       } catch (e) {
-        if (mine === musicRender) { musicAudio = null; musicKey = ''; setMusicState('err', `Could not render the music: ${e.message}`); setStatus(`Could not render the music: ${e.message}`); }
+        if (mine === musicRender) { musicAudio = null; musicKey = ''; setMusicState('err', `Could not prepare the track: ${e.message}`); setStatus(`Could not prepare the track: ${e.message}`); }
         return false;
       }
     }
     async function startMusic() {
       const btn = document.getElementById('playBtn');
+      if (!trackDriven()) {                                                  // the drone: built live, nothing to wait for but its level (a blink)
+        musicPending = true;
+        try { await droneLive.play(synthParams(), synthStartsSec(), 0); } catch (e) { setStatus(`Could not play the music: ${e.message}`); }
+        musicPending = false;
+        cutPos = 0;
+        lastTick = performance.now();
+        return;
+      }
       if (!musicAudio || musicKey !== musicKeyNow()) {
         musicPending = true;
-        btn.textContent = '♪ Rendering…';
+        btn.textContent = '♪ Preparing…';
         const ok = await ensureMusic();
         musicPending = false;
         btn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
@@ -683,13 +695,23 @@
       musicAudio.currentTime = 0;
       try { await musicAudio.play(); } catch (e) { setStatus('The browser blocked the audio. Press Play again.'); }
     }
-    // tempo, multiple, invert or any music setting changed: the sound no longer matches. Render the new one in the background
-    // (so Play is instant), and restart it if the preview is playing.
+    // tempo, multiple, invert or any music setting changed. The drone swaps in the new sound at once, from where the picture is;
+    // a track fetches its new sound in the background (so Play is instant), and restarts if the preview is playing.
     function musicChanged() {
-      stopMusic();
       clearTimeout(musicTimer);
-      if (!musicActive()) { musicRender++; setMusicState('', ''); drawInfo(); return; }
-      if (trackDriven()) { trackCuts = null; timelineCache = { key: '', starts: null }; }
+      if (!trackDriven()) {
+        if (musicAudio) { try { musicAudio.pause(); } catch (e) {} }
+        musicRender++; setMusicState('', ''); drawInfo();
+        if (isPlaying && musicOn() && droneLive.playing) {
+          const cutMs = Math.max(16, (framesPerCut / 30) * 1000);
+          droneLive.update(synthParams(), synthStartsSec(), () => (cutPos * cutMs) / 1000);
+        } else if (isPlaying && musicOn()) { startMusic(); }
+        else if (!musicOn()) droneLive.stop();
+        return;
+      }
+      droneLive.stop();
+      stopMusic();
+      trackCuts = null; timelineCache = { key: '', starts: null };
       musicTimer = setTimeout(() => (isPlaying ? startMusic() : ensureMusic()), isPlaying ? 350 : 700);
       drawInfo();
     }
@@ -741,7 +763,8 @@
         if (!active.length || stageImg.style.display === 'none') return;
         if (musicPending) return;
         const cutMs = Math.max(16, (framesPerCut / 30) * 1000);
-        if (musicAudio && !musicAudio.paused && musicActive()) cutPos = (musicAudio.currentTime * 1000) / cutMs;   // the track is the clock
+        if (musicOn() && droneLive.playing && !droneLive.holding) cutPos = (droneLive.pos() * 1000) / cutMs;           // the drone is the clock
+        else if (musicAudio && !musicAudio.paused && trackDriven()) cutPos = (musicAudio.currentTime * 1000) / cutMs;   // so is the track
         else cutPos += dt / cutMs;
         const fx = fxSettings();
         const tl = timelineFor(active.length);
@@ -1057,6 +1080,14 @@
       exporting = true;
       btn.textContent = 'Rendering...';
       try {
+        if (musicOn() && !trackDriven()) {                                   // the same WebAudio drone as the preview, rendered offline and sent along
+          setMusicState('busy', 'Preparing the sound…');
+          const wav = window.Drone.toWav(await window.Drone.renderExport(synthParams(), synthStartsSec()));
+          const up = await fetch('/api/export-audio', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: wav });
+          const sent = await up.json();
+          if (!sent.ok) throw new Error(sent.error || 'the sound was not accepted');
+          setMusicState('', '');
+        }
         const res = await fetch('/api/export-video', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -1064,7 +1095,7 @@
             bpm: parseInt(document.getElementById('bpmSlider').value, 10),
             multiple: parseFloat(document.getElementById('multSelect').value),
             invert_mode: document.getElementById('invertSelect').value,
-            ...musicParams(),
+            ...trackParams(),
             music: trackDriven() ? 'track' : musicOn() ? 'synth' : 'off',
             zoom_mode: document.getElementById('zoomSelect').value,
             zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0
@@ -1082,6 +1113,7 @@
           setStatus(`Export failed: ${data.error || 'unknown error'}`);
         }
       } catch (e) {
+        setMusicState('', '');
         setStatus(`Export failed: ${e.message}`);
       } finally {
         exporting = false;

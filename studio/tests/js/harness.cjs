@@ -67,6 +67,19 @@ function load({ routes = {}, storage = {} } = {}) {
     URL: { createObjectURL: () => 'blob:music', revokeObjectURL() {} },
     Audio: class { constructor(src) { this.src = src; this.loop = false; this.paused = true; this.currentTime = 0; ctx.__audios.push(this); } async play() { this.paused = false; } pause() { this.paused = true; } },
     __audios: [],
+    // the drone engine needs WebAudio, which node does not have: a fake that records what the page asks of it (drone.js is tested in the browser)
+    __drone: { plays: [], updates: [], stops: 0, exports: [], position: 0 },
+  };
+  ctx.Drone = {
+    Live: class {
+      constructor() { this.playing = false; this.holding = 0; }
+      async play(params, starts, offset) { this.playing = true; ctx.__drone.plays.push({ params, starts, offset }); }
+      async update(params, starts, getOffset) { ctx.__drone.updates.push({ params, starts, offset: getOffset() }); }
+      stop() { this.playing = false; ctx.__drone.stops++; }
+      pos() { return ctx.__drone.position; }
+    },
+    renderExport: async (params, starts) => { ctx.__drone.exports.push({ params, starts }); return { left: new Float32Array(1), right: new Float32Array(1), rate: 44100 }; },
+    toWav: () => ({ size: 44, fakeWav: true }),
   };
   ctx.window = ctx;
   vm.createContext(ctx);
