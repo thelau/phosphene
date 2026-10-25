@@ -169,10 +169,9 @@
         <div class="tabpane" id="paneMusic" hidden>
           <div class="control-line">
             <span>Source</span>
-            <select id="musicSelect" onchange="updateMusic()" style="flex:1" title="Synthesized: a dark drone for the tempo you set. My track: your own music sets the cuts and is the sound of the preview and the export.">
+            <select id="musicSelect" onchange="updateMusic()" style="flex:1" title="Synthesized: a dark drone that follows the cuts, in the preview and the export.">
               <option value="off">Off</option>
               <option value="on">Synthesized</option>
-              <option value="track">My track</option>
             </select>
           </div>
           <div class="music-hint" id="styleHint"></div>
@@ -234,34 +233,6 @@
               <span>Echo</span>
               <input type="range" id="echoRange" min="0" max="100" value="0" oninput="updateMusic()" title="A dark echo, timed to the cuts" />
               <span id="echoVal">0</span>
-            </div>
-          </div>
-
-          <div class="tabpane" id="trackBox" hidden>
-            <div class="control-line">
-              <button id="trackBtn" onclick="chooseTrack()" style="flex:1" title="mp3, wav, m4a… up to 60 MB">🎵 Choose a track…</button>
-              <button id="trackClear" onclick="clearTrack()" title="Forget this track" hidden>✕</button>
-              <input type="file" id="trackFile" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" hidden onchange="uploadTrack(this.files[0]); this.value = ''" />
-            </div>
-            <div class="track-name" id="trackName"></div>
-            <div class="music-hint" id="trackInfo"></div>
-            <div class="control-line">
-              <span>Cut on</span>
-              <select id="cutOnSelect" onchange="updateMusic()" style="flex:1" title="Hits: every transient, however irregular (glitch, IDM). Notes: every change of pitch, for bass lines and sequences with soft attacks, plus the clearly percussive hits. Beats: a steady grid, with the Multiple from the Video tab.">
-                <option value="hits">Hits · every transient</option>
-                <option value="notes">Notes · pitch changes</option>
-                <option value="beats">Beats · the steady grid</option>
-              </select>
-            </div>
-            <div class="control-line" id="sensRow">
-              <span>Sensitivity</span>
-              <input type="range" id="sensRange" min="0" max="100" value="50" oninput="updateMusic()" title="How many of the hits to cut on: low = only the strongest" />
-              <span id="sensVal">50</span>
-            </div>
-            <div class="control-line">
-              <span>Nudge</span>
-              <input type="range" id="nudgeRange" min="-150" max="150" step="10" value="0" oninput="updateMusic()" title="Shift the sound against the pictures (milliseconds)" />
-              <span id="nudgeVal">0 ms</span>
             </div>
           </div>
         </div>

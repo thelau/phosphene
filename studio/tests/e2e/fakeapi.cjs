@@ -146,24 +146,6 @@ function start(state = makeState()) {
         state.exportAudio = req.raw;
         return send({ ok: true, bytes: req.raw.length });
       }
-      case '/api/track': {
-        if (req.method === 'POST' && url.searchParams.get('name')) state.track = { name: url.searchParams.get('name'), duration: 30, bpm: 126, n_beats: 60, n_hits: 210, n_notes: 64 };
-        else if (req.method === 'POST' && body.clear) state.track = null;
-        return send({ ok: true, track: state.track || null });
-      }
-      case '/api/track-cuts': {    // an uneven rhythm: 0.2 s, 0.3 s, 0.1 s, 0.4 s ...
-        const n = state.plates.filter(p => !p.trashed).length * (['mono', 'colour'].includes(body.invert_mode) ? 2 : 1);
-        const gaps = [0.2, 0.3, 0.1, 0.4];
-        const starts = [0];
-        for (let i = 0; i < n; i++) starts.push(+(starts[i] + gaps[i % 4]).toFixed(3));
-        return send({ ok: true, starts, audio_start: 0.5, total: starts[n], events: 60, bpm: 126 });
-      }
-      case '/api/music': {   // a valid 2 s silent WAV (8 kHz, mono, 16-bit)
-        const n = 16000, buf = Buffer.alloc(44 + n * 2);
-        buf.write('RIFF', 0); buf.writeUInt32LE(36 + n * 2, 4); buf.write('WAVEfmt ', 8); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
-        buf.writeUInt32LE(8000, 24); buf.writeUInt32LE(16000, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34); buf.write('data', 36); buf.writeUInt32LE(n * 2, 40);
-        res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': buf.length }); return res.end(buf);
-      }
       default:
         res.writeHead(404); return res.end('not found');
     }

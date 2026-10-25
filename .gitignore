@@ -14,4 +14,4 @@ studio/web/dist/
 .features_cache.json
 studio/generation_log.jsonl*
 studio/.thumbs/
-studio/.tracks/
+studio/.export/

@@ -183,7 +183,7 @@ test('synthesized music: the drone plays live in the page, settings swap it at o
   const ctx = await fresh();
   assert.match(await text('#rhythmInfo'), /^3 images · \d+ s · cuts \d+ ms$/);
   await page.click('#tabMusic');
-  assert.deepEqual(await page.locator('#musicSelect option').allTextContents(), ['Off', 'Synthesized', 'My track']);
+  assert.deepEqual(await page.locator('#musicSelect option').allTextContents(), ['Off', 'Synthesized']);
   await page.selectOption('#musicSelect', 'on');
   await page.fill('#pulseRange', '80');
   assert.ok(await page.locator('#musicState').isHidden(), 'no render, no loader');
@@ -280,41 +280,5 @@ test('Random sound: every draw stays a dark, heavy, level drone and a new sound 
     assert.ok(m.high < 0.02, `above 2 kHz ${m.high}`);
     assert.ok(Math.abs(m.rms - 0.17) < 0.01 && m.peak <= 0.97 + 1e-6, `level ${m.rms} peak ${m.peak}`);
   }
-  await ctx.close();
-});
-
-test('music-driven: choose a track, the cuts follow it, Play uses its sound, export says track', { skip }, async () => {
-  const ctx = await fresh();
-  await page.click('#tabMusic');
-  await page.selectOption('#musicSelect', 'track');
-  assert.ok(await page.locator('#trackBtn').isVisible() && !(await page.locator('#pulseRange').isVisible()));
-  assert.equal(await text('#trackName'), 'No track yet');
-  await page.setInputFiles('#trackFile', { name: 'glitch-loop.mp3', mimeType: 'audio/mpeg', buffer: Buffer.from('not really audio, the fake server accepts anything') });
-  await page.waitForFunction(() => document.getElementById('trackName').textContent === 'glitch-loop.mp3');
-  assert.match(await text('#trackInfo'), /126 BPM · 30 s · 210 hits · 64 notes found/);
-  await page.selectOption('#cutOnSelect', 'hits');
-  await page.fill('#sensRange', '70');
-  await page.fill('#nudgeRange', '40');
-  assert.equal(await text('#nudgeVal'), '40 ms');
-  for (let i = 0; i < 100 && !api.state.calls.some(c => c.path === '/api/track-cuts' && /"nudge":0\.04|"nudge":40/.test(JSON.stringify(c.body || ''))); i++) await page.waitForTimeout(50);
-  await page.waitForFunction(() => document.getElementById('musicState').hidden, null, { timeout: 5000 });
-  const cuts = api.state.calls.filter(c => c.path === '/api/track-cuts').pop();
-  assert.equal(cuts.body.cut_on, 'hits'); assert.equal(cuts.body.sensitivity, 0.7); assert.equal(cuts.body.nudge, 0.04);
-  await page.click('#tabVideo');
-  assert.ok(await page.locator('#bpmSlider').isDisabled(), 'the tempo no longer drives the cuts');
-  assert.match(await text('#rhythmInfo'), /^3 images · 1 s · cuts 100 ms – 300 ms$/);   // uneven cuts: the range, shortest to longest
-  await shot('music-driven');
-  await page.click('#playBtn');
-  await page.waitForFunction(() => document.getElementById('playBtn').textContent.includes('Pause'));
-  assert.equal(api.state.calls.filter(c => c.path === '/api/music').pop().body.music, 'track');
-  await page.click('#playBtn');
-  await page.click('#exportBtn');
-  await page.waitForSelector('#downloadLink:not([hidden])');
-  const exp = api.state.calls.filter(c => c.path === '/api/export-video').pop().body;
-  assert.deepEqual([exp.music, exp.cut_on, exp.sensitivity], ['track', 'hits', 0.7]);
-  await page.click('#tabMusic');
-  await page.click('#trackClear');
-  await page.waitForFunction(() => document.getElementById('trackName').textContent === 'No track yet');
-  assert.equal(await page.locator('#musicSelect').inputValue(), 'off');
   await ctx.close();
 });

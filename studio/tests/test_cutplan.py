@@ -176,3 +176,11 @@ def test_export_does_not_loop_back_to_the_first_image():
     _, frames = cutplan.export_length(n, fpc, "off")
     plates = [cutplan.frame_plan(f, fpc, n, "off")["plate"] for f in range(frames)]
     assert plates[-1] == n - 1 and plates == sorted(plates)
+
+
+def test_cut_at_finds_the_cut_and_wraps_around():
+    starts = [0.0, 1.0, 3.0, 4.0]
+    assert cutplan.cut_at(starts, 0.5) == (0, 0.5)
+    assert cutplan.cut_at(starts, 2.0) == (1, 0.5)
+    assert cutplan.cut_at(starts, 4.5) == (0, 0.5)                              # past the end: round again
+    assert cutplan.plan_at(2.0, 3, "off", starts)["plate"] == 1

@@ -243,7 +243,7 @@
     async function switchSequence(id) {
       if (blockedByAi() || id === activeSeq) return;
       const ok = await seqCall({ action: 'activate', id });
-      if (ok && isPlaying) { cutPos = 0; lastTick = performance.now(); currentIdx = 0; if (musicAudio && !musicAudio.paused) musicAudio.currentTime = 0; if (droneLive.playing) droneLive.update(synthParams(), synthStartsSec(), () => 0); }   // the player follows: start the other order from its first image
+      if (ok && isPlaying) { cutPos = 0; lastTick = performance.now(); currentIdx = 0; if (droneLive.playing) droneLive.update(synthParams(), synthStartsSec(), () => 0); }   // the player follows: start the other order from its first image
       return ok;
     }
     function resetAi() { return blockedByAi() ? undefined : seqCall({ action: 'reset' }); }
@@ -473,7 +473,7 @@
       const paired = invertMode === 'mono' || invertMode === 'colour';
       return { cut, p, plate: (paired ? Math.floor(cut / 2) : cut) % nPlates, inverted: paired && cut % 2 === 1 };
     }
-    // ---- the cut timeline: where each cut starts. Flat = every cut one base cut; music-driven = the times the server found on the track ----
+    // ---- the cut timeline: where each cut starts (every cut is one base cut) ----
     function cutAt(starts, t) {
       const total = starts[starts.length - 1];
       t = total > 0 ? ((t % total) + total) % total : 0;
@@ -482,43 +482,19 @@
       const span = starts[lo + 1] - starts[lo];
       return [lo, span > 0 ? (t - starts[lo]) / span : 0];
     }
-    let timelineCache = { key: '', starts: null };
+    let timelineCache = { key: -1, starts: null };
+    // positions are in base cuts (one base cut = framesPerCut frames), the unit the player counts in
     function timelineFor(nPlates) {
       const invert = document.getElementById('invertSelect').value;
-      const paired = invert === 'mono' || invert === 'colour';
-      const nCuts = nPlates * (paired ? 2 : 1);
-      const driven = trackDriven() && trackCuts && trackCuts.starts.length === nCuts + 1;
-      const key = `${nCuts}|${framesPerCut}|${driven ? trackCuts.id : 'flat'}`;
-      if (timelineCache.key !== key) {
-        // positions are in base cuts (one base cut = framesPerCut frames), the unit the player counts in
-        const starts = driven ? trackCuts.starts.map(sec => (sec * 30) / framesPerCut) : Array.from({ length: nCuts + 1 }, (_, i) => i);
-        timelineCache = { key, starts };
-      }
+      const nCuts = nPlates * (invert === 'mono' || invert === 'colour' ? 2 : 1);
+      if (timelineCache.key !== nCuts) timelineCache = { key: nCuts, starts: Array.from({ length: nCuts + 1 }, (_, i) => i) };
       return timelineCache.starts;
     }
 
-    // ---- music: the synthesized drone, or the user's own track (which also sets the cuts) ----
+    // ---- music: the synthesized drone (WebAudio, see drone.js) ----
     const MUSIC_HINT = 'A dark, wide drone around 54 Hz in a big room, as in Soiltone and Ecwora. It breathes with every cut.';
-    let track = null;            // the uploaded track: {name, duration, bpm, n_beats, n_hits}
-    let trackCuts = null;        // where the cuts fall on it: {starts (seconds), audio_start, total, id}
-    let trackCutsSeq = 0;
-    function musicMode() { return document.getElementById('musicSelect').value || 'off'; }
-    function musicOn() { return musicMode() === 'on'; }                    // the synthesized drone
-    function trackDriven() { return musicMode() === 'track' && !!track; }  // cuts and sound come from the track
-    function musicActive() { return musicOn() || trackDriven(); }
+    function musicOn() { return document.getElementById('musicSelect').value === 'on'; }
     function unit(id) { return (parseInt(document.getElementById(id).value, 10) || 0) / 100; }
-    function trackParams() {
-      return {
-        cut_on: document.getElementById('cutOnSelect').value || 'hits',
-        multiple: parseFloat(document.getElementById('multSelect').value),
-        sensitivity: unit('sensRange'),
-        nudge: (parseInt(document.getElementById('nudgeRange').value, 10) || 0) / 1000,
-        invert_mode: document.getElementById('invertSelect').value
-      };
-    }
-    function musicParams() {
-      return trackDriven() ? { music: 'track', ...trackParams() } : { music: musicOn() ? 'synth' : 'off' };
-    }
     // the drone is made in the page (WebAudio): its settings, and where each cut starts in seconds
     function synthParams() {
       const paired = ['mono', 'colour'].includes(document.getElementById('invertSelect').value);
@@ -537,21 +513,10 @@
     }
     function fmtDuration(sec) { return sec >= 60 ? `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}` : `${Math.round(sec)} s`; }
     function updateMusic() {
-      const mode = musicMode();
-      document.getElementById('synthBox').hidden = mode !== 'on';
-      document.getElementById('trackBox').hidden = mode !== 'track';
-      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'sens']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
-      document.getElementById('nudgeVal').textContent = `${document.getElementById('nudgeRange').value} ms`;
-      document.getElementById('styleHint').textContent = mode === 'on' ? MUSIC_HINT : mode === 'track' ? '' : 'No music: the preview and the export stay silent.';
-      const hits = document.getElementById('cutOnSelect').value !== 'beats';   // hits and notes both use the sensitivity
-      document.getElementById('sensRow').hidden = !hits;
-      document.getElementById('trackName').textContent = track ? track.name : 'No track yet';
-      document.getElementById('trackInfo').textContent = track ? `${track.bpm.toFixed(0)} BPM · ${fmtDuration(track.duration)} · ${track.n_hits} hits · ${track.n_notes || 0} notes found` : 'Choose an mp3, wav or m4a: the cuts follow its hits.';
-      document.getElementById('trackClear').hidden = !track;
-      // the tempo only drives the flat grid; with a track the cuts come from the music
-      document.getElementById('bpmSlider').disabled = trackDriven();
-      document.getElementById('multSelect').disabled = trackDriven() && !(!hits);
-      document.getElementById('speedVal').textContent = trackDriven() ? 'from the music' : `${framesPerCut.toFixed(1)}f`;
+      const on = musicOn();
+      document.getElementById('synthBox').hidden = !on;
+      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
+      document.getElementById('styleHint').textContent = on ? MUSIC_HINT : 'No music: the preview and the export stay silent.';
       saveSettings();
       musicChanged();
     }
@@ -587,139 +552,29 @@
       const lo = Math.min(...lens), hi = Math.max(...lens);
       info.textContent = `${n} images · ${fmtDuration(sec(starts[cuts]))} · cuts ${hi > lo * 1.05 ? `${f(lo)} – ${f(hi)}` : f(lo)}`;
     }
-    // ---- the track: upload (analysed on the server), the cuts that fall on it, and the sound the player plays ----
-    async function loadTrack() {
-      try {
-        const res = await fetch('/api/track');
-        track = (await res.json()).track || null;
-      } catch (e) { track = null; }
-      updateMusic();
-    }
-    function chooseTrack() { document.getElementById('trackFile').click(); }
-    async function uploadTrack(file) {
-      if (!file) return;
-      setMusicState('busy', 'Listening to the track…');
-      try {
-        const res = await fetch(`/api/track?name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.error || `HTTP ${res.status}`);
-        track = data.track;
-        trackCuts = null;
-        document.getElementById('musicSelect').value = 'track';
-        setMusicState('', '');
-        updateMusic();
-      } catch (e) {
-        setMusicState('err', `Could not use that track: ${e.message}`);
-      }
-    }
-    async function clearTrack() {
-      await fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clear: true }) });
-      track = null; trackCuts = null; musicAudio = null; musicKey = '';
-      if (musicMode() === 'track') document.getElementById('musicSelect').value = 'off';
-      updateMusic();
-    }
-    // asks the server where the cuts fall on the track for this many images; true when they are known
-    async function ensureTrackCuts() {
-      if (!trackDriven()) return false;
-      const n = activePlates().length;
-      const key = JSON.stringify(trackParams()) + `|${n}|${track.name}`;
-      if (trackCuts && trackCuts.key === key) return true;
-      const mine = ++trackCutsSeq;
-      try {
-        const res = await fetch('/api/track-cuts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(trackParams()) });
-        const data = await res.json();
-        if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
-        if (mine !== trackCutsSeq) return false;
-        trackCuts = { ...data, key, id: key };
-        timelineCache = { key: '', starts: null };
-        drawInfo();
-        return true;
-      } catch (e) {
-        if (mine === trackCutsSeq) { trackCuts = null; setMusicState('err', e.message); }
-        return false;
-      }
-    }
-
-    // ---- while music plays it is the player's clock ----
-    let musicAudio = null, musicKey = '', musicPending = false, musicTimer = null, musicRender = 0;
+    // ---- while the drone plays it is the player's clock ----
     const droneLive = new window.Drone.Live();
-    function musicKeyNow() { return JSON.stringify(musicParams()) + '|' + activePlates().length + (trackDriven() ? '|' + track.name : ''); }
     function stopMusic() {
-      if (musicAudio) { try { musicAudio.pause(); } catch (e) {} }
       droneLive.stop();
-      musicPending = false;
       document.getElementById('playBtn').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
     }
-    // a track is fetched as one clip-long sound (a few seconds); true when it is ready. The drone needs nothing: it plays live.
-    async function ensureMusic() {
-      if (!trackDriven()) return musicOn();
-      if (!(await ensureTrackCuts())) return false;
-      const key = musicKeyNow();
-      if (musicAudio && key === musicKey) return true;
-      const mine = ++musicRender;
-      setMusicState('busy', 'Preparing the track…');
-      try {
-        const res = await fetch('/api/music', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(musicParams()) });
-        if (!res.ok) {
-          let why = `HTTP ${res.status}`;
-          try { why = (await res.json()).error || why; } catch (e) {}
-          throw new Error(why);
-        }
-        const url = URL.createObjectURL(await res.blob());
-        if (mine !== musicRender) return false;                             // the settings changed while rendering: a newer render is on its way
-        if (musicAudio) URL.revokeObjectURL(musicAudio.src);
-        musicAudio = new Audio(url);
-        musicAudio.loop = true;
-        musicKey = key;
-        setMusicState('', '');
-        return true;
-      } catch (e) {
-        if (mine === musicRender) { musicAudio = null; musicKey = ''; setMusicState('err', `Could not prepare the track: ${e.message}`); setStatus(`Could not prepare the track: ${e.message}`); }
-        return false;
-      }
-    }
+    let musicPending = false;
     async function startMusic() {
-      const btn = document.getElementById('playBtn');
-      if (!trackDriven()) {                                                  // the drone: built live, nothing to wait for but its level (a blink)
-        musicPending = true;
-        try { await droneLive.play(synthParams(), synthStartsSec(), 0); } catch (e) { setStatus(`Could not play the music: ${e.message}`); }
-        musicPending = false;
-        cutPos = 0;
-        lastTick = performance.now();
-        return;
-      }
-      if (!musicAudio || musicKey !== musicKeyNow()) {
-        musicPending = true;
-        btn.textContent = '♪ Preparing…';
-        const ok = await ensureMusic();
-        musicPending = false;
-        btn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
-        if (!ok || !isPlaying || !musicActive() || musicKey !== musicKeyNow()) return;
-      }
+      musicPending = true;                                                   // the drone is built live: only its level takes a blink
+      try { await droneLive.play(synthParams(), synthStartsSec(), 0); } catch (e) { setStatus(`Could not play the music: ${e.message}`); }
+      musicPending = false;
       cutPos = 0;
       lastTick = performance.now();
-      musicAudio.currentTime = 0;
-      try { await musicAudio.play(); } catch (e) { setStatus('The browser blocked the audio. Press Play again.'); }
     }
-    // tempo, multiple, invert or any music setting changed. The drone swaps in the new sound at once, from where the picture is;
-    // a track fetches its new sound in the background (so Play is instant), and restarts if the preview is playing.
+    // tempo, multiple, invert or any music setting changed: the drone swaps in the new sound at once, from where the picture is
     function musicChanged() {
-      clearTimeout(musicTimer);
-      if (!trackDriven()) {
-        if (musicAudio) { try { musicAudio.pause(); } catch (e) {} }
-        musicRender++; setMusicState('', ''); drawInfo();
-        if (isPlaying && musicOn() && droneLive.playing) {
-          const cutMs = Math.max(16, (framesPerCut / 30) * 1000);
-          droneLive.update(synthParams(), synthStartsSec(), () => (cutPos * cutMs) / 1000);
-        } else if (isPlaying && musicOn()) { startMusic(); }
-        else if (!musicOn()) droneLive.stop();
-        return;
-      }
-      droneLive.stop();
-      stopMusic();
-      trackCuts = null; timelineCache = { key: '', starts: null };
-      musicTimer = setTimeout(() => (isPlaying ? startMusic() : ensureMusic()), isPlaying ? 350 : 700);
       drawInfo();
+      if (!isPlaying) return;
+      if (!musicOn()) { droneLive.stop(); return; }
+      if (droneLive.playing) {
+        const cutMs = Math.max(16, (framesPerCut / 30) * 1000);
+        droneLive.update(synthParams(), synthStartsSec(), () => (cutPos * cutMs) / 1000);
+      } else startMusic();
     }
     function zoomScale(mode, amountPct, p) {
       const a = amountPct / 100;
@@ -751,7 +606,7 @@
       document.getElementById('zoomAmt').disabled = document.getElementById('zoomSelect').value === 'off';
       document.getElementById('zoomAmtRow').hidden = document.getElementById('zoomSelect').value === 'off';
       if (!isPlaying) clearFx();
-      musicChanged();   // invert changes the cuts, so the track must follow
+      musicChanged();   // invert changes the cuts, so the sound must follow
     }
 
     let cutPos = 0;
@@ -770,7 +625,6 @@
         if (musicPending) return;
         const cutMs = Math.max(16, (framesPerCut / 30) * 1000);
         if (musicOn() && droneLive.playing && !droneLive.holding) cutPos = (droneLive.pos() * 1000) / cutMs;           // the drone is the clock
-        else if (musicAudio && !musicAudio.paused && trackDriven()) cutPos = (musicAudio.currentTime * 1000) / cutMs;   // so is the track
         else cutPos += dt / cutMs;
         const fx = fxSettings();
         const tl = timelineFor(active.length);
@@ -789,7 +643,7 @@
       if (isPlaying) { cutPos = 0; lastTick = performance.now(); } else { clearFx(); }
       document.getElementById('playBtn').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
       if (!isPlaying) stopMusic();
-      else if (musicActive()) startMusic();
+      else if (musicOn()) startMusic();
     }
 
     function toggleReticle() {
@@ -797,7 +651,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['bpmSlider', 'multSelect', 'musicSelect', 'cutOnSelect', 'sensRange', 'nudgeRange', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['bpmSlider', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -822,7 +676,7 @@
       const bpm = parseInt(document.getElementById('bpmSlider').value, 10);
       const mult = parseFloat(document.getElementById('multSelect').value);
       framesPerCut = Math.max(1, (30 * 60) / (bpm * mult));
-      document.getElementById('bpmVal').textContent = trackDriven() ? `${Math.round(track.bpm)} BPM · track` : `${bpm} BPM`;
+      document.getElementById('bpmVal').textContent = `${bpm} BPM`;
       document.getElementById('speedVal').textContent = `${framesPerCut.toFixed(1)}f`;
       restartLoop();
       musicChanged();
@@ -1086,7 +940,7 @@
       exporting = true;
       btn.textContent = 'Rendering...';
       try {
-        if (musicOn() && !trackDriven()) {                                   // the same WebAudio drone as the preview, rendered offline and sent along
+        if (musicOn()) {                                   // the same WebAudio drone as the preview, rendered offline and sent along
           setMusicState('busy', 'Preparing the sound…');
           const wav = window.Drone.toWav(await window.Drone.renderExport(synthParams(), synthStartsSec()));
           const up = await fetch('/api/export-audio', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: wav });
@@ -1101,8 +955,7 @@
             bpm: parseInt(document.getElementById('bpmSlider').value, 10),
             multiple: parseFloat(document.getElementById('multSelect').value),
             invert_mode: document.getElementById('invertSelect').value,
-            ...trackParams(),
-            music: trackDriven() ? 'track' : musicOn() ? 'synth' : 'off',
+            music: musicOn() ? 'synth' : 'off',
             zoom_mode: document.getElementById('zoomSelect').value,
             zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0
           })
@@ -1132,7 +985,6 @@
     updateFx();
     updateTempo();
     updateMusic();
-    loadTrack();
     showFxTab(document.getElementById('fxTabVal').value);
     ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'].forEach(id => document.getElementById(id).addEventListener('change', saveSettings));
     document.getElementById('worldSelect').addEventListener('change', () => { document.getElementById('directionInput').value = ''; saveSettings(); updateDirectionHint(); });
@@ -1201,9 +1053,6 @@ Object.assign(window, {
   setTrashView,
   togglePlay,
   updateMusic,
-  chooseTrack,
-  uploadTrack,
-  clearTrack,
   randomMusic,
   showFxTab,
   togglePromptOverlay,

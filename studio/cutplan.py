@@ -6,9 +6,9 @@ Which image is on screen at which moment, and how it is treated: shared by the e
   - Moverunion clip: each ~5-frame cut slowly zooms OUT about the centre, only ~0.15-0.45% over the cut.
 """
 
-from PIL import Image, ImageOps
+import bisect
 
-import rhythm as rhythm_mod
+from PIL import Image, ImageOps
 
 INVERT_MODES = ("off", "mono", "colour")
 ZOOM_MODES = ("off", "out", "in")
@@ -19,9 +19,13 @@ def timeline(n_plates: int, invert_mode: str = "off") -> list[float]:
     return [float(i) for i in range(n_plates * (2 if invert_mode in ("mono", "colour") else 1) + 1)]
 
 
-def timeline_from_seconds(starts_sec: list[float], fps: int = 30) -> list[float]:
-    """A timeline in seconds (music-driven cuts) as cut positions in frames: use it with frames_per_cut = 1."""
-    return [s * fps for s in starts_sec]
+def cut_at(starts: list[float], t: float) -> tuple[int, float]:
+    """(cut index, progress 0..1 inside it) at position t; t wraps around the sequence."""
+    total = starts[-1]
+    t = t % total if total > 0 else 0.0
+    i = min(max(bisect.bisect_right(starts, t) - 1, 0), len(starts) - 2)
+    span = starts[i + 1] - starts[i]
+    return i, (t - starts[i]) / span if span > 0 else 0.0
 
 
 def frame_plan(frame: int, frames_per_cut: float, n_plates: int, invert_mode: str = "off", starts: list | None = None) -> dict:
@@ -31,8 +35,8 @@ def frame_plan(frame: int, frames_per_cut: float, n_plates: int, invert_mode: st
 
 
 def plan_at(cut_pos: float, n_plates: int, invert_mode: str = "off", starts: list | None = None) -> dict:
-    if starts:  # a tempo curve: cuts have different lengths
-        cut, p = rhythm_mod.cut_at(starts, cut_pos)
+    if starts:  # cuts of different lengths
+        cut, p = cut_at(starts, cut_pos)
     else:
         cut = int(cut_pos // 1)
         p = cut_pos - cut
