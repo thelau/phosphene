@@ -242,7 +242,7 @@
     async function switchSequence(id) {
       if (blockedByAi() || id === activeSeq) return;
       const ok = await seqCall({ action: 'activate', id });
-      if (ok && isPlaying) { cutPos = 0; lastTick = performance.now(); currentIdx = 0; }   // the player follows: start the other order from its first image
+      if (ok && isPlaying) { cutPos = 0; lastTick = performance.now(); currentIdx = 0; if (musicAudio && !musicAudio.paused) musicAudio.currentTime = 0; }   // the player follows: start the other order from its first image
       return ok;
     }
     function resetAi() { return blockedByAi() ? undefined : seqCall({ action: 'reset' }); }
@@ -465,11 +465,106 @@
 
     // ---- what is on screen when (mirrored in studio/cutplan.py; tests keep the two in step) ----
     // A "cut" is one hold of framesPerCut frames. With invert on, every image takes two cuts: normal, then inverted.
-    function planAt(cutPos, nPlates, invertMode) {
-      const cut = Math.floor(cutPos);
-      const p = cutPos - cut;
+    function planAt(cutPos, nPlates, invertMode, starts) {
+      let cut = Math.floor(cutPos);
+      let p = cutPos - cut;
+      if (starts) [cut, p] = cutAt(starts, cutPos);
       const paired = invertMode === 'mono' || invertMode === 'colour';
       return { cut, p, plate: (paired ? Math.floor(cut / 2) : cut) % nPlates, inverted: paired && cut % 2 === 1 };
+    }
+    // ---- the cut timeline (mirrored in studio/rhythm.py): where each cut starts, in base cuts ----
+    function rhythmFactor(rhythm, u) {
+      const sm = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
+      if (rhythm === 'land') return 1 + 2 * sm((u - 0.7) / 0.3);
+      if (rhythm === 'burst') return u < 0.75 ? 1 - 0.5 * sm((u - 0.30) / 0.10) : 0.5 + 2.5 * sm((u - 0.75) / 0.25);
+      return 1;
+    }
+    function cutStarts(nCuts, rhythm, paired, minLen = 0) {
+      const out = [0];
+      if (rhythm !== 'land' && rhythm !== 'burst') { for (let i = 1; i <= nCuts; i++) out.push(i); return out; }
+      const nImg = Math.max(1, paired ? Math.floor(nCuts / 2) : nCuts);
+      let t = 0;
+      for (let i = 0; i < nCuts; i++) {
+        const img = paired ? Math.floor(i / 2) : i;
+        let f = rhythmFactor(rhythm, nImg > 1 ? img / (nImg - 1) : 1);
+        if (img === nImg - 1) f *= 1.5;
+        t += Math.max(minLen, f);
+        out.push(t);
+      }
+      return out;
+    }
+    function cutAt(starts, t) {
+      const total = starts[starts.length - 1];
+      t = total > 0 ? ((t % total) + total) % total : 0;
+      let lo = 0, hi = starts.length - 2;
+      while (lo < hi) { const mid = Math.floor((lo + hi + 1) / 2); if (starts[mid] <= t) lo = mid; else hi = mid - 1; }
+      const span = starts[lo + 1] - starts[lo];
+      return [lo, span > 0 ? (t - starts[lo]) / span : 0];
+    }
+    let timelineCache = { key: '', starts: null };
+    function timelineFor(nPlates) {
+      const invert = document.getElementById('invertSelect').value;
+      const rhythm = document.getElementById('rhythmSelect').value;
+      const key = `${nPlates}|${invert}|${rhythm}|${framesPerCut}`;
+      if (timelineCache.key !== key) {
+        const paired = invert === 'mono' || invert === 'colour';
+        timelineCache = { key, starts: cutStarts(nPlates * (paired ? 2 : 1), rhythm, paired, 1 / framesPerCut) };
+      }
+      return timelineCache.starts;
+    }
+
+    // ---- synthesized music: rendered by the server for exactly this timeline; while it plays it is the player's clock ----
+    let musicAudio = null, musicKey = '', musicPending = false, musicTimer = null;
+    function musicOn() { return document.getElementById('musicSelect').value === 'synth'; }
+    function musicParams() {
+      return {
+        bpm: parseInt(document.getElementById('bpmSlider').value, 10),
+        multiple: parseFloat(document.getElementById('multSelect').value),
+        invert_mode: document.getElementById('invertSelect').value,
+        rhythm: document.getElementById('rhythmSelect').value
+      };
+    }
+    function stopMusic() {
+      if (musicAudio) { try { musicAudio.pause(); } catch (e) {} }
+      musicPending = false;
+      document.getElementById('playBtn').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+    }
+    async function startMusic() {
+      const key = JSON.stringify(musicParams()) + '|' + activePlates().length;
+      const btn = document.getElementById('playBtn');
+      if (key !== musicKey || !musicAudio) {
+        musicPending = true;
+        btn.textContent = '♪ Rendering…';
+        try {
+          const res = await fetch('/api/music', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(musicParams()) });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const url = URL.createObjectURL(await res.blob());
+          if (musicAudio) URL.revokeObjectURL(musicAudio.src);
+          musicAudio = new Audio(url);
+          musicAudio.loop = true;
+          musicKey = key;
+        } catch (e) {
+          musicPending = false;
+          musicAudio = null;
+          musicKey = '';
+          btn.textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+          setStatus(`Could not render the music: ${e.message}`);
+          return;
+        }
+        if (!isPlaying || !musicOn() || key !== JSON.stringify(musicParams()) + '|' + activePlates().length) { musicPending = false; btn.textContent = isPlaying ? '⏸ Pause' : '▶ Play'; return; }
+      }
+      musicPending = false;
+      btn.textContent = '⏸ Pause';
+      cutPos = 0;
+      lastTick = performance.now();
+      musicAudio.currentTime = 0;
+      try { await musicAudio.play(); } catch (e) { setStatus('The browser blocked the audio. Press Play again.'); }
+    }
+    // tempo, multiple, invert, rhythm or the music switch changed: the track no longer matches; restart it from the top
+    function musicChanged() {
+      stopMusic();
+      clearTimeout(musicTimer);
+      if (isPlaying && musicOn()) musicTimer = setTimeout(startMusic, 350);
     }
     function zoomScale(mode, amountPct, p) {
       const a = amountPct / 100;
@@ -515,10 +610,12 @@
         const active = activePlates();
         const stageImg = document.getElementById('stageImg');
         if (!active.length || stageImg.style.display === 'none') return;
+        if (musicPending) return;
         const cutMs = Math.max(16, (framesPerCut / 30) * 1000);
-        cutPos += dt / cutMs;
+        if (musicAudio && !musicAudio.paused && musicOn()) cutPos = (musicAudio.currentTime * 1000) / cutMs;   // the track is the clock
+        else cutPos += dt / cutMs;
         const fx = fxSettings();
-        const plan = planAt(cutPos, active.length, fx.invert);
+        const plan = planAt(cutPos, active.length, fx.invert, timelineFor(active.length));
         currentIdx = plan.plate;
         const url = active[plan.plate].url;
         if (stageImg.getAttribute('src') !== url) stageImg.src = url;
@@ -532,6 +629,8 @@
       isPlaying = !isPlaying;
       if (isPlaying) { cutPos = 0; lastTick = performance.now(); } else { clearFx(); }
       document.getElementById('playBtn').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+      if (!isPlaying) stopMusic();
+      else if (musicOn()) startMusic();
     }
 
     function toggleReticle() {
@@ -539,7 +638,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['bpmSlider', 'multSelect', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['bpmSlider', 'multSelect', 'rhythmSelect', 'musicSelect', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -567,6 +666,7 @@
       document.getElementById('bpmVal').textContent = `${bpm} BPM`;
       document.getElementById('speedVal').textContent = `${framesPerCut.toFixed(1)}f`;
       restartLoop();
+      musicChanged();
     }
 
     function setTrashView(on) {
@@ -834,6 +934,8 @@
             bpm: parseInt(document.getElementById('bpmSlider').value, 10),
             multiple: parseFloat(document.getElementById('multSelect').value),
             invert_mode: document.getElementById('invertSelect').value,
+            rhythm: document.getElementById('rhythmSelect').value,
+            music: document.getElementById('musicSelect').value,
             zoom_mode: document.getElementById('zoomSelect').value,
             zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0
           })

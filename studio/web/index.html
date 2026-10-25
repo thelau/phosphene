@@ -133,6 +133,21 @@
           <span id="speedVal">~4f</span>
         </div>
         <div class="control-line">
+          <span>Rhythm</span>
+          <select id="rhythmSelect" onchange="updateTempo()" style="flex:1" title="Flat: every cut the same length. The curves change the cut length along the sequence and end on a long hold (Ecwora / Soiltone).">
+            <option value="flat">Flat (every cut the same)</option>
+            <option value="land">Slow landing</option>
+            <option value="burst">Burst, then landing</option>
+          </select>
+        </div>
+        <div class="control-line">
+          <span>Music</span>
+          <select id="musicSelect" onchange="updateTempo()" style="flex:1" title="A track synthesized for exactly these cuts: a hit on every cut, so any tempo, multiple or rhythm stays in sync. Also added to the export.">
+            <option value="off">Off</option>
+            <option value="synth">Synthesized, in sync</option>
+          </select>
+        </div>
+        <div class="control-line">
           <span>Invert</span>
           <select id="invertSelect" onchange="updateFx()" style="flex:1" title="Soiltone-style: every image is followed by an inverted copy of itself (same hold)">
             <option value="off">Off</option>

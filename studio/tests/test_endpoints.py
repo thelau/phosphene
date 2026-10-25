@@ -6,6 +6,7 @@ Not exhaustive: it exists so a deleted or broken endpoint (it happened once) fai
 import http.client
 import io
 import json
+import subprocess
 import threading
 
 import pytest
@@ -69,7 +70,7 @@ def live(srv, monkeypatch):
 
 
 GET_ENDPOINTS = ["/api/state", "/api/worlds", "/api/stats", "/api/version"]
-POST_ENDPOINTS = ["/api/save-settings", "/api/reorder", "/api/sequence", "/api/trash", "/api/purge", "/api/invent-prompts", "/api/generate-image", "/api/order-ai", "/api/export-video"]
+POST_ENDPOINTS = ["/api/save-settings", "/api/reorder", "/api/sequence", "/api/trash", "/api/purge", "/api/invent-prompts", "/api/generate-image", "/api/order-ai", "/api/export-video", "/api/music"]
 
 
 @pytest.mark.parametrize("path", GET_ENDPOINTS)
@@ -427,3 +428,45 @@ def test_soften_prompt_refuses_empty_or_failed_rewrites(srv):
     assert srv.soften_prompt("x" * 60, "k", "m", call_llm=lambda *a, **k: "x" * 60) is None
     assert srv.soften_prompt("x", "k", "m", call_llm=lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))) is None
     assert srv.soften_prompt("x", "k", "m", call_llm=lambda *a, **k: '"' + "a neutral rewrite " * 4 + '"') == ("a neutral rewrite " * 4).strip()
+
+
+def _streams(path):
+    out = subprocess.run(["/opt/homebrew/bin/ffprobe", "-v", "error", "-show_entries", "stream=codec_type:format=duration", "-of", "json", str(path)],
+                         capture_output=True, text=True, check=True).stdout
+    data = json.loads(out)
+    return [x["codec_type"] for x in data["streams"]], float(data["format"]["duration"])
+
+
+def _three_plates(live):
+    for i in range(3):
+        live("POST", "/api/generate-image", {"title": f"M{i}", "prompt": "p", "model": "m"})
+
+
+def test_music_endpoint_answers_a_wav_as_long_as_the_picture_will_be(live):
+    import io
+    import wave
+    _three_plates(live)
+    status, wav = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "rhythm": "flat"})
+    assert status == 200 and wav[:4] == b"RIFF"
+    with wave.open(io.BytesIO(wav)) as w:
+        assert w.getnframes() / w.getframerate() == pytest.approx(3 * 7.5 / 30, abs=0.01)    # 3 images x 7.5 frames at 30fps
+    status, longer = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "rhythm": "land"})
+    assert status == 200 and len(longer) > len(wav)                                          # the landing hold makes it longer
+
+
+def test_export_with_music_has_an_audio_track_and_without_it_does_not(live, srv):
+    _three_plates(live)
+    status, plain = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2})
+    assert status == 200 and _streams(srv.OUTPUTS_DIR / plain["filename"])[0] == ["video"] and "music" not in plain["filename"]
+    status, withm = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth", "rhythm": "land"})
+    assert status == 200 and withm["music"] is True and withm["rhythm"] == "land" and "land" in withm["filename"] and "music" in withm["filename"]
+    kinds, seconds = _streams(srv.OUTPUTS_DIR / withm["filename"])
+    assert sorted(kinds) == ["audio", "video"]
+    assert seconds > _streams(srv.OUTPUTS_DIR / plain["filename"])[1]                        # same images, but the curve ends on a long hold
+    assert gen_log.read(None)[-1]["music"] is True
+
+
+def test_export_ignores_an_unknown_rhythm(live, srv):
+    _three_plates(live)
+    status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "rhythm": "sideways"})
+    assert status == 200 and res["rhythm"] == "flat"

@@ -60,8 +60,12 @@ function load({ routes = {}, storage = {} } = {}) {
       const route = routes[url];
       if (!route) throw new Error(`no route for ${url}`);
       const out = typeof route === 'function' ? await route(body, calls) : route;
-      return { ok: true, status: 200, json: async () => out };
+      if (out && out.__fail) return { ok: false, status: out.__fail, json: async () => ({}), blob: async () => ({}) };
+      return { ok: true, status: 200, json: async () => out, blob: async () => ({ size: 1 }) };
     },
+    URL: { createObjectURL: () => 'blob:music', revokeObjectURL() {} },
+    Audio: class { constructor(src) { this.src = src; this.loop = false; this.paused = true; this.currentTime = 0; ctx.__audios.push(this); } async play() { this.paused = false; } pause() { this.paused = true; } },
+    __audios: [],
   };
   ctx.window = ctx;
   vm.createContext(ctx);

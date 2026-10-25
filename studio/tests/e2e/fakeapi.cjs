@@ -141,6 +141,12 @@ function start(state = makeState()) {
         const n = state.plates.filter(p => !p.trashed).length;
         return send({ ok: true, video_url: '/outputs/Demo-test.mp4', filename: 'Demo-test.mp4', images: n, seconds: n * 0.5, cuts: n });
       }
+      case '/api/music': {   // a valid 2 s silent WAV (8 kHz, mono, 16-bit)
+        const n = 16000, buf = Buffer.alloc(44 + n * 2);
+        buf.write('RIFF', 0); buf.writeUInt32LE(36 + n * 2, 4); buf.write('WAVEfmt ', 8); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
+        buf.writeUInt32LE(8000, 24); buf.writeUInt32LE(16000, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34); buf.write('data', 36); buf.writeUInt32LE(n * 2, 40);
+        res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': buf.length }); return res.end(buf);
+      }
       default:
         res.writeHead(404); return res.end('not found');
     }

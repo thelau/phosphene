@@ -361,6 +361,28 @@ const ZOOM_VECTORS = [
   ['off', 5, 0.5, 1.0], ['out', 1, 0.0, 1.01], ['out', 1, 1.0, 1.0], ['in', 1, 0.0, 1.0], ['in', 1, 1.0, 1.01], ['out', 0.6, 0.5, 1.003],
 ];
 
+const RHYTHM_VECTORS = [   // same as tests/test_rhythm.py: nCuts, rhythm, paired, starts[min(7, n)], total
+  [10, 'land', false, 7.0, 15.213763], [10, 'burst', false, 5.37037, 12.41358], [10, 'burst', true, 5.5, 15.0],
+  [20, 'land', true, 7.0, 30.427526], [1, 'burst', false, 4.5, 4.5], [6, 'flat', false, 6.0, 6.0],
+];
+
+test('cutStarts matches the server timeline vectors', () => {
+  const { run } = load({ routes: baseRoutes() });
+  for (const [n, r, paired, at7, total] of RHYTHM_VECTORS) {
+    const s = run(`cutStarts(${n}, '${r}', ${paired})`);
+    assert.equal(s.length, n + 1);
+    assert.ok(Math.abs(s[Math.min(7, n)] - at7) < 1e-5 && Math.abs(s[n] - total) < 1e-5, `${n} ${r} ${paired}`);
+  }
+});
+
+test('planAt follows a tempo curve and wraps around the sequence', () => {
+  const { run } = load({ routes: baseRoutes() });
+  assert.deepEqual(JSON.parse(JSON.stringify(run('planAt(2.0, 4, "off", [0, 1, 3, 4.5])'))).cut, 1);
+  const r = run('planAt(2.0, 4, "off", [0, 1, 3, 4.5])');
+  assert.ok(Math.abs(r.p - 0.5) < 1e-9);
+  assert.equal(run('planAt(6.0, 4, "off", [0, 1, 3, 4.5])').cut, 1);   // 6.0 wraps to 1.5
+});
+
 test('planAt matches the server plan vectors', () => {
   const { run } = load({ routes: baseRoutes() });
   for (const [pos, n, inv, cut, plate, flipped] of PLAN_VECTORS) {
@@ -598,4 +620,110 @@ test('beforeunload asks only while a job is running', async () => {
     h.run(`${flag} = false`);
   }
   assert.equal(h.run('isBusy()'), false);
+});
+
+
+// ---------- rhythm and music ----------
+
+async function playerWith(extra = {}) {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: [mkPlate('a'), mkPlate('b'), mkPlate('c')] };
+  r['/api/music'] = extra.music || { ok: true };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('stageImg').style.display = 'block';
+  h.$('bpmSlider').value = '120'; h.$('multSelect').value = '2'; h.$('zoomSelect').value = 'off';
+  h.run('updateTempo()');
+  return h;
+}
+
+test('with music off, Play never asks for music or creates audio', async () => {
+  const h = await playerWith();
+  h.run('togglePlay()');
+  await settle();
+  assert.equal(h.calls.some(c => c.url === '/api/music'), false);
+  assert.equal(h.ctx.__audios.length, 0);
+  assert.equal(h.$('playBtn').textContent, '⏸ Pause');
+});
+
+test('with music on, Play renders the track for the current settings, then plays it from the top', async () => {
+  const h = await playerWith();
+  h.$('musicSelect').value = 'synth'; h.$('rhythmSelect').value = 'burst'; h.$('invertSelect').value = 'colour';
+  h.run('togglePlay()');
+  assert.equal(h.$('playBtn').textContent, '♪ Rendering…');
+  await settle(); await settle();
+  const call = h.calls.find(c => c.url === '/api/music');
+  assert.deepEqual(call.body, { bpm: 120, multiple: 2, invert_mode: 'colour', rhythm: 'burst' });
+  assert.equal(h.ctx.__audios.length, 1);
+  const a = h.ctx.__audios[0];
+  assert.equal(a.paused, false); assert.equal(a.loop, true); assert.equal(a.currentTime, 0);
+  assert.equal(h.$('playBtn').textContent, '⏸ Pause');
+  h.run('togglePlay()');                                                    // pause stops the sound
+  assert.equal(a.paused, true);
+});
+
+test('while the music plays it is the clock: the picture follows the audio position', async () => {
+  const h = await playerWith();
+  h.$('musicSelect').value = 'synth'; h.$('invertSelect').value = 'off';
+  h.run('framesPerCut = 3');                                                // 100 ms per cut
+  h.run('togglePlay()');
+  await settle(); await settle();
+  const tick = h.timers.intervals[h.timers.intervals.length - 1].fn;
+  h.ctx.__audios[0].currentTime = 0.25;                                     // cut 2 -> third image
+  tick();
+  assert.equal(h.$('stageImg').src, '/p/c');
+  h.ctx.__audios[0].currentTime = 0.05;
+  tick();
+  assert.equal(h.$('stageImg').src, '/p/a');
+});
+
+test('changing the tempo or rhythm while playing stops the old track and renders a new one', async () => {
+  const h = await playerWith();
+  h.$('musicSelect').value = 'synth';
+  h.run('togglePlay()');
+  await settle(); await settle();
+  const first = h.ctx.__audios[0];
+  h.$('rhythmSelect').value = 'land';
+  h.run('updateTempo()');
+  assert.equal(first.paused, true);                                          // the old track no longer matches
+  const wait = h.timers.timeouts[h.timers.timeouts.length - 1];
+  assert.ok(wait.ms >= 200);                                                 // debounced: dragging the slider does not hammer the server
+  wait.fn();
+  await settle(); await settle();
+  assert.equal(h.calls.filter(c => c.url === '/api/music').length, 2);
+  assert.equal(h.ctx.__audios.length, 2);
+  assert.equal(h.ctx.__audios[1].paused, false);
+});
+
+test('when the music cannot be rendered the player says so and the picture still plays', async () => {
+  const h = await playerWith({ music: { __fail: 500 } });
+  h.$('musicSelect').value = 'synth';
+  h.run('togglePlay()');
+  await settle(); await settle();
+  assert.match(h.$('toast').textContent, /Could not render the music/);
+  assert.equal(h.$('playBtn').textContent, '⏸ Pause');
+  const tick = h.timers.intervals[h.timers.intervals.length - 1].fn;
+  h.ctx.performance.now = (() => { let t = 0; return () => (t += 100); })();
+  h.run('lastTick = performance.now()');
+  tick();                                                                    // not stuck waiting for audio
+  assert.ok(h.run('cutPos') > 0);
+});
+
+test('export sends the rhythm and the music choice', async () => {
+  const r = baseRoutes();
+  r['/api/export-video'] = { ok: true, images: 3, seconds: 2, video_url: '/outputs/x.mp4', filename: 'x.mp4' };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('rhythmSelect').value = 'land'; h.$('musicSelect').value = 'synth';
+  await h.run('exportVideo()');
+  const body = h.calls.find(c => c.url === '/api/export-video').body;
+  assert.deepEqual([body.rhythm, body.music], ['land', 'synth']);
+});
+
+test('rhythm and music choices are remembered', () => {
+  const h = load({ routes: baseRoutes() });
+  h.$('rhythmSelect').value = 'burst'; h.$('musicSelect').value = 'synth';
+  h.run('updateTempo()');
+  const saved = JSON.parse(h.store.studioSettings);
+  assert.deepEqual([saved.rhythmSelect, saved.musicSelect], ['burst', 'synth']);
 });

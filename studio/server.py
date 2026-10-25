@@ -31,6 +31,8 @@ import cutplan
 import editor
 import gen_log
 import features
+import rhythm
+import synth
 import sequences
 import diversity
 import taste
@@ -629,10 +631,20 @@ def purge_plates(st: dict, requested) -> tuple[int, int]:
     return deleted, freed
 
 
-def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "off", zoom_mode: str = "off") -> str:
+def music_wav(n_images: int, bpm: float, multiple: float, invert_mode: str, rhythm_mode: str) -> tuple[bytes, float]:
+    """The synthesized track for one pass over n_images, cut for cut like the picture. Returns (wav bytes, seconds)."""
+    fps = 30
+    fpc = max(1.0, fps * 60.0 / (bpm * multiple))
+    starts = cutplan.timeline(n_images, fpc, invert_mode, rhythm_mode)
+    secs = [x * fpc / fps for x in starts]
+    return synth.render(secs, paired=invert_mode in ("mono", "colour")), secs[-1]
+
+
+def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "off", zoom_mode: str = "off", rhythm_mode: str = "flat", music: bool = False) -> str:
     """Unique, descriptive name per export so nothing is overwritten: Demo-136bpm-x4-invert-zoomout-20261025-0930.mp4"""
     mult = f"{multiple:.2f}".rstrip("0").rstrip(".")
     fx = ("-invert" if invert_mode in ("mono", "colour") else "") + (f"-zoom{zoom_mode}" if zoom_mode != "off" else "")
+    fx += (f"-{rhythm_mode}" if rhythm_mode != "flat" else "") + ("-music" if music else "")
     return f"Demo-{int(round(bpm))}bpm-x{mult}{fx}-{time.strftime('%Y%m%d-%H%M%S', time.localtime(ts))}.mp4"
 
 
@@ -643,7 +655,7 @@ def prune_exports(folder: Path, keep: int = 12) -> None:
         old.unlink(missing_ok=True)
 
 
-def write_export_frames(files, tmp_dir: Path, total_frames: int, frames_per_cut: float, invert_mode: str = "off", zoom_mode: str = "off", zoom_amount: float = 0.6) -> int:
+def write_export_frames(files, tmp_dir: Path, total_frames: int, frames_per_cut: float, invert_mode: str = "off", zoom_mode: str = "off", zoom_amount: float = 0.6, starts: list | None = None) -> int:
     """Writes f_0000.jpg ... for the export. Plain cuts reuse the encoded bytes; zoom needs a render per frame."""
     base = [Image.open(p).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS) for p in files]
     flipped = {}  # plate index -> inverted copy, built on demand
@@ -655,7 +667,7 @@ def write_export_frames(files, tmp_dir: Path, total_frames: int, frames_per_cut:
 
     cache: dict = {}
     for f in range(total_frames):
-        plan = cutplan.frame_plan(f, frames_per_cut, len(base), invert_mode)
+        plan = cutplan.frame_plan(f, frames_per_cut, len(base), invert_mode, starts)
         scale = cutplan.zoom_scale(zoom_mode, zoom_amount, plan["p"])
         img = base[plan["plate"]]
         if plan["inverted"]:
@@ -805,6 +817,14 @@ class StudioHandler(SimpleHTTPRequestHandler):
             return
 
         return super().do_GET()
+
+    def send_wav(self, raw: bytes):
+        self.send_response(200)
+        self.send_header("Content-Type", "audio/wav")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(raw)
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -1049,6 +1069,25 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True})
             return
 
+        if parsed.path == "/api/music":
+            # the synthesized track the player plays: same timeline (tempo, multiple, invert, rhythm) as the picture and the export
+            st = load_state()
+            trashed_set = set(st.get("trashed", []))
+            n_images = len(sequences.edit_files([p for p in ordered_plate_files(st) if p.name not in trashed_set], st))
+            if not n_images:
+                self.send_json({"ok": False, "error": "No active plates"}, 400)
+                return
+            invert_mode = body.get("invert_mode") if body.get("invert_mode") in cutplan.INVERT_MODES else "off"
+            rhythm_mode = body.get("rhythm") if body.get("rhythm") in rhythm.RHYTHMS else "flat"
+            try:
+                wav, secs = music_wav(n_images, float(body.get("bpm", 136.0)), float(body.get("multiple", 1.0)), invert_mode, rhythm_mode)
+            except Exception as e:
+                print(f"[MUSIC] FAILED: {str(e)[:300]}", flush=True)
+                self.send_json({"ok": False, "error": f"Music failed: {str(e)[:200]}"}, 500)
+                return
+            self.send_wav(wav)
+            return
+
         if parsed.path == "/api/export-video":
             bpm = float(body.get("bpm", 136.0))
             multiple = float(body.get("multiple", 1.0))  # cuts per beat: 0.5 = every 2 beats, 4 = 4 cuts/beat
@@ -1072,19 +1111,28 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     invert_mode = body.get("invert_mode", "off") if body.get("invert_mode") in cutplan.INVERT_MODES else "off"
                     zoom_mode = body.get("zoom_mode", "off") if body.get("zoom_mode") in cutplan.ZOOM_MODES else "off"
                     zoom_amount = max(0.0, min(10.0, float(body.get("zoom_amount", 0.6))))
-                    n_cuts, total_frames = cutplan.export_length(len(active_files), frames_per_cut, invert_mode)  # every selected image, once
-                    write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount)
+                    rhythm_mode = body.get("rhythm") if body.get("rhythm") in rhythm.RHYTHMS else "flat"
+                    with_music = body.get("music") == "synth"
+                    starts = cutplan.timeline(len(active_files), frames_per_cut, invert_mode, rhythm_mode)
+                    n_cuts, total_frames = cutplan.export_length(len(active_files), frames_per_cut, invert_mode, starts)  # every selected image, once
+                    write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount, starts)
 
-                    out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode)
-                    # picture only: no music is attached; cut length follows the tempo, multiple and effects chosen in the player
-                    cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp_dir / "f_%04d.jpg"),
-                           "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", str(out_mp4)]
+                    out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode, rhythm_mode, with_music)
+                    # cut length follows the tempo, multiple, rhythm and effects chosen in the player; music only when asked for
+                    cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp_dir / "f_%04d.jpg")]
+                    if with_music:
+                        wav, _ = music_wav(len(active_files), bpm, multiple, invert_mode, rhythm_mode)
+                        (tmp_dir / "music.wav").write_bytes(wav)
+                        cmd += ["-i", str(tmp_dir / "music.wav"), "-c:a", "aac", "-b:a", "192k", "-shortest"]
+                    else:
+                        cmd += ["-an"]
+                    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", str(out_mp4)]
                     subprocess.run(cmd, check=True, capture_output=True)
                     shutil.rmtree(tmp_dir, ignore_errors=True)
                     prune_exports(OUTPUTS_DIR, keep=12)
                     self.send_json({"ok": True, "video_url": f"/outputs/{out_mp4.name}", "filename": out_mp4.name, "frames_per_cut": round(frames_per_cut, 2),
-                                    "images": len(active_files), "cuts": n_cuts, "seconds": round(total_frames / fps, 1)})
-                gen_log.record("export", ok=True, filename=out_mp4.name, images=len(active_files), seconds=round(total_frames / fps, 1), took=round(time.time() - t_export, 1))
+                                    "images": len(active_files), "cuts": n_cuts, "seconds": round(total_frames / fps, 1), "music": with_music, "rhythm": rhythm_mode})
+                gen_log.record("export", ok=True, rhythm=rhythm_mode, music=with_music, filename=out_mp4.name, images=len(active_files), seconds=round(total_frames / fps, 1), took=round(time.time() - t_export, 1))
             except Exception as e:
                 print(f"[EXPORT] FAILED: {str(e)[:300]}", flush=True)
                 gen_log.record("export", ok=False, images=len(active_files), error=str(e)[:300], took=round(time.time() - t_export, 1))

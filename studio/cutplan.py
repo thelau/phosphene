@@ -8,19 +8,30 @@ Which image is on screen at which moment, and how it is treated: shared by the e
 
 from PIL import Image, ImageOps
 
+import rhythm as rhythm_mod
+
 INVERT_MODES = ("off", "mono", "colour")
 ZOOM_MODES = ("off", "out", "in")
 
 
-def frame_plan(frame: int, frames_per_cut: float, n_plates: int, invert_mode: str = "off") -> dict:
+def timeline(n_plates: int, frames_per_cut: float, invert_mode: str = "off", rhythm: str = "flat") -> list[float]:
+    """Where each cut starts (in base cuts) for one pass over every image; see rhythm.py."""
+    paired = invert_mode in ("mono", "colour")
+    return rhythm_mod.cut_starts(n_plates * (2 if paired else 1), rhythm, paired, min_len=1.0 / frames_per_cut)
+
+
+def frame_plan(frame: int, frames_per_cut: float, n_plates: int, invert_mode: str = "off", starts: list | None = None) -> dict:
     """What frame number `frame` shows. With invert on, every plate takes two cuts: normal, then inverted."""
     cut_pos = (frame + 0.5) / frames_per_cut
-    return plan_at(cut_pos, n_plates, invert_mode)
+    return plan_at(cut_pos, n_plates, invert_mode, starts)
 
 
-def plan_at(cut_pos: float, n_plates: int, invert_mode: str = "off") -> dict:
-    cut = int(cut_pos // 1)
-    p = cut_pos - cut
+def plan_at(cut_pos: float, n_plates: int, invert_mode: str = "off", starts: list | None = None) -> dict:
+    if starts:  # a tempo curve: cuts have different lengths
+        cut, p = rhythm_mod.cut_at(starts, cut_pos)
+    else:
+        cut = int(cut_pos // 1)
+        p = cut_pos - cut
     paired = invert_mode in ("mono", "colour")
     plate = (cut // 2 if paired else cut) % n_plates
     return {"cut": cut, "p": p, "plate": plate, "inverted": paired and cut % 2 == 1}
@@ -51,7 +62,8 @@ def inverted(img: Image.Image, invert_mode: str) -> Image.Image:
     return ImageOps.invert(base)
 
 
-def export_length(n_plates: int, frames_per_cut: float, invert_mode: str = "off") -> tuple[int, int]:
+def export_length(n_plates: int, frames_per_cut: float, invert_mode: str = "off", starts: list | None = None) -> tuple[int, int]:
     """(number of cuts, number of frames) so every image is shown once; with invert on each image takes two cuts."""
     n_cuts = n_plates * (2 if invert_mode in ("mono", "colour") else 1)
-    return n_cuts, max(n_cuts, int(n_cuts * frames_per_cut))
+    total = starts[-1] if starts else n_cuts
+    return n_cuts, max(n_cuts, int(total * frames_per_cut))

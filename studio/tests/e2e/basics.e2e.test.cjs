@@ -146,3 +146,25 @@ test('narrow window: the header wraps without squeezing the Generate button', { 
   await ctx.close();
 });
 
+
+
+test('rhythm and music: choices sit in the player, Play renders the track, export sends them', { skip }, async () => {
+  const ctx = await fresh();
+  assert.deepEqual(await page.locator('#rhythmSelect option').allTextContents(), ['Flat (every cut the same)', 'Slow landing', 'Burst, then landing']);
+  assert.deepEqual(await page.locator('#musicSelect option').allTextContents(), ['Off', 'Synthesized, in sync']);
+  await page.selectOption('#rhythmSelect', 'burst');
+  await page.selectOption('#musicSelect', 'synth');
+  await page.click('#playBtn');
+  await page.waitForFunction(() => document.getElementById('playBtn').textContent.includes('Pause'));
+  const call = api.state.calls.filter(c => c.path === '/api/music').pop();
+  assert.equal(call.body.rhythm, 'burst');
+  await page.waitForTimeout(500);
+  assert.equal(await text('#playBtn'), '⏸ Pause');
+  await shot('rhythm-music');
+  await page.click('#playBtn');
+  await page.click('#exportBtn');
+  await page.waitForSelector('#downloadLink:not([hidden])');
+  const exp = api.state.calls.filter(c => c.path === '/api/export-video').pop();
+  assert.deepEqual([exp.body.rhythm, exp.body.music], ['burst', 'synth']);
+  await ctx.close();
+});
