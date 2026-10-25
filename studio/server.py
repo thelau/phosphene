@@ -1156,7 +1156,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                                 return min(b, max(a, float(body.get(key, default))))
                             except (TypeError, ValueError):
                                 return default
-                        variable = (num("start_ms", 400.0, lo, hi), num("end_ms", 100.0, lo, hi), num("curve", 0.0, -100.0, 100.0))
+                        variable = (num("start_ms", 100.0, lo, hi), num("end_ms", 600.0, lo, hi), int(num("ramp", 12, *cutplan.VARIABLE_RAMP)), "start" if body.get("at") == "start" else "end")
                         frames_per_cut = 1.0
                         starts = cutplan.variable_timeline(len(active_files) * (2 if invert_mode in ("mono", "colour") else 1), *variable)
                     else:

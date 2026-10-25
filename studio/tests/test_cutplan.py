@@ -186,36 +186,50 @@ def test_cut_at_finds_the_cut_and_wraps_around():
     assert cutplan.plan_at(2.0, 3, "off", starts)["plate"] == 1
 
 
-VARIABLE_VECTORS = [      # (cuts, start ms, end ms, curve) -> starts in frames; the same numbers are checked in ui.test.cjs
-    (4, 400, 100, 0, [0.0, 12.0, 19.559, 24.322, 27.322]),
-    (4, 400, 100, 50, [0.0, 12.0, 22.287, 28.767, 31.767]),
-    (4, 400, 100, -50, [0.0, 12.0, 17.390, 21.259, 24.259]),
-    (3, 200, 200, 0, [0.0, 6.0, 12.0, 18.0]),
-    (1, 300, 100, 0, [0.0, 9.0]),
+VARIABLE_VECTORS = [      # (cuts, start ms, end ms, ramp, at) -> starts in frames; the same numbers are checked in ui.test.cjs
+    (6, 100, 600, 3, "end", [0.0, 3.0, 6.0, 9.0, 14.451, 24.357, 42.357]),
+    (6, 100, 600, 3, "start", [0.0, 3.0, 10.348, 28.348, 46.348, 64.348, 82.348]),
+    (5, 200, 200, 12, "end", [0.0, 6.0, 12.0, 18.0, 24.0, 30.0]),
+    (1, 300, 100, 12, "end", [0.0, 3.0]),
+    (4, 400, 100, 99, "end", [0.0, 8.485, 14.485, 18.728, 21.728]),
 ]
 
 
-@pytest.mark.parametrize("n,a,b,curve,expected", VARIABLE_VECTORS)
-def test_variable_timeline_vectors(n, a, b, curve, expected):
-    assert cutplan.variable_timeline(n, a, b, curve) == pytest.approx(expected, abs=0.001)
+@pytest.mark.parametrize("n,a,b,ramp,at,expected", VARIABLE_VECTORS)
+def test_variable_timeline_vectors(n, a, b, ramp, at, expected):
+    assert cutplan.variable_timeline(n, a, b, ramp, at) == pytest.approx(expected, abs=0.001)
 
 
-def test_variable_speed_accelerates_decelerates_and_flat_is_a_special_case():
-    fast = cutplan.variable_timeline(10, 500, 80)
-    lens = [b - a for a, b in zip(fast, fast[1:])]
-    assert lens == sorted(lens, reverse=True) and lens[0] == pytest.approx(15.0) and lens[-1] == pytest.approx(2.4)
-    slow = cutplan.variable_timeline(10, 80, 500)
-    assert [b - a for a, b in zip(slow, slow[1:])] == pytest.approx(sorted(lens))
-    flat = cutplan.variable_timeline(5, 250, 250)
-    assert flat == pytest.approx([i * 7.5 for i in range(6)])                        # entry == exit: the same as a tempo of 240 cuts a minute
-    # the curve moves where the change happens, not where it starts or ends
-    late, early = cutplan.variable_timeline(10, 500, 80, 80), cutplan.variable_timeline(10, 500, 80, -80)
-    assert late[1] - late[0] == pytest.approx(15.0) and early[1] - early[0] == pytest.approx(15.0)
-    assert late[-1] > early[-1]                                                      # staying slow longer = a longer clip
-    assert late[1:] != early[1:]
+def lengths(t):
+    return [b - a for a, b in zip(t, t[1:])]
+
+
+def test_variable_speed_holds_then_lands_like_ecwora():
+    # the reference: 3-frame cuts, then the last ~12 cuts ease out to ~21 frames, each a constant ratio of the one before
+    t = lengths(cutplan.variable_timeline(40, 100, 700, 12))
+    assert t[:28] == pytest.approx([3.0] * 28)                         # the hold
+    assert t[-1] == pytest.approx(21.0) and t == pytest.approx(sorted(t))
+    ratios = [b / a for a, b in zip(t[27:], t[28:])]
+    assert ratios == pytest.approx([ratios[0]] * len(ratios), rel=1e-6)    # geometric
+    assert 1.1 < ratios[0] < 1.25                                      # the reference's ~1.15-1.2 per cut
+
+
+def test_the_landing_takes_the_same_time_however_many_images_there_are():
+    short, long = cutplan.variable_timeline(40, 100, 700, 12), cutplan.variable_timeline(200, 100, 700, 12)
+    assert (long[-1] - long[-13]) == pytest.approx(short[-1] - short[-13])         # the last 12 cuts last the same
+    assert (long[-1] - short[-1]) == pytest.approx(160 * 3.0)                      # the extra images are all at the start speed
+
+
+def test_variable_speed_can_build_up_slow_down_or_stay_flat():
+    fast = lengths(cutplan.variable_timeline(30, 500, 80, 8, "end"))
+    assert fast[0] == pytest.approx(15.0) and fast[-1] == pytest.approx(2.4) and fast == pytest.approx(sorted(fast, reverse=True))
+    build = lengths(cutplan.variable_timeline(30, 500, 80, 8, "start"))
+    assert build[0] == pytest.approx(15.0) and build[-1] == pytest.approx(2.4) and build[7:] == pytest.approx([2.4] * 23)
+    flat = cutplan.variable_timeline(5, 250, 250, 3)
+    assert flat == pytest.approx([i * 7.5 for i in range(6)])            # start == end: a flat run of 240 cuts a minute
 
 
 def test_variable_speed_never_goes_below_a_frame_or_outside_its_limits():
-    t = cutplan.variable_timeline(4, 1, 99999)
-    lens = [b - a for a, b in zip(t, t[1:])]
-    assert min(lens) >= 1.0 and lens[0] == pytest.approx(1.5) and lens[-1] == pytest.approx(45.0)     # 50 ms .. 1500 ms at 30 fps
+    t = lengths(cutplan.variable_timeline(4, 1, 99999, 4))
+    assert min(t) >= 1.0 and t[-1] == pytest.approx(45.0)                  # 50 ms .. 1500 ms at 30 fps
+    assert cutplan.variable_timeline(5, 100, 600, 1) == cutplan.variable_timeline(5, 100, 600, 2)     # at least 2 cuts of change

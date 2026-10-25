@@ -79,6 +79,15 @@
     { name: 'minor', ratios: [4.0, 4.8, 6.0, 7.2], pad: [2, 3, 4] },
     { name: 'suspended', ratios: [4.0, 4.5, 6.0, 9.0], pad: [2, 3, 5] }
   ];
+  const SUB_WAVES = ['sine', 'triangle', 'square'];           // the sub; the square is softened (a low-pass) before it saturates
+  const PAD_WAVES = ['sawtooth', 'square', 'triangle', 'pulse'];     // the pad's oscillators; pulse is a narrow 25% pulse
+  // gain that evens out how loud each pad wave is next to the saw
+  const PAD_TRIM = [1.0, 0.7, 1.3, 0.85];
+  function pulseWave(ctx, duty) {
+    const n = 64, real = new Float32Array(n + 1), imag = new Float32Array(n + 1);
+    for (let k = 1; k <= n; k++) { const a = (2 / (k * Math.PI)) * Math.sin(k * Math.PI * duty); real[k] = a * Math.cos(k * Math.PI * duty); imag[k] = a * Math.sin(k * Math.PI * duty); }
+    return ctx.createPeriodicWave(real, imag);
+  }
   const rootHz = pitch => 38 * Math.pow(2, 0.9 * pitch);                // 38..71 Hz
 
   // Builds the drone into ctx and connects it to `dest` (stereo, before the final glue).
@@ -96,6 +105,9 @@
     const f0 = Number.isFinite(+p.pitch) && p.pitch !== null && p.pitch !== undefined ? rootHz(clamp01(p.pitch)) : 51 + 6 * rand();
     const chord = CHORDS[Math.max(0, Math.min(CHORDS.length - 1, Math.round(+p.chord || 0)))];
     const echo = clamp01(p.echo === undefined ? 0 : p.echo);
+    const wash = clamp01(p.wash || 0), ring = clamp01(p.ring || 0), shimmer = clamp01(p.shimmer || 0);
+    const subWave = Math.max(0, Math.min(SUB_WAVES.length - 1, Math.round(+p.subWave || 0)));
+    const padWave = Math.max(0, Math.min(PAD_WAVES.length - 1, Math.round(+p.padWave || 0)));
     const move = Math.pow(2, 2 * (clamp01(p.movement === undefined ? 0.5 : p.movement) - 0.5));   // 0.5 = as measured; 1 = twice as fast
     const nodes = [];                                                      // everything that must be stopped
     const keep = n => { nodes.push(n); return n; };
@@ -133,9 +145,10 @@
       const level = gain(base * 0.9);                                      // a slow tremolo around it
       lfo(0.5, base * 0.1, level.gain);
       for (const [mult, g] of [[1, 1], [2, 0.3]]) {
-        const o = osc('sine', f0 * mult);
+        const o = osc(SUB_WAVES[subWave], f0 * mult);
         lfo(0.13, f0 * mult * 0.012, o.frequency);
-        const og = gain(g, level); o.connect(og);
+        if (subWave === 2) { const [l1] = lowpass(260, level); const og = gain(g * 0.8, l1); o.connect(og); }   // a square is soft: only its low harmonics
+        else { const og = gain(g, level); o.connect(og); }
       }
       const pre = gain(0.25);
       level.connect(pre);
@@ -168,7 +181,10 @@
       const padBus = gain(1);
       for (const [k, g] of [[chord.pad[0], 1.0], [chord.pad[1], 0.6], [chord.pad[2], 0.4]]) {
         for (const [v, vg] of [[-1, 0.6 * power], [0, 1.0], [1, 0.6 * power]]) {
-          if (vg > 0.01) osc('sawtooth', f0 * k * det * (1 + v * spread), gain(g * vg, padBus));
+          if (vg > 0.01) {
+            const o = osc(PAD_WAVES[padWave] === 'pulse' ? 'sine' : PAD_WAVES[padWave], f0 * k * det * (1 + v * spread), gain(g * vg * PAD_TRIM[padWave], padBus));
+            if (PAD_WAVES[padWave] === 'pulse') o.setPeriodicWave(pulseWave(ctx, 0.25));
+          }
         }
       }
       const fc = 260 + 1400 * bright;
@@ -191,6 +207,27 @@
       tickG.connect(tickAmt);
       for (const r of [7.2, 9.2]) osc('sine', f0 * r * (1 + 0.003 * side), tickG);
       air.connect(gain(0.05 * bright, body));
+      // texture layers (all off by default)
+      if (wash > 0.01) {                                                   // a slow wash of filtered noise, its centre drifting
+        const w = noiseLoop(ctx, rand, 4, (x, r) => onePole(x, 2500, r, 1)); keep(w);
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 550; bp.Q.value = 0.9;
+        lfo((0.04 + 0.05 * rand()) * move, 380, bp.frequency);
+        w.connect(bp); bp.connect(gain(1.1 * wash, body));
+      }
+      if (ring > 0.01) {                                                   // a metallic ring: inharmonic partials, each breathing on its own
+        [[1, 1.0], [2.76, 0.6], [5.4, 0.35]].forEach(([r, g], i) => {
+          const o = osc('sine', f0 * 6 * r * (1 + side * 0.003));
+          const og = gain(0.5 * g * ring * 0.7, body); o.connect(og);
+          lfo((0.08 + 0.2 * rand()) * move, 0.5 * g * ring * 0.3, og.gain);
+        });
+      }
+      if (shimmer > 0.01) {                                                // octave partials of the cluster, trembling fast and beating between the sides
+        [8, 12, 16].forEach((r, i) => {
+          const o = osc('sine', f0 * r * (1 + side * 0.006));
+          const og = gain(0.14 * shimmer * (1 - 0.2 * i) * 0.5, body); o.connect(og);
+          lfo((3.5 + 3 * rand()) * move, 0.14 * shimmer * (1 - 0.2 * i) * 0.5, og.gain);
+        });
+      }
       // the pump, the landing, then the heavy saturation
       const pg = gain(1); pump(pg.gain, 0.8 * pulse, 0.07);
       const lg = gain(1); sampled(lg.gain, t => 1 - 0.35 * landed(t));
@@ -240,7 +277,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   async function level(p, starts) {
-    const key = JSON.stringify([p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement]);
+    const key = JSON.stringify([p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave]);
     if (levelCache.has(key)) return levelCache.get(key);
     const rate = 22050, secs = Math.min(4, starts[starts.length - 1]);
     const trimmed = starts.filter(s => s < secs); trimmed.push(secs);

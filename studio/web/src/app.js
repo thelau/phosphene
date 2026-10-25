@@ -485,20 +485,23 @@
     function rhythmMode() { return document.getElementById('rhythmSelect').value === 'variable' ? 'variable' : 'flat'; }
     function variableParams() {
       return {
-        start_ms: parseInt(document.getElementById('startMsRange').value, 10) || 400,
-        end_ms: parseInt(document.getElementById('endMsRange').value, 10) || 100,
-        curve: parseInt(document.getElementById('curveSelect').value, 10) || 0
+        start_ms: parseInt(document.getElementById('startMsRange').value, 10) || 100,
+        end_ms: parseInt(document.getElementById('endMsRange').value, 10) || 600,
+        ramp: parseInt(document.getElementById('rampRange').value, 10) || 12,
+        at: document.getElementById('atSelect').value === 'start' ? 'start' : 'end'
       };
     }
-    // Variable speed: where each cut starts, in frames (mirrors cutplan.variable_timeline: geometric change, shaped by the curve)
-    function variableStarts(nCuts, startMs, endMs, curve) {
+    // Variable speed: where each cut starts, in frames (mirrors cutplan.variable_timeline: hold one speed, then change geometrically over `ramp` cuts)
+    function variableStarts(nCuts, startMs, endMs, ramp, at) {
       const clamp = v => Math.min(1500, Math.max(50, v));
       const a = Math.log(clamp(startMs)), b = Math.log(clamp(endMs));
-      const gamma = Math.pow(2, Math.min(100, Math.max(-100, curve)) / 50);
+      const nRamp = Math.max(1, Math.min(nCuts, Math.min(200, Math.max(2, Math.trunc(ramp)))));
       const starts = [0];
       for (let i = 0; i < nCuts; i++) {
-        const u = nCuts > 1 ? i / (nCuts - 1) : 0;
-        starts.push(starts[i] + Math.max(1, (Math.exp(a + (b - a) * Math.pow(u, gamma)) * 30) / 1000));
+        let u;
+        if (at === 'start') u = nRamp > 1 ? Math.min(1, i / (nRamp - 1)) : 1;
+        else { const j = i - (nCuts - nRamp); u = j < 0 ? 0 : (j + 1) / nRamp; }
+        starts.push(starts[i] + Math.max(1, (Math.exp(a + (b - a) * u) * 30) / 1000));
       }
       return starts;
     }
@@ -509,9 +512,9 @@
       const invert = document.getElementById('invertSelect').value;
       const nCuts = nPlates * (invert === 'mono' || invert === 'colour' ? 2 : 1);
       const v = rhythmMode() === 'variable' ? variableParams() : null;
-      const key = v ? `${nCuts}|${v.start_ms}|${v.end_ms}|${v.curve}` : `${nCuts}|flat`;
+      const key = v ? `${nCuts}|${v.start_ms}|${v.end_ms}|${v.ramp}|${v.at}` : `${nCuts}|flat`;
       if (timelineCache.key !== key) {
-        timelineCache = { key, starts: v ? variableStarts(nCuts, v.start_ms, v.end_ms, v.curve) : Array.from({ length: nCuts + 1 }, (_, i) => i) };
+        timelineCache = { key, starts: v ? variableStarts(nCuts, v.start_ms, v.end_ms, v.ramp, v.at) : Array.from({ length: nCuts + 1 }, (_, i) => i) };
       }
       return timelineCache.starts;
     }
@@ -526,6 +529,8 @@
       return {
         pulse: unit('pulseRange'), low: unit('lowRange'), bright: unit('brightRange'), width: unit('widthRange'), space: unit('spaceRange'), power: unit('powerRange'),
         pitch: unit('pitchRange'), chord: parseInt(document.getElementById('chordSelect').value, 10) || 0, movement: unit('movementRange'), echo: unit('echoRange'),
+        wash: unit('washRange'), ring: unit('ringRange'), shimmer: unit('shimmerRange'),
+        subWave: parseInt(document.getElementById('subWaveSelect').value, 10) || 0, padWave: parseInt(document.getElementById('padWaveSelect').value, 10) || 0,
         seed: parseInt(document.getElementById('seedVal').value, 10) || 7, paired
       };
     }
@@ -540,17 +545,20 @@
     function updateMusic() {
       const on = musicOn();
       document.getElementById('synthBox').hidden = !on;
-      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
+      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
       document.getElementById('styleHint').textContent = on ? MUSIC_HINT : 'No music: the preview and the export stay silent.';
       saveSettings();
       musicChanged();
     }
     // a random sound within what works: every setting is drawn from a range that stays a dark, heavy drone (the ranges are the taste)
-    const RANDOM_RANGES = { pulse: [30, 90], low: [65, 100], power: [30, 90], space: [5, 85], bright: [0, 55], width: [30, 100], pitch: [0, 100], movement: [15, 85], echo: [0, 55] };
+    const RANDOM_RANGES = { pulse: [30, 90], low: [65, 100], power: [30, 90], space: [5, 85], bright: [0, 55], width: [30, 100], pitch: [0, 100], movement: [15, 85], echo: [0, 55], wash: [0, 55], ring: [0, 45], shimmer: [0, 45] };
     function randomMusic() {
       const pick = ([lo, hi]) => Math.round(lo + Math.random() * (hi - lo));
       for (const [k, range] of Object.entries(RANDOM_RANGES)) document.getElementById(`${k}Range`).value = String(pick(range));
-      if (Math.random() < 0.4) document.getElementById('echoRange').value = '0';                  // often none: the echo is a flavour, not the rule
+      for (const k of ['echo', 'wash', 'ring', 'shimmer']) if (Math.random() < 0.5) document.getElementById(`${k}Range`).value = '0';   // flavours, not the rule: often none
+      const r = Math.random();
+      document.getElementById('subWaveSelect').value = r < 0.5 ? '0' : r < 0.75 ? '1' : '2';
+      document.getElementById('padWaveSelect').value = String(Math.floor(Math.random() * 4));
       document.getElementById('chordSelect').value = String(Math.floor(Math.random() * 4));
       document.getElementById('seedVal').value = String(1 + Math.floor(Math.random() * 99999));
       updateMusic();
@@ -565,7 +573,18 @@
       saveSettings();
     }
     // how many images, how long the result runs, and how long the cuts are
+    // the "Change over" slider can take at most every cut of the selection, so its range follows the images (and the invert pairs)
+    function syncRampRange() {
+      const invert = document.getElementById('invertSelect').value;
+      const nCuts = activePlates().length * (invert === 'mono' || invert === 'colour' ? 2 : 1);
+      const el = document.getElementById('rampRange');
+      el.max = String(Math.max(2, nCuts));
+      if ((parseInt(el.value, 10) || 0) > Math.max(2, nCuts)) el.value = el.max;
+      const ramp = parseInt(el.value, 10) || 12;
+      document.getElementById('rampVal').textContent = ramp >= nCuts && nCuts > 2 ? `all ${nCuts}` : `${ramp} cuts`;
+    }
     function drawInfo() {
+      syncRampRange();
       const n = activePlates().length;
       const info = document.getElementById('rhythmInfo');
       if (!n) { info.textContent = ''; return; }
@@ -575,7 +594,9 @@
       const lens = starts.slice(1).map((v, i) => sec(v - starts[i]));
       const f = v => (v < 1 ? `${Math.round(v * 1000)} ms` : `${v.toFixed(1)} s`);
       const lo = Math.min(...lens), hi = Math.max(...lens);
-      const pace = rhythmMode() === 'variable' ? `${f(lens[0])} → ${f(lens[lens.length - 1])}` : hi > lo * 1.05 ? `${f(lo)} – ${f(hi)}` : f(lo);
+      const v = variableParams();
+      const whole = v.ramp >= cuts;
+      const pace = rhythmMode() === 'variable' ? (v.start_ms === v.end_ms ? f(lens[0]) : whole ? `${f(lens[0])} → ${f(lens[lens.length - 1])}` : v.at === 'start' ? `${f(lens[0])} → ${f(lens[lens.length - 1])} over the first ${v.ramp}` : `${f(lens[0])}, then ${f(lens[lens.length - 1])} over the last ${v.ramp}`) : hi > lo * 1.05 ? `${f(lo)} – ${f(hi)}` : f(lo);
       info.textContent = `${n} images · ${fmtDuration(sec(starts[cuts]))} · cuts ${pace}`;
     }
     // ---- while the drone plays it is the player's clock ----
@@ -683,7 +704,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'curveSelect', 'bpmSlider', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmSlider', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'subWaveSelect', 'padWaveSelect', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -705,6 +726,7 @@
 
     // flat or variable speed: which controls show, and the cuts follow
     function updateRhythm() {
+      syncRampRange();
       const variable = rhythmMode() === 'variable';
       document.getElementById('flatBox').hidden = variable;
       document.getElementById('varBox').hidden = !variable;

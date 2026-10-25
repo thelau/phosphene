@@ -514,12 +514,12 @@ def test_purging_a_plate_removes_its_thumbnails(live, srv):
 
 def test_export_with_variable_speed_runs_the_cuts_from_entry_to_exit(live, srv):
     _three_plates(live)
-    status, res = live("POST", "/api/export-video", {"rhythm": "variable", "start_ms": 600, "end_ms": 200, "curve": 0})
+    status, res = live("POST", "/api/export-video", {"rhythm": "variable", "start_ms": 600, "end_ms": 200, "ramp": 2, "at": "end"})
     assert status == 200 and "var600to200ms" in res["filename"] and "bpm" not in res["filename"]
-    expected = cutplan.variable_timeline(3, 600, 200, 0)[-1] / 30
+    expected = cutplan.variable_timeline(3, 600, 200, 2, "end")[-1] / 30
     kinds, seconds = _streams(srv.OUTPUTS_DIR / res["filename"])
     assert kinds == ["video"] and seconds == pytest.approx(expected, abs=0.15)
     status, flat = live("POST", "/api/export-video", {"rhythm": "flat", "bpm": 120, "multiple": 2})
     assert status == 200 and "120bpm" in flat["filename"]
-    status, odd = live("POST", "/api/export-video", {"rhythm": "variable", "start_ms": "x", "end_ms": 99999, "curve": 500})      # nonsense is clamped
-    assert status == 200 and "var400to1500ms" in odd["filename"]
+    status, odd = live("POST", "/api/export-video", {"rhythm": "variable", "start_ms": "x", "end_ms": 99999, "ramp": 5000})      # nonsense is clamped
+    assert status == 200 and "var100to1500ms" in odd["filename"]

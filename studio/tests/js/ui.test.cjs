@@ -636,13 +636,13 @@ test('with the drone on, Play starts it live from the top with the settings and 
   const h = await playerWith();
   h.$('musicSelect').value = 'on'; h.$('invertSelect').value = 'colour';
   h.$('pulseRange').value = '40'; h.$('lowRange').value = '80'; h.$('brightRange').value = '20'; h.$('widthRange').value = '90'; h.$('spaceRange').value = '75'; h.$('powerRange').value = '55'; h.$('seedVal').value = '42';
-  h.$('pitchRange').value = '50'; h.$('movementRange').value = '50'; h.$('echoRange').value = '0'; h.$('chordSelect').value = '0';
+  h.$('pitchRange').value = '50'; h.$('movementRange').value = '50'; h.$('echoRange').value = '0'; h.$('chordSelect').value = '0'; h.$('washRange').value = '0'; h.$('ringRange').value = '0'; h.$('shimmerRange').value = '0'; h.$('subWaveSelect').value = '0'; h.$('padWaveSelect').value = '0';
   h.run('framesPerCut = 3');                                                // 100 ms per cut
   h.run('togglePlay()');
   await settle(); await settle();
   assert.equal(h.calls.some(c => c.url === '/api/music'), false);           // nothing is rendered on the server
   const play = h.ctx.__drone.plays[0];
-  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, movement: 0.5, echo: 0, seed: 42, paired: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, subWave: 0, padWave: 0, seed: 42, paired: true });
   assert.equal(play.offset, 0);
   assert.equal(play.starts.length, 7);                                      // 3 images x 2 (colour pairs) + the end
   assert.ok(Math.abs(play.starts[6] - 0.6) < 1e-9 && Math.abs(play.starts[1] - 0.1) < 1e-9);
@@ -734,9 +734,9 @@ test('music choices are remembered', () => {
 test('variableStarts matches the server timeline', () => {
   const h = load({ routes: baseRoutes() });
   const near = (a, b) => assert.ok(a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 0.001), `${a} vs ${b}`);
-  for (const [n, a, b, c, exp] of [[4, 400, 100, 0, [0, 12, 19.559, 24.322, 27.322]], [4, 400, 100, 50, [0, 12, 22.287, 28.767, 31.767]],
-    [4, 400, 100, -50, [0, 12, 17.390, 21.259, 24.259]], [3, 200, 200, 0, [0, 6, 12, 18]], [1, 300, 100, 0, [0, 9]]]) {
-    near(JSON.parse(JSON.stringify(h.run(`variableStarts(${n}, ${a}, ${b}, ${c})`))), exp);
+  for (const [n, a, b, ramp, at, exp] of [[6, 100, 600, 3, 'end', [0, 3, 6, 9, 14.451, 24.357, 42.357]], [6, 100, 600, 3, 'start', [0, 3, 10.348, 28.348, 46.348, 64.348, 82.348]],
+    [5, 200, 200, 12, 'end', [0, 6, 12, 18, 24, 30]], [1, 300, 100, 12, 'end', [0, 3]], [4, 400, 100, 99, 'end', [0, 8.485, 14.485, 18.728, 21.728]]]) {
+    near(JSON.parse(JSON.stringify(h.run(`variableStarts(${n}, ${a}, ${b}, ${ramp}, '${at}')`))), exp);
   }
 });
 
@@ -747,24 +747,39 @@ test('Variable speed swaps the controls, drives the timeline in frames, the soun
   r['/api/export-audio'] = { ok: true, bytes: 44 };
   const h = load({ routes: r });
   await settle(); await settle();
-  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '300'; h.$('endMsRange').value = '100'; h.$('curveSelect').value = '0';
+  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '100'; h.$('endMsRange').value = '600'; h.$('rampRange').value = '2'; h.$('atSelect').value = 'end';
   h.run('updateRhythm()');
   assert.equal(h.$('flatBox').hidden, true); assert.equal(h.$('varBox').hidden, false);
-  assert.equal(h.$('startMsVal').textContent, '300 ms');
-  assert.match(h.$('rhythmInfo').textContent, /^3 images · \d+(\.\d)? s · cuts 300 ms → 100 ms$/);
+  assert.equal(h.$('startMsVal').textContent, '100 ms'); assert.equal(h.$('rampVal').textContent, '2 cuts');
+  assert.equal(h.$('rampRange').max, '3');                                    // 3 images = 3 cuts
+  assert.match(h.$('rhythmInfo').textContent, /^3 images · \d+(\.\d)? s · cuts 100 ms, then 600 ms over the last 2$/);
   const starts = JSON.parse(JSON.stringify(h.run('timelineFor(3)')));
   assert.equal(starts.length, 4);
-  assert.ok(starts[1] - starts[0] > starts[3] - starts[2]);                    // accelerating
+  assert.ok(starts[3] - starts[2] > starts[2] - starts[1]);                    // slowing down at the end
   h.$('musicSelect').value = 'on';
   await h.run('exportVideo()');
   const sent = h.ctx.__drone.exports[0].starts;
-  assert.ok(Math.abs(sent[1] - 0.3) < 1e-9);                                // seconds, not frames
+  assert.ok(Math.abs(sent[1] - 0.1) < 1e-9);                                  // seconds, not frames
   assert.ok(Math.abs(sent[sent.length - 1] - starts[3] / 30) < 1e-9);
   const body = h.calls.find(c => c.url === '/api/export-video').body;
-  assert.deepEqual([body.rhythm, body.start_ms, body.end_ms, body.curve], ['variable', 300, 100, 0]);
+  assert.deepEqual([body.rhythm, body.start_ms, body.end_ms, body.ramp, body.at], ['variable', 100, 600, 2, 'end']);
   h.$('rhythmSelect').value = 'flat'; h.run('updateRhythm()');
   assert.equal(h.$('flatBox').hidden, false); assert.equal(h.$('varBox').hidden, true);
   assert.equal(JSON.parse(JSON.stringify(h.run('timelineFor(3)'))).join(), '0,1,2,3');
+});
+
+test('the info line says what variable speed does in plain words', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: 40 }, (_, i) => mkPlate('p' + i)) };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '100'; h.$('endMsRange').value = '700'; h.$('rampRange').value = '12';
+  h.run('updateRhythm()');
+  assert.match(h.$('rhythmInfo').textContent, /^40 images · .* cuts 100 ms, then 700 ms over the last 12$/);
+  h.$('atSelect').value = 'start'; h.run('updateRhythm()');
+  assert.match(h.$('rhythmInfo').textContent, /cuts 100 ms → 700 ms over the first 12$/);
+  h.$('rampRange').value = '60'; h.run('updateRhythm()');
+  assert.match(h.$('rhythmInfo').textContent, /cuts 100 ms → 700 ms$/);
 });
 
 test('Restart starts again from the first image and the start of the sound, and starts playing when stopped', async () => {
@@ -782,10 +797,17 @@ test('Restart starts again from the first image and the start of the sound, and 
   assert.equal(h.ctx.__drone.updates[updates].offset, 0);
 });
 
-test('the variable-speed change control offers plain choices that map to the curve', () => {
-  const h = load({ routes: baseRoutes() });
-  h.$('curveSelect').value = '-80';
-  assert.equal(h.run('variableParams().curve'), -80);
-  h.$('curveSelect').value = '40';
-  assert.equal(h.run('variableParams().curve'), 40);
+test('"Change over" follows the number of cuts: its range grows and shrinks with the selection and the invert pairs', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: 40 }, (_, i) => mkPlate('p' + i)) };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('rampRange').value = '30'; h.run('updateRhythm()');
+  assert.equal(h.$('rampRange').max, '40'); assert.equal(h.$('rampVal').textContent, '30 cuts');
+  h.$('invertSelect').value = 'mono'; h.run('drawInfo()');
+  assert.equal(h.$('rampRange').max, '80');                                   // each image takes two cuts
+  h.$('rampRange').value = '80'; h.run('updateRhythm()');
+  assert.equal(h.$('rampVal').textContent, 'all 80');
+  h.$('invertSelect').value = 'off'; h.run('drawInfo()');                     // fewer cuts: the value comes down with the range
+  assert.equal(h.$('rampRange').max, '40'); assert.equal(h.$('rampRange').value, '40'); assert.equal(h.$('rampVal').textContent, 'all 40');
 });

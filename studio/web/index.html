@@ -155,22 +155,24 @@
           <div id="varBox" hidden>
             <div class="control-line">
               <span>Start</span>
-              <input type="range" id="startMsRange" min="50" max="1000" step="10" value="400" oninput="updateRhythm()" title="How long the first cut is" />
-              <span id="startMsVal">400 ms</span>
+              <input type="range" id="startMsRange" min="50" max="1000" step="10" value="100" oninput="updateRhythm()" title="How long the first cut is" />
+              <span id="startMsVal">100 ms</span>
             </div>
             <div class="control-line">
               <span>End</span>
-              <input type="range" id="endMsRange" min="50" max="1000" step="10" value="100" oninput="updateRhythm()" title="How long the last cut is" />
-              <span id="endMsVal">100 ms</span>
+              <input type="range" id="endMsRange" min="50" max="1000" step="10" value="600" oninput="updateRhythm()" title="How long the last cut is" />
+              <span id="endMsVal">600 ms</span>
             </div>
             <div class="control-line">
-              <span>Change</span>
-              <select id="curveSelect" onchange="updateRhythm()" style="flex:1" title="When the speed changes between the start and the end">
-                <option value="-80">Right away, then steady</option>
-                <option value="-40">Early</option>
-                <option value="0" selected>Evenly all along</option>
-                <option value="40">Late</option>
-                <option value="80">Only near the end</option>
+              <span>Change over</span>
+              <input type="range" id="rampRange" min="2" max="60" step="1" value="12" oninput="updateRhythm()" title="How many cuts the change takes. The references hold one speed, then ease into the other over their last 12 or so cuts." />
+              <span id="rampVal">12 cuts</span>
+            </div>
+            <div class="control-line">
+              <span>Change at</span>
+              <select id="atSelect" onchange="updateRhythm()" style="flex:1" title="End: hold the start speed, then change over the last cuts (a landing, as in Ecwora and Soiltone). Start: change over the first cuts, then hold the end speed.">
+                <option value="end" selected>The end · a landing</option>
+                <option value="start">The start · a build-up</option>
               </select>
             </div>
           </div>
@@ -257,6 +259,23 @@
               </select>
             </div>
             <div class="control-line">
+              <span>Sub</span>
+              <select id="subWaveSelect" onchange="updateMusic()" style="flex:1" title="The wave of the deep bass">
+                <option value="0">Sine · clean</option>
+                <option value="1">Triangle · a little rounder edge</option>
+                <option value="2">Square · hollow, heavy</option>
+              </select>
+            </div>
+            <div class="control-line">
+              <span>Pad</span>
+              <select id="padWaveSelect" onchange="updateMusic()" style="flex:1" title="The wave of the layer above the sub">
+                <option value="0">Saw · bright, thick</option>
+                <option value="1">Square · hollow</option>
+                <option value="2">Triangle · soft</option>
+                <option value="3">Pulse · nasal, reedy</option>
+              </select>
+            </div>
+            <div class="control-line">
               <span>Movement</span>
               <input type="range" id="movementRange" min="0" max="100" value="50" oninput="updateMusic()" title="How fast the layers drift and breathe" />
               <span id="movementVal">50</span>
@@ -265,6 +284,21 @@
               <span>Echo</span>
               <input type="range" id="echoRange" min="0" max="100" value="0" oninput="updateMusic()" title="A dark echo, timed to the cuts" />
               <span id="echoVal">0</span>
+            </div>
+            <div class="control-line">
+              <span>Wash</span>
+              <input type="range" id="washRange" min="0" max="100" value="0" oninput="updateMusic()" title="A slow wash of noise, drifting" />
+              <span id="washVal">0</span>
+            </div>
+            <div class="control-line">
+              <span>Ring</span>
+              <input type="range" id="ringRange" min="0" max="100" value="0" oninput="updateMusic()" title="A metallic ring: bell-like partials" />
+              <span id="ringVal">0</span>
+            </div>
+            <div class="control-line">
+              <span>Shimmer</span>
+              <input type="range" id="shimmerRange" min="0" max="100" value="0" oninput="updateMusic()" title="High partials trembling and beating between the sides" />
+              <span id="shimmerVal">0</span>
             </div>
           </div>
         </div>

@@ -21,20 +21,27 @@ def timeline(n_plates: int, invert_mode: str = "off") -> list[float]:
 
 
 VARIABLE_MS = (50.0, 1500.0)     # the shortest and longest cut a variable run may use
+VARIABLE_RAMP = (2, 200)         # how many cuts the change may take
 FPS = 30
 
 
-def variable_timeline(n_cuts: int, start_ms: float, end_ms: float, curve: float = 0.0) -> list[float]:
-    """Variable speed: where each cut starts, in frames (use it with frames_per_cut = 1). The first cut is start_ms long, the last
-    end_ms, and the length in between follows `curve` (-100..100; 0 = an even change, > 0 stays near the start longer and changes
-    late, < 0 changes early). Lengths change geometrically, so an acceleration feels even. start == end is a flat run."""
+def variable_timeline(n_cuts: int, start_ms: float, end_ms: float, ramp: int = 12, at: str = "end") -> list[float]:
+    """Variable speed as in the references (Ecwora, Soiltone: the cuts hold one speed, then ease into another over their last ~12 cuts).
+    Where each cut starts, in frames (use it with frames_per_cut = 1). at="end": the first cuts are start_ms long, then the change
+    runs over the last `ramp` cuts and the last one is end_ms. at="start": the first cut is start_ms, the change runs over the first
+    `ramp` cuts, and the rest hold end_ms. The change is geometric (each cut a constant ratio of the one before), which is how the
+    references slow down. ramp longer than the run = the change takes the whole run; start == end is a flat run."""
     lo, hi = VARIABLE_MS
     a, b = (min(hi, max(lo, float(v))) for v in (start_ms, end_ms))
-    gamma = 2.0 ** (min(100.0, max(-100.0, float(curve))) / 50.0)
+    n_ramp = max(1, min(n_cuts, int(min(VARIABLE_RAMP[1], max(VARIABLE_RAMP[0], int(ramp))))))
     starts = [0.0]
     for i in range(n_cuts):
-        u = i / (n_cuts - 1) if n_cuts > 1 else 0.0
-        ms = math.exp(math.log(a) + (math.log(b) - math.log(a)) * (u ** gamma))
+        if at == "start":
+            u = min(1.0, i / (n_ramp - 1)) if n_ramp > 1 else 1.0     # the first cut is start_ms, the n_ramp-th is end_ms
+        else:
+            j = i - (n_cuts - n_ramp)                 # 0.. along the ramp at the end
+            u = 0.0 if j < 0 else (j + 1) / n_ramp    # the last cut is end_ms
+        ms = math.exp(math.log(a) + (math.log(b) - math.log(a)) * u)
         starts.append(starts[-1] + max(1.0, ms * FPS / 1000.0))
     return starts
 
