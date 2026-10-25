@@ -40,14 +40,15 @@ WORLDS = [
     {
         "name": "Fashion & Apparel",
         "weight": 1.2,
-        "brief": "Fashion editorial and technical apparel: tonal garments, tailored fabric detail, hardware, model-light. Tactile and quiet, never costume.",
+        "brief": "Fashion editorial and technical apparel: tonal garments, tailored fabric detail, hardware, model-light. Tactile and quiet, never costume. "
+                 "LEGIBILITY RULE for this territory: the mark must contrast with the surface it sits on, by thread or ink colour, by sheen against matte, or by hard raking light that throws a shadow into it, so it still reads at phone size. Subtle is welcome; the same colour as the cloth with no sheen or light difference is not (it disappears).",
         "palette": "tonal black, bone white and one electric accent from the brand",
         "applications": [
             "a heavy hoodie chest with drawstrings", "a puffer jacket collar close-up", "a knit beanie with a folded cuff", "a leather glove on a fist",
             "a denim jacket back panel", "a sneaker toe box and lace", "a cargo pocket flap with a zip", "a woven neck label inside a collar",
             "a model in a tall technical collar and tinted glasses", "a silk scarf caught in wind", "a canvas tote hanging on a hook", "a varsity jacket chest",
         ],
-        "marks": ["embroidered tone-on-tone in raised satin thread", "a woven label", "a rubberized patch", "a reflective print catching a flash", "knitted into the fabric"],
+        "marks": ["embroidered in raised satin thread in a colour that contrasts with the cloth", "a woven label with a contrasting weave", "a glossy rubberized patch on matte fabric", "a reflective print catching a flash", "knitted in a contrasting yarn", "blind-debossed into leather or felt under hard raking light so the shadow draws the mark"],
     },
     {
         "name": "Out-of-Home & City",

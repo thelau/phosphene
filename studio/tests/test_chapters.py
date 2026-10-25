@@ -83,3 +83,25 @@ def test_choose_world_exploits_high_keep_rate():
         if p:
             counts[p["name"]] = counts.get(p["name"], 0) + 1
     assert max(counts, key=counts.get) == "Matter & Elements"
+
+
+def fashion():
+    return next(w for w in chapters.WORLDS if w["name"] == "Fashion & Apparel")
+
+
+def test_fashion_marks_must_contrast_with_the_cloth():
+    w = fashion()
+    assert "LEGIBILITY RULE" in w["brief"] and "contrast" in w["brief"] and "phone size" in w["brief"]
+    assert not any("tone-on-tone" in m.lower() for m in w["marks"])           # that treatment made the mark vanish (6 of 8 failed the logo check)
+    assert any("contrast" in m or "raking light" in m for m in w["marks"])
+    assert len(w["marks"]) >= 5 and len(w["applications"]) >= 8
+
+
+def test_the_rule_reaches_kimi_in_the_prompt_for_this_territory(monkeypatch):
+    import json
+    import server
+    seen = []
+    monkeypatch.setattr(server, "call_kimi_llm", lambda prompt, **k: seen.append(prompt) or json.dumps([
+        {"title": f"T{i}", "idea": "i", "guide": "dark", "prompt": " ".join("".join(chr(97 + ((i * 11 + j) // 26 ** q) % 26) for q in range(4)) for j in range(6))} for i in range(4)]))
+    server.ask_kimi_for_prompts({"titles": {}, "prompts": {}}, "k", "m", count=2, world="Fashion & Apparel")
+    assert "LEGIBILITY RULE" in seen[0] and "it disappears" in seen[0]
