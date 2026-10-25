@@ -747,10 +747,10 @@ test('Variable speed swaps the controls, drives the timeline in frames, the soun
   r['/api/export-audio'] = { ok: true, bytes: 44 };
   const h = load({ routes: r });
   await settle(); await settle();
-  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '300'; h.$('endMsRange').value = '100'; h.$('curveRange').value = '0';
+  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '300'; h.$('endMsRange').value = '100'; h.$('curveSelect').value = '0';
   h.run('updateRhythm()');
   assert.equal(h.$('flatBox').hidden, true); assert.equal(h.$('varBox').hidden, false);
-  assert.equal(h.$('startMsVal').textContent, '300 ms'); assert.equal(h.$('curveVal').textContent, 'even');
+  assert.equal(h.$('startMsVal').textContent, '300 ms');
   assert.match(h.$('rhythmInfo').textContent, /^3 images · \d+(\.\d)? s · cuts 300 ms → 100 ms$/);
   const starts = JSON.parse(JSON.stringify(h.run('timelineFor(3)')));
   assert.equal(starts.length, 4);
@@ -765,4 +765,27 @@ test('Variable speed swaps the controls, drives the timeline in frames, the soun
   h.$('rhythmSelect').value = 'flat'; h.run('updateRhythm()');
   assert.equal(h.$('flatBox').hidden, false); assert.equal(h.$('varBox').hidden, true);
   assert.equal(JSON.parse(JSON.stringify(h.run('timelineFor(3)'))).join(), '0,1,2,3');
+});
+
+test('Restart starts again from the first image and the start of the sound, and starts playing when stopped', async () => {
+  const h = await playerWith();
+  h.$('musicSelect').value = 'on';
+  h.run('restartPlay()');                                                    // stopped: it plays
+  await settle(); await settle();
+  assert.equal(h.run('isPlaying'), true);
+  h.run('cutPos = 2.5; currentIdx = 2');
+  const updates = h.ctx.__drone.updates.length;
+  h.run('restartPlay()');
+  assert.equal(h.run('cutPos'), 0); assert.equal(h.run('currentIdx'), 0);
+  assert.equal(h.run('isPlaying'), true);
+  assert.equal(h.ctx.__drone.updates.length, updates + 1);
+  assert.equal(h.ctx.__drone.updates[updates].offset, 0);
+});
+
+test('the variable-speed change control offers plain choices that map to the curve', () => {
+  const h = load({ routes: baseRoutes() });
+  h.$('curveSelect').value = '-80';
+  assert.equal(h.run('variableParams().curve'), -80);
+  h.$('curveSelect').value = '40';
+  assert.equal(h.run('variableParams().curve'), 40);
 });

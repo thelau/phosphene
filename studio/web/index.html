@@ -110,6 +110,7 @@
       <div class="controls">
         <div class="control-line">
           <button onclick="togglePlay()" id="playBtn" style="flex:1">▶ Play</button>
+          <button onclick="restartPlay()" id="restartBtn" title="Start again from the first image (and the start of the sound)">⟲ Restart</button>
           <button onclick="toggleReticle()" id="targetBtn" title="Show where the logo must sit: dead-center, 18% of the width">🎯 Target</button>
         </div>
 
@@ -163,9 +164,14 @@
               <span id="endMsVal">100 ms</span>
             </div>
             <div class="control-line">
-              <span>Curve</span>
-              <input type="range" id="curveRange" min="-100" max="100" step="5" value="0" oninput="updateRhythm()" title="0: an even change. Right: stays near the start, changes late. Left: changes early, then settles near the end." />
-              <span id="curveVal">even</span>
+              <span>Change</span>
+              <select id="curveSelect" onchange="updateRhythm()" style="flex:1" title="When the speed changes between the start and the end">
+                <option value="-80">Right away, then steady</option>
+                <option value="-40">Early</option>
+                <option value="0" selected>Evenly all along</option>
+                <option value="40">Late</option>
+                <option value="80">Only near the end</option>
+              </select>
             </div>
           </div>
           <div class="rhythm-info" id="rhythmInfo"></div>

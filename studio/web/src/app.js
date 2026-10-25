@@ -487,7 +487,7 @@
       return {
         start_ms: parseInt(document.getElementById('startMsRange').value, 10) || 400,
         end_ms: parseInt(document.getElementById('endMsRange').value, 10) || 100,
-        curve: parseInt(document.getElementById('curveRange').value, 10) || 0
+        curve: parseInt(document.getElementById('curveSelect').value, 10) || 0
       };
     }
     // Variable speed: where each cut starts, in frames (mirrors cutplan.variable_timeline: geometric change, shaped by the curve)
@@ -662,6 +662,12 @@
       }, 16);
     }
 
+    // start again from the first image and the start of the sound (with a long slow run, this skips the wait)
+    function restartPlay() {
+      if (!isPlaying) { togglePlay(); return; }
+      cutPos = 0; lastTick = performance.now(); currentIdx = 0;
+      if (droneLive.playing) droneLive.update(synthParams(), synthStartsSec(), () => 0);
+    }
     function togglePlay() {
       const stageImg = document.getElementById('stageImg');
       stageImg.style.display = 'block';
@@ -677,7 +683,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'curveRange', 'bpmSlider', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'curveSelect', 'bpmSlider', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -705,7 +711,6 @@
       const v = variableParams();
       document.getElementById('startMsVal').textContent = `${v.start_ms} ms`;
       document.getElementById('endMsVal').textContent = `${v.end_ms} ms`;
-      document.getElementById('curveVal').textContent = v.curve === 0 ? 'even' : v.curve > 0 ? `late ${v.curve}` : `early ${-v.curve}`;
       saveSettings();
       restartLoop();
       musicChanged();
@@ -1102,5 +1107,6 @@ Object.assign(window, {
   toggleSettings,
   updateTempo,
   updateRhythm,
+  restartPlay,
   updateFx,
 });

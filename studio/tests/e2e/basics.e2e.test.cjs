@@ -184,7 +184,7 @@ test('variable speed: Flat shows tempo and multiple, Variable shows start, end a
   assert.ok(await page.locator('#bpmSlider').isVisible() && !(await page.locator('#startMsRange').isVisible()));
   await page.selectOption('#rhythmSelect', 'variable');
   assert.ok(!(await page.locator('#bpmSlider').isVisible()) && !(await page.locator('#multSelect').isVisible()));
-  for (const id of ['#startMsRange', '#endMsRange', '#curveRange']) assert.ok(await page.locator(id).isVisible(), id);
+  for (const id of ['#startMsRange', '#endMsRange', '#curveSelect']) assert.ok(await page.locator(id).isVisible(), id);
   await page.fill('#startMsRange', '600'); await page.fill('#endMsRange', '100');
   assert.match(await text('#rhythmInfo'), /cuts 600 ms → 100 ms$/);
   await page.selectOption('#invertSelect', 'mono');

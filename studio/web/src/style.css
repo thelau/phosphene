@@ -170,7 +170,8 @@
       overflow-y: auto;
     }
     .stage {
-      width: 248px;
+      flex-shrink: 0;
+      height: clamp(180px, calc(100vh - 580px), 441px);   /* smaller on a short window so the controls stay in reach; 9:16 */
       aspect-ratio: 9 / 16;
       background: #000;
       border-radius: 12px;
@@ -210,6 +211,7 @@
       border-radius: 50%;
     }
     .controls {
+      flex-shrink: 0;
       width: 100%;
       display: flex;
       flex-direction: column;
