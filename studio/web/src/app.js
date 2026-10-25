@@ -474,21 +474,22 @@
       return { cut, p, plate: (paired ? Math.floor(cut / 2) : cut) % nPlates, inverted: paired && cut % 2 === 1 };
     }
     // ---- the cut timeline (mirrored in studio/rhythm.py): where each cut starts, in base cuts ----
-    const CURVES = { land: [0.30, 8.0, 2.2], long: [0.10, 12.0, 1.7] };   // slowing starts at, grows to, shape
+    const CURVE = [0.30, 8.0, 2.2];   // where the speed change starts, the slowest cut, the shape (same as rhythm.py)
+    const isCurve = r => r === 'accel' || r === 'decel';
     function rhythmFactor(rhythm, u) {
-      const c = CURVES[rhythm];
-      if (c && u > c[0]) return Math.pow(c[1], Math.pow((u - c[0]) / (1 - c[0]), c[2]));
-      return 1;
+      if (!isCurve(rhythm)) return 1;
+      if (rhythm === 'accel') u = 1 - u;
+      return u > CURVE[0] ? Math.pow(CURVE[1], Math.pow((u - CURVE[0]) / (1 - CURVE[0]), CURVE[2])) : 1;
     }
     function cutStarts(nCuts, rhythm, paired, minLen = 0) {
       const out = [0];
-      if (!CURVES[rhythm]) { for (let i = 1; i <= nCuts; i++) out.push(i); return out; }
+      if (!isCurve(rhythm)) { for (let i = 1; i <= nCuts; i++) out.push(i); return out; }
       const nImg = Math.max(1, paired ? Math.floor(nCuts / 2) : nCuts);
       let t = 0;
       for (let i = 0; i < nCuts; i++) {
         const img = paired ? Math.floor(i / 2) : i;
         let f = rhythmFactor(rhythm, nImg > 1 ? img / (nImg - 1) : 1);
-        if (img === nImg - 1) f *= 1.4;
+        if (img === (rhythm === 'accel' ? 0 : nImg - 1)) f *= 1.4;
         t += Math.max(minLen, f);
         out.push(t);
       }
@@ -515,7 +516,7 @@
     }
 
     // ---- synthesized music: rendered by the server for exactly this timeline; while it plays it is the player's clock ----
-    function musicOn() { const v = document.getElementById('musicSelect').value; return !!v && v !== 'off'; }
+    function musicOn() { return document.getElementById('musicSelect').value === 'on'; }
     function musicParams() {
       const unit = id => (parseInt(document.getElementById(id).value, 10) || 0) / 100;
       return {
@@ -523,16 +524,11 @@
         multiple: parseFloat(document.getElementById('multSelect').value),
         invert_mode: document.getElementById('invertSelect').value,
         rhythm: document.getElementById('rhythmSelect').value,
-        style: musicOn() ? document.getElementById('musicSelect').value : 'soil',
-        pulse: unit('pulseRange'), low: unit('lowRange'), bright: unit('brightRange'), width: unit('widthRange'),
+        pulse: unit('pulseRange'), low: unit('lowRange'), bright: unit('brightRange'), width: unit('widthRange'), space: unit('spaceRange'), power: unit('powerRange'),
         seed: parseInt(document.getElementById('seedVal').value, 10) || 7
       };
     }
-    const STYLE_HINTS = {
-      soil: 'A wide, dark drone around 54 Hz with a tonal mid cluster, as in Soiltone and Ecwora (they share this track). The bed breathes with every cut.',
-      swell: 'A pure mono 43 Hz sub with a bass swell every ~1.7 s and two bright bursts, as in Helione.',
-      bass: 'A pulsing mono bass line that changes note on every cut, as in Moverunion.'
-    };
+    const STYLE_HINT = 'A dark, wide drone around 54 Hz in a big room, as in Soiltone and Ecwora. It breathes with every cut.';
     function setMusicState(kind, text) {
       const el = document.getElementById('musicState');
       el.hidden = !text;
@@ -541,13 +537,13 @@
     }
     function updateMusic() {
       const on = musicOn();
-      for (const k of ['pulse', 'low', 'bright', 'width']) {
+      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power']) {
         const el = document.getElementById(`${k}Range`);
         document.getElementById(`${k}Val`).textContent = el.value;
         el.disabled = !on;
       }
       document.getElementById('seedBtn').disabled = !on;
-      document.getElementById('styleHint').textContent = on ? (STYLE_HINTS[document.getElementById('musicSelect').value] || '') : 'No music: the preview and the export stay silent.';
+      document.getElementById('styleHint').textContent = on ? STYLE_HINT : 'No music: the preview and the export stay silent.';
       document.getElementById('seedNum').textContent = document.getElementById('seedVal').value;
       saveSettings();
       musicChanged();
@@ -571,7 +567,7 @@
       const graph = document.getElementById('rhythmGraph');
       const line = document.getElementById('rhythmLine');
       const info = document.getElementById('rhythmInfo');
-      const curved = !!CURVES[document.getElementById('rhythmSelect').value];
+      const curved = isCurve(document.getElementById('rhythmSelect').value);
       graph.style.display = curved && n ? '' : 'none';   // (the hidden attribute does nothing on an SVG element)
       if (!n) { line.setAttribute('points', ''); info.textContent = ''; return; }
       const starts = timelineFor(n);
@@ -729,7 +725,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['bpmSlider', 'multSelect', 'rhythmSelect', 'musicSelect', 'pulseRange', 'lowRange', 'brightRange', 'widthRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['bpmSlider', 'multSelect', 'rhythmSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');

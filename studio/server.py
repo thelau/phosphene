@@ -645,8 +645,8 @@ def music_options(body: dict) -> dict:
         seed = int(body.get("seed", 7)) % 100000
     except (TypeError, ValueError):
         seed = 7
-    style = body.get("style") if body.get("style") in ("soil", "swell", "bass") else "soil"
-    return {"style": style, "pulse": unit("pulse", 0.5), "low": unit("low", 0.7), "bright": unit("bright", 0.3), "width": unit("width", 0.6), "seed": seed}
+    return {"pulse": unit("pulse", 0.5), "low": unit("low", 0.7), "bright": unit("bright", 0.3), "width": unit("width", 0.6),
+            "space": unit("space", 0.6), "power": unit("power", 0.6), "seed": seed}
 
 
 def music_wav(n_images: int, bpm: float, multiple: float, invert_mode: str, rhythm_mode: str, opts: dict | None = None) -> tuple[bytes, float]:

@@ -164,7 +164,7 @@ test('the player panel: preview, play / target, then Video and Music tabs with t
   await page.selectOption('#zoomSelect', 'off');
   assert.ok(!(await page.locator('#pulseRange').isVisible()));
   await page.click('#tabMusic');
-  for (const id of ['#musicSelect', '#pulseRange', '#lowRange']) assert.ok(await page.locator(id).isVisible(), id);
+  for (const id of ['#musicSelect', '#pulseRange', '#lowRange', '#powerRange', '#spaceRange']) assert.ok(await page.locator(id).isVisible(), id);
   for (const id of ['#brightRange', '#widthRange', '#seedBtn']) assert.ok(!(await page.locator(id).isVisible()), `${id} sits under More`);
   await page.click('#moreMusic summary');
   for (const id of ['#brightRange', '#widthRange', '#seedBtn']) assert.ok(await page.locator(id).isVisible(), id);
@@ -179,10 +179,10 @@ test('the player panel: preview, play / target, then Video and Music tabs with t
 
 test('rhythm and music: curves are drawn, Play renders the track, settings and export carry the choices', { skip }, async () => {
   const ctx = await fresh();
-  assert.deepEqual(await page.locator('#rhythmSelect option').allTextContents(), ['Flat · Helione, Moverunion', 'Slow landing · Ecwora, Soiltone', 'Long landing · slows early']);
+  assert.deepEqual(await page.locator('#rhythmSelect option').allTextContents(), ['Flat · Helione, Moverunion', 'Accelerating · slow to fast', 'Decelerating · Ecwora, Soiltone']);
   const flatInfo = await text('#rhythmInfo');
   assert.ok(!(await page.locator('#rhythmGraph').isVisible()), 'a flat rhythm shows no graph');
-  await page.selectOption('#rhythmSelect', 'long');
+  await page.selectOption('#rhythmSelect', 'decel');
   assert.ok(await page.locator('#rhythmGraph').isVisible(), 'a curve shows its graph');
   assert.notEqual(await text('#rhythmInfo'), flatInfo, 'the length readout follows the curve');
   const ys = await page.locator('#rhythmLine').getAttribute('points').then(p => p.split(' ').map(q => parseFloat(q.split(',')[1])));
@@ -192,13 +192,13 @@ test('rhythm and music: curves are drawn, Play renders the track, settings and e
   for (const id of ['#rhythmSelect', '#multSelect', '#invertSelect', '#zoomSelect']) { const b = await page.locator(id).boundingBox(); assert.ok(b.x + b.width <= panel.x + panel.width, `${id} stays inside the panel`); }
   await page.click('#tabMusic');
   assert.equal(await page.locator('#pulseRange').isDisabled(), true, 'music settings are locked while music is off');
-  await page.selectOption('#musicSelect', 'swell');
+  await page.selectOption('#musicSelect', 'on');
   await page.fill('#pulseRange', '80');
   assert.equal(await page.locator('#pulseRange').isDisabled(), false);
   await page.click('#playBtn');
   await page.waitForFunction(() => document.getElementById('playBtn').textContent.includes('Pause'));
   const call = api.state.calls.filter(c => c.path === '/api/music').pop();
-  assert.equal(call.body.rhythm, 'long'); assert.equal(call.body.style, 'swell'); assert.equal(call.body.pulse, 0.8);
+  assert.equal(call.body.rhythm, 'decel'); assert.equal(call.body.pulse, 0.8); assert.equal(call.body.space, 0.6);
   await page.waitForTimeout(500);
   assert.equal(await text('#playBtn'), '⏸ Pause');
   await shot('rhythm-music');
@@ -206,6 +206,6 @@ test('rhythm and music: curves are drawn, Play renders the track, settings and e
   await page.click('#exportBtn');
   await page.waitForSelector('#downloadLink:not([hidden])');
   const exp = api.state.calls.filter(c => c.path === '/api/export-video').pop();
-  assert.deepEqual([exp.body.rhythm, exp.body.music, exp.body.style], ['long', 'synth', 'swell']);
+  assert.deepEqual([exp.body.rhythm, exp.body.music], ['decel', 'synth']);
   await ctx.close();
 });

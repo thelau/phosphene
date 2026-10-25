@@ -144,10 +144,10 @@
           </div>
           <div class="control-line">
             <span>Rhythm</span>
-            <select id="rhythmSelect" onchange="updateTempo()" style="flex:1" title="Measured on the reference clips: Helione and Moverunion are flat; Ecwora and Soiltone hold their cut length, then slow down and keep slowing until the last, longest hold.">
+            <select id="rhythmSelect" onchange="updateTempo()" style="flex:1" title="Flat: every cut the same (Helione, Moverunion). Decelerating: steady, then the cuts keep getting longer until the last, longest hold (Ecwora, Soiltone). Accelerating is the same curve backwards. With many images a curve takes a while: it works best with fewer.">
               <option value="flat">Flat · Helione, Moverunion</option>
-              <option value="land">Slow landing · Ecwora, Soiltone</option>
-              <option value="long">Long landing · slows early</option>
+              <option value="accel">Accelerating · slow to fast</option>
+              <option value="decel">Decelerating · Ecwora, Soiltone</option>
             </select>
           </div>
           <svg id="rhythmGraph" class="rhythm-graph" viewBox="0 0 200 36" preserveAspectRatio="none" aria-label="How long each cut is held, from the first image to the last (taller = longer). The white line is where the preview is." style="display:none">
@@ -184,9 +184,7 @@
             <span>Music</span>
             <select id="musicSelect" onchange="updateMusic()" style="flex:1" title="A dark sub-bass bed synthesized for exactly these cuts. It is also added to the export.">
               <option value="off">Off</option>
-              <option value="soil">Deep drone · Soiltone, Ecwora</option>
-              <option value="swell">Sub swells · Helione</option>
-              <option value="bass">Bass line · Moverunion</option>
+              <option value="on">On · deep drone, as in Soiltone and Ecwora</option>
             </select>
           </div>
           <div class="music-hint" id="styleHint"></div>
@@ -199,6 +197,16 @@
             <span>Low end</span>
             <input type="range" id="lowRange" min="0" max="100" value="70" oninput="updateMusic()" title="How much sub-bass" />
             <span id="lowVal">70</span>
+          </div>
+          <div class="control-line">
+            <span>Power</span>
+            <input type="range" id="powerRange" min="0" max="100" value="60" oninput="updateMusic()" title="Thicker and heavier: a stack of detuned voices and saturation" />
+            <span id="powerVal">60</span>
+          </div>
+          <div class="control-line">
+            <span>Space</span>
+            <input type="range" id="spaceRange" min="0" max="100" value="60" oninput="updateMusic()" title="The size of the room: reverb length and amount" />
+            <span id="spaceVal">60</span>
           </div>
           <details class="more" id="moreMusic">
             <summary>More</summary>
@@ -214,7 +222,7 @@
             </div>
             <div class="control-line">
               <span>Variation</span>
-              <button id="seedBtn" onclick="newVariation()" style="flex:1" title="Same style, different notes and swell positions">🎲 New variation <span id="seedNum">7</span></button>
+              <button id="seedBtn" onclick="newVariation()" style="flex:1" title="Same sound, different pitch and movement">🎲 New variation <span id="seedNum">7</span></button>
             </div>
           </details>
           <div class="music-state" id="musicState" hidden></div>

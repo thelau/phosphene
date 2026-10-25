@@ -450,7 +450,7 @@ def test_music_endpoint_answers_a_wav_as_long_as_the_picture_will_be(live):
     assert status == 200 and wav[:4] == b"RIFF"
     with wave.open(io.BytesIO(wav)) as w:
         assert w.getnframes() / w.getframerate() == pytest.approx(3 * 7.5 / 30, abs=0.01)    # 3 images x 7.5 frames at 30fps
-    status, longer = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "rhythm": "land"})
+    status, longer = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "rhythm": "decel"})
     assert status == 200 and len(longer) > len(wav)                                          # the landing hold makes it longer
 
 
@@ -458,8 +458,8 @@ def test_export_with_music_has_an_audio_track_and_without_it_does_not(live, srv)
     _three_plates(live)
     status, plain = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2})
     assert status == 200 and _streams(srv.OUTPUTS_DIR / plain["filename"])[0] == ["video"] and "music" not in plain["filename"]
-    status, withm = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth", "rhythm": "land"})
-    assert status == 200 and withm["music"] is True and withm["rhythm"] == "land" and "land" in withm["filename"] and "music" in withm["filename"]
+    status, withm = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth", "rhythm": "decel"})
+    assert status == 200 and withm["music"] is True and withm["rhythm"] == "decel" and "decel" in withm["filename"] and "music" in withm["filename"]
     kinds, seconds = _streams(srv.OUTPUTS_DIR / withm["filename"])
     assert sorted(kinds) == ["audio", "video"]
     assert seconds > _streams(srv.OUTPUTS_DIR / plain["filename"])[1]                        # same images, but the curve ends on a long hold
@@ -472,19 +472,19 @@ def test_export_ignores_an_unknown_rhythm(live, srv):
     assert status == 200 and res["rhythm"] == "flat"
 
 
-def test_music_options_are_clamped_and_unknown_styles_fall_back(srv):
-    o = srv.music_options({"style": "nonsense", "pulse": 9, "low": -3, "bright": "x", "width": 0.25, "seed": "12"})
-    assert o == {"style": "soil", "pulse": 1.0, "low": 0.0, "bright": 0.3, "width": 0.25, "seed": 12}
-    assert srv.music_options({"style": "bass"})["style"] == "bass"
+def test_music_options_are_clamped_and_defaults_fill_the_gaps(srv):
+    o = srv.music_options({"pulse": 9, "low": -3, "bright": "x", "width": 0.25, "seed": "12", "style": "swell"})
+    assert o == {"pulse": 1.0, "low": 0.0, "bright": 0.3, "width": 0.25, "space": 0.6, "power": 0.6, "seed": 12}   # the old styles are gone: only the drone
 
 
-def test_music_endpoint_uses_the_style_and_the_seed(live):
+def test_music_endpoint_uses_the_settings_and_the_seed(live):
     _three_plates(live)
-    a = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "style": "soil", "seed": 1})[1]
-    b = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "style": "soil", "seed": 1})[1]
-    c = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "style": "soil", "seed": 2})[1]
-    d = live("POST", "/api/music", {"bpm": 120, "multiple": 2, "style": "swell", "seed": 1})[1]
-    assert a == b and a != c and a != d
+    base = {"bpm": 120, "multiple": 2, "seed": 1}
+    a = live("POST", "/api/music", base)[1]
+    assert a == live("POST", "/api/music", base)[1]
+    assert a != live("POST", "/api/music", {**base, "seed": 2})[1]
+    assert a != live("POST", "/api/music", {**base, "space": 0.0})[1]
+    assert a != live("POST", "/api/music", {**base, "power": 0.0})[1]
 
 
 def test_music_says_how_to_fix_it_when_numpy_is_missing(live, monkeypatch):

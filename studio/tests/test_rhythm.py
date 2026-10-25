@@ -6,11 +6,11 @@ import rhythm
 # Shared with tests/js/ui.test.cjs: the page's timeline must give the same answers.
 RHYTHM_VECTORS = [
     # n_cuts, rhythm, paired, starts[min(7, n)], total
-    (10, "land", False, 7.974487, 25.772028),
-    (10, "long", False, 11.282615, 40.009128),
-    (10, "long", True, 12.165979, 49.940753),
-    (20, "land", True, 7.002568, 51.544056),
-    (1, "long", False, 16.8, 16.8),
+    (10, "decel", False, 7.974487, 25.772028),
+    (10, "accel", False, 22.772028, 25.772028),
+    (10, "accel", True, 30.0747, 33.0747),
+    (20, "decel", True, 7.002568, 51.544056),
+    (1, "accel", False, 1.4, 1.4),
     (6, "flat", False, 6.0, 6.0),
 ]
 
@@ -27,35 +27,36 @@ def test_flat_is_exactly_the_old_uniform_cuts():
     assert rhythm.cut_starts(5, "nonsense") == [0, 1, 2, 3, 4, 5]
 
 
-@pytest.mark.parametrize("r", ["land", "long"])
-def test_curves_end_on_the_longest_hold_and_never_go_backwards(r):
-    s = rhythm.cut_starts(60, r)
-    d = [b - a for a, b in zip(s, s[1:])]
-    assert all(y >= x - 1e-9 for x, y in zip(d, d[1:])) and d[-1] == max(d) and d[-1] > 6 * d[0]   # slows down and keeps slowing, like Ecwora / Soiltone
+def lengths(starts):
+    return [b - a for a, b in zip(starts, starts[1:])]
 
 
-def test_land_stays_steady_for_a_quarter_then_slows_and_long_starts_earlier():
-    land = rhythm.cut_starts(100, "land")
-    long_ = rhythm.cut_starts(100, "long")
-    dl = [b - a for a, b in zip(land, land[1:])]
-    dg = [b - a for a, b in zip(long_, long_[1:])]
-    assert all(x == 1.0 for x in dl[:30]) and dl[60] > 1.2 and dl[-2] > 6          # the reference: the last cuts are 7-11x the first
-    assert dg[30] > dl[30] and dg[-2] > dl[-2]                                     # long slows earlier and further
-    assert sum(1 for x in dl if x == 1.0) >= 30
+def test_decelerating_is_steady_then_slows_and_ends_on_the_longest_hold():
+    d = lengths(rhythm.cut_starts(100, "decel"))
+    assert all(x == 1.0 for x in d[:30]) and d[60] > 1.2
+    assert all(y >= x - 1e-9 for x, y in zip(d, d[1:])) and d[-1] == max(d) and d[-2] > 6      # the references: the last cuts are 7-11x the first
 
 
-def test_the_old_burst_name_is_just_flat_now():
-    assert rhythm.cut_starts(5, "burst") == [0, 1, 2, 3, 4, 5]
+def test_accelerating_is_the_same_curve_backwards():
+    dec, acc = lengths(rhythm.cut_starts(100, "decel")), lengths(rhythm.cut_starts(100, "accel"))
+    assert acc[0] == max(acc) and all(y <= x + 1e-9 for x, y in zip(acc, acc[1:]))
+    assert all(x == 1.0 for x in acc[-30:])                                                        # it ends steady, at the tempo you set
+    assert acc[1:] == pytest.approx(dec[:-1][::-1])                                                # only the held first/last image differs
+
+
+def test_old_names_and_unknown_names_are_flat():
+    for old in ("burst", "land", "long", "sideways"):
+        assert rhythm.cut_starts(5, old) == [0, 1, 2, 3, 4, 5]
 
 
 def test_an_image_and_its_inverted_copy_share_one_length():
-    s = rhythm.cut_starts(40, "land", paired=True)
+    s = rhythm.cut_starts(40, "decel", paired=True)
     d = [b - a for a, b in zip(s, s[1:])]
     assert all(d[i] == pytest.approx(d[i + 1]) for i in range(0, 40, 2))
 
 
 def test_min_len_keeps_every_cut_at_least_one_frame():
-    s = rhythm.cut_starts(100, "land", min_len=1.5)
+    s = rhythm.cut_starts(100, "decel", min_len=1.5)
     assert min(b - a for a, b in zip(s, s[1:])) >= 1.5 - 1e-9
 
 
@@ -76,7 +77,7 @@ def test_plan_at_with_a_timeline_and_flat_agree_with_the_old_plan():
 
 
 def test_export_length_follows_the_curve_and_still_shows_every_image_once():
-    starts = cutplan.timeline(10, 4.0, "off", "land")
+    starts = cutplan.timeline(10, 4.0, "off", "decel")
     n_cuts, frames = cutplan.export_length(10, 4.0, "off", starts)
     assert n_cuts == 10 and frames == int(starts[-1] * 4.0) and frames > 40
     plates = {cutplan.frame_plan(f, 4.0, 10, "off", starts)["plate"] for f in range(frames)}

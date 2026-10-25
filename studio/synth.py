@@ -3,11 +3,10 @@ Synthesized music for the cut timeline (numpy; stereo 16-bit WAV at 44.1 kHz). I
 clips, not on a drum kit:
   - all four are a dark, continuous sub-bass bed (43-54 Hz carries 65-90% of the energy), almost nothing above 2 kHz, dense (crest factor ~3.9);
   - the cuts do not trigger kicks: the bed breathes with them (a soft pump on every cut, which slows down when the cuts slow down);
-  - Soiltone/Ecwora share one wide-stereo drone with a tonal mid cluster, Helione is a pure mono 43 Hz sub with periodic bass swells and two
-    bright noise bursts, Moverunion is a pulsing mono bass line (70-145 Hz) that changes note every cut;
-  - the end of the clip is a landing: the sub gives way and the bed rings out.
-Styles: "soil", "swell", "bass". Settings are 0..1: pulse (how much the bed follows the cuts), low (sub level), bright (how far the
-tone opens up), width (stereo spread and room). `seed` makes the variation (root note, note order, burst positions).
+  - Soiltone/Ecwora share one wide-stereo drone with a tonal mid cluster; the end of the clip is a landing: the sub gives way and the bed rings out.
+Only that drone is built (the Helione sub-swell and Moverunion bass-line styles were tried and dropped).
+Settings are 0..1: pulse (how much the bed follows the cuts), low (sub level), bright (how far the tone opens up), width (stereo spread),
+space (size of the room: reverb length and amount), power (thicker, heavier: unison pad and saturation). `seed` makes the variation.
 """
 import io
 import wave
@@ -15,7 +14,6 @@ import wave
 import numpy as np
 
 RATE = 44100
-STYLES = ("soil", "swell", "bass")
 TAU = 2 * np.pi
 TARGET_RMS = 0.17
 
@@ -48,13 +46,14 @@ def _osc(freq: np.ndarray, shape: str = "sine") -> np.ndarray:
     return np.sin(TAU * phase)
 
 
-def _reverb(x: np.ndarray, seconds: float, rng, damp: float = 900.0) -> np.ndarray:
-    """A dark room: convolution with decaying, low-passed noise."""
+def _reverb(x: np.ndarray, seconds: float, rng, damp: float = 900.0, predelay: float = 0.025) -> np.ndarray:
+    """A dark room: convolution with decaying, low-passed noise (after a short pre-delay)."""
     n = int(seconds * RATE)
     ir = rng.standard_normal(n) * np.exp(-np.arange(n) / RATE * (6.9 / seconds))
     ir = _lowpass(ir, damp, 2.0)
     ir /= np.sqrt((ir ** 2).sum()) + 1e-9
-    size = 1 << int(np.ceil(np.log2(len(x) + n)))
+    ir = np.concatenate([np.zeros(int(predelay * RATE)), ir])
+    size = 1 << int(np.ceil(np.log2(len(x) + len(ir))))
     return np.fft.irfft(np.fft.rfft(x, size) * np.fft.rfft(ir, size), size)[:len(x)]
 
 
@@ -80,31 +79,21 @@ def _pump(tl: _Timeline, depth: float, decay: float = 0.11) -> np.ndarray:
     return 1.0 - depth * (1.0 - np.exp(-tl.tau / decay))
 
 
-def render(starts_sec: list[float], paired: bool = False, style: str = "soil", pulse: float = 0.5, low: float = 0.7,
-           bright: float = 0.3, width: float = 0.6, seed: int = 7) -> bytes:
+def render(starts_sec: list[float], paired: bool = False, pulse: float = 0.5, low: float = 0.7, bright: float = 0.3,
+           width: float = 0.6, space: float = 0.6, power: float = 0.6, seed: int = 7) -> bytes:
     """starts_sec: where each cut starts, in seconds; the last entry is the end. Returns a stereo WAV file."""
-    style = style if style in STYLES else "soil"
-    pulse, low, bright, width = (float(min(1.0, max(0.0, v))) for v in (pulse, low, bright, width))
+    pulse, low, bright, width, space, power = (float(min(1.0, max(0.0, v))) for v in (pulse, low, bright, width, space, power))
     rng = np.random.default_rng(seed)
     tl = _Timeline(starts_sec)
-    t, u = tl.t, tl.u
     land = float(tl.starts[max(0, tl.n_cuts - (2 if paired else 1))])         # where the last image begins
-    landing = _smooth((t - land) / 1.2)                                        # 0 -> 1 over the last hold
+    landing = _smooth((tl.t - land) / 1.2)                                     # 0 -> 1 over the last hold
+    L, R = _drone(tl, rng, pulse, low, bright, power, landing)
 
-    if style == "swell":
-        L, R = _swell(tl, rng, pulse, low, bright, land, landing)
-    elif style == "bass":
-        L, R = _bass(tl, rng, pulse, low, bright, land, landing, paired)
-    else:
-        L, R = _soil(tl, rng, pulse, low, bright, land, landing)
-
-    # room and spread
-    room = 0.10 + 0.30 * width
-    # the send skips the sub: a pure low tone through random noise would swing in level from one seed to the next
-    L = L + room * _reverb(_highpass(L, 140.0), 2.4, rng)
-    R = R + room * _reverb(_highpass(R, 140.0), 2.4, rng)
-    spread = {"soil": 0.25 + 0.9 * width, "swell": 0.02 + 0.1 * width, "bass": 0.02 + 0.1 * width}[style]
-    L, R = _stereo(L, R, spread)
+    # room: the send skips the sub (a pure low tone through random noise would swing in level from one seed to the next)
+    seconds, wet = 2.4 + 3.6 * space, 0.05 + 0.5 * space
+    L = L + wet * _reverb(_highpass(L, 140.0), seconds, rng)
+    R = R + wet * _reverb(_highpass(R, 140.0), seconds, rng)
+    L, R = _stereo(L, R, 0.25 + 0.9 * width)
 
     # glue: dense and level, like the references (crest factor ~3.9), then a short fade in and out
     out = np.stack([L, R])
@@ -130,81 +119,41 @@ def _sub(tl, f0, level, wobble=0.012, second=0.3):
     return level * (_osc(f) + second * _osc(2 * f))
 
 
-def _soil(tl, rng, pulse, low, bright, land, landing):
-    """Soiltone / Ecwora: a ~54 Hz sub, a filtered saw pad, a tonal mid cluster, wide."""
+def _drone(tl, rng, pulse, low, bright, power, landing):
+    """Soiltone / Ecwora: a ~54 Hz sub, a unison saw pad, a tonal mid cluster, a little air; wide, breathing, heavy."""
     t, u = tl.t, tl.u
     f0 = 51.0 + 6.0 * rng.random()
-    sub = _sub(tl, f0, 1.0) * (0.9 + 0.1 * np.sin(TAU * 0.5 * t)) * (0.3 + 0.8 * low)
+    sub = _sub(tl, f0, 1.0) * (0.9 + 0.1 * np.sin(TAU * 0.5 * t)) * (0.3 + 0.8 * low) * (1.0 + 0.6 * power)
+    sub = np.tanh((1.0 + 2.0 * power) * sub) / np.tanh(1.0 + 2.0 * power)        # saturation adds the harmonics that make it feel big
     sub *= _pump(tl, 0.25 * pulse, 0.15) * (1 - 0.6 * landing)
-    rumble = _lowpass(rng.standard_normal(tl.n), 110.0, 2.0) * 0.9
+    rumble = _lowpass(rng.standard_normal(tl.n), 110.0, 2.0)
     rumble /= rumble.std() + 1e-9
     sub = sub + 0.10 * low * rumble
-    lfos = [(g, 0.75 + 0.25 * np.sin(TAU * rng.uniform(0.15, 0.7) * t + rng.uniform(0, TAU))) for _, g in ((4.0, 0.2), (7.2, 0.8), (9.2, 1.0), (9.6, 0.6))]
-    parts = []
-    for side in (-1, 1):                                                       # detuned L/R pad = width
-        det = 1 + side * 0.0045
-        pad = sum(_osc(np.full(tl.n, f0 * k * det), "saw") * g for k, g in ((2, 1.0), (3, 0.6), (4, 0.4)))
-        cluster = np.zeros(tl.n)
-        for (ratio, _), (g, lfo) in zip(((4.0, 0), (7.2, 0), (9.2, 0), (9.6, 0)), lfos):   # ~215, 387, 495, 516 Hz at f0=54
-            cluster += g * lfo * _osc(np.full(tl.n, f0 * ratio * det * (1 + 0.002 * side)))
-        parts.append((pad, cluster))
+    lfos = [(g, 0.75 + 0.25 * np.sin(TAU * rng.uniform(0.15, 0.7) * t + rng.uniform(0, TAU))) for g in (0.2, 0.8, 1.0, 0.6)]
+    ratios = (4.0, 7.2, 9.2, 9.6)                                                 # ~215, 387, 495, 516 Hz at f0 = 54
+    air = _band(rng.standard_normal(tl.n), 250.0, 1400.0)
+    air /= air.std() + 1e-9
+    drift = 0.5 + 0.5 * np.sin(TAU * 0.07 * t + rng.uniform(0, TAU))              # the pad's tone slowly opens and closes
+    breath = 1 + 0.07 * np.sin(TAU * 0.11 * t)
+    spread = 0.003 + 0.006 * power                                               # unison detune
     out = []
-    for pad, cluster in parts:
+    for side in (-1, 1):                                                         # detuned L/R = width
+        det = 1 + side * 0.0045
+        pad = np.zeros(tl.n)
+        for k, g in ((2, 1.0), (3, 0.6), (4, 0.4)):
+            for v, vg in ((-1, 0.6 * power), (0, 1.0), (1, 0.6 * power)):
+                if vg > 0.01:
+                    pad += g * vg * _osc(np.full(tl.n, f0 * k * det * (1 + v * spread)), "saw")
+        cluster = np.zeros(tl.n)
+        for r, (g, lfo) in zip(ratios, lfos):
+            cluster += g * lfo * _osc(np.full(tl.n, f0 * r * det * (1 + 0.002 * side)))
         fc = 260.0 + 1400.0 * bright
-        dark = _lowpass(pad, fc, 3.0)
-        open_ = _lowpass(pad, fc * 2.6, 3.0)
-        pad = dark * (1 - 0.5 * u) + open_ * 0.5 * u                          # the tone opens up a little as it goes
-        tick = sum(_osc(np.full(tl.n, f0 * r * (1 + 0.003 * side)), "sine") for r in (7.2, 9.2)) * np.exp(-tl.tau / 0.03)
-        body = (0.26 * pad + (0.34 + 0.2 * bright) * cluster + (0.2 + 0.5 * pulse) * 0.9 * tick) * _pump(tl, 0.8 * pulse, 0.07)
-        body *= 1 - 0.35 * landing
-        out.append(sub + body)
+        dark, open_ = _lowpass(pad, fc, 3.0), _lowpass(pad, fc * 2.6, 3.0)
+        mix = np.clip(0.5 * u + 0.35 * drift, 0.0, 1.0)
+        pad = dark * (1 - mix) + open_ * mix
+        tick = sum(_osc(np.full(tl.n, f0 * r * (1 + 0.003 * side))) for r in (7.2, 9.2)) * np.exp(-tl.tau / 0.03)
+        body = 0.2 * pad / (1.0 + 0.8 * power) + (0.34 + 0.2 * bright) * cluster + (0.2 + 0.5 * pulse) * 0.9 * tick + 0.05 * bright * air
+        body = 0.6 * body * _pump(tl, 0.8 * pulse, 0.07) * (1 - 0.35 * landing)
+        body = np.tanh((1.0 + 1.5 * power) * body)                                # heavier, denser
+        out.append((sub + body) * breath)
     return out[0], out[1]
-
-
-def _swell(tl, rng, pulse, low, bright, land, landing):
-    """Helione: a pure mono 43.65 Hz sub, bass swells every ~1.7 s, two bright bursts, a tiny tick on every cut."""
-    t, u = tl.t, tl.u
-    f0 = 43.65
-    sub = np.tanh(4.0 * _sub(tl, f0, 0.8, wobble=0.004, second=0.12)) * (0.2 + 0.5 * low)
-    bass = np.zeros(tl.n)
-    when = rng.uniform(0.2, 0.8)
-    while when < tl.total:
-        env = np.exp(-0.5 * ((t - when) / 0.28) ** 2)
-        drop = 110.0 - 40.0 * _smooth((t - when + 0.2) / 0.5)
-        bass += env * _osc(drop)
-        when += rng.uniform(1.5, 2.1)
-    bass *= 0.55 * (0.3 + 0.7 * low)
-    bursts = np.zeros(tl.n)
-    for frac in (rng.uniform(0.30, 0.42), rng.uniform(0.80, 0.9)):
-        w0 = frac * tl.total
-        env = np.where(t >= w0, np.exp(-(t - w0) / 0.22), 0.0) * np.minimum(1.0, np.maximum(0.0, (t - w0) / 0.012 + 0.0))
-        noise = _band(rng.standard_normal(tl.n), 1200.0, 5200.0)
-        bursts += env * noise
-    bursts *= 3.6 * (0.15 + 0.85 * bright)
-    ticks = _band(rng.standard_normal(tl.n), 1500.0, 4500.0) * np.exp(-tl.tau / 0.02) * 0.25 * pulse
-    body = (sub * _pump(tl, 0.15 * pulse, 0.2) + bass) * (1 - 0.65 * landing)
-    mono = body + bursts + ticks
-    return mono, mono * 1.0
-
-
-def _bass(tl, rng, pulse, low, bright, land, landing, paired):
-    """Moverunion: a pulsing mono bass line that changes note on every cut, over a quiet sub."""
-    t = tl.t
-    pool = np.array([97.0, 100.0, 113.0, 116.0, 145.0, 70.0, 73.0]) * (0.97 + 0.06 * rng.random())
-    notes = np.empty(tl.n_cuts)
-    cur = rng.integers(len(pool))
-    for i in range(tl.n_cuts):
-        if not (paired and i % 2 == 1) and rng.random() < 0.65:
-            cur = rng.integers(len(pool))                                       # an image and its inverted copy share a note
-        notes[i] = pool[cur]
-    notes[-1] = pool[0] / 2 if tl.n_cuts else pool[0]                           # the landing sits on a low root
-    f = notes[tl.cut]
-    glide = np.minimum(1.0, tl.tau / 0.02)
-    prev = notes[np.maximum(tl.cut - 1, 0)]
-    f = prev + (f - prev) * glide
-    saw = _lowpass(_osc(f, "saw"), 300.0 + 900.0 * bright, 3.0)
-    note = 1.1 * saw + 0.35 * _osc(f / 2) + 0.4 * _osc(f)
-    note *= _pump(tl, 0.55 * pulse + 0.1, 0.1) * (0.8 + 0.4 * low)
-    sub = _sub(tl, 48.0, 0.12 * (0.3 + 0.7 * low))
-    mono = (note + sub) * (1 - 0.5 * landing)
-    return mono, mono * 1.0
