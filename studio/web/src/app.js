@@ -471,11 +471,10 @@
       const paired = invertMode === 'mono' || invertMode === 'colour';
       return { cut, p, plate: (paired ? Math.floor(cut / 2) : cut) % nPlates, inverted: paired && cut % 2 === 1 };
     }
-    function zoomScale(mode, amountPct, cut, p) {
+    function zoomScale(mode, amountPct, p) {
       const a = amountPct / 100;
       if (mode === 'out') return 1 + a * (1 - p);
       if (mode === 'in') return 1 + a * p;
-      if (mode === 'alternate') return cut % 2 === 0 ? 1 + a * (1 - p) : 1 + a * p;
       return 1;
     }
     function fxSettings() {
@@ -492,7 +491,7 @@
     }
     function applyFx(plan, fx) {
       const img = document.getElementById('stageImg');
-      const s = zoomScale(fx.zoom, fx.amount, plan.cut, plan.p);
+      const s = zoomScale(fx.zoom, fx.amount, plan.p);
       img.style.transform = s > 1.0005 ? `scale(${s.toFixed(5)})` : '';
       img.style.filter = plan.inverted ? (fx.invert === 'mono' ? 'invert(1) grayscale(1)' : 'invert(1)') : '';
     }

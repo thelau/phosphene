@@ -9,7 +9,7 @@ Which image is on screen at which moment, and how it is treated: shared by the e
 from PIL import Image, ImageOps
 
 INVERT_MODES = ("off", "mono", "colour")
-ZOOM_MODES = ("off", "out", "in", "alternate")
+ZOOM_MODES = ("off", "out", "in")
 
 
 def frame_plan(frame: int, frames_per_cut: float, n_plates: int, invert_mode: str = "off") -> dict:
@@ -26,15 +26,14 @@ def plan_at(cut_pos: float, n_plates: int, invert_mode: str = "off") -> dict:
     return {"cut": cut, "p": p, "plate": plate, "inverted": paired and cut % 2 == 1}
 
 
-def zoom_scale(mode: str, amount_pct: float, cut: int, p: float) -> float:
-    """Scale about the centre (>= 1, so the frame stays covered). out: starts large and settles; in: the reverse."""
+def zoom_scale(mode: str, amount_pct: float, p: float) -> float:
+    """Scale about the centre (>= 1, so the frame stays covered). out: starts large and settles; in: the reverse.
+    p is the progress through the cut; with invert on, the inverted copy is a cut of its own and zooms again (kept on purpose)."""
     a = amount_pct / 100.0
     if mode == "out":
         return 1 + a * (1 - p)
     if mode == "in":
         return 1 + a * p
-    if mode == "alternate":
-        return 1 + a * (1 - p) if cut % 2 == 0 else 1 + a * p
     return 1.0
 
 

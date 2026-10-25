@@ -416,3 +416,19 @@ def test_the_log_line_explains_the_spare_scenes(srv, monkeypatch, capsys):
     srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=8, world="Fashion & Apparel")
     out = capsys.readouterr().out
     assert "asking Kimi for 10 scenes (8 wanted + 2 spare in case some are near-duplicates)" in out and "sending 8 scenes to Krea" in out
+
+
+def test_kimi_error_keeps_the_first_endpoints_failure(srv, monkeypatch):
+    """The first endpoint times out; the others answer 401. The message must still say what happened first."""
+    import io
+    import urllib.error
+
+    def fake_open(req, timeout=0):
+        if "moonshot.ai" in req.full_url:
+            raise TimeoutError("read timed out")
+        raise urllib.error.HTTPError(req.full_url, 401, "no", {}, io.BytesIO(b'{"error":"invalid key"}'))
+
+    monkeypatch.setattr(srv.urllib.request, "urlopen", fake_open)
+    with pytest.raises(RuntimeError) as e:
+        srv.call_kimi_llm("hi", "sk-abc")
+    assert "read timed out" in str(e.value) and "HTTP 401" in str(e.value)

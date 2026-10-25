@@ -19,16 +19,13 @@ PLAN_VECTORS = [
     (6.0, 3, "mono", 6, 0, False),            # 3 plates x 2 cuts = wraps after 6 cuts
 ]
 ZOOM_VECTORS = [
-    # mode, amount%, cut, p, -> scale
-    ("off", 5, 0, 0.5, 1.0),
-    ("out", 1, 0, 0.0, 1.01),
-    ("out", 1, 0, 1.0, 1.0),
-    ("in", 1, 0, 0.0, 1.0),
-    ("in", 1, 0, 1.0, 1.01),
-    ("alternate", 2, 0, 0.0, 1.02),
-    ("alternate", 2, 1, 0.0, 1.0),
-    ("alternate", 2, 1, 1.0, 1.02),
-    ("out", 0.6, 4, 0.5, 1.003),
+    # mode, amount%, zoom progress, -> scale
+    ("off", 5, 0.5, 1.0),
+    ("out", 1, 0.0, 1.01),
+    ("out", 1, 1.0, 1.0),
+    ("in", 1, 0.0, 1.0),
+    ("in", 1, 1.0, 1.01),
+    ("out", 0.6, 0.5, 1.003),
 ]
 
 
@@ -39,9 +36,17 @@ def test_plan_at(pos, n, inv, cut, plate, flipped):
     assert 0 <= r["p"] < 1
 
 
-@pytest.mark.parametrize("mode,amt,cut,p,expected", ZOOM_VECTORS)
-def test_zoom_scale(mode, amt, cut, p, expected):
-    assert cutplan.zoom_scale(mode, amt, cut, p) == pytest.approx(expected)
+@pytest.mark.parametrize("mode,amt,zp,expected", ZOOM_VECTORS)
+def test_zoom_scale(mode, amt, zp, expected):
+    assert cutplan.zoom_scale(mode, amt, zp) == pytest.approx(expected)
+
+
+def test_zoom_restarts_on_the_inverted_copy():
+    """Chosen on purpose (continuous zoom across the pair was tried and rejected)."""
+    a = cutplan.plan_at(0.9999, 3, "colour")
+    b = cutplan.plan_at(1.0, 3, "colour")
+    assert a["inverted"] is False and b["inverted"] is True
+    assert cutplan.zoom_scale("out", 2, b["p"]) > cutplan.zoom_scale("out", 2, a["p"])
 
 
 def test_frame_plan_uses_frame_centres():
@@ -53,9 +58,8 @@ def test_frame_plan_uses_frame_centres():
 
 def test_every_zoom_scale_keeps_the_frame_covered():
     for mode in cutplan.ZOOM_MODES:
-        for cut in range(4):
-            for i in range(11):
-                assert cutplan.zoom_scale(mode, 6, cut, i / 10) >= 1.0
+        for i in range(11):
+            assert cutplan.zoom_scale(mode, 6, i / 10) >= 1.0
 
 
 def test_zoomed_crops_the_centre_and_keeps_size():

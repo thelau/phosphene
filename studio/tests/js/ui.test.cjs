@@ -358,8 +358,7 @@ const PLAN_VECTORS = [
   [3.5, 3, 'colour', 3, 1, true], [6.0, 3, 'mono', 6, 0, false],
 ];
 const ZOOM_VECTORS = [
-  ['off', 5, 0, 0.5, 1.0], ['out', 1, 0, 0.0, 1.01], ['out', 1, 0, 1.0, 1.0], ['in', 1, 0, 0.0, 1.0], ['in', 1, 0, 1.0, 1.01],
-  ['alternate', 2, 0, 0.0, 1.02], ['alternate', 2, 1, 0.0, 1.0], ['alternate', 2, 1, 1.0, 1.02], ['out', 0.6, 4, 0.5, 1.003],
+  ['off', 5, 0.5, 1.0], ['out', 1, 0.0, 1.01], ['out', 1, 1.0, 1.0], ['in', 1, 0.0, 1.0], ['in', 1, 1.0, 1.01], ['out', 0.6, 0.5, 1.003],
 ];
 
 test('planAt matches the server plan vectors', () => {
@@ -372,8 +371,8 @@ test('planAt matches the server plan vectors', () => {
 
 test('zoomScale matches the server zoom vectors', () => {
   const { run } = load({ routes: baseRoutes() });
-  for (const [mode, amt, cut, p, expected] of ZOOM_VECTORS) {
-    assert.ok(Math.abs(run(`zoomScale('${mode}', ${amt}, ${cut}, ${p})`) - expected) < 1e-9, `${mode} ${amt} ${cut} ${p}`);
+  for (const [mode, amt, zp, expected] of ZOOM_VECTORS) {
+    assert.ok(Math.abs(run(`zoomScale('${mode}', ${amt}, ${zp})`) - expected) < 1e-9, `${mode} ${amt} ${zp}`);
   }
 });
 

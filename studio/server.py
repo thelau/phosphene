@@ -230,7 +230,7 @@ def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", i
             {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(b).decode()}} for b in images
         ]
 
-    last_err = None
+    errors: list = []
     for ep in endpoints:
         for model in models_to_try:
             payload = {
@@ -260,16 +260,15 @@ def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", i
                     return data["choices"][0]["message"]["content"].strip()
             except urllib.error.HTTPError as e:
                 err_body = e.read().decode("utf-8", errors="replace")
-                last_err = f"HTTP {e.code} ({model} @ {ep.split('/')[2]}): {err_body[:180]}"
+                errors.append(f"HTTP {e.code} ({model} @ {ep.split('/')[2]}): {err_body[:180]}")
                 if e.code == 401:
-                    continue
-                if e.code in (400, 404):
-                    continue
+                    break  # this endpoint does not accept the key: another model will not change that
             except Exception as e:
-                last_err = str(e)
-                continue
+                errors.append(f"{ep.split('/')[2]} ({model}): {e}")
 
-    raise RuntimeError(f"Kimi API call failed ({last_err})")
+    # Every attempt, not just the last: a key that only fits the first endpoint fails with 401 on the others,
+    # which used to hide what really went wrong on the endpoint that matters.
+    raise RuntimeError("Kimi API call failed (" + " | ".join(errors[:6]) + ")")
 
 
 QUALITY_BAR = (
@@ -650,7 +649,7 @@ def write_export_frames(files, tmp_dir: Path, total_frames: int, frames_per_cut:
     cache: dict = {}
     for f in range(total_frames):
         plan = cutplan.frame_plan(f, frames_per_cut, len(base), invert_mode)
-        scale = cutplan.zoom_scale(zoom_mode, zoom_amount, plan["cut"], plan["p"])
+        scale = cutplan.zoom_scale(zoom_mode, zoom_amount, plan["p"])
         img = base[plan["plate"]]
         if plan["inverted"]:
             if plan["plate"] not in flipped:
