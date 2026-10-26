@@ -601,6 +601,13 @@
       this.pending = job;
       return job.promise;
     }
+    // back to the start of the clip now (the settings are unchanged, so update() would rightly skip it)
+    restart(params, starts) {
+      if (!this.playing) return;
+      if (params && starts) { starts = cleanStarts(starts); this.params = params; this.starts = starts; this.total = starts[starts.length - 1]; }
+      this.pending = null; this.holding = 0;
+      this._swap(0);
+    }
     // the exact level for the current settings, worked out off the swap path; the running sound eases to it
     _recalibrate() {
       clearTimeout(this.calTimer);

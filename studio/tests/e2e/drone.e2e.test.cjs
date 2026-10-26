@@ -42,6 +42,25 @@ test('swapping the live sound does not make it louder or add spikes (the level s
   await ctx.close();
 });
 
+test('restart jumps the playing sound back to the start of the clip, even though its settings did not change', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(async ({ BASE }) => {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const L = new window.Drone.Live();
+    const starts = Array.from({ length: 200 }, (_, i) => i / 3);
+    await L.play(BASE, starts, 5);
+    await sleep(600);
+    const before = L.pos();
+    L.restart(); await sleep(300);
+    const after = L.pos();
+    L.stop();
+    return { before, after };
+  }, { BASE });
+  assert.ok(r.before > 5.4, `it was running (${r.before})`);
+  assert.ok(r.after < 0.8, `restart is back near the start (${r.after})`);
+  await ctx.close();
+});
+
 test('a change that only moves the end of the clip (the picture Multiple) does not rebuild the music; a longer clip does', { skip }, async () => {
   const ctx = await fresh();
   const r = await page.evaluate(async (BASE) => {

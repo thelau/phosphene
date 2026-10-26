@@ -792,12 +792,11 @@ test('Restart starts again from the first image and the start of the sound, and 
   await settle(); await settle();
   assert.equal(h.run('isPlaying'), true);
   h.run('cutPos = 2.5; currentIdx = 2');
-  const updates = h.ctx.__drone.updates.length;
+  const restarts = h.ctx.__drone.restarts || 0;
   h.run('restartPlay()');
   assert.equal(h.run('cutPos'), 0); assert.equal(h.run('currentIdx'), 0);
   assert.equal(h.run('isPlaying'), true);
-  assert.equal(h.ctx.__drone.updates.length, updates + 1);
-  assert.equal(h.ctx.__drone.updates[updates].offset, 0);
+  assert.equal(h.ctx.__drone.restarts, restarts + 1);                        // the sound goes back to its start itself (an update with unchanged settings is skipped)
 });
 
 test('"Change over" follows the number of cuts: its range grows and shrinks with the selection and the invert pairs', async () => {

@@ -75,6 +75,7 @@ function load({ routes = {}, storage = {} } = {}) {
       constructor() { this.playing = false; this.holding = 0; }
       async play(params, starts, offset) { this.playing = true; ctx.__drone.plays.push({ params, starts, offset }); }
       async update(params, starts, getOffset) { ctx.__drone.updates.push({ params, starts, offset: getOffset() }); }
+      restart() { ctx.__drone.restarts = (ctx.__drone.restarts || 0) + 1; }
       stop() { this.playing = false; ctx.__drone.stops++; }
       pos() { return ctx.__drone.position; }
     },

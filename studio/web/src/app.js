@@ -243,7 +243,7 @@
     async function switchSequence(id) {
       if (blockedByAi() || id === activeSeq) return;
       const ok = await seqCall({ action: 'activate', id });
-      if (ok && isPlaying) { cutPos = 0; lastTick = performance.now(); currentIdx = 0; if (droneLive.playing) droneLive.update(synthParams(), synthStartsSec(), () => 0); }   // the player follows: start the other order from its first image
+      if (ok && isPlaying) { cutPos = 0; lastTick = performance.now(); currentIdx = 0; if (droneLive.playing) droneLive.restart(synthParams(), synthStartsSec()); }   // the player follows: start the other order from its first image
       return ok;
     }
     function resetAi() { return blockedByAi() ? undefined : seqCall({ action: 'reset' }); }
@@ -718,7 +718,7 @@
     function restartPlay() {
       if (!isPlaying) { togglePlay(); return; }
       cutPos = 0; lastTick = performance.now(); currentIdx = 0;
-      if (droneLive.playing) droneLive.update(synthParams(), synthStartsSec(), () => 0);
+      if (droneLive.playing) droneLive.restart(synthParams(), synthStartsSec());
     }
     function togglePlay() {
       const stageImg = document.getElementById('stageImg');
