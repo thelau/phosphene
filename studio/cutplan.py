@@ -112,6 +112,26 @@ def zoom_scale(mode: str, amount_pct: float, p: float) -> float:
     return 1.0
 
 
+TRAIL_FRAMES = 4          # how long the previous image lingers after a cut
+TRAIL_MAX = 0.6
+
+
+def trail_alpha(frames_since_cut: float, amount: float) -> float:
+    """Trail: after a cut the previous image lingers on top, fading out over TRAIL_FRAMES frames (whole frames, as in the export).
+    amount 0..0.6 is its opacity on the first frame of the cut; 0 = off. Mirrored by trailAlpha in the page (shared vectors)."""
+    a = max(0.0, min(TRAIL_MAX, float(amount or 0)))
+    k = int(frames_since_cut // 1)
+    if a <= 0 or k < 0 or k >= TRAIL_FRAMES:
+        return 0.0
+    return a * (1 - k / TRAIL_FRAMES)
+
+
+def cut_plate(cut: int, n_plates: int, invert_mode: str = "off") -> tuple[int, bool]:
+    """Which plate, and whether inverted, a given cut shows."""
+    paired = invert_mode in ("mono", "colour")
+    return ((cut // 2 if paired else cut) % n_plates, paired and cut % 2 == 1)
+
+
 def zoomed(img: Image.Image, scale: float) -> Image.Image:
     """Crop the centre 1/scale of the image and scale it back up to full size (one resample)."""
     if scale <= 1.0005:

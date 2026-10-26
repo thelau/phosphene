@@ -1173,7 +1173,7 @@
           chord: ['2', '3', '1'], subWave: ['0', '1', '2'], padWave: ['0', '3'], hitType: ['3', '0', '4'], hitOn: ['3', '2'], dyn: ['1'] } },
       float: { name: 'Float',                                              // slow and wide: a big room, wash, no hits
         rhythm: { mode: 'flat', bpm: [50, 80], mult: ['1', '2'] },
-        look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.5, 2.5] },
+        look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.5, 2.5], trail: [10, 30] },
         sound: { pulse: [30, 45], low: [65, 90], power: [30, 55], space: [65, 85], bright: [0, 30], width: [70, 100], pitch: [0, 60], movement: [15, 45], echo: [15, 50], wash: [25, 55], ring: [0, 20], shimmer: [0, 30], hit: [30, 50], arp: [20, 35],
           chord: ['1', '3', '0'], subWave: ['0'], padWave: ['2', '2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'] } },
       machine: { name: 'Machine',                                          // very fast cuts, metal and a square sub
@@ -1183,7 +1183,7 @@
           chord: ['0', '1'], subWave: ['2', '2', '1'], padWave: ['1', '3'], hitType: ['3', '3', '4'], hitOn: ['3', '1'], dyn: ['0', '3'] } },
       drift: { name: 'Drift',                                              // unhurried and changing slowly, no hits: a long breath of images
         rhythm: { mode: 'variable', start: [250, 450], end: [500, 900], ramp: [10, 20], at: ['end', 'start'], mult: ['1', '1', '2'] },
-        look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.8, 3] },
+        look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.8, 3], trail: [15, 35] },
         sound: { pulse: [30, 50], low: [70, 95], power: [30, 60], space: [55, 85], bright: [0, 30], width: [60, 100], pitch: [0, 50], movement: [15, 40], echo: [10, 45], wash: [20, 55], ring: [0, 15], shimmer: [10, 35], hit: [30, 45], arp: [0, 30],
           chord: ['1', '3', '2'], subWave: ['0'], padWave: ['2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'] } },
       strobe: { name: 'Strobe',                                            // colour-inverted flashes on a mid tempo, dark bursts on the accents
@@ -1277,7 +1277,7 @@
       else { setv('startMsRange', Math.round(rint(r.start) / 10) * 10); setv('endMsRange', Math.round(rint(r.end) / 10) * 10); setv('rampRange', rint(r.ramp)); setv('atSelect', Array.isArray(r.at) ? rpick(r.at) : r.at); }
       setv('multSelect', rpick(r.mult));
     }
-    function applyLook(l) { setv('invertSelect', rpick(l.invert)); setv('zoomSelect', rpick(l.zoom)); setv('zoomAmt', (l.amount[0] + Math.random() * (l.amount[1] - l.amount[0])).toFixed(1)); }
+    function applyLook(l) { setv('invertSelect', rpick(l.invert)); setv('zoomSelect', rpick(l.zoom)); setv('zoomAmt', (l.amount[0] + Math.random() * (l.amount[1] - l.amount[0])).toFixed(1)); setv('trailRange', l.trail ? rint(l.trail) : 0); }
     function refreshVideo(quiet) { updateTempo(); updateRhythm(); updateFx(); if (!quiet) { saveSettings(); musicChanged(); } }
     // a random rhythm: a tempo (Flat) or a run that speeds up or slows down (Variable), and the Multiple
     function randomRhythm(quiet) {
@@ -1295,6 +1295,7 @@
     function randomLook(quiet) {
       if (quiet !== true) rememberForUndo();
       applyLook({ invert: ['off', 'off', 'mono', 'colour'], zoom: ['off', 'out', 'out', 'in'], amount: [0.3, 3] });
+      setv('trailRange', Math.random() < 0.25 ? rint([15, 40]) : 0);         // a trail now and then, never strong
       refreshVideo(quiet === true);
       if (quiet !== true) commitSettings('Random look');
     }
@@ -1613,12 +1614,36 @@
         invert: document.getElementById('invertSelect').value,
         zoom: document.getElementById('zoomSelect').value,
         amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
+        trail: (parseFloat(document.getElementById('trailRange').value) || 0) / 100,
       };
+    }
+    // Trail: after a cut the previous image lingers on top for 4 whole frames, fading (mirrors cutplan.trail_alpha; shared vectors)
+    const TRAIL_FRAMES = 4;
+    function trailAlpha(framesSinceCut, amount) {
+      const a = Math.max(0, Math.min(0.6, amount || 0)), k = Math.floor(framesSinceCut);
+      return a <= 0 || k < 0 || k >= TRAIL_FRAMES ? 0 : a * (1 - k / TRAIL_FRAMES);
+    }
+    let ghostCut = -1, ghostOpacity = '';
+    function drawTrail(plan, fx, tl, active) {
+      const g = document.getElementById('stageGhost');
+      const alpha = isPlaying && plan.cut > 0 ? trailAlpha(cutPos - tl[plan.cut], fx.trail) : 0;
+      if (alpha > 0 && ghostCut !== plan.cut) {                               // a new cut: the previous one, as it ended, goes on top
+        ghostCut = plan.cut;
+        const paired = fx.invert === 'mono' || fx.invert === 'colour', prev = plan.cut - 1;
+        const pp = active[(paired ? Math.floor(prev / 2) : prev) % active.length];
+        g.src = pp.preview || pp.url;
+        g.style.filter = paired && prev % 2 === 1 ? (fx.invert === 'mono' ? 'invert(1) grayscale(1)' : 'invert(1)') : '';
+        const s = zoomScale(fx.zoom, fx.amount, 1);
+        g.style.transform = s > 1.0005 ? `scale(${s.toFixed(5)})` : '';
+      }
+      const o = alpha > 0 ? alpha.toFixed(3) : '0';
+      if (o !== ghostOpacity) { ghostOpacity = o; g.style.opacity = o; }
     }
     function clearFx() {
       const img = document.getElementById('stageImg');
       img.style.transform = '';
       img.style.filter = '';
+      document.getElementById('stageGhost').style.opacity = '0'; ghostOpacity = '0'; ghostCut = -1;
     }
     function applyFx(plan, fx) {
       const img = document.getElementById('stageImg');
@@ -1632,6 +1657,8 @@
       const zoomOff = document.getElementById('zoomSelect').value === 'off';
       document.getElementById('zoomAmt').disabled = zoomOff;
       document.getElementById('zoomAmtRow').classList.toggle('dim', zoomOff);
+      const trail = parseInt(document.getElementById('trailRange').value, 10) || 0;
+      document.getElementById('trailVal').textContent = trail ? `${trail}%` : 'Off';
       syncSegs(); paintRanges();
       if (!isPlaying) clearFx();
       musicChanged();   // invert changes the cuts, so the sound must follow
@@ -1718,6 +1745,7 @@
         else { held = true; lateFrames++; preload(url); }                  // playing: hold the last frame until this one can paint
       }
       if (!isPlaying) clearFx(); else if (!held) applyFx(plan, fx);        // a held frame keeps its own look
+      if (!held) drawTrail(plan, fx, tl, active);
       markFilmstrip(plan.plate);
       movePlayhead();
       const total = tl[tl.length - 1], t = ((cutPos % total) + total) % total;
@@ -1766,7 +1794,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -2113,6 +2141,7 @@
             music: musicOn() ? 'synth' : 'off',
             zoom_mode: document.getElementById('zoomSelect').value,
             zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
+            trail: (parseFloat(document.getElementById('trailRange').value) || 0) / 100,
             ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) })   // a group: just its images
           })
         });

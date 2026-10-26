@@ -164,6 +164,9 @@
     .stage img { width: 100%; height: 100%; object-fit: cover; display: block; }
     #stageImg { transform-origin: 50% 50%; will-change: transform, filter; }
     #stageImg:not([src]) { visibility: hidden; }
+    #stageGhost { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; pointer-events: none; transform-origin: 50% 50%; }   /* Trail: the previous image, fading over a few frames */
+    #stageGhost:not([src]) { display: none; }
+    .stage:fullscreen #stageGhost { object-fit: contain; }
     .reticle { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .15s; }
     .reticle.visible { opacity: 1; }
     .reticle .ret-v { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(236, 84, 12, .55); }

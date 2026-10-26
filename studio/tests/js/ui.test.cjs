@@ -1654,3 +1654,29 @@ test('groups: the grid, the film, AI re-order and export follow the group chosen
   assert.equal(h.run('currentGroup'), 'all');
   assert.equal(h.run('activePlates().length'), 7);
 });
+
+test('Trail: the same opacity curve as the export (shared vectors), and the stage overlays the previous cut as it ended', async () => {
+  const TRAIL_VECTORS = [[0.0, 0.4, 0.4], [0.9, 0.4, 0.4], [1.0, 0.4, 0.3], [3.5, 0.4, 0.1], [4.0, 0.4, 0.0], [-0.5, 0.4, 0.0], [0.0, 0.0, 0.0], [0.0, 5.0, 0.6]];   // = test_cutplan.TRAIL_VECTORS
+  const h = await playerWith();
+  for (const [k, a, want] of TRAIL_VECTORS) assert.ok(Math.abs(h.run(`trailAlpha(${k}, ${a})`) - want) < 1e-9, `${k} ${a}`);
+  h.$('bpmInput').value = '60'; h.$('multSelect').value = '1'; h.$('invertSelect').value = 'mono'; h.$('zoomSelect').value = 'out'; h.$('zoomAmt').value = '2';
+  h.$('trailRange').value = '40'; h.run('updateTempo(); updateFx()');
+  assert.equal(h.$('trailVal').textContent, '40%');
+  h.run('isPlaying = true');
+  const tl = h.run('timelineFor(3)');
+  h.run(`cutPos = ${tl[1]} + 0.5; drawFrame()`);                                 // first frame of cut 1: the inverted copy of a
+  assert.equal(h.$('stageGhost').src, '/p/a', 'the previous cut lingers');
+  assert.equal(h.$('stageGhost').style.filter, '', 'as it was: not inverted');
+  assert.equal(h.$('stageGhost').style.transform, '', 'and as it ended: zoomed out to 1');
+  assert.equal(h.$('stageGhost').style.opacity, '0.400');
+  h.run(`cutPos = ${tl[2]} + 2.2; drawFrame()`);                                 // cut 2 (b), third frame: the inverted a lingers, fading
+  assert.equal(h.$('stageGhost').style.filter, 'invert(1) grayscale(1)');
+  assert.equal(h.$('stageGhost').style.opacity, '0.200');
+  h.run(`cutPos = ${tl[2]} + 5; drawFrame()`);
+  assert.equal(h.$('stageGhost').style.opacity, '0');
+  h.$('trailRange').value = '0'; h.run('updateFx()');
+  h.run(`cutPos = ${tl[1]} + 0.2; drawFrame()`);
+  assert.equal(h.$('stageGhost').style.opacity, '0', 'off is off');
+  assert.equal(h.$('trailVal').textContent, 'Off');
+  h.run('isPlaying = false');
+});

@@ -928,3 +928,22 @@ test('groups: chips for All, yours and the automatic looks; pick cards, make a g
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('Trail in the page: while playing, the previous image shows faintly just after each cut, and the export is asked for it', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  await film();
+  await page.fill('#bpmInput', '60'); await page.locator('#bpmInput').dispatchEvent('input');
+  await page.selectOption('#multSelect', '2');
+  await page.fill('#trailRange', '50'); await page.locator('#trailRange').dispatchEvent('input');
+  assert.equal(await text('#trailVal'), '50%');
+  await page.click('#playBtn');
+  const seen = await page.evaluate(() => new Promise(res => { const g = document.getElementById('stageGhost'), o = []; let n = 0; const loop = () => { o.push(parseFloat(g.style.opacity) || 0); if (++n < 150) requestAnimationFrame(loop); else res(o); }; requestAnimationFrame(loop); }));
+  await page.click('#playBtn');
+  assert.ok(Math.max(...seen) > 0.3 && Math.max(...seen) <= 0.5, `it shows (${Math.max(...seen)})`);
+  assert.ok(seen.filter(o => o === 0).length > seen.length / 2, 'and only for a few frames after each cut');
+  assert.equal(await page.locator('#stageGhost').evaluate(e => getComputedStyle(e).opacity), '0', 'paused: no trail');
+  await page.click('#exportBtn'); await page.waitForSelector('#exportDock[data-state="ready"]');
+  assert.equal(api.state.calls.filter(c => c.path === '/api/export-video').pop().body.trail, 0.5);
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

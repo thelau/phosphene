@@ -312,3 +312,26 @@ def test_the_music_grid_does_not_move_when_only_the_multiple_does():
     for bpm in BPMS:
         grids = [cutplan.rhythm_timeline(40, bpm, m)[1][:6] for m in (0.5, 1, 2, 4, 9)]
         assert all(g == pytest.approx(grids[0]) for g in grids)
+
+
+TRAIL_VECTORS = [
+    # frames since the cut, amount -> opacity of the previous image (shared with the page: trailAlpha)
+    (0.0, 0.4, 0.4),
+    (0.9, 0.4, 0.4),
+    (1.0, 0.4, 0.3),
+    (3.5, 0.4, 0.1),
+    (4.0, 0.4, 0.0),
+    (-0.5, 0.4, 0.0),
+    (0.0, 0.0, 0.0),
+    (0.0, 5.0, 0.6),          # clamped to the most it may be
+]
+
+
+@pytest.mark.parametrize("k,amount,expected", TRAIL_VECTORS)
+def test_trail_alpha(k, amount, expected):
+    assert cutplan.trail_alpha(k, amount) == pytest.approx(expected)
+
+
+def test_cut_plate_follows_the_invert_pairs():
+    assert cutplan.cut_plate(3, 3, "off") == (0, False)
+    assert cutplan.cut_plate(3, 3, "mono") == (1, True)

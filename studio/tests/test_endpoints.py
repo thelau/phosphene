@@ -603,3 +603,19 @@ def test_ai_reorder_of_a_group_moves_only_its_images_among_their_own_places(live
         srv.save_state(st)
     _, state = live("GET", "/api/state")
     assert [p["filename"] for p in state["plates"] if not p["trashed"]][:3] == [names[2], names[1], names[0]], "n1 kept its place; the group swapped"
+
+
+def test_export_frames_trail_blends_the_previous_image_after_each_cut(srv, tmp_path):
+    """Trail: on the first frames of a cut the previous image shows through, fading over 4 frames; the first cut has none."""
+    from PIL import Image
+    red, blue = tmp_path / "r.jpg", tmp_path / "b.jpg"
+    Image.new("RGB", (40, 72), (255, 0, 0)).save(red)
+    Image.new("RGB", (40, 72), (0, 0, 255)).save(blue)
+    out = tmp_path / "frames"
+    out.mkdir()
+    srv.write_export_frames([red, blue], out, 12, 1.0, "off", "off", 0.6, [0, 6, 12], trail=0.4)
+    px = lambda f: Image.open(out / f"f_{f:04d}.jpg").convert("RGB").resize((1, 1)).getpixel((0, 0))
+    assert px(0)[0] > 240 and px(5)[0] > 240, "the first cut: no trail"
+    r6, _, b6 = px(6)
+    assert 80 < r6 < 125 and b6 > 130, f"first frame of the blue cut: 40% red still shows ({px(6)})"
+    assert px(7)[0] < r6 and px(9)[0] < px(7)[0] and px(10)[0] < 20, "and it fades out within 4 frames"
