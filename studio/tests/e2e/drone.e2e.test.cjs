@@ -303,3 +303,41 @@ test('the page stays responsive while playing a big sequence with every sound la
   assert.deepEqual(consoleErrors.splice(0), []);
   await ctx.close();
 });
+
+test('at one frame a cut with the sound on, every cut lasts the same number of screen refreshes (no stutter)', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  for (let i = 0; i < 60; i++) { const f = `c${i}`; api.state.plates.push({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` }); api.state.sequences[0].order.push(f); }
+  await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
+  await film();
+  await choose('musicSelect', 'on');
+  await page.fill('#bpmInput', '450'); await page.locator('#bpmInput').dispatchEvent('input');
+  await page.selectOption('#multSelect', '4');                                    // 1 frame (33 ms) a cut: 2 refreshes at 60 Hz
+  await page.click('#playBtn');
+  await page.waitForTimeout(1500);                                                // the first build and level settle
+  const runs = await page.evaluate(() => new Promise(res => {
+    const img = document.getElementById('stageImg'), out = []; let last = null, n = 0, frames = 0;
+    const loop = () => { const s = img.getAttribute('src'); if (s === last) n++; else { if (last !== null) out.push(n); last = s; n = 1; } if (++frames < 240) requestAnimationFrame(loop); else res(out.slice(1)); };
+    requestAnimationFrame(loop);
+  }));
+  await page.click('#playBtn');
+  const even = runs.filter(n => n === 2).length;
+  console.log(`cadence: ${runs.length} cuts, ${even} of them 2 refreshes, others ${JSON.stringify(runs.filter(n => n !== 2))}`);
+  assert.ok(runs.length > 80, 'it played');
+  assert.ok(even / runs.length > 0.95, `${Math.round((100 * even) / runs.length)}% of the cuts last 2 refreshes`);
+  await ctx.close();
+});
+
+test('the first Play does not freeze the page: the audio engine and the room are made while the page is idle', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  await film();
+  await choose('musicSelect', 'on');
+  await page.waitForTimeout(1500);                                                // idle time after choosing the sound
+  await page.evaluate(() => { window.__long = []; new PerformanceObserver(l => l.getEntries().forEach(e => window.__long.push(Math.round(e.duration)))).observe({ entryTypes: ['longtask'] }); });
+  await page.click('#playBtn');
+  await page.waitForTimeout(800);
+  const long = await page.evaluate(() => window.__long);
+  console.log(`first play: long tasks ${JSON.stringify(long)}`);
+  assert.ok(Math.max(0, ...long) < 120, `no long freeze on the first Play (${JSON.stringify(long)})`);
+  await page.click('#playBtn');
+  await ctx.close();
+});

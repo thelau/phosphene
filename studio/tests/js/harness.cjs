@@ -51,7 +51,8 @@ function load({ routes = {}, storage = {} } = {}) {
     clearInterval: () => {},
     setTimeout: (fn, ms) => { timers.timeouts.push({ fn, ms }); return timers.timeouts.length; },
     clearTimeout: () => {},
-    requestAnimationFrame: fn => fn(),
+    requestAnimationFrame: fn => { timers.intervals.push({ fn, ms: 16, raf: true }); return timers.intervals.length; },   // a frame runs when a test calls it
+    cancelAnimationFrame: () => {},
     performance: { now: () => Date.now() },
     addEventListener(ev, fn) { (ctx.__listeners ||= {})[ev] = fn; },
     CSS: { escape: s => s },

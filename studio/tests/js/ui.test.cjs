@@ -1524,10 +1524,16 @@ test('keys: 0 / Home back to the start (playing stays playing), T the target, R 
   key('t'); assert.equal(h.$('reticle').classList.contains('visible'), true);
   key('T'); assert.equal(h.$('reticle').classList.contains('visible'), false);
   const snap = () => ['rhythmSelect', 'bpmInput', 'invertSelect', 'zoomSelect', 'seedVal'].map(id => h.$(id).value).join();
+  h.run('jumpToPlate(2)');
   let a = snap(); key('r'); assert.notEqual(snap(), a, 'R rolls everything');
+  assert.equal(h.run('cutPos'), 0, 'and starts the new film from its beginning');
+  assert.equal(h.$('randomAllBtn').classList.contains('flash'), true, 'the Random button flashes');
   h.$('musicSelect').value = 'off'; h.run('updateMusic()');
   a = ['rhythmSelect', 'bpmInput', 'invertSelect'].map(id => h.$(id).value).join(); const seed = h.$('seedVal').value;
+  h.run('jumpToPlate(1)'); const at = h.run('cutPos');
   key('s');
+  assert.equal(h.$('randomBtn').classList.contains('flash'), true, 'the Random sound button flashes');
+  assert.equal(h.run('cutPos'), at, 'a new sound for the same cut: the playhead stays');
   assert.equal(h.$('musicSelect').value, 'on', 'S turns the sound on');
   assert.notEqual(h.$('seedVal').value, seed);
   assert.equal(['rhythmSelect', 'bpmInput', 'invertSelect'].map(id => h.$(id).value).join(), a, 'and leaves the video alone');

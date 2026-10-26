@@ -379,6 +379,12 @@
         items.push([`card:${p.filename}`, cardHtml(p)]);
       });
       if (!showTrash) pendingCards().forEach((html, i) => items.push([`pending:${i}`, html]));
+      if (gridView !== showTrash && grid.replaceChildren) {                  // switching Selection / Trash: put the other view's cards back instead of rebuilding them
+        const keep = [...grid.children];
+        grid.replaceChildren(...(viewCards.get(showTrash) || []));
+        viewCards.set(gridView, keep);
+      }
+      gridView = showTrash;
       patchChildren(grid, items);
       const empty = document.getElementById('gridEmpty');
       empty.hidden = items.length > 0;
@@ -394,6 +400,8 @@
     // Only what changed is touched: a card whose markup is the same keeps its element (its image stays decoded, an open info panel stays open);
     // new ones are made, gone ones removed, moved ones moved. The keys are the file names.
     const shownHtml = new WeakMap();
+    let gridView = false;
+    const viewCards = new Map();                                             // the cards of the view not shown (Selection or Trash), kept for the way back
     function patchChildren(box, items) {
       if (!box.insertBefore || !box.children) { box.innerHTML = items.map(x => x[1]).join(''); return; }   // the test page has no real DOM
       const old = new Map([...box.children].map(el => [el.dataset.key, el]));
@@ -590,16 +598,24 @@
       else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); stepImage(e.key === 'ArrowRight' ? 1 : -1); }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && mode === 'film') { e.preventDefault(); trashCurrent(); }
       else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); }
-      else if (e.key === '0' || e.key === 'Home') { e.preventDefault(); toStart(); }
+      else if (e.key === '0' || e.key === 'Home') { e.preventDefault(); flash('restartBtn'); toStart(); }
       else if (e.key === '?') { e.preventDefault(); toggleKeys(); }
       else if (e.key === 'Escape') document.getElementById('keysPanel').hidden = true;
-      else if (e.key === 't' || e.key === 'T') { e.preventDefault(); toggleReticle(); }
-      else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); randomAll(); }
-      else if (e.key === 's' || e.key === 'S') { e.preventDefault(); if (!musicOn()) { setv('musicSelect', 'on'); } randomMusic(); }
+      else if (e.key === 't' || e.key === 'T') { e.preventDefault(); flash('targetBtn'); toggleReticle(); }
+      else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); flash('randomAllBtn'); randomAll(); }
+      else if (e.key === 's' || e.key === 'S') { e.preventDefault(); flash('randomBtn'); if (!musicOn()) { setv('musicSelect', 'on'); } randomMusic(); }
+    }
+    // a key shows which button it pressed: the button flashes as if clicked
+    function flash(id) {
+      const b = document.getElementById(id);
+      b.classList.remove('flash');
+      void b.offsetWidth;                                                    // restart the animation when pressed again quickly
+      b.classList.add('flash');
+      setTimeout(() => b.classList.remove('flash'), 400);
     }
     // back to the first image and the start of the sound; playing or not, it keeps playing or stays paused
     function toStart() {
-      cutPos = 0; lastTick = performance.now();
+      cutPos = 0; lastTick = performance.now(); clockPos = null;
       if (isPlaying && droneLive.playing) droneLive.restart(synthParams(), synthStartsSec());
       drawFrame();
     }
@@ -671,7 +687,7 @@
     function renderFilmstrip() {
       const strip = document.getElementById('filmstrip');
       const active = activePlates();
-      strip.innerHTML = active.map((p, i) => `<button type="button" data-i="${i}" title="${i + 1} · ${escapeHtml(p.title)}" aria-label="Jump to image ${i + 1}" style="background-image:url('${(p.thumb || p.url || '').replace(/'/g, '%27')}')"></button>`).join('');
+      strip.innerHTML = active.map((p, i) => `<button type="button" data-i="${i}" title="${i + 1} · ${escapeHtml(p.title)}" aria-label="Jump to image ${i + 1}"><img src="${escapeHtml(p.thumb || p.url || '')}" loading="lazy" decoding="async" alt=""></button>`).join('');   // lazy: 400 thumbnails must not compete with the stage's images
       shownIdx = -1;
       const n = active.length, cut = activeCutOff();
       document.getElementById('filmHint').textContent = n ? `${n} images in film order · click to jump` : '';
@@ -692,11 +708,15 @@
       document.getElementById('curTitle').textContent = p ? `${i + 1} · ${p.title}` : '';
       if (mode === 'film') scrollFilmstripTo(i);
     }
+    // the strip's buttons have fixed sizes, so where one sits is arithmetic: no layout is forced on every cut
+    let stripWidth = 0;
+    window.addEventListener('resize', () => { stripWidth = 0; });
     function scrollFilmstripTo(i) {
       const strip = document.getElementById('filmstrip');
-      const el = (strip.children || [])[i];
-      if (!el || !strip.clientWidth) return;
-      const x = el.offsetLeft, w = strip.clientWidth;
+      if (i < 0 || !(strip.children || [])[i]) return;
+      if (!stripWidth) stripWidth = strip.clientWidth;
+      if (!stripWidth) return;
+      const x = 68 + i * 30, w = stripWidth;                                  // 65 px padding + 3, then 27 px buttons with 3 px gaps
       if (x < strip.scrollLeft + 65 || x > strip.scrollLeft + w - 40) strip.scrollLeft = Math.max(0, x - 65 - w / 3);
     }
     function jumpToPlate(i) {
@@ -707,6 +727,7 @@
       cutPos = timelineFor(active.length)[i * (paired ? 2 : 1)];
       lastTick = performance.now();
       if (isPlaying && droneLive.playing) droneLive.seek(cutPos / 30);
+      clockPos = null;
       drawFrame();
     }
     // the image on screen goes to the Trash; the toast's Undo puts it back where it was
@@ -860,13 +881,22 @@
     function updateMusic() {
       const on = musicOn();
       document.getElementById('synthBox').hidden = !on;
+      if (on) warmSound();
       document.getElementById('soundOffNote').hidden = on;
       for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer', 'hit', 'arp']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
       syncSegs(); paintRanges();
       saveSettings();
       musicChanged();
     }
-    // the transport's sound button: the same switch as Source
+    // the sound engine's costly parts are made while the page is idle, so the first Play does not freeze it
+    let warmed = false;
+    function warmSound() {
+      if (warmed || !musicOn() || !droneLive.warm) return;
+      warmed = true;
+      const idle = window.requestIdleCallback || (f => setTimeout(f, 300));
+      idle(() => { try { droneLive.warm(synthParams()); } catch (e) {} }, { timeout: 2000 });
+    }
+    // the four groups of sound settings, one shown at a time: the same switch as Source
     // the four groups of sound settings, one shown at a time
     const SOUND_GROUPS = ['bed', 'tone', 'texture', 'notes'];
     function showSoundGroup(g) {
@@ -1105,6 +1135,7 @@
       refreshVideo(true);
       updateMusic();
       commitSettings('Random');
+      toStart();                                                             // a new film: from its first image
       return c ? key : 'any';
     }
     function randomAll() { return rollCharacter(document.getElementById('characterSelect').value); }
@@ -1243,20 +1274,30 @@
     }
     // Dragging the inner point (where a landing begins, where a build-up ends) sets Change over: it snaps to the nearest cut of the run
     // The change itself moves the film's length, so the point is placed by trying every Change over and keeping the one whose point lands nearest
+    let rampTable = null;                                                    // during a drag: where the point lands for each Change over, worked out once
     function rampAt(u) {
       const n = activePlates().length;
       if (!n) return null;
+      if (rampTable && rampTable.length) {
+        let best = rampTable[0];
+        for (const row of rampTable) if (Math.abs(row.pos - u) < Math.abs(best.pos - u)) best = row;
+        return best.k;
+      }
       const paired = ['mono', 'colour'].includes(document.getElementById('invertSelect').value);
       const nCuts = n * (paired ? 2 : 1), mult = parseFloat(document.getElementById('multSelect').value) || 1;
       const nBase = Math.max(1, Math.ceil(nCuts / Math.max(0.05, mult) - 1e-9));
       const v = variableParams(), target = Math.max(0, Math.min(1, u));
       let best = null, bestD = Infinity;
+      const table = [];
       for (let k = 2; k <= Math.max(2, Math.min(nBase, 200)); k++) {              // the change never takes more than 200 cuts
         const base = variableStarts(nBase, v.start_ms, v.end_ms, k, v.at), total = subdivideStarts(base, mult, nCuts)[nCuts];
         const at = v.at === 'end' ? base[Math.max(0, nBase - k)] : base[Math.min(nBase, k)];
-        const d = Math.abs(Math.min(at, total) / total - target);
+        const pos = Math.min(at, total) / total;
+        table.push({ k, pos });
+        const d = Math.abs(pos - target);
         if (d < bestD - 1e-9) { bestD = d; best = k; }
       }
+      rampAt.lastTable = table;
       return v.ramp > 200 && best === 200 ? v.ramp : Math.max(2, Math.min(nBase, best));
     }
     let draggingPoint = false, dragEndedAt = 0;
@@ -1264,6 +1305,7 @@
       if (!e.currentTarget.classList.contains('inner')) return;
       e.preventDefault(); e.stopPropagation();
       draggingPoint = true;
+      rampTable = null; rampAt(0); rampTable = rampAt.lastTable;              // one pass now; the moves only look it up
       if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
     }
     function pointMove(e) {
@@ -1273,7 +1315,7 @@
       const el = document.getElementById('rampRange');
       if (ramp !== null && String(ramp) !== el.value) { el.value = String(ramp); updateRhythm(); }
     }
-    function pointUp() { if (draggingPoint) { draggingPoint = false; dragEndedAt = Date.now(); } }
+    function pointUp() { if (draggingPoint) { draggingPoint = false; rampTable = null; dragEndedAt = Date.now(); } }
     ['rsH0', 'rsH1'].forEach(id => {
       const d = document.getElementById(id);
       d.addEventListener('pointerdown', pointDown);
@@ -1290,7 +1332,7 @@
       const b = body.getBoundingClientRect();
       const u = Math.max(0, Math.min(0.9999, (e.clientX - b.left) / b.width));
       cutPos = u * timelineFor(n).at(-1);
-      lastTick = performance.now();
+      lastTick = performance.now(); clockPos = null;
       if (isPlaying && droneLive.playing) droneLive.seek(cutPos / 30);
       drawFrame();
     }
@@ -1354,20 +1396,38 @@
 
     let cutPos = 0;
     let lastTick = 0;
+    // The picture is drawn once per screen refresh (requestAnimationFrame), on a smooth clock: the audio clock moves in steps
+    // (it advances a buffer at a time), so the picture follows a steady clock that is gently pulled toward the audio and snaps to it
+    // only after a jump (a seek, a swap). Each cut then lasts the same number of refreshes; on a timer, about 1 in 5 of the
+    // one-frame cuts lasted 1 or 3 refreshes instead of 2.
+    let clockPos = null, clockAt = 0;
+    function smoothAudioPos(now) {
+      const audio = droneLive.pos(), total = droneLive.total || 0;
+      if (clockPos === null) { clockPos = audio; clockAt = now; return audio; }
+      let pos = clockPos + (now - clockAt) / 1000;
+      let d = audio - pos;
+      if (total > 0) d = ((((d + total / 2) % total) + total) % total) - total / 2;   // across the loop point
+      pos = Math.abs(d) > 0.08 ? audio : pos + d * 0.08;
+      clockPos = total > 0 ? ((pos % total) + total) % total : pos;
+      clockAt = now;
+      return clockPos;
+    }
+    function frameTick(ts) {
+      const now = Number.isFinite(ts) ? ts : performance.now();              // the frame's own time: steadier than reading the clock inside it
+      const dt = now - lastTick;
+      lastTick = now;
+      if (!isPlaying) { clockPos = null; return; }
+      if (!activePlates().length || document.getElementById('stageImg').style.display === 'none') return;
+      if (musicPending) return;
+      if (musicOn() && droneLive.playing && !droneLive.holding) cutPos = Math.round(smoothAudioPos(now) * 60) / 2;   // the drone is the clock, in 60 Hz steps: a one-frame cut is two refreshes, every time
+      else { clockPos = null; cutPos += (Math.min(dt, 250) * 30) / 1000; }
+      drawFrame();
+    }
     function restartLoop() {
-      if (timer) clearInterval(timer);
+      if (timer) cancelAnimationFrame(timer);
       lastTick = performance.now();
-      timer = setInterval(() => {
-        const now = performance.now();
-        const dt = now - lastTick;
-        lastTick = now;
-        if (!isPlaying) return;
-        if (!activePlates().length || document.getElementById('stageImg').style.display === 'none') return;
-        if (musicPending) return;
-        if (musicOn() && droneLive.playing && !droneLive.holding) cutPos = droneLive.pos() * 30;           // the drone is the clock (positions are in frames)
-        else cutPos += (dt * 30) / 1000;
-        drawFrame();
-      }, 16);
+      const loop = ts => { frameTick(ts); timer = requestAnimationFrame(loop); };
+      timer = requestAnimationFrame(loop);
     }
     // ---- images decoded ahead of the playhead: while playing, the stage only switches to an image that is ready to paint,
     // so a fast cut never shows an empty or half-drawn frame (it holds the last one instead, and catches up at the next cut) ----
@@ -1379,6 +1439,7 @@
       if (!url || ready.has(url) || loading.has(url) || failed.has(url) || typeof Image !== 'function') return;
       const im = new Image();
       im.decoding = 'async';
+      im.fetchPriority = 'high';                                              // ahead of the film strip's thumbnails
       im.src = url;
       loading.set(url, im);
       const done = () => { loading.delete(url); ready.set(url, im); while (ready.size > 48) ready.delete(ready.keys().next().value); };   // ~2 MB each once decoded: about the look-ahead, no more
@@ -1430,7 +1491,7 @@
     // start again from the first image and the start of the sound (with a long slow run, this skips the wait)
     function restartPlay() {
       if (!isPlaying) { cutPos = 0; togglePlay(); return; }
-      cutPos = 0; lastTick = performance.now(); currentIdx = 0;
+      cutPos = 0; lastTick = performance.now(); currentIdx = 0; clockPos = null;
       if (droneLive.playing) droneLive.restart(synthParams(), synthStartsSec());
     }
     function setPlayLabel() {
@@ -1860,6 +1921,7 @@
       } finally {
         clearTimeout(slow);
       }
+      warmSound();
       const l = document.getElementById('loader');
       l.classList.add('done');
       setTimeout(() => l.remove(), 400);

@@ -629,6 +629,10 @@ test('the grid only touches what changed: a refresh, a reorder or a new image ke
   await page.click('#refreshBtn');
   await page.waitForSelector('.card[data-filename="k9"]');
   assert.deepEqual(await kept(), ['k3', 'k1', 'k2', '-k9'], 'a new image adds one card');
+  await tag();
+  await page.click('#tabTrash'); await page.waitForSelector('#tabTrash.on');
+  await page.click('#tabSelection'); await page.waitForSelector('#tabSelection.on');
+  assert.deepEqual(await kept(), ['k3', 'k1', 'k2', 'k9'], 'to the Trash and back: the same cards, not rebuilt');
   await page.locator('.card[data-filename="k1"] .info-btn').click({ force: true });
   await page.click('#refreshBtn'); await page.waitForTimeout(300);
   assert.equal(await page.locator('.card[data-filename="k1"] .prompt-overlay.open').count(), 1, 'an open info panel stays open through a refresh');

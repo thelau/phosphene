@@ -619,6 +619,20 @@
       this.pending = null; this.holding = 0;
       this._swap(0);
     }
+    // Make the costly parts before the first Play (call it when the page is idle): the audio context (it starts suspended until a
+    // click), the noise and the reverb room for these settings. The first Play otherwise froze the page for 150-230 ms.
+    warm(params) {
+      const ctx = this._context();
+      const p = params || {};
+      const seedN = (Number.isFinite(+p.seed) ? +p.seed : 7) >>> 0;
+      const space = Math.min(1, Math.max(0, Number.isFinite(+p.space) ? +p.space : 0.5));
+      const seconds = Math.round(2.4 + 3.6 * space);
+      for (const i of [0, 1]) {
+        const key = `${seedN}|${i}|${seconds}`;
+        if (!this.rooms.has(key)) this.rooms.set(key, makeRoom(ctx, seedN, i, seconds));
+      }
+      for (const [name, sec] of [['rumble', 4], ['air', 4]]) noiseLoop(ctx, seedN, name, sec, name === 'rumble' ? (x, r) => onePole(x, 110, r, 2) : (x, r) => { onePole(x, 1400, r, 2); const lp = x.slice(); onePole(lp, 250, r, 2); for (let i = 0; i < x.length; i++) x[i] -= lp[i]; });
+    }
     // jump to a position in the clip (seconds), keeping the settings: the film strip and the rhythm strip use it
     seek(offset) {
       if (!this.playing) return;
