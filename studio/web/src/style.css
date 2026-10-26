@@ -385,6 +385,9 @@
     .group-row[hidden] { display: none; }
     .group-bar { display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
     .group-bar::-webkit-scrollbar { display: none; }
+    .group-bar.fade-r { mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
+    .group-bar.fade-l { mask-image: linear-gradient(to right, transparent, #000 48px); }
+    .group-bar.fade-l.fade-r { mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent); }
     .chip { flex: none; height: 28px; padding: 0 11px; border-radius: 14px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; white-space: nowrap; transition: none; }
     .chip span { font-family: var(--mono); font-size: 10px; font-weight: 400; color: var(--faint); margin-left: 3px; }
     .chip:hover { border-color: var(--line-3); color: var(--text); }
@@ -395,6 +398,7 @@
     .chip-sep { flex: none; width: 1px; margin: 4px 4px; background: var(--line-2); }
     .pick-bar { flex: none; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
     .pick-bar[hidden] { display: none; }
+    .pick-bar::before { content: ''; width: 1px; height: 20px; margin-right: 4px; background: var(--line-2); }   /* the picks' actions, set apart from the chips */
     .pick-bar button:not(.icon-btn) { height: 28px; padding: 0 12px; font-size: 12px; }
     .pick-bar .icon-btn.small { width: 28px; height: 28px; }   /* the chips' height: picking must not move the row */
     .group-menu { position: fixed; z-index: 120; min-width: 220px; padding: 6px; display: flex; flex-direction: column; gap: 2px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 20px 50px rgba(0,0,0,.55); }

@@ -218,11 +218,37 @@
       fg.innerHTML = chips.map(opt).join('') + (auto.length ? `<optgroup label="Automatic">${auto.map(opt).join('')}</optgroup>` : '');
       fg.value = currentGroup;
       syncSelects();
+      revealGroupChip();
+      groupFade();
       document.getElementById('miniTitle').textContent = currentGroup === 'all' ? 'Film' : (chips.concat(auto).find(c => c.key === currentGroup) || { name: 'Film' }).name;
       const len = document.getElementById('aiLength');
       len.disabled = currentGroup !== 'all';                                 // best N is for the whole selection
       if (len.disabled) len.value = '';
     }
+    // the chips scroll sideways (trackpad, Shift+wheel, or the wheel itself); a fade shows on the side that has more
+    let shownGroup = null;
+    function revealGroupChip() {                                             // a new choice (here, from Film, or on load): its chip into view, once the row can be seen
+      const bar = document.getElementById('groupBar'), on = bar.querySelector && bar.querySelector('.chip.on');
+      if (shownGroup === currentGroup || !on || !bar.clientWidth || !on.scrollIntoView) return;
+      shownGroup = currentGroup;
+      on.scrollIntoView({ block: 'nearest', inline: 'center' });            // centred: clear of the fades
+      groupFade();
+    }
+    function groupFade() {
+      const b = document.getElementById('groupBar');
+      if (!b.classList || b.scrollWidth === undefined) return;
+      b.classList.toggle('fade-l', b.scrollLeft > 1);
+      b.classList.toggle('fade-r', b.scrollLeft + b.clientWidth < b.scrollWidth - 1);
+    }
+    (() => {
+      const b = document.getElementById('groupBar');
+      if (!b.addEventListener) return;
+      b.addEventListener('scroll', groupFade, { passive: true });
+      b.addEventListener('wheel', e => {
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && b.scrollWidth > b.clientWidth) { b.scrollLeft += e.deltaY; e.preventDefault(); }
+      }, { passive: false });
+      window.addEventListener('resize', groupFade);
+    })();
     function setGroup(key) {
       if (!groupMembers(key)) key = 'all';
       if (key === currentGroup) return;
@@ -254,6 +280,7 @@
       const n = showTrash ? 0 : pickSel.size;
       document.getElementById('pickBar').hidden = !n;
       document.getElementById('pickCount').textContent = `${n} selected`;
+      groupFade();                                                           // the bar takes width from the chips
     }
     async function groupsCall(payload) {
       const res = await (await fetch('/api/groups', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
@@ -715,6 +742,7 @@
       const stage = document.getElementById('stage'), host = document.getElementById(mode === 'film' ? 'stageHome' : 'stageMini');
       if (stage.parentNode !== host && host.appendChild) host.appendChild(stage);
       if (mode === 'film') scrollFilmstripTo(currentIdx);
+      else revealGroupChip();
     }
     // Tab switches the mode and Space plays, except while typing in a field (Tab still moves between fields there)
     function typingIn(t) {

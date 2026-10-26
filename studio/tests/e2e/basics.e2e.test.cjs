@@ -312,6 +312,37 @@ test('the logo target in Curate: the switch draws the 18% circle at dead-center 
   await ctx.close();
 });
 
+test('many groups: the chips scroll sideways with a fade on the side that has more, never under the pick bar; a group chosen in Film scrolls into view', { skip }, async () => {
+  const ctx = await fresh({ width: 1280, height: 720 });
+  await curate();
+  await page.evaluate(async () => {
+    for (const name of ['Night city reflections', 'Paper and print', 'Brushed metal', 'Studio still lifes', 'Water and glass', 'Concrete and stone', 'Grain and strata', 'Editorial print', 'Screens and interfaces', 'Out of home', 'Last one here'])
+      await fetch('/api/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', name, files: ['k1', 'k2'] }) });
+  });
+  await page.click('#refreshBtn');
+  await page.waitForFunction(() => document.querySelectorAll('#groupBar .chip').length >= 9);
+  const bar = () => page.locator('#groupBar').evaluate(b => ({ l: b.classList.contains('fade-l'), r: b.classList.contains('fade-r'), right: b.getBoundingClientRect().right, scrolls: b.scrollWidth > b.clientWidth }));
+  let b = await bar();
+  assert.ok(b.scrolls && b.r && !b.l, `more on the right only: ${JSON.stringify(b)}`);
+  await page.locator('.card[data-filename="k1"]').click({ modifiers: ['Meta'] });
+  const pickLeft = await page.locator('#pickBar').evaluate(p => p.getBoundingClientRect().left);
+  b = await bar();
+  assert.ok(b.right <= pickLeft, `the chips end before the pick bar: ${b.right} vs ${pickLeft}`);
+  await page.locator('#groupBar').hover();
+  await page.mouse.wheel(0, 4000);                                                 // a plain mouse wheel scrolls the chips
+  await page.waitForFunction(() => { const x = document.getElementById('groupBar'); return x.classList.contains('fade-l') && !x.classList.contains('fade-r'); });
+  await page.keyboard.press('Escape');
+  await page.locator('#groupBar').evaluate(x => { x.scrollLeft = 0; });
+  await film();
+  await page.selectOption('#filmGroup', { label: 'Last one here (2)' });
+  await curate();
+  const inView = await page.locator('#groupBar .chip.on').evaluate(c => { const r = c.getBoundingClientRect(), p = c.parentElement.getBoundingClientRect(); return r.left >= p.left + 40 && r.right <= p.right - 40; });
+  assert.equal(inView, true, 'the chosen chip is in view, clear of the fades');
+  await shot('26-groups-scroll');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('the film strip: one thumbnail per image in order, click jumps there; no key trashes from the Film', { skip }, async () => {
   const ctx = await fresh();
   await film();
