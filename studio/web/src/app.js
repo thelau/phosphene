@@ -1191,12 +1191,12 @@
         rhythm: { mode: 'variable', start: [500, 900], end: [60, 110], ramp: [10, 20], at: 'start', mult: ['1', '2'] },
         look: { invert: ['off', 'colour', 'mono'], zoom: ['in', 'in', 'out', 'off'], amount: [0.6, 3] },
         sound: { pulse: [45, 80], low: [65, 95], power: [45, 85], space: [30, 65], bright: [20, 50], width: [40, 90], pitch: [30, 80], movement: [40, 85], echo: [0, 30], wash: [0, 30], ring: [0, 30], shimmer: [15, 40], hit: [35, 65], arp: [25, 45],
-          chord: ['2', '3', '1'], subWave: ['0', '1', '2'], padWave: ['0', '3'], hitType: ['3', '0', '4'], hitOn: ['3', '2'], dyn: ['1'], mood: ['4', '0', '3'], layer: { choir: [25, 45], odds: 0.3 } } },
+          chord: ['2', '3', '1'], subWave: ['0', '1', '2'], padWave: ['0', '3'], hitType: ['3', '0', '4'], hitOn: ['3', '2'], dyn: ['1'], mood: ['0', '3', '1'], layer: { choir: [25, 45], odds: 0.3 } } },
       float: { name: 'Float',                                              // slow and wide: a big room, wash, no hits
         rhythm: { mode: 'flat', bpm: [50, 80], mult: ['1', '2'] },
         look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.5, 2.5], trail: [10, 30] },
         sound: { pulse: [30, 45], low: [65, 90], power: [30, 55], space: [65, 85], bright: [0, 30], width: [70, 100], pitch: [0, 60], movement: [15, 45], echo: [15, 50], wash: [25, 55], ring: [0, 20], shimmer: [0, 30], hit: [30, 50], arp: [20, 35],
-          chord: ['1', '3', '0'], subWave: ['0'], padWave: ['2', '2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'], mood: ['2', '4', '3'], layer: { choir: [30, 55], odds: 0.5 } } },
+          chord: ['1', '3', '0'], subWave: ['0'], padWave: ['2', '2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'], mood: ['2', '3'], layer: { choir: [30, 55], odds: 0.5 } } },
       machine: { name: 'Machine',                                          // very fast cuts, metal and a square sub
         rhythm: { mode: 'flat', bpm: [150, 200], mult: ['2', '3', '4', '4'] },
         look: { invert: ['colour', 'mono'], zoom: ['off', 'in', 'out'], amount: [0.3, 1.2] },
@@ -1206,7 +1206,7 @@
         rhythm: { mode: 'variable', start: [250, 450], end: [500, 900], ramp: [10, 20], at: ['end', 'start'], mult: ['1', '1', '2'] },
         look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.8, 3], trail: [15, 35] },
         sound: { pulse: [30, 50], low: [70, 95], power: [30, 60], space: [55, 85], bright: [0, 30], width: [60, 100], pitch: [0, 50], movement: [15, 40], echo: [10, 45], wash: [20, 55], ring: [0, 15], shimmer: [10, 35], hit: [30, 45], arp: [0, 30],
-          chord: ['1', '3', '2'], subWave: ['0'], padWave: ['2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'], mood: ['3', '2', '4'], layer: { choir: [25, 50], odds: 0.5 } } },
+          chord: ['1', '3', '2'], subWave: ['0'], padWave: ['2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'], mood: ['3', '2'], layer: { choir: [25, 50], odds: 0.5 } } },
       strobe: { name: 'Strobe',                                            // colour-inverted flashes on a mid tempo, dark bursts on the accents
         rhythm: { mode: 'flat', bpm: [100, 140], mult: ['2', '3', '4'] },
         look: { invert: ['colour', 'colour', 'mono'], zoom: ['in', 'off'], amount: [0.5, 2] },
@@ -1216,7 +1216,7 @@
         rhythm: { mode: 'flat', bpm: [70, 100], mult: ['1', '2'] },
         look: { invert: ['off', 'mono'], zoom: ['out', 'out', 'in'], amount: [0.8, 3] },
         sound: { pulse: [40, 70], low: [70, 95], power: [35, 65], space: [40, 75], bright: [10, 40], width: [50, 90], pitch: [10, 60], movement: [20, 55], echo: [0, 35], wash: [0, 40], ring: [0, 20], shimmer: [0, 30], hit: [30, 55], arp: [25, 45],
-          chord: ['2', '3', '1'], subWave: ['0', '1'], padWave: ['2', '0'], hitType: ['0', '1'], hitOn: ['2', '3'], dyn: ['0', '1'], mood: ['2', '3', '4'], layer: { choir: [25, 45], odds: 0.5 } } },
+          chord: ['2', '3', '1'], subWave: ['0', '1'], padWave: ['2', '0'], hitType: ['0', '1'], hitOn: ['2', '3'], dyn: ['0', '1'], mood: ['2', '3'], layer: { choir: [25, 45], odds: 0.5 } } },
     };
     const rint = ([lo, hi]) => Math.round(lo + Math.random() * (hi - lo));
     const rpick = list => list[Math.floor(Math.random() * list.length)];
@@ -1369,8 +1369,7 @@
         }
         if (getn('industrialRange') > 0) { setv('hitTypeSelect', 0); setv('ringRange', Math.min(20, getn('ringRange'))); }   // its bursts are the hits
       }
-      // the arpeggio's mood agrees with the bed: a major mood over a minor chord clashes, soft moods want time between notes
-      if (getn('arpMoodSelect') === 4 && [0, 2].includes(getn('chordSelect'))) setv('chordSelect', Math.random() < 0.5 ? 1 : 3);
+      // soft moods want time between notes
       if ([2, 3].includes(getn('arpMoodSelect')) && rate > 2.5) setv('arpRateSelect', Math.min(1, getn('arpRateSelect')));
     }
     function randomMusic(quiet) {
@@ -1389,7 +1388,7 @@
       const slow = rhythmCutsPerSecond() <= 3, roll = Math.random();                                   // a layer now and then, never both: the drone is the sound
       if (roll < (slow ? 0.3 : 0.1)) setv('choirRange', rint(RANDOM_RANGES.choir));                  // voices want room: mostly on slower cuts
       else if (roll < (slow ? 0.35 : 0.3)) setv('industrialRange', rint(RANDOM_RANGES.industrial));  // metal wants speed
-      setv('arpMoodSelect', Math.random() < 0.3 ? 0 : 1 + Math.floor(Math.random() * 4));          // the first arpeggio (Pluck) most often, then the moods alike
+      setv('arpMoodSelect', Math.random() < 0.3 ? 0 : 1 + Math.floor(Math.random() * 3));          // the first arpeggio (Pluck) most often, then the moods alike
       setv('seedVal', 1 + Math.floor(Math.random() * 99999));
       soundRules();
       if (quiet !== true) { updateMusic(); commitSettings('Random sound'); }

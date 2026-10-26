@@ -148,17 +148,17 @@
     return ctx.createPeriodicWave(real, imag);
   }
   const ARP_STEPS = [4, 6, 8, 16];
-  // Arpeggio moods. Pluck is the first arpeggio (chord tones, bright saws, a random walk). The others carry their own scale (semitones over
-  // the tonic, two octaves above the root), register (lo..hi times the tonic), waves, filter (opens to `open`, closes to `close`), note
-  // length (`sustain` times the step), a soft attack, and a shape: Dark falls, Mellow arches, Tender sighs (falling pairs), Beautiful climbs
-  // in an open, skipping spread. Two voices take turns, so each note rings on under the next.
+  // Arpeggio moods. One instrument for all of them, the first arpeggio's patch (two detuned saws into a resonant low-pass that snaps shut on
+  // each note: the modular sound), played differently, as a player turns the same patch: the notes (scale over the tonic, two octaves above
+  // the root; register lo..hi times the tonic), the shape (Dark falls, Mellow arches, Tender sighs in falling pairs), how far the filter opens and shuts (`open`, `close`), its resonance (`q`) and how long a note rings (`sustain`).
+  // Two voices take turns, so a note rings on under the next. Pluck keeps its own path (chord tones, a random walk).
   const ARP_MOODS = [
     { name: 'Pluck' },
-    { name: 'Dark', scale: [0, 1, 3, 5, 7, 8], lo: 0.5, hi: 1.6, waves: ['sawtooth', 'triangle'], det: 0.006, open: 900, close: 220, q: 3, sustain: 1.6, attack: 0.006, gain: 0.75, voices: 1, shape: 'fall' },
-    { name: 'Mellow', scale: [0, 3, 5, 7, 10], lo: 0.75, hi: 2.2, waves: ['triangle', 'sine'], det: 0.003, open: 1300, close: 650, q: 0.7, sustain: 3, attack: 0.03, gain: 0.33, voices: 2, shape: 'arch' },
-    { name: 'Tender', scale: [0, 2, 3, 7, 10], lo: 1, hi: 3, waves: ['triangle', 'triangle'], det: 0.005, open: 1600, close: 700, q: 1, sustain: 2.6, attack: 0.02, gain: 1.0, voices: 2, shape: 'sigh' },
-    { name: 'Beautiful', scale: [0, 4, 7, 11, 14, 18], lo: 1.5, hi: 4.5, waves: ['sine', 'triangle'], det: 0.002, open: 2000, close: 1100, q: 0.5, sustain: 2.4, attack: 0.012, gain: 0.5, voices: 2, shape: 'rise' },
+    { name: 'Dark', scale: [0, 1, 3, 5, 7, 8], lo: 0.5, hi: 1.6, open: 1100, close: 240, q: 3, sustain: 1.6, gain: 1.0, voices: 1, shape: 'fall' },
+    { name: 'Mellow', scale: [0, 3, 5, 7, 10], lo: 0.75, hi: 2.2, open: 1200, close: 380, q: 1.5, sustain: 2.2, gain: 0.8, voices: 2, shape: 'arch' },
+    { name: 'Tender', scale: [0, 2, 3, 7, 10], lo: 1, hi: 3, open: 1600, close: 420, q: 2.5, sustain: 2.2, gain: 1.0, voices: 2, shape: 'sigh' },
   ];
+  const MOOD_DETUNE = 0.004, MOOD_ATTACK = 0.0015;                   // the first arpeggio's: two saws a hair apart, a pluck
   const moodNotes = (m, tonic) => {                                    // every note of the mood's scale inside its register, low to high
     const out = [];
     for (let o = -2; o <= 3; o++) for (const st of m.scale) { const f = tonic * Math.pow(2, (st + 12 * o) / 12); if (f >= tonic * m.lo && f <= tonic * m.hi) out.push(f); }
@@ -175,7 +175,7 @@
         out.push(Math.min(top, c + (k < h ? k : 2 * h - k - 1)));
       } else if (shape === 'sigh') {                                   // falling pairs: a note and the one under it, each pair a step lower
         out.push(Math.max(0, c - Math.floor(k / 2) - (k % 2)));
-      } else out.push((c + 2 * k) % n);                                // rise: every other note, wrapping round
+      } else out.push((c + k) % n);
     }
     return out;
   }
@@ -453,7 +453,7 @@
       const voices = Array.from({ length: m.voices }, () => {             // fixed voices, taking turns: no node per note
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = m.q; lp.frequency.value = m.open;
         const env = gain(0); lp.connect(env); env.connect(out[0]); env.connect(out[1]);
-        const oscs = m.waves.map((w, j) => { const o = osc(w, 200); o.connect(lp); return [o, j ? m.det : -m.det]; });
+        const oscs = [-MOOD_DETUNE, MOOD_DETUNE].map(det => { const o = osc('sawtooth', 200); o.connect(lp); return [o, det]; });
         return { lp, env, oscs };
       });
       const per = ARP_PER_CUT[arpRate];
@@ -469,8 +469,8 @@
           const decay = Math.min(1.6, Math.max(0.08, stepLen * 0.9 * m.sustain)) * (1.5 - s), f = pattern[step % arpSteps] * lift(s, 1.2);
           const v = voices[step % voices.length];
           for (const [o, det] of v.oscs) o.frequency.setValueAtTime(f * (1 + det), t);
-          v.lp.frequency.setValueAtTime(m.open * lift(s, 0.8), t); v.lp.frequency.setTargetAtTime(m.close * lift(s, 1.2), t + m.attack, decay / 2);
-          v.env.gain.setTargetAtTime(2.2 * arpAmt, t, m.attack); v.env.gain.setTargetAtTime(0, t + m.attack * 3, decay / 3);
+          v.lp.frequency.setValueAtTime(m.open * lift(s, 0.8), t); v.lp.frequency.setTargetAtTime(m.close * lift(s, 1.2), t + 0.003, decay / 3);
+          strike(v.env, t, 2.2 * arpAmt, decay);
         }
       });
     } else if (arpAmt > 0.01) {

@@ -1142,12 +1142,11 @@ test('the logo target: one switch for the Film preview and every Curate card (T 
   assert.equal(again.$('gridTargetBtn').getAttribute('aria-pressed'), 'true');
 });
 
-test('arpeggio moods: Random draws them all (Pluck often), a type keeps to its own, and the bed agrees (no major over minor, soft moods unhurried)', async () => {
+test('arpeggio moods: Random draws them all (Pluck often), a type keeps to its own, soft moods unhurried', async () => {
   const h = await playerWith();
   const n = id => +h.$(id).value;
-  const seen = [0, 0, 0, 0, 0];
+  const seen = [0, 0, 0, 0];
   const rules = why => {
-    if (n('arpMoodSelect') === 4) assert.ok([1, 3].includes(n('chordSelect')), `${why}: Beautiful over an open fifth or a suspended chord, not ${n('chordSelect')}`);
     if ([2, 3].includes(n('arpMoodSelect')) && h.run('rhythmCutsPerSecond()') > 2.5) assert.ok(n('arpRateSelect') <= 1, `${why}: a soft mood on fast cuts plays a note a cut at most`);
     if (n('choirRange') > 0) assert.ok(![0, 1].includes(n('arpMoodSelect')), `${why}: under the choir, a soft mood`);
   };
