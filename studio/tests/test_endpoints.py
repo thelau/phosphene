@@ -531,3 +531,25 @@ def test_export_multiple_cuts_the_pictures_faster_in_both_speed_modes(live, srv)
     pic, _ = cutplan.rhythm_timeline(3, 120, 2, (600.0, 600.0, 2, "end"))
     assert status == 200 and _streams(srv.OUTPUTS_DIR / res["filename"])[1] == pytest.approx(pic[-1] / 30, abs=0.15)
     assert pic[-1] / 30 == pytest.approx(0.9)                                   # 3 pictures at 300 ms each: the 600 ms base cut split in two
+
+
+@pytest.mark.parametrize("body", [
+    {"bpm": 0, "multiple": 0}, {"bpm": -120, "multiple": -4}, {"bpm": "abc", "multiple": "x"}, {"bpm": 1e9, "multiple": 1e9}, {"bpm": float("nan")},
+    {"bpm": 250, "multiple": 16}, {"bpm": 30, "multiple": 0.125}, {"bpm": None, "multiple": None},
+    {"rhythm": "variable", "start_ms": 50, "end_ms": 50, "ramp": 0, "multiple": 0},
+    {"rhythm": "variable", "start_ms": -5, "end_ms": 1e12, "ramp": -9, "at": "start", "multiple": 16},
+    {"rhythm": "variable", "start_ms": None, "end_ms": "x", "ramp": "y", "at": 5, "multiple": [1]},
+    {"rhythm": "sideways", "bpm": 120}, {"rhythm": "variable", "invert_mode": "mono", "multiple": 0.25, "start_ms": 100, "end_ms": 1500, "ramp": 200},
+])
+def test_export_survives_extreme_and_nonsense_settings(live, srv, body):
+    _three_plates(live)
+    status, res = live("POST", "/api/export-video", body)
+    assert status == 200 and res["ok"], res
+    assert (srv.OUTPUTS_DIR / res["filename"]).stat().st_size > 1000
+    assert _streams(srv.OUTPUTS_DIR / res["filename"])[1] > 0
+
+
+def test_export_with_one_plate_and_the_fastest_possible_rhythm(live, srv):
+    live("POST", "/api/generate-image", {"title": "Solo", "prompt": "p", "model": "m"})
+    status, res = live("POST", "/api/export-video", {"bpm": 300, "multiple": 16, "invert_mode": "mono"})
+    assert status == 200 and _streams(srv.OUTPUTS_DIR / res["filename"])[0] == ["video"]

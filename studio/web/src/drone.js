@@ -96,6 +96,15 @@
     return m.get(key);
   }
 
+  // Cut times from anywhere: only finite numbers, in order, from the first one, at least a short clip long. A clip with nothing to cut on gets one cut.
+  function cleanStarts(starts) {
+    const v = (Array.isArray(starts) ? starts : []).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+    if (!v.length) return [0, 0.1];
+    if (v.length === 1) v.push(v[0] + 0.1);
+    if (v[v.length - 1] - v[0] < 0.05) v[v.length - 1] = v[0] + 0.05;
+    return v;
+  }
+
   function cutAtTime(starts, t) {
     let lo = 0, hi = starts.length - 2;
     while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= t) lo = mid; else hi = mid - 1; }
@@ -113,6 +122,15 @@
   const PAD_WAVES = ['sawtooth', 'square', 'triangle', 'pulse'];     // the pad's oscillators; pulse is a narrow 25% pulse
   // gain that evens out how loud each pad wave is next to the saw
   const PAD_TRIM = [1.0, 0.7, 1.3, 0.85];
+  // An oscillator that starts part-way through the clip has to start at the phase it would have reached by then. Otherwise every oscillator of a
+  // new sound begins at phase 0 together: a burst of loud, in-phase sound, and a clash with the sound it replaces, at every swap.
+  const PHASE_HARMONICS = 48;
+  function phasedWave(ctx, type, cycles) {
+    const th = 2 * Math.PI * (cycles - Math.floor(cycles)), real = new Float32Array(PHASE_HARMONICS + 1), imag = new Float32Array(PHASE_HARMONICS + 1);
+    if (type === 'sine') { real[1] = Math.sin(th); imag[1] = Math.cos(th); }
+    else for (let k = 1; k <= PHASE_HARMONICS; k++) { const a = ((k % 2 ? 2 : -2) / (Math.PI * k)); real[k] = a * Math.sin(k * th); imag[k] = a * Math.cos(k * th); }   // sawtooth
+    return ctx.createPeriodicWave(real, imag);
+  }
   function pulseWave(ctx, duty) {
     const n = 64, real = new Float32Array(n + 1), imag = new Float32Array(n + 1);
     for (let k = 1; k <= n; k++) { const a = (2 / (k * Math.PI)) * Math.sin(k * Math.PI * duty); real[k] = a * Math.cos(k * Math.PI * duty); imag[k] = a * Math.sin(k * Math.PI * duty); }
@@ -129,6 +147,7 @@
     const pulse = clamp01(p.pulse), low = clamp01(p.low), bright = clamp01(p.bright), width = clamp01(p.width), space = clamp01(p.space), power = clamp01(p.power);
     const seedN = (Number.isFinite(+p.seed) ? +p.seed : 7) >>> 0;
     const rand = mulberry32(seedN);
+    starts = cleanStarts(starts);
     const total = opts.total || starts[starts.length - 1];
     const offset = opts.offset || 0;
     const t0 = opts.t0 !== undefined ? opts.t0 : ctx.currentTime - offset;
@@ -147,10 +166,15 @@
     const padWave = Math.max(0, Math.min(PAD_WAVES.length - 1, Math.round(+p.padWave || 0)));
     const move = Math.pow(2, 2 * (clamp01(p.movement === undefined ? 0.5 : p.movement) - 0.5));   // 0.5 = as measured; 1 = twice as fast
     const nodes = [];                                                      // everything that must be stopped
+    const sends = [];
     const links = [];                                                      // connections to unplug when this sound is retired (a shared room outlives it)
     const keep = n => { nodes.push(n); return n; };
     const gain = (v, to) => { const g = ctx.createGain(); g.gain.value = v; if (to) g.connect(to); return g; };
-    const osc = (type, freq, to) => { const o = keep(ctx.createOscillator()); o.type = type; o.frequency.value = freq; if (to) o.connect(to); return o; };
+    const osc = (type, freq, to) => {
+      const o = keep(ctx.createOscillator()); o.type = type; o.frequency.value = freq;
+      if (offset > 0 && (type === 'sine' || type === 'sawtooth')) o.setPeriodicWave(phasedWave(ctx, type, freq * offset));     // in phase with where the clip is
+      if (to) o.connect(to); return o;
+    };
     const lfo = (rate, depth, param) => { const o = osc('sine', rate); const g = gain(depth, param); o.connect(g); return o; };
     const shaper = (curve, to) => { const s = ctx.createWaveShaper(); s.curve = curve; if (to) s.connect(to); return s; };
     const lowpass = (fc, to) => { const a = ctx.createBiquadFilter(); a.type = 'lowpass'; a.frequency.value = fc; a.Q.value = 0.707; const b = ctx.createBiquadFilter(); b.type = 'lowpass'; b.frequency.value = fc; b.Q.value = 0.707; a.connect(b); if (to) b.connect(to); return [a, b]; };
@@ -296,8 +320,10 @@
       // the room is a convolver, and loading its impulse response is the costliest step of a rebuild: the live preview passes in a shared one
       const conv = opts.room ? opts.room(i, seedN, roomSeconds) : makeRoom(ctx, seedN, i, roomSeconds);
       const wetG = gain(wet, mix[i]);
-      br.connect(hp); hp.connect(conv); conv.connect(wetG);
-      links.push([hp, conv], [conv, wetG]);
+      const send = gain(opts.live ? 0 : 1);                                // this sound's feed into the room: it fades with the crossfade, or the room would hear old and new at full level
+      sends.push(send);
+      br.connect(hp); hp.connect(send); send.connect(conv); conv.connect(wetG);
+      links.push([send, conv], [conv, wetG]);
       if (echo > 0.01) {                                                   // a dark feedback echo, a different time each side
         const avg = total / Math.max(1, nCuts);
         const dl = ctx.createDelay(2); dl.delayTime.value = Math.min(0.75, Math.max(0.18, avg * 3)) * (i ? 1.33 : 1);
@@ -393,9 +419,10 @@
     merger.connect(dyn);
     if (opts.tap === 'sub') subBus.connect(dest); else if (opts.tap === 'dry') { mix[0].connect(dest); } else dyn.connect(dest);
 
-    for (const n of nodes) n.start();
+    for (const n of nodes) n.start(opts.startAt || 0);                      // live: all together, at the moment the sound is meant to begin
     if (opts.live) advance(offset + (opts.lookahead || 0.8)); else advance(Infinity);     // live: the rest is scheduled as the sound plays (Live.tick)
-    return { advance, stop: when => { for (const n of nodes) { try { n.stop(when); } catch (e) {} } }, dispose: () => { for (const [a, b] of links) { try { a.disconnect(b); } catch (e) {} } } };
+    const fade = (to, when, dur) => { for (const g of sends) { g.gain.cancelScheduledValues(when); g.gain.setValueAtTime(g.gain.value, when); g.gain.linearRampToValueAtTime(to, when + dur); } };
+    return { advance, fade, stop: when => { for (const n of nodes) { try { n.stop(when); } catch (e) {} } }, dispose: () => { for (const [a, b] of links) { try { a.disconnect(b); } catch (e) {} } } };
   }
 
   function rmsOf(buf) {
@@ -406,9 +433,11 @@
 
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
-  const levelKey = p => JSON.stringify([p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate]);
+  const cutSignature = starts => { const head = []; for (const t of starts) { head.push(Math.round(t * 1000)); if (t > 4) break; } return head.join(','); };   // the cuts of the window the level is measured on: faster cuts pump differently
+  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate]);
   async function level(p, starts) {
-    const key = levelKey(p);
+    starts = cleanStarts(starts);
+    const key = levelKey(p, starts);
     if (levelCache.has(key)) return levelCache.get(key);
     const rate = 22050, secs = Math.min(4, starts[starts.length - 1]);
     const trimmed = starts.filter(s => s < secs); trimmed.push(secs);
@@ -422,6 +451,7 @@
 
   // The export: the whole clip rendered offline at 44.1 kHz, levelled and glued like the live one. Returns {left, right, rate, seconds} (float, -1..1).
   async function renderExport(p, starts) {
+    starts = cleanStarts(starts);
     const total = starts[starts.length - 1], n = Math.max(1, Math.round(total * EXPORT_RATE));
     const ctx = new OfflineAudioContext(2, n, EXPORT_RATE);
     build(ctx, ctx.destination, p, starts, { offset: 0, t0: 0 });
@@ -454,22 +484,37 @@
     return new Blob([out.buffer], { type: 'audio/wav' });
   }
 
+  // Is the new sound the same as the one playing, apart from where the clip ends (and where its landing falls)? Then there is nothing to rebuild:
+  // the running sound already has every cut the shorter clip needs (a longer clip would need cuts it does not have).
+  function onlyTheEndMoved(inst, params, starts) {
+    const a = inst.starts, b = starts;
+    if (b[b.length - 1] > a[a.length - 1] + 1e-9) return false;
+    const strip = p => { const q = Object.assign({}, p); delete q.landAt; return JSON.stringify(q); };
+    if (strip(inst.params) !== strip(params)) return false;
+    for (let i = 0; i < b.length - 1; i++) if (Math.abs(a[i] - b[i]) > 1e-6) return false;
+    return true;
+  }
+
   // The live preview: plays the drone from an offset, is the player's clock, and swaps in new settings in ~40 ms with a crossfade.
   // Cheap by design: notes and hits are scheduled a short way ahead (not for the whole clip), settings changes are coalesced into one swap
   // every ~120 ms however fast a slider moves, and the exact loudness is worked out in the background (the old level carries on meanwhile).
   class Live {
-    constructor() { this.ctx = null; this.inst = null; this.params = null; this.starts = null; this.t0 = 0; this.total = 0; this.timer = null; this.playing = false; this.holding = 0; this.cal = 1; this.pending = null; this.swapAt = 0; this.calTimer = null; this.ticker = null; this.rooms = new Map(); }
+    constructor() { this.ctx = null; this.inst = null; this.params = null; this.starts = null; this.t0 = 0; this.total = 0; this.timer = null; this.playing = false; this.holding = 0; this.cal = 1; this.pending = null; this.swapAt = 0; this.calTimer = null; this.ticker = null; this.rooms = new Map(); this.buildMs = 20; }
     get playingNow() { return this.playing; }
     pos() { return this.playing && !this.holding ? (((this.ctx.currentTime - this.t0) % this.total) + this.total) % this.total : 0; }
     _context() {
       if (!this.ctx) { const C = window.AudioContext || window.webkitAudioContext; this.ctx = new C({ latencyHint: 'interactive' }); }
       return this.ctx;
     }
+    // Builds a new sound and schedules it to begin a moment from now (the time the build takes plus a margin), so that everything in it, its
+    // automation, its fade-in and the old sound's fade-out, is timed from the instant it really starts. Returns when that is.
     _spawn(offset) {
-      const ctx = this.ctx, now = ctx.currentTime;
+      const ctx = this.ctx;
+      offset = Number.isFinite(offset) ? ((offset % this.total) + this.total) % this.total : 0;      // any number is a position in the clip: it wraps; nonsense is the start
+      const startAt = ctx.currentTime + Math.min(0.15, (this.buildMs || 20) / 1000 + 0.015);
       const out = ctx.createGain();                                         // crossfade + calibrated level + glue
-      out.gain.setValueAtTime(0, now);
-      out.gain.linearRampToValueAtTime(1, now + 0.04);
+      out.gain.setValueAtTime(0, startAt);
+      out.gain.linearRampToValueAtTime(1, startAt + 0.04);
       const level = ctx.createGain(); level.gain.value = this.cal;
       const glue = ctx.createWaveShaper(); const n = 4097, c = new Float32Array(n), th = Math.tanh(1.1);
       for (let i = 0; i < n; i++) c[i] = Math.tanh(1.1 * 2 * ((i / (n - 1)) * 2 - 1)) / th / 2;
@@ -481,38 +526,52 @@
         if (!this.rooms.has(key)) { this.rooms.set(key, makeRoom(ctx, seedN, i, seconds)); if (this.rooms.size > 8) this.rooms.delete(this.rooms.keys().next().value); }
         return this.rooms.get(key);
       };
-      const graph = build(ctx, level, this.params, this.starts, { offset, t0: now - offset, live: true, room });
-      this.t0 = now - offset;
-      this.inst = { graph, out, level };
+      const t = performance.now();
+      const graph = build(ctx, level, this.params, this.starts, { offset, t0: startAt - offset, startAt, live: true, room });
+      this.buildMs = Math.max(this.buildMs * 0.7, performance.now() - t);   // how long a build takes here, for the next lead
+      graph.fade(1, startAt, 0.04);
+      this.t0 = startAt - offset;
+      this.inst = { graph, out, level, params: this.params, starts: this.starts };
       clearInterval(this.ticker);                                           // keep scheduling the next ~0.8 s of cuts, hits and notes
       this.ticker = setInterval(() => { if (this.inst && this.inst.graph === graph) graph.advance(ctx.currentTime - this.t0 + 0.8); }, 90);
-      const loopIn = (this.total - offset) * 1000;
+      const loopIn = (this.total - offset) * 1000 - Math.max(0, (startAt - ctx.currentTime) * 1000);
       clearTimeout(this.timer);
       this.timer = setTimeout(() => { if (this.playing) this._swap(Math.max(0, this.ctx.currentTime - (this.t0 + this.total))); }, Math.max(0, loopIn));
+      return startAt;
     }
-    _retire(inst) {
+    _retire(inst, at) {
       if (!inst) return;
-      const now = this.ctx.currentTime;
-      inst.out.gain.cancelScheduledValues(now);
-      inst.out.gain.setValueAtTime(inst.out.gain.value, now);
-      inst.out.gain.linearRampToValueAtTime(0, now + 0.04);
-      inst.graph.stop(now + 0.06);
-      setTimeout(() => { try { inst.out.disconnect(); } catch (e) {} inst.graph.dispose(); }, 250);
+      const now = this.ctx.currentTime, when = Math.max(now, at || now);
+      try { inst.out.gain.cancelAndHoldAtTime(when); } catch (e) { inst.out.gain.cancelScheduledValues(when); inst.out.gain.setValueAtTime(inst.out.gain.value, when); }
+      inst.out.gain.linearRampToValueAtTime(0, when + 0.04);
+      inst.graph.fade(0, when, 0.04);
+      inst.graph.stop(when + 0.07);
+      setTimeout(() => { try { inst.out.disconnect(); } catch (e) {} inst.graph.dispose(); }, Math.max(250, (when - now) * 1000 + 250));
     }
-    _swap(offset) { const old = this.inst; this._spawn(offset); this._retire(old); this.swapAt = performance.now(); }
+    _swap(offset) { const old = this.inst; const startAt = this._spawn(offset); this._retire(old, startAt); this.swapAt = performance.now(); }
     async play(params, starts, offset = 0) {
       const ctx = this._context();
       if (ctx.state !== 'running') { try { await ctx.resume(); } catch (e) {} }
+      starts = cleanStarts(starts);
       this.params = params; this.starts = starts; this.total = starts[starts.length - 1];
       this.cal = await level(params, starts);
       this.playing = true;
-      if (this.inst) this._retire(this.inst);
-      this._spawn(offset % this.total);
+      const old = this.inst;
+      const startAt = this._spawn(offset % this.total);
+      if (old) this._retire(old, startAt);
     }
     // new settings or a new timeline: carry on from where the picture is (getOffset gives seconds on the new timeline, asked when the swap happens).
     // Calls that arrive while one is waiting are merged, and swaps are at least ~120 ms apart, so dragging a slider does not rebuild the sound 60 times a second.
     update(params, starts, getOffset) {
       if (!this.playing) return Promise.resolve();
+      starts = cleanStarts(starts);
+      if (this.inst && !this.pending && onlyTheEndMoved(this.inst, params, starts)) {                 // e.g. the picture's Multiple: the music is the same, only the clip got shorter
+        this.params = params; this.starts = starts; this.total = starts[starts.length - 1];
+        const pos = this.pos(), ctx = this.ctx;
+        clearTimeout(this.timer);
+        this.timer = setTimeout(() => { if (this.playing) this._swap(Math.max(0, ctx.currentTime - (this.t0 + this.total))); }, Math.max(0, (this.total - pos) * 1000));
+        return Promise.resolve();
+      }
       this.params = params; this.starts = starts; this.total = starts[starts.length - 1];
       this.holding = Math.max(this.holding, 1);                            // until the swap the old sound's position means nothing on the new timeline
       if (this.pending) { this.pending.getOffset = getOffset; return this.pending.promise; }
@@ -523,7 +582,8 @@
           this.pending = null;
           this.holding = 0;
           if (this.playing) {
-            if (levelCache.has(levelKey(this.params))) this.cal = levelCache.get(levelKey(this.params));
+            const k = levelKey(this.params, this.starts);
+            if (levelCache.has(k)) this.cal = levelCache.get(k);
             this._swap(Math.max(0, Math.min(job.getOffset(), this.total - 0.01)));
             this._recalibrate();
           }

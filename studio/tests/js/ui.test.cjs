@@ -834,3 +834,71 @@ test('the multiple only changes the picture: the music keeps the beat, in Flat a
   assert.ok(Math.abs(v.pic[1] - 3) < 1e-9);                                                             // 300 ms base cut / 3
   assert.ok(Math.abs(v.audio[1] - 0.3) < 1e-9);
 });
+
+// ---------- extremes: the page's rhythm in every combination ----------
+
+function clean(v) { return JSON.parse(JSON.stringify(v)); }
+
+test('rhythmFor is a clean timeline for every tempo, multiple, invert mode and number of images, in both speed modes', async () => {
+  for (const nImages of [0, 1, 2, 9, 133, 500]) {
+    const r = baseRoutes();
+    r['/api/state'] = { plates: Array.from({ length: nImages }, (_, i) => mkPlate('p' + i)) };
+    const h = load({ routes: r });
+    await settle(); await settle();
+    for (const variable of [false, true]) for (const invert of ['off', 'mono', 'colour']) for (const bpm of [60, 136, 250]) for (const mult of ['0.25', '1', '1.3333333', '4', '9']) {
+      h.$('rhythmSelect').value = variable ? 'variable' : 'flat'; h.$('invertSelect').value = invert; h.$('bpmSlider').value = String(bpm); h.$('multSelect').value = mult;
+      h.$('startMsRange').value = '50'; h.$('endMsRange').value = '1000'; h.$('rampRange').value = '60'; h.$('atSelect').value = variable && bpm === 136 ? 'start' : 'end';
+      h.run('updateTempo(); updateRhythm()');
+      const n = nImages * (invert === 'off' ? 1 : 2);
+      const t = clean(h.run(`rhythmFor(${nImages})`));
+      const label = `${nImages} images, ${variable ? 'variable' : 'flat'}, ${invert}, ${bpm}, x${mult}`;
+      assert.equal(t.pic.length, n + 1, label);
+      assert.equal(t.pic[0], 0, label);
+      assert.ok(t.pic.every((v, i) => Number.isFinite(v) && (i === 0 || v - t.pic[i - 1] >= 1 - 1e-9)), `${label}: increasing, at least a frame a cut`);
+      assert.ok(t.audio.length >= 2 && t.audio.every((v, i) => Number.isFinite(v) && (i === 0 || (nImages ? v > t.audio[i - 1] : v >= t.audio[i - 1]))), `${label}: the music's cuts increase`);
+      if (nImages) assert.ok(Math.abs(t.audio[t.audio.length - 1] - t.end / 30) < 1e-9, `${label}: the music ends with the picture`);
+      assert.ok(Number.isFinite(t.landAt) && t.landAt >= 0 && t.landAt <= t.end / 30 + 1e-9, `${label}: landing inside the clip`);
+    }
+  }
+});
+
+test('with no images nothing plays, nothing throws, and the info line is empty', async () => {
+  const h = load({ routes: baseRoutes() });                                  // baseRoutes has no plates in the grid for the player
+  await settle(); await settle();
+  h.run('drawInfo()');
+  h.$('musicSelect').value = 'on';
+  assert.doesNotThrow(() => h.run('togglePlay(); togglePlay(); restartPlay(); restartPlay()'));
+  assert.doesNotThrow(() => h.run('syncRampRange(); updateRhythm(); updateTempo(); updateMusic()'));
+});
+
+test('extreme slider values keep the labels and the ranges sane', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: [mkPlate('a')] };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('rampRange').value = '999'; h.$('invertSelect').value = 'off'; h.run('updateRhythm()');
+  assert.equal(h.$('rampRange').max, '2');                                    // one image: at least 2 so the slider still has a range
+  assert.equal(h.$('rampRange').value, '2');
+  h.$('bpmSlider').value = '250'; h.$('multSelect').value = '9'; h.run('updateTempo()');
+  assert.equal(h.run('framesPerCut'), 1);                                     // 1800 / (250 * 9) is below a frame: never below one
+  assert.equal(h.$('bpmVal').textContent, '250 BPM');
+});
+
+test('changing the Multiple while playing asks the sound for an update, from where the picture is, with the same beat grid', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: 12 }, (_, i) => mkPlate('p' + i)) };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('stageImg').style.display = 'block';
+  h.$('musicSelect').value = 'on'; h.$('bpmSlider').value = '120'; h.$('multSelect').value = '1'; h.run('updateTempo()');
+  h.run('togglePlay()');
+  await settle(); await settle();
+  h.run('cutPos = 30');
+  const before = h.ctx.__drone.updates.length;
+  h.$('multSelect').value = '4'; h.run('updateTempo()');
+  assert.equal(h.ctx.__drone.updates.length, before + 1);
+  const u = h.ctx.__drone.updates[before];
+  assert.ok(Math.abs(u.offset - 1) < 1e-9);                                  // the clip position is kept: 30 frames = 1 s
+  const grid = clean(u.starts);
+  assert.ok(Math.abs(grid[1] - 0.5) < 1e-9 && Math.abs(grid[2] - 1) < 1e-9);  // beats every 0.5 s at 120 BPM, whatever the multiple
+});

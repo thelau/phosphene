@@ -1125,8 +1125,14 @@ class StudioHandler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/api/export-video":
-            bpm = float(body.get("bpm", 136.0))
-            multiple = float(body.get("multiple", 1.0))  # cuts per beat: 0.5 = every 2 beats, 4 = 4 cuts/beat
+            def clamped(key, default, lo, hi):                          # a number from the request, kept inside what the page offers (and never 0: it divides)
+                try:
+                    v = float(body.get(key, default))
+                except (TypeError, ValueError):
+                    return default
+                return min(hi, max(lo, v)) if v == v else default
+            bpm = clamped("bpm", 136.0, 30.0, 300.0)
+            multiple = clamped("multiple", 1.0, 0.125, 16.0)            # picture cuts per beat: 0.5 = every 2 beats, 4 = 4 cuts/beat
             st = load_state()
             trashed_set = set(st.get("trashed", []))
             active_files = sequences.edit_files([p for p in ordered_plate_files(st) if p.name not in trashed_set], st)
@@ -1138,7 +1144,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
             try:
                 with inflight():
                     fps = 30
-                    frames_per_cut = max(1.0, fps * 60.0 / (bpm * multiple))
                     tmp_dir = OUTPUTS_DIR / "_tmp_export_frames"
                     if tmp_dir.exists():
                         shutil.rmtree(tmp_dir)

@@ -530,6 +530,7 @@
         const base = v ? variableStarts(nBase, v.start_ms, v.end_ms, v.ramp, v.at) : Array.from({ length: nBase + 1 }, (_, i) => (i * 1800) / bpm);
         const pic = subdivideStarts(base, mult, nCuts), end = pic[nCuts];
         const audio = base.filter(f => f < end - 1e-6).concat([end]).map(f => f / 30);       // the music's cuts: the base cuts that fall inside the clip
+        if (audio.length < 2) audio.push(audio[0] + 0.1);                                       // no images: still a valid (empty) clip
         timelineCache = { key, value: { pic, audio, end, landAt: pic[Math.max(0, nCuts - (paired ? 2 : 1))] / 30 } };
       }
       return timelineCache.value;

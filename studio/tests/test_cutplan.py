@@ -261,3 +261,54 @@ def test_variable_speed_with_a_multiple_subdivides_each_base_cut():
     bl = lengths(base)
     assert len(bl) == 6 and bl[0] > bl[-1]                                    # the base speeds up, and the picture cuts follow it at twice the rate
     assert accel[-1] == pytest.approx(base[6]) and lengths(accel)[0] == pytest.approx(bl[0] / 2, rel=0.01)
+
+
+# ---------- extremes ----------
+
+BPMS = [30, 60, 120, 136, 250, 300]
+MULTIPLES = [0.125, 0.25, 0.5, 1, 4 / 3, 2, 3, 4, 9, 16]
+CUTS = [1, 2, 7, 40, 500]
+
+
+@pytest.mark.parametrize("bpm", BPMS)
+@pytest.mark.parametrize("multiple", MULTIPLES)
+@pytest.mark.parametrize("n", CUTS)
+def test_every_flat_rhythm_is_a_clean_increasing_timeline(bpm, multiple, n):
+    pic, base = cutplan.rhythm_timeline(n, bpm, multiple)
+    assert len(pic) == n + 1 and pic[0] == 0.0 and all(x == x and abs(x) != float("inf") for x in pic + base)
+    assert all(b - a >= 1.0 - 1e-9 for a, b in zip(pic, pic[1:]))               # never a cut shorter than a frame
+    assert all(b > a for a, b in zip(base, base[1:]))
+    if 60 * 30 / bpm / multiple >= 1:                                            # when the picture cuts are at least a frame: the beat grid covers them
+        assert base[-1] >= pic[-1] - 1e-6
+
+
+@pytest.mark.parametrize("a,b,ramp,at", [(50, 1500, 2, "end"), (1500, 50, 200, "start"), (1, 1e9, 3, "end"), (float("nan"), 400, 5, "end"),
+                                         (float("inf"), float("-inf"), 4, "start"), (300, 300, 0, "end"), (300, 100, -7, "start"), (100, 700, 10**9, "end"), (100, 700, 12, "sideways")])
+@pytest.mark.parametrize("multiple", [0.25, 1, 4, 16])
+@pytest.mark.parametrize("n", [1, 2, 9, 300])
+def test_every_variable_rhythm_is_a_clean_increasing_timeline(a, b, ramp, at, multiple, n):
+    pic, base = cutplan.rhythm_timeline(n, 120, multiple, (a, b, ramp, at))
+    assert len(pic) == n + 1 and pic[0] == 0.0 and all(x == x and abs(x) != float("inf") for x in pic + base)
+    assert all(y - x >= 1.0 - 1e-9 for x, y in zip(pic, pic[1:]))
+
+
+def test_no_cuts_and_one_cut_do_not_break_the_timeline():
+    pic, base = cutplan.rhythm_timeline(0, 120, 4)
+    assert pic == [0.0] and len(base) >= 2
+    pic, base = cutplan.rhythm_timeline(1, 120, 0.125)
+    assert len(pic) == 2 and pic[1] >= 1.0
+    assert cutplan.subdivide([0.0, 10.0], 3, 3) == pytest.approx([0.0, 3.333, 6.667, 10.0], abs=0.001)
+    assert cutplan.subdivide([0.0, 10.0], 0, 2)[0] == 0.0                         # a multiple of 0 is not a division by zero
+
+
+def test_a_huge_variable_run_stays_cheap_to_build():
+    import time
+    t = time.time()
+    pic, _ = cutplan.rhythm_timeline(5000, 120, 16, (50, 1500, 200, "end"))
+    assert len(pic) == 5001 and time.time() - t < 1.0
+
+
+def test_the_music_grid_does_not_move_when_only_the_multiple_does():
+    for bpm in BPMS:
+        grids = [cutplan.rhythm_timeline(40, bpm, m)[1][:6] for m in (0.5, 1, 2, 4, 9)]
+        assert all(g == pytest.approx(grids[0]) for g in grids)
