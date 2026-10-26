@@ -87,6 +87,7 @@ function start(state = makeState()) {
         if (body.action === 'activate' && seqOf(state, body.id)) { state.active = body.id; return send({ ok: true }); }
         if (body.action === 'reset') { const ai = state.sequences.find(q => q.kind === 'ai'); if (ai) { ai.order = [...ai.original]; return send({ ok: true }); } }
         if (body.action === 'make_manual') { const ai = state.sequences.find(q => q.kind === 'ai'); const m = state.sequences.find(q => q.kind === 'manual'); if (ai && m) { m.order = [...ai.order]; m.cut_off = ai.cut_off; state.active = m.id; return send({ ok: true }); } }
+        if (body.action === 'restore' && Array.isArray(body.order)) { const a = activeSeq(state); a.order = [...body.order, ...a.order.filter(n => !body.order.includes(n))]; a.cut_off = body.cut_off || null; return send({ ok: true }); }
         if (body.action === 'include_all') { const a = activeSeq(state); if (a && a.cut_off) { a.cut_off = null; return send({ ok: true }); } }
         return send({ ok: false, error: 'Could not do that.' }, 400);
       }

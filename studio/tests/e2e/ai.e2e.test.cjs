@@ -1,7 +1,7 @@
 const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, skip, api, page, consoleErrors, addAi } = require('./harness.cjs');
 register();
 
-test('AI order: panel, note, live progress, and the Manual order stays exactly as it was', { skip }, async () => {
+test('AI re-order: panel, live progress, the new order, and Undo puts the old one back', { skip }, async () => {
   const ctx = await fresh({ delays: { ai: 2000 } });
   assert.deepEqual(await names(), ['k1', 'k2', 'k3']);
   await page.click('#aiBtn');
@@ -20,17 +20,16 @@ test('AI order: panel, note, live progress, and the Manual order stays exactly a
   assert.equal(await page.locator('#aiLock').isVisible(), true, 'a banner says the selection is locked');
   assert.equal(await text('#gridHint'), 'Locked while the AI orders');
   await shot('16-ai-progress');
-  await page.waitForFunction(() => /Done — AI: Opens on k3/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Done — AI re-order: Opens on k3/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   await enabled('#aiBtn');
   assert.equal(await page.locator('#statusText .slot.ok').count(), 4);
   assert.equal(await page.locator('#aiLock').isVisible(), false);
   const body = api.state.jobs[0].body;
   assert.deepEqual([body.direction, body.length, 'first' in body, 'last' in body], ['end on the blue one', null, false, false]);
-  assert.deepEqual(await seg(), [{ text: '✋ Manual (3)', on: false }, { text: '✨ AI (3)', on: true }]);
   assert.deepEqual(await names(), ['k3', 'k2', 'k1']);
-  assert.match(await text('#seqSummary'), /Opens on k3, lands on k1/);
+  assert.match(await text('#statusText'), /Opens on k3, lands on k1/, 'what the AI did, in the status bar');
   await shot('17-ai-done');
-  await clickSeg('Manual');
+  await page.click('#toast button');                                                 // Undo: the order as it was
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k1');
   assert.deepEqual(await names(), ['k1', 'k2', 'k3']);
   assert.deepEqual(consoleErrors, []);
@@ -102,7 +101,6 @@ test('AI order: "best N" cuts the edit and shows what was left out; playback use
   const cards = await names();
   assert.equal(cards.length, 6);
   assert.equal(await page.evaluate(() => [...document.getElementById('grid').children].findIndex(e => e.classList.contains('edit-divider'))), 2);
-  assert.deepEqual(await seg(), [{ text: '✋ Manual (6)', on: false }, { text: '✨ AI (2 of 6)', on: true }]);
   await shot('18-best-n');
   await film();
   assert.equal(await page.locator('#filmstrip button').count(), 2, 'the film strip holds only the edit');
@@ -117,31 +115,23 @@ test('AI order: "best N" cuts the edit and shows what was left out; playback use
   await ctx.close();
 });
 
-test('AI order: redoing replaces the AI order and always asks first', { skip }, async () => {
-  const ctx = await fresh({ delays: { ai: 400 }, setup: aiSetup('x') });
-  await clickSeg('AI');
-  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k2');
-  await page.click('#aiBtn');
-  await page.click('#aiGo');
-  await page.waitForSelector('#confirmModal.open');                                  // never edited: still asks
-  assert.match(await text('#confirmTitle'), /Replace the current AI order\?/);
-  assert.doesNotMatch(await text('#confirmBody'), /drops the changes/);
-  await page.click('#confirmModal .confirm-foot button >> text=Cancel');
-  api.state.sequences.find(q => q.kind === 'ai').order = ['k1', 'k2', 'k3'];          // an AI order edited before it became read-only
-  await page.click('#refreshBtn');
-  await page.waitForSelector('#resetAi:not([hidden])');
-  await page.click('#aiBtn');
-  await page.click('#aiGo');
-  await page.waitForSelector('#confirmModal.open');                                  // edited: says what is lost
-  assert.match(await text('#confirmBody'), /drops the changes you made/);
-  await page.click('#confirmModal .confirm-foot button >> text=Cancel');
-  assert.equal(api.state.calls.filter(c => c.path === '/api/order-ai').length, 0);
-  await page.click('#aiBtn');
-  await page.click('#aiGo');
-  await page.click('#confirmYes');
-  await page.waitForFunction(() => /Done — AI/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
-  assert.equal((await seg()).length, 2);                                              // still one Manual and one AI
-  assert.equal(await page.locator('#resetAi').isHidden(), true);                      // the new AI order is unedited
+test('AI re-order: no confirmation (it can be undone); two re-orders undo one at a time, with their best-N cut', { skip }, async () => {
+  const ctx = await fresh({ delays: { ai: 200 } });
+  const run = async len => { await page.click('#aiBtn'); if (len) await page.evaluate(n => { const o = document.createElement('option'); o.value = n; o.textContent = `Best ${n}`; document.getElementById('aiLength').appendChild(o); document.getElementById('aiLength').value = n; }, String(len)); await page.click('#aiGo'); await page.waitForSelector('#aiBtn:disabled'); await page.waitForFunction(() => /Done — AI re-order/.test(document.getElementById('statusText').textContent) && !document.getElementById('aiBtn').disabled, null, { timeout: 15000 }); };
+  await run(2);
+  assert.equal(await page.locator('#confirmModal.open').count(), 0, 'no question asked');
+  assert.deepEqual(await names(), ['k3', 'k2', 'k1']);
+  assert.equal(await page.locator('.edit-divider').count(), 1, 'best 2: the divider');
+  await run(null);
+  assert.deepEqual(await names(), ['k1', 'k2', 'k3'], 'the second re-order reverses the first');
+  await page.keyboard.press('Meta+z');
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
+  assert.equal(await page.locator('.edit-divider').count(), 1, 'undo brings back the cut too');
+  await page.keyboard.press('Meta+z');
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k1' && !document.querySelector('.edit-divider'));
+  await page.keyboard.press('Meta+Shift+z');
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
+  assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
 
@@ -152,7 +142,6 @@ test('AI order: a failure is reported and everything unlocks', { skip }, async (
   await page.waitForFunction(() => /AI order failed: Kimi exploded/.test(document.getElementById('statusText').textContent), null, { timeout: 10000 });
   await enabled('#aiBtn');
   await enabled('#generateBtn');
-  assert.equal((await seg()).length, 1);
   await ctx.close();
 });
 

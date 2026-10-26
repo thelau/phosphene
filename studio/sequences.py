@@ -116,6 +116,20 @@ def make_manual(st: dict) -> bool:
     return True
 
 
+def restore(st: dict, order: list, cut_off) -> bool:
+    """Undo / redo of an AI re-order: put back an order the user had (and its best-N cut) on the order shown."""
+    seq = active(st)
+    if seq is None or not isinstance(order, list):
+        return False
+    reorder_active(st, order)
+    try:
+        n = int(cut_off) if cut_off else None
+    except (TypeError, ValueError):
+        n = None
+    seq["cut_off"] = n if n and 0 < n < len(seq["order"]) else None
+    return True
+
+
 def include_all(st: dict) -> bool:
     """Put every image back in the edit of the order you are looking at (clears a best-N cut)."""
     seq = active(st)

@@ -194,12 +194,7 @@
       if (!ensureKimiReady()) return;
       const shown = plates.filter(p => !p.trashed).length;
       if (shown < 2) { setStatus('Keep at least two images before ordering.'); return; }
-      const existing = sequences.find(s => s.kind === 'ai');
-      if (existing) {  // redoing replaces the AI order, so always ask first
-        document.getElementById('aiPanel').hidden = true;
-        const lost = existing.edited ? ' This also drops the changes you made to it.' : '';
-        if (!(await askConfirm('Replace the current AI order?', `Redoing makes a fresh AI order and replaces the one you have.${lost} Your Manual order is not touched.`, 'Redo with AI'))) return;
-      }
+      const before = { order: plates.filter(p => !p.trashed).map(p => p.filename), cut_off: activeCutOff() };   // for Undo: the order as it was
       const body = {
         length: parseInt(document.getElementById('aiLength').value, 10) || null,
         direction: document.getElementById('aiDirection').value.trim(),
@@ -223,8 +218,11 @@
           if (job.done) {
             if (job.error) throw new Error(job.error);
             prog.slots = steps.map(() => 'ok');
-            progStop(`Done — ${job.sequence.name}: ${job.sequence.summary}`);
+            progStop(`Done — AI re-order: ${job.sequence.summary}`);
             await loadState();
+            const after = { order: plates.filter(p => !p.trashed).map(p => p.filename), cut_off: activeCutOff() };
+            const step = pushStep({ label: 'AI re-order', undo: () => restoreOrder(before), redo: () => restoreOrder(after) });
+            setStatus('The AI re-ordered your images.', { label: 'Undo', run: () => undoStep(step) });
             break;
           }
           prog.slots = steps.map((_, i) => (i < job.step ? 'ok' : i === job.step ? 'run' : 'wait'));
@@ -240,27 +238,12 @@
       }
     }
 
-    // ---- the two orders of the selection: Manual (yours) and AI ----
+    // ---- one order: yours, that the AI can rearrange on request (and Undo puts back) ----
     let sequences = [];
     let activeSeq = null;
     function renderSequences() {
-      const seg = document.getElementById('orderSeg');
-      const label = q => (q.cut_off && q.cut_off < q.count ? `${q.cut_off} of ${q.count}` : q.count);
-      const manual = sequences.find(q => q.kind === 'manual');
-      const ai = sequences.find(q => q.kind === 'ai');
-      seg.innerHTML = [manual, ai].filter(Boolean).map(q =>
-        `<button data-seq="${q.id}" class="${q.id === activeSeq ? 'on' : ''}" onclick="switchSequence('${q.id}')" ${aiRunning ? 'disabled' : ''}>${q.kind === 'ai' ? '✨ AI' : '✋ Manual'} (${label(q)})</button>`).join('');
-      const cur = sequences.find(q => q.id === activeSeq);
-      const summary = cur && cur.kind === 'ai' && cur.summary ? cur.summary : '';
-      document.getElementById('seqSummary').textContent = summary;
-      document.getElementById('aiNote').hidden = !(cur && cur.kind === 'ai') || showTrash;
-      document.getElementById('makeManual').disabled = aiRunning;
-      document.getElementById('resetAi').hidden = !(cur && cur.kind === 'ai' && cur.edited);
-      const aiBtn = document.getElementById('aiBtn');
-      aiBtn.textContent = ai ? '↻ Re-order' : '✨ Order with AI…';
-      aiBtn.title = ai ? 'Ask the AI for a new order (replaces this AI order; your Manual order is never touched)' : 'Let the AI order your selection. Your Manual order is never touched.';
-      aiBtn.classList.toggle('attached', !!ai);
       document.getElementById('seqBox').hidden = showTrash;
+      document.getElementById('aiBtn').disabled = aiRunning || generating;
     }
     async function seqCall(payload) {
       const res = await (await fetch('/api/sequence', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
@@ -268,18 +251,8 @@
       await loadState();
       return true;
     }
-    async function switchSequence(id) {
-      if (blockedByAi() || id === activeSeq) return;
-      const ok = await seqCall({ action: 'activate', id });
-      if (ok && isPlaying) { cutPos = 0; lastTick = performance.now(); currentIdx = 0; if (droneLive.playing) droneLive.restart(synthParams(), synthStartsSec()); }   // the player follows: start the other order from its first image
-      return ok;
-    }
-    function resetAi() { return blockedByAi() ? undefined : seqCall({ action: 'reset' }); }
-    async function makeManual() {
-      if (blockedByAi()) return;
-      if (!(await askConfirm('Replace your Manual order?', "Your current Manual order is replaced by a copy of this AI order, including any changes you made to it. The AI order stays as it is. This can't be undone.", 'Replace Manual'))) return;
-      if (await seqCall({ action: 'make_manual' })) setStatus('Your Manual order is now a copy of the AI order.');
-    }
+    // Undo / Redo of an AI re-order: the order and its best-N cut as they were
+    function restoreOrder(o) { return seqCall({ action: 'restore', order: o.order, cut_off: o.cut_off }); }
     function includeAll() { return blockedByAi() ? undefined : seqCall({ action: 'include_all' }); }
 
     let trashSel = new Set();
@@ -398,7 +371,6 @@
         el.classList.toggle('out', !!(cutOff && i >= cutOff));
       });
       document.getElementById('gridHint').textContent = gridHintText();
-      document.getElementById('grid').classList.toggle('read-only', aiOrderShown());
       syncSelection();
     }
     // Only what changed is touched: a card whose markup is the same keeps its element (its image stays decoded, an open info panel stays open);
@@ -458,7 +430,7 @@
           </div>
         </div>`;
     }
-    function gridHintText() { return showTrash ? 'Trashed images stay restorable' : aiRunning ? 'Locked while the AI orders' : aiOrderShown() ? 'The AI order is read-only' : 'Drag to reorder'; }
+    function gridHintText() { return showTrash ? 'Trashed images stay restorable' : aiRunning ? 'Locked while the AI orders' : 'Drag to reorder'; }
     // the images still being made, at the end of the selection while a batch runs
     function pendingCards() {
       if (!generating || prog.stage !== 'render') return [];
@@ -520,18 +492,8 @@
     }
 
     /* Drag and drop reordering */
-    // the AI's order is read-only: to rearrange it, it becomes your Manual order first (a copy), and you drag there
-    function aiOrderShown() { const cur = sequences.find(q => q.id === activeSeq); return !showTrash && !!cur && cur.kind === 'ai'; }
-    async function offerManualCopy() {
-      if (!(await askConfirm('The AI order is read-only', "To rearrange the images, make this order your Manual order: a copy you can drag freely. It replaces your current Manual order; the AI order stays as the AI made it.", 'Use as my Manual order'))) return;
-      if (!(await seqCall({ action: 'make_manual' }))) return;
-      const manual = sequences.find(q => q.kind === 'manual');
-      if (manual) await switchSequence(manual.id);
-      setStatus('Your Manual order is now a copy of the AI order. Drag away.');
-    }
     function onDragStart(e, filename) {
       if (aiRunning) { e.preventDefault(); return; }
-      if (aiOrderShown()) { e.preventDefault(); offerManualCopy(); return; }
       draggedFilename = filename;
       e.currentTarget.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
@@ -547,7 +509,7 @@
     async function onDrop(e, targetFilename) {
       e.preventDefault();
       e.currentTarget.classList.remove('drag-over');
-      if (aiRunning || aiOrderShown() || !draggedFilename || draggedFilename === targetFilename) return;
+      if (aiRunning || !draggedFilename || draggedFilename === targetFilename) return;
 
       const dragged = draggedFilename;
       const target = targetFilename;
@@ -555,12 +517,11 @@
       const toIdx = plates.findIndex(p => p.filename === target);
       if (fromIdx === -1 || toIdx === -1) return;
 
-      const before = plates.map(p => p.filename), seq = activeSeq;
+      const before = plates.map(p => p.filename);
       const [moved] = plates.splice(fromIdx, 1);
       plates.splice(toIdx, 0, moved);
       const after = plates.map(p => p.filename);
       const reorder = order => async () => {
-        if (seq !== activeSeq) { setStatus('That move was in the other order: switch back to it to undo it.'); return; }
         await fetch('/api/reorder', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ order }) });
         await loadState();
       };
@@ -890,7 +851,7 @@
       if (blockedByAi()) return;
       await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename, trashed: false }) });
       await loadState();
-      if (where && where.seq === activeSeq && where.index >= 0) {
+      if (where && where.index >= 0) {
         const order = plates.filter(x => !x.trashed && x.filename !== filename).map(x => x.filename);
         order.splice(Math.min(where.index, order.length), 0, filename);
         await fetch('/api/reorder', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ order }) });
@@ -1818,8 +1779,7 @@
       document.getElementById('aiBtn').disabled = lockGen;
       document.getElementById('exportBtn').disabled = aiRunning || !activePlates().length;
       document.getElementById('trashCurBtn').disabled = aiRunning || !activePlates().length;
-      ['trashSelAll', 'trashEmpty', 'resetAi'].forEach(id => { document.getElementById(id).disabled = aiRunning; });
-      document.querySelectorAll('#orderSeg button').forEach(b => { b.disabled = aiRunning; });
+      ['trashSelAll', 'trashEmpty'].forEach(id => { document.getElementById(id).disabled = aiRunning; });
       document.body.classList.toggle('ai-running', aiRunning);
       syncSelects();
       document.getElementById('aiLock').hidden = !aiRunning;
@@ -2079,11 +2039,8 @@
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
   includeAll,
-  makeManual,
-  resetAi,
   startAiOrder,
   toggleAiPanel,
-  switchSequence,
   cardClick,
   confirmAnswer,
   deleteSelected,

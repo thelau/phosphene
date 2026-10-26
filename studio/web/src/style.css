@@ -362,8 +362,6 @@
     .grid-empty { margin: 40px 24px; color: var(--faint); font-size: 14px; }
     .grid-empty[hidden] { display: none; }
     body:has(#tabTrash.on) .mini, body:has(#tabTrash.on) .mini-pill { display: none; }   /* the film preview has nothing to do with the Trash */
-    .grid-col.read-only .card { cursor: default; }
-    .grid-col.read-only .drag-handle { display: none; }
     .grid-hint { font-size: 12px; color: var(--faint); white-space: nowrap; }
     .refresh-btn { width: 34px; height: 34px; }
     .tl-head .refresh-btn { width: 28px; height: 28px; border-color: var(--line-3); border-radius: 6px; }
@@ -406,32 +404,18 @@
     .order-tools { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; }
     .order-tools[hidden] { display: none; }
     .order-tools > button { height: 34px; }
-    .order-lbl { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
-    /* one group: [ Manual | AI  ↻ Re-order ]; before there is an AI order the second half is "Order with AI…" */
-    .order-group { display: inline-flex; align-items: stretch; padding: 2px; background: var(--field); border: 1px solid var(--line-2); border-radius: 8px; }
-    .order-group .seg { padding: 0; border: 0; background: transparent; }
-    .order-group #aiBtn { height: 30px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); }
-    .order-group #aiBtn:hover:not(:disabled) { color: var(--text); background: #2A2825; }
-    .order-group #aiBtn.attached { margin-left: 2px; padding: 0 10px; font-size: 12px; border-left: 1px solid var(--line-3); border-radius: 0 6px 6px 0; }
-    .ai-panel { position: absolute; top: 100%; left: 0; margin-top: 6px; z-index: 45; width: 340px; background: var(--raised); border: 1px solid var(--line-3); border-radius: 12px; padding: 16px; box-shadow: 0 20px 50px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 12px; }
+    .ai-panel { position: absolute; top: 100%; right: 0; margin-top: 6px; z-index: 45; width: 340px; background: var(--raised); border: 1px solid var(--line-3); border-radius: 12px; padding: 16px; box-shadow: 0 20px 50px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 12px; }
     .ai-panel[hidden] { display: none; }
     .ai-panel h4 { font-size: 15px; }
+    .ai-panel-note { font-size: 12px; color: var(--muted); margin-top: -6px; }
     .ai-panel label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-2); }
     .ai-panel input, .ai-panel select { width: 100%; }
     .ai-foot { display: flex; justify-content: flex-end; gap: 8px; }
     .edit-divider { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 6px 0; }
     .edit-divider::before, .edit-divider::after { content: ''; flex: 1; height: 1px; background: var(--line-3); }
     .edit-divider button { font-size: 11px; padding: 3px 9px; }
-    .reset-ai { font-size: 12px; }
-    .reset-ai[hidden] { display: none; }
     .ai-running .card-actions { pointer-events: none; opacity: .3; }
     .ai-running .card { cursor: progress; }
-    .ai-note { display: flex; gap: 12px; align-items: baseline; margin: 0 24px 12px; padding: 10px 14px; font-size: 13px; line-height: 1.5; color: var(--text-2); background: #1A1918; border: 1px solid var(--line); border-radius: 10px; flex-shrink: 0; }
-    .ai-note[hidden] { display: none; }
-    .ai-note b { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); font-weight: 400; white-space: nowrap; }
-    .ai-note span { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
-    .ai-note span.open { -webkit-line-clamp: unset; }
-    .ai-note button { margin-left: auto; flex-shrink: 0; font-size: 12px; padding: 4px 10px; }
 
     /* ---------- status, toast, modals ---------- */
     .status-text { flex: none; height: 40px; display: flex; align-items: center; padding: 0 24px; border-top: 1px solid var(--line); background: var(--panel); font-size: 13px; color: var(--muted); }

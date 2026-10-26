@@ -140,15 +140,20 @@
             <button id="tabSelection" onclick="setTrashView(false)">Selection (<span id="selCount">0</span>)</button>
             <button id="tabTrash" onclick="setTrashView(true)">🗑️ Trash (<span id="trashCount">0</span>)</button>
           </div>
+          <div class="trash-bar" id="trashBar" hidden>
+            <span id="trashSelCount">0 selected</span>
+            <button id="trashSelAll" onclick="selectAllTrash()">Select all</button>
+            <button id="trashRestoreSel" onclick="restoreSelected()">Restore</button>
+            <button id="trashDelSel" class="danger" onclick="deleteSelected()">Delete selected…</button>
+            <button id="trashEmpty" class="danger" onclick="emptyTrash()">Empty trash…</button>
+          </div>
+          <span class="grow"></span>
+          <span class="grid-hint" id="gridHint">Drag to reorder</span>
           <div class="order-tools" id="seqBox">
-            <span class="order-lbl">Order</span>
-            <div class="order-group">
-              <div class="seg" id="orderSeg" role="tablist" title="Switch between your own order and the AI's order. Nothing is lost when you switch."></div>
-              <button id="aiBtn" onclick="toggleAiPanel(event)" title="Let the AI order your selection. Your Manual order is never touched.">✨ Order with AI…</button>
-            </div>
-            <button class="reset-ai" id="resetAi" onclick="resetAi()" title="Undo the drags made in the AI order before it became read-only" hidden>↺ Back to the AI's order</button>
+            <button id="aiBtn" onclick="toggleAiPanel(event)" title="Let the AI rearrange your order (⌘Z puts it back)">✨ AI re-order…</button>
             <div class="ai-panel" id="aiPanel" hidden onclick="event.stopPropagation()">
-              <h4>Order with AI</h4>
+              <h4>AI re-order</h4>
+              <p class="ai-panel-note">The AI rearranges your order. ⌘Z or Undo puts it back.</p>
               <label>Use
                 <select id="aiLength">
                   <option value="">All images</option>
@@ -163,25 +168,16 @@
               </label>
               <div class="ai-foot">
                 <button onclick="toggleAiPanel()">Cancel</button>
-                <button class="primary" id="aiGo" onclick="startAiOrder()">Order</button>
+                <button class="primary" id="aiGo" onclick="startAiOrder()">Re-order</button>
               </div>
             </div>
           </div>
-          <div class="trash-bar" id="trashBar" hidden>
-            <span id="trashSelCount">0 selected</span>
-            <button id="trashSelAll" onclick="selectAllTrash()">Select all</button>
-            <button id="trashRestoreSel" onclick="restoreSelected()">Restore</button>
-            <button id="trashDelSel" class="danger" onclick="deleteSelected()">Delete selected…</button>
-            <button id="trashEmpty" class="danger" onclick="emptyTrash()">Empty trash…</button>
-          </div>
-          <span class="grow"></span>
-          <span class="grid-hint" id="gridHint">Drag to reorder</span>
-          <button class="icon-btn refresh-btn" id="refreshBtn" onclick="refreshLibrary(true)" title="Check for new images now (the page also checks by itself every so often). Film refreshes with it." aria-label="Refresh the library"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
           <div class="size-seg" role="group" aria-label="Thumbnail size">
             <button id="thumbS" onclick="setThumbSize('S')" aria-label="Small thumbnails" title="Small thumbnails"><i style="width:8px;height:12px"></i></button>
             <button id="thumbM" onclick="setThumbSize('M')" aria-label="Medium thumbnails" title="Medium thumbnails"><i style="width:10px;height:15px"></i></button>
             <button id="thumbL" onclick="setThumbSize('L')" aria-label="Large thumbnails" title="Large thumbnails"><i style="width:12px;height:18px"></i></button>
           </div>
+          <button class="icon-btn refresh-btn" id="refreshBtn" onclick="refreshLibrary(true)" title="Check for new images now (the page also checks by itself every so often). Film refreshes with it." aria-label="Refresh the library"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
           <input type="hidden" id="thumbSizeVal" value="M" />
         </div>
         <div class="lock-banner" id="aiLock" role="status" hidden>
@@ -189,7 +185,6 @@
           <b>Ordering with AI</b>
           <span>The selection is locked until it finishes: no trashing, dragging or generating.</span>
         </div>
-        <div class="ai-note" id="aiNote" hidden><b>✨ AI order notes</b><span id="seqSummary" onclick="this.classList.toggle('open')" title="Click to read it all"></span><button id="makeManual" onclick="makeManual()" title="Copy this order over your Manual order">Use as my Manual order…</button></div>
         <div class="grid-col" id="grid" data-size="M"></div>
         <p class="grid-empty" id="gridEmpty" hidden></p>
       </div>

@@ -171,3 +171,16 @@ def test_include_all_clears_the_cut():
     assert sq.include_all(st) is True and sq.active(st)["cut_off"] is None
     assert sq.include_all(st) is False                                     # nothing left to clear
     assert sq.edit_files(["a", "b", "c"], st) == ["a", "b", "c"]
+
+
+def test_restore_puts_back_an_order_and_its_cut_on_the_order_shown():
+    """Undo of an AI re-order: one order for the user, the previous one comes back with its best-N cut."""
+    st = {"order": ["a", "b", "c", "d"]}
+    sq.ensure(st)
+    sq.add_ai(st, ["d", "c", "b", "a"], summary="x", cut_off=2)
+    assert sq.restore(st, ["a", "b", "c", "d"], None)
+    assert sq.get_order(st) == ["a", "b", "c", "d"] and sq.active(st)["cut_off"] is None
+    assert sq.restore(st, ["d", "c"], 2)                    # an order missing images keeps them, at the end
+    assert sq.get_order(st) == ["d", "c", "a", "b"] and sq.active(st)["cut_off"] == 2
+    assert sq.restore(st, ["a"], 99) and sq.active(st)["cut_off"] is None   # a cut that does not fit is no cut
+    assert not sq.restore(st, "nonsense", None)

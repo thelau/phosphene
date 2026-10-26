@@ -1460,7 +1460,7 @@ test('review #3: Trash acts on the image on screen, even one shown from below th
   assert.deepEqual(sent, ['p5'], 'the one on screen, not p0');
 });
 
-test('review #4: Undo of a trash puts the image back into the order shown now, and only if it is still the same order', async () => {
+test('review #4: Undo of a trash puts the image back into the order as it is now (a drag made since is kept)', async () => {
   const r = baseRoutes();
   let st = [mkPlate('a'), mkPlate('b'), mkPlate('c'), mkPlate('d')];
   let seqs = [{ id: 'm', kind: 'manual', count: 4 }, { id: 'ai', kind: 'ai', count: 4 }], active = 'm';
@@ -1476,15 +1476,6 @@ test('review #4: Undo of a trash puts the image back into the order shown now, a
   h.ctx.onKey({ key: 'z', metaKey: true, target: { tagName: 'BODY' }, preventDefault() {} });
   await settle(); await settle(); await settle(); await settle();
   assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['d', 'b', 'a', 'c'], 'b goes back to place 2 of the order as it is now; the drag is kept');
-  // trash in Manual, switch to the AI order, undo: the AI order is not rewritten
-  h.run('jumpToPlate(0)');
-  await h.run('trashCurrent()');
-  await h.run("switchSequence('ai')");
-  const reorders = h.calls.filter(c => c.url === '/api/reorder').length;
-  h.ctx.onKey({ key: 'z', metaKey: true, target: { tagName: 'BODY' }, preventDefault() {} });
-  await settle(); await settle(); await settle();
-  assert.equal(h.calls.filter(c => c.url === '/api/reorder').length, reorders, 'no reorder of another order');
-  assert.equal(h.run('plates.filter(p => p.trashed).length'), 0, 'but the image is back');
 });
 
 test('review #6: an image that fails to load is asked for once, and never holds the film', async () => {

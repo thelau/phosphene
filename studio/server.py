@@ -958,6 +958,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "reset": lambda: sequences.reset_ai(st),
                     "make_manual": lambda: sequences.make_manual(st),
                     "include_all": lambda: sequences.include_all(st),
+                    "restore": lambda: sequences.restore(st, body.get("order"), body.get("cut_off")),
                 }
                 ok = handlers[action]() if action in handlers else False
                 if ok:
