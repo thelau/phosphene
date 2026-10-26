@@ -135,6 +135,22 @@ test('export: preview is untouched and a download link appears', { skip }, async
   await ctx.close();
 });
 
+test('export: the button is always in view (fixed under the controls) and the finished file downloads by itself', { skip }, async () => {
+  const ctx = await fresh({ height: 560 });
+  await page.locator('.card').first().click();
+  const inView = async () => { const b = await page.locator('#exportBtn').boundingBox(); return b && b.y >= 0 && b.y + b.height <= 560; };
+  assert.equal(await inView(), true, 'visible on the Video tab');
+  await page.click('#tabMusic'); await page.selectOption('#musicSelect', 'on');
+  await page.evaluate(() => { document.querySelector('.preview-scroll').scrollTop = 99999; });
+  assert.equal(await inView(), true, 'visible on the Music tab, scrolled to the bottom');
+  await page.evaluate(() => { window.__clicked = []; const c = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () { window.__clicked.push(this.getAttribute('download')); }; });
+  await page.click('#exportBtn');
+  await page.waitForSelector('#downloadLink:not([hidden])');
+  assert.deepEqual(await page.evaluate(() => window.__clicked), ['Demo-test.mp4']);
+  assert.match(await text('#toast'), /Export ready, downloading/);
+  await ctx.close();
+});
+
 test('narrow window: the header wraps without squeezing the Generate button', { skip }, async () => {
   const ctx = await fresh({ width: 900 });
   const gen = await page.locator('#generateBtn').boundingBox();
@@ -172,7 +188,7 @@ test('the player panel: preview, play / target, then Video and Music tabs with t
   for (const id of ['#brightRange', '#widthRange', '#randomBtn']) assert.ok(await page.locator(id).isVisible(), id);
   assert.ok(!(await page.locator('#bpmInput').isVisible()));
   const exp2 = await box('#exportBtn');
-  assert.ok(exp2.y > (await box('#echoRange')).y, 'export stays below whichever tab is open');
+  assert.ok(exp2.y + exp2.height <= 900, 'export stays in view whichever tab is open');
   await shot('music-tab');
   await page.click('#tabVideo');
   assert.ok(await page.locator('#bpmInput').isVisible());

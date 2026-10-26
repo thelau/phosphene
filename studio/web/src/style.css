@@ -161,14 +161,22 @@
     /* Left: 9:16 Live Preview */
     .preview-col {
       border-right: 1px solid var(--border);
-      padding: 14px;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      gap: 10px;
       background: #111114;
-      overflow-y: auto;
+      min-height: 0;
+      overflow: hidden;
     }
+    .preview-scroll {
+      flex: 1; min-height: 0; overflow-y: auto; padding: 14px;
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+    }
+    /* Export stays in view whatever the controls above do */
+    .export-dock {
+      flex-shrink: 0; padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 6px;
+      border-top: 1px solid var(--border); background: #111114;
+    }
+    .export-dock .dl { margin-top: 0; }
     .stage {
       flex-shrink: 0;
       height: clamp(180px, calc(100vh - 580px), 441px);   /* smaller on a short window so the controls stay in reach; 9:16 */

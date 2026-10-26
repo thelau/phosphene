@@ -543,7 +543,6 @@
     function timelineFor(nPlates) { return rhythmFor(nPlates).pic; }
 
     // ---- music: the synthesized drone (WebAudio, see drone.js) ----
-    const MUSIC_HINT = 'A dark, wide drone around 54 Hz in a big room, as in Soiltone and Ecwora. It breathes with every cut.';
     function musicOn() { return document.getElementById('musicSelect').value === 'on'; }
     function unit(id) { return (parseInt(document.getElementById(id).value, 10) || 0) / 100; }
     // the drone is made in the page (WebAudio): its settings, and where each cut starts in seconds
@@ -573,7 +572,6 @@
       const on = musicOn();
       document.getElementById('synthBox').hidden = !on;
       for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer', 'hit', 'arp']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
-      document.getElementById('styleHint').textContent = on ? MUSIC_HINT : 'No music: the preview and the export stay silent.';
       saveSettings();
       musicChanged();
     }
@@ -1067,7 +1065,8 @@
           link.setAttribute('download', data.filename || 'Demo.mp4');
           link.textContent = `⬇ Download ${data.filename || 'MP4'}`;
           link.hidden = false;
-          setStatus(`Export ready: ${data.images} images, ${data.seconds}s. The preview is unchanged.`);
+          link.click();                                                  // the file saves itself; the link stays as a way to get it again
+          setStatus(`Export ready, downloading: ${data.images} images, ${data.seconds}s.`);
         } else {
           setStatus(`Export failed: ${data.error || 'unknown error'}`);
         }

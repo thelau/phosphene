@@ -99,6 +99,7 @@
 
   <div class="workspace">
     <div class="preview-col">
+     <div class="preview-scroll">
       <div class="panel-title">Preview sequence</div>
       <div class="stage">
         <img id="stageImg" alt="" />
@@ -211,7 +212,6 @@
               <option value="on">Synthesized</option>
             </select>
           </div>
-          <div class="music-hint" id="styleHint"></div>
 
           <div class="tabpane" id="synthBox" hidden>
             <div class="control-line">
@@ -365,10 +365,13 @@
           </div>
         </div>
 
-        <div class="music-state" id="musicState" hidden></div>
-        <button class="primary" onclick="exportVideo()" id="exportBtn" style="width:100%;margin-top:4px">Export MP4</button>
-        <a id="downloadLink" class="dl" hidden download></a>
       </div>
+     </div>
+     <div class="export-dock">
+        <div class="music-state" id="musicState" hidden></div>
+        <button class="primary" onclick="exportVideo()" id="exportBtn" style="width:100%">Export MP4</button>
+        <a id="downloadLink" class="dl" hidden download></a>
+     </div>
     </div>
 
     <div class="gallery-col">
