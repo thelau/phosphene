@@ -168,8 +168,9 @@
     const f0 = Number.isFinite(+p.pitch) && p.pitch !== null && p.pitch !== undefined ? rootHz(clamp01(p.pitch)) : 51 + 6 * rand();
     const chord = CHORDS[Math.max(0, Math.min(CHORDS.length - 1, Math.round(+p.chord || 0)))];
     const echo = clamp01(p.echo === undefined ? 0 : p.echo);
-    const wash = clamp01(p.wash || 0), ring = clamp01(p.ring || 0), shimmer = clamp01(p.shimmer || 0);
+    let wash = clamp01(p.wash || 0), ring = clamp01(p.ring || 0), shimmer = clamp01(p.shimmer || 0);
     const pick = (v, n) => Math.max(0, Math.min(n - 1, Math.round(+v || 0)));
+    const choir = clamp01(p.choir || 0), industrial = clamp01(p.industrial || 0);   // two layers mixed into the drone: low voices, and metal and noise
     const hitType = pick(p.hitType, 5), hitAmt = clamp01(p.hit || 0), hitOn = pick(p.hitOn, 4);
     const arpAmt = clamp01(p.arp || 0), arpSteps = ARP_STEPS[pick(p.arpSteps, ARP_STEPS.length)], arpRate = pick(p.arpRate, 4);
     const dynamics = opts.dynamics === false ? 0 : pick(p.dynamics, 4);
@@ -303,7 +304,18 @@
       const tickAmt = gain((0.2 + 0.5 * pulse) * 0.9, body);
       tickG.connect(tickAmt);
       for (const r of [7.2, 9.2]) osc('sine', f0 * r * (1 + 0.003 * side), tickG);
-      air.connect(gain(0.05 * bright, body));
+      air.connect(gain(0.05 * bright * (1 + 0.4 * industrial), body));
+      if (choir > 0.01) {                                                  // low voices, under the drone: on two chord tones, through two vowel formants drifting between "ah" and "oh"
+        const voices = gain(1);
+        [chord.ratios[0], chord.ratios[2]].forEach((r, i) => {
+          const f = (f0 * r / 2) * det, o = osc('sawtooth', f, voices);
+          lfo(4.6 + 0.7 * i, f * 0.005, o.frequency);                     // a singer's vibrato
+        });
+        [[525, 125, 7, 1.0], [940, 140, 9, 0.55]].forEach(([c, d, q, g]) => {
+          const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = c; bp.Q.value = q;
+          voices.connect(bp); lfo((0.04 + 0.03 * rand()) * move, d, bp.frequency); bp.connect(gain(5 * g * choir, body));
+        });
+      }
       // texture layers (all off by default)
       if (wash > 0.01) {                                                   // a slow wash of filtered noise, its centre drifting
         const w = noiseLoop(ctx, seedN, 'wash' + side, 4, (x, r) => onePole(x, 2500, r, 1)); keep(w);
@@ -328,7 +340,7 @@
       // the pump, the landing, then the heavy saturation
       const pg = gain(1); pump(pg.gain, 0.8 * pulse, 0.07);
       const lg = gain(1); sampled(lg.gain, t => 1 - 0.35 * landed(t));
-      const k = 1 + 1.5 * power;
+      const k = (1 + 1.5 * power) * (1 + 0.6 * industrial);
       const sat = shaper(tanhCurve(k, 1));
       body.connect(pg); pg.connect(lg); lg.connect(sat);
       const sum = gain(1);
@@ -394,6 +406,12 @@
       });
     }
 
+    // ---- Industrial: a burst of metal noise on every other cut ----
+    if (industrial > 0.01) {
+      const burst = voiceNoise(1, 'bandpass', 1100, 5, hitBus);
+      perCut.push((i, t) => { if (i % 2 === 0) strike(burst, t, 1.8 * industrial, 0.09); });   // every other cut: a mechanical pulse, not a hiss
+    }
+
     // ---- arpeggio: a short pattern of plucked notes that repeats, stepping with the cuts. One voice (two detuned saws), its pitch automated ----
     if (arpAmt > 0.01) {
       const degrees = [];                                                // the notes it may use: the chord's tones over two octaves, kept dark
@@ -450,7 +468,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   const cutSignature = starts => { const head = []; for (const t of starts) { head.push(Math.round(t * 1000)); if (t > 4) break; } return head.join(','); };   // the cuts of the window the level is measured on: faster cuts pump differently
-  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate]);
+  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate]);
   async function level(p, starts) {
     starts = cleanStarts(starts);
     const key = levelKey(p, starts);

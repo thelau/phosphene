@@ -245,6 +245,34 @@ test('review #5: "Follows the speed" on a flat speed changes nothing, even when 
   await ctx.close();
 });
 
+test('Choir and Industrial over the drone: the same level, still sub-heavy, each audible (measured, not heard)', { skip }, async () => {
+  const ctx = await fresh();
+  const rows = await page.evaluate(async BASE => {
+    const starts = Array.from({ length: 21 }, (_, i) => i * 0.25), out = [];
+    for (const layer of [{}, { choir: 0.5 }, { industrial: 0.5 }]) {
+      const r = await window.Drone.renderExport({ ...BASE, ...layer, pitch: 0.5 }, starts);
+      const n = 1 << 16, re = new Float64Array(n), im = new Float64Array(n);
+      for (let i = 0; i < n; i++) re[i] = (r.left[i] + r.right[i]) / 2 * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)));
+      for (let i = 1, j = 0; i < n; i++) { let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) { [re[i], re[j]] = [re[j], re[i]]; } }
+      for (let len = 2; len <= n; len <<= 1) { const ang = (-2 * Math.PI) / len, wr = Math.cos(ang), wi = Math.sin(ang);
+        for (let i = 0; i < n; i += len) { let cr = 1, ci = 0; for (let k = 0; k < len / 2; k++) { const a = i + k, b = i + k + len / 2, tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr; re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti; const q = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = q; } } }
+      const b = { sub: 0, mid: 0, upper: 0, high: 0 }; let tot = 0;
+      for (let k = 1; k < n / 2; k++) { const f = (k * 44100) / n, pw = re[k] ** 2 + im[k] ** 2; tot += pw; if (f < 80) b.sub += pw; else if (f >= 150 && f < 700) b.mid += pw; else if (f >= 700 && f < 2000) b.upper += pw; else if (f >= 2000) b.high += pw; }
+      let s = 0, mx = 0, bad = false; for (let i = 0; i < r.left.length; i++) { const a = r.left[i], c = r.right[i]; if (!Number.isFinite(a) || !Number.isFinite(c)) bad = true; s += a * a + c * c; mx = Math.max(mx, Math.abs(a), Math.abs(c)); }
+      out.push({ rms: Math.sqrt(s / (2 * r.left.length)), peak: mx, bad, sub: b.sub / tot, mid: b.mid / tot, upper: b.upper / tot, high: b.high / tot });
+    }
+    return out;
+  }, BASE);
+  const [drone, choir, industrial] = rows;
+  for (const [i, m] of rows.entries()) {
+    assert.ok(!m.bad && Math.abs(m.rms - 0.17) < 0.01 && m.peak <= 0.97, `layer ${i}: level ${m.rms.toFixed(3)}, peak ${m.peak.toFixed(2)}`);
+    assert.ok(m.sub > 0.4 && m.high < 0.01, `layer ${i}: still sub-heavy and dark (${m.sub.toFixed(2)} below 80 Hz, ${m.high.toFixed(4)} above 2 kHz)`);
+  }
+  assert.ok(choir.mid > drone.mid * 1.2, `the choir sings in the mids: ${choir.mid.toFixed(3)} vs ${drone.mid.toFixed(3)}`);
+  assert.ok(industrial.upper > drone.upper * 3, `industrial adds metal: ${industrial.upper.toFixed(4)} vs ${drone.upper.toFixed(4)}`);
+  await ctx.close();
+});
+
 test('the engine finds no console errors across all of this', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(async (BASE) => {

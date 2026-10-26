@@ -648,7 +648,7 @@ test('with the drone on, Play starts it live from the top with the settings and 
   await settle(); await settle();
   assert.equal(h.calls.some(c => c.url === '/api/music'), false);           // nothing is rendered on the server
   const play = h.ctx.__drone.plays[0];
-  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
+  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, choir: 0, industrial: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
   assert.equal(play.offset, 0);
   assert.equal(play.starts.length, 3);                                      // the music follows the beats (2 of them for 6 picture cuts at 3 per beat) + the end
   assert.ok(Math.abs(play.starts[2] - 0.6) < 1e-9 && Math.abs(play.starts[1] - 0.3) < 1e-9);
@@ -1034,7 +1034,7 @@ test('each character keeps the rhythm and the look inside its own kind of film',
       }
       assert.ok(c.rhythm.mult.includes(h.$('multSelect').value), `${key} multiple`);
       assert.ok(c.look.invert.includes(h.$('invertSelect').value) && c.look.zoom.includes(h.$('zoomSelect').value), `${key} look`);
-      assert.ok(c.sound.chord.includes(h.$('chordSelect').value) && c.sound.hitType.includes(h.$('hitTypeSelect').value), `${key} sound`);
+      assert.ok(c.sound.chord.includes(h.$('chordSelect').value) && (c.sound.hitType.includes(h.$('hitTypeSelect').value) || +h.$('industrialRange').value > 0), `${key} sound`);
     }
   }
   // choosing a character in the menu rolls at once, and can be undone
@@ -1082,6 +1082,38 @@ test('Random sound alone leaves the speed and the effects untouched', async () =
   const before = [h.$('rhythmSelect').value, h.$('bpmInput').value, h.$('multSelect').value, h.$('invertSelect').value, h.$('zoomSelect').value];
   for (let i = 0; i < 20; i++) h.run('randomMusic()');
   assert.deepEqual([h.$('rhythmSelect').value, h.$('bpmInput').value, h.$('multSelect').value, h.$('invertSelect').value, h.$('zoomSelect').value], before);
+});
+
+test('Choir and Industrial: layers over the drone that Random adds now and then, one at a time, with room around them; remembered and sent', async () => {
+  const h = await playerWith();
+  const n = id => +h.$(id).value;
+  const seen = { none: 0, choir: 0, industrial: 0 };
+  const check = (why) => {
+    const c = n('choirRange'), m = n('industrialRange');
+    assert.ok(!(c && m), `${why}: never both`);
+    if (c || m) {
+      assert.ok(['echoRange', 'washRange', 'ringRange', 'shimmerRange'].filter(id => n(id) > 0).length <= 1, `${why}: one texture at most beside a layer`);
+      if (c) assert.ok(n('arpRange') <= 30, `${why}: no busy arpeggio under the voices`);
+      if (m) assert.equal(n('hitTypeSelect'), 0, `${why}: the bursts are the hits`);
+    }
+    seen[c ? 'choir' : m ? 'industrial' : 'none']++;
+  };
+  for (let i = 0; i < 600; i++) { h.run('randomMusic()'); check('Random sound'); }
+  assert.ok(seen.choir > 20 && seen.industrial > 20, `both come up: ${JSON.stringify(seen)}`);
+  assert.ok(seen.none > 0.65 * 600, `the plain drone most of the time: ${JSON.stringify(seen)}`);
+  const types = JSON.parse(JSON.stringify(h.run('CHARACTERS')));
+  for (const [key, c] of Object.entries(types)) {
+    h.$('characterSelect').value = key;
+    for (let i = 0; i < 40; i++) {
+      h.run('randomAll()'); check(key);
+      for (const k of ['choir', 'industrial']) if (n(`${k}Range`)) assert.ok(c.sound.layer[k], `${key} only carries its own layer, not ${k}`);
+    }
+  }
+  h.$('choirRange').value = '40';
+  h.run('updateMusic()');
+  assert.equal(h.run('synthParams()').choir, 0.4);
+  h.run('saveSettings()');
+  assert.equal(JSON.parse(h.store.studioSettings).choirRange, '40', 'remembered');
 });
 
 test('Curate and Film: the mode switch is remembered, and Tab / Space work except while typing', async () => {
@@ -1142,8 +1174,7 @@ test('trash the image on screen from the film strip, and Undo puts it back where
   r['/api/reorder'] = body => { st = body.order.map(f => st.find(p => p.filename === f)).concat(st.filter(p => !body.order.includes(p.filename))); return { ok: true }; };
   const h = load({ routes: r });
   await settle(); await settle();
-  h.run('jumpToPlate(1)');
-  await h.run('trashCurrent()');
+  await h.run("setTrash({ stopPropagation() {} }, 'b', true)");
   assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['a', 'c']);
   assert.match(h.$('toast').textContent, /“b” moved to Trash/);
   const undo = h.$('toast').options.at(-1);                                         // the toast's action button
@@ -1313,7 +1344,7 @@ test('playing, the stage only switches to an image that is decoded; it decodes t
   h.run('isPlaying = false');
 });
 
-test('keys: ← → step one image (wrapping), Delete trashes the image on screen in Film only, Cmd+Z undoes the last Random or trash', async () => {
+test('keys: ← → step one image (wrapping), Delete never trashes, Cmd+Z undoes the last Random', async () => {
   const r = baseRoutes();
   let st = [mkPlate('a'), mkPlate('b'), mkPlate('c')];
   r['/api/state'] = () => ({ plates: st });
@@ -1327,13 +1358,11 @@ test('keys: ← → step one image (wrapping), Delete trashes the image on scree
   key('ArrowLeft'); assert.equal(h.run('currentIdx'), 2);
   h.ctx.onKey({ key: 'ArrowLeft', target: { tagName: 'INPUT', type: 'text' }, preventDefault() {} });
   assert.equal(h.run('currentIdx'), 2, 'in a text field the arrows move the caret');
-  key('Delete'); await settle();
-  assert.equal(h.calls.filter(c => c.url === '/api/trash').length, 0, 'in Curate Delete does nothing');
-  h.run("setMode('film')");
-  key('Backspace'); await settle(); await settle();
-  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['a', 'b']);
-  key('z', { metaKey: true }); await settle(); await settle(); await settle();
-  assert.deepEqual(h.run('activePlates().map(p => p.filename).sort()'), ['a', 'b', 'c'], 'Cmd+Z brought it back');
+  for (const mode of ['curate', 'film']) {                                          // no key trashes: images go to the Trash by hand, in Curate
+    h.run(`setMode('${mode}')`);
+    key('Delete'); key('Backspace'); await settle();
+  }
+  assert.equal(h.calls.filter(c => c.url === '/api/trash').length, 0, 'Delete and Backspace never trash');
   const snap = () => ['rhythmSelect', 'bpmInput', 'startMsRange', 'multSelect', 'invertSelect', 'zoomSelect', 'pulseRange', 'chordSelect', 'seedVal', 'musicSelect'].map(id => h.$(id).value).join('|');
   const before = snap();
   h.run('randomAll()');
@@ -1441,22 +1470,9 @@ test('review #2: trashing (or undoing a trash) while playing updates the sound t
   h.$('stageImg').style.display = 'block';
   h.$('musicSelect').value = 'on'; h.run('updateMusic()'); h.run('togglePlay()'); await settle();
   const u = h.ctx.__drone.updates.length;
-  await h.run('trashCurrent()');
+  await h.run("setTrash({ stopPropagation() {} }, activePlates()[currentIdx].filename, true)");
   assert.equal(h.ctx.__drone.updates.length, u + 1, 'the drone was told');
   assert.equal(h.ctx.__drone.updates.at(-1).starts.length, h.run('synthStartsSec().length'));
-});
-
-test('review #3: Trash acts on the image on screen, even one shown from below the "left out" divider', async () => {
-  const r = baseRoutes();
-  let st = Array.from({ length: 6 }, (_, i) => mkPlate('p' + i));
-  r['/api/state'] = () => ({ plates: st, sequences: [{ id: 's1', kind: 'ai', count: 6, cut_off: 3 }], active_sequence: 's1' });
-  r['/api/trash'] = body => { st = st.map(p => (p.filename === body.filename ? { ...p, trashed: body.trashed } : p)); return { ok: true }; };
-  const h = load({ routes: r }); await settle(); await settle();
-  h.run("previewPlate('p5')");                                                      // left out of the edit: shown, not in the film
-  assert.equal(h.$('stageImg').src, '/p/p5');
-  await h.run('trashCurrent()');
-  const sent = h.calls.filter(c => c.url === '/api/trash').map(c => c.body.filename);
-  assert.deepEqual(sent, ['p5'], 'the one on screen, not p0');
 });
 
 test('review #4: Undo of a trash puts the image back into the order as it is now (a drag made since is kept)', async () => {
@@ -1468,8 +1484,7 @@ test('review #4: Undo of a trash puts the image back into the order as it is now
   r['/api/reorder'] = body => { st = body.order.map(f => st.find(p => p.filename === f)).concat(st.filter(p => !body.order.includes(p.filename))); return { ok: true }; };
   r['/api/sequence'] = body => { active = body.id; return { ok: true }; };
   const h = load({ routes: r }); await settle(); await settle();
-  h.run("jumpToPlate(1)");                                                          // b
-  await h.run('trashCurrent()');
+  await h.run("setTrash({ stopPropagation() {} }, 'b', true)");
   st = [st[2], st[0], st[1], st[3]];                                               // a drag after the trash: d, a, c (+ b in the trash)
   await h.run('loadState()');
   h.ctx.onKey({ key: 'z', metaKey: true, target: { tagName: 'BODY' }, preventDefault() {} });
@@ -1558,7 +1573,7 @@ test('one undo history for the app: settings settle into one step each, trash an
   const inv0 = h.$('invertSelect').value;
   h.$('invertSelect').value = 'mono'; h.run('updateFx()');
   // trashing: a step, after the settings change (which is committed first)
-  h.run('jumpToPlate(1)'); await h.run('trashCurrent()');
+  await h.run("setTrash({ stopPropagation() {} }, 'b', true)");
   assert.deepEqual(JSON.parse(JSON.stringify(h.run('history.map(s => s.label)'))), ['a setting', 'a setting', 'Trash “b”'], 'the invert, committed before the trash: in the order they happened');
   assert.match(h.$('undoRandomBtn').title, /Undo Trash “b”/);
   key(); await flush();

@@ -701,7 +701,7 @@
       stageImg.style.display = 'block';
       clearFx();
       const p = plates.find(x => x.filename === filename);
-      if (p) { stageImg.src = p.preview || p.url; shownFile = p.filename; }
+      if (p) stageImg.src = p.preview || p.url;
     }
 
     // ---- the two modes: Curate (the images) and Film (the result); switching keeps everything ----
@@ -729,12 +729,11 @@
       if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redoLast(); else undoLast(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A') && mode === 'curate' && !showTrash) { e.preventDefault(); pickAll(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.repeat && ['Tab', 'Delete', 'Backspace', 'f', 'F', 't', 'T', 'r', 'R', 's', 'S'].includes(e.key)) { e.preventDefault(); return; }   // a held key acts once
+      if (e.repeat && ['Tab', 'f', 'F', 't', 'T', 'r', 'R', 's', 'S'].includes(e.key)) { e.preventDefault(); return; }   // a held key acts once
       if (e.target && e.target.type === 'range' && e.key.startsWith('Arrow')) return;             // a slider with focus keeps its arrows
       if (e.key === 'Tab') { e.preventDefault(); if (e.target && e.target.blur) e.target.blur(); setMode(mode === 'film' ? 'curate' : 'film'); }
       else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
       else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); stepImage(e.key === 'ArrowRight' ? 1 : -1); }
-      else if ((e.key === 'Delete' || e.key === 'Backspace') && mode === 'film') { e.preventDefault(); trashCurrent(); }
       else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); }
       else if (e.key === '0' || e.key === 'Home') { e.preventDefault(); flash('restartBtn'); toStart(); }
       else if (e.key === '?') { e.preventDefault(); toggleKeys(); }
@@ -975,20 +974,6 @@
       clockPos = null;
       drawFrame();
     }
-    // the image on screen goes to the Trash; the toast's Undo puts it back where it was
-    async function trashCurrent() {
-      if (blockedByAi() || trashing) return;
-      const p = plates.find(x => x.filename === shownFile && !x.trashed) || activePlates()[currentIdx];
-      if (!p) return;
-      trashing = true;
-      try {
-        const where = { seq: activeSeq, index: plates.filter(x => !x.trashed).findIndex(x => x.filename === p.filename) };
-        await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename: p.filename, trashed: true }) });
-        await loadState();
-        offerUndoTrash(p, where);
-      } finally { trashing = false; }
-    }
-    let trashing = false;
     function offerUndoTrash(p, where) {
       const step = pushStep({ label: `Trash “${p.title}”`, undo: () => untrash(p.filename, where), redo: () => trashFile(p.filename) });
       setStatus(`“${p.title}” moved to Trash`, { label: 'Undo', run: () => undoStep(step) });
@@ -1105,7 +1090,7 @@
       return {
         pulse: unit('pulseRange'), low: unit('lowRange'), bright: unit('brightRange'), width: unit('widthRange'), space: unit('spaceRange'), power: unit('powerRange'),
         pitch: unit('pitchRange'), chord: parseInt(document.getElementById('chordSelect').value, 10) || 0, movement: unit('movementRange'), echo: unit('echoRange'),
-        wash: unit('washRange'), ring: unit('ringRange'), shimmer: unit('shimmerRange'),
+        wash: unit('washRange'), ring: unit('ringRange'), shimmer: unit('shimmerRange'), choir: unit('choirRange'), industrial: unit('industrialRange'),
         hitType: parseInt(document.getElementById('hitTypeSelect').value, 10) || 0, hit: unit('hitRange'), hitOn: parseInt(document.getElementById('hitOnSelect').value, 10) || 0,
         arp: unit('arpRange'), arpSteps: parseInt(document.getElementById('arpStepsSelect').value, 10) || 0, arpRate: parseInt(document.getElementById('arpRateSelect').value, 10) || 0,
         dynamics: parseInt(document.getElementById('dynSelect').value, 10) || 0,
@@ -1128,7 +1113,7 @@
       document.getElementById('synthBox').hidden = !on;
       if (on) warmSound();
       document.getElementById('soundOffNote').hidden = on;
-      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer', 'hit', 'arp']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
+      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer', 'choir', 'industrial', 'hit', 'arp']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
       syncSegs(); paintRanges();
       saveSettings();
       musicChanged();
@@ -1157,7 +1142,8 @@
 
     // ---- Random ----
     // a random sound within what works: every setting is drawn from a range that stays a dark, heavy drone (the ranges are the taste)
-    const RANDOM_RANGES = { pulse: [30, 90], low: [65, 100], power: [30, 90], space: [5, 85], bright: [0, 55], width: [30, 100], pitch: [0, 100], movement: [15, 85], echo: [0, 55], wash: [0, 55], ring: [0, 45], shimmer: [0, 45], hit: [30, 70], arp: [20, 45] };
+    const LAYERS = ['choir', 'industrial'];                                // layers over the drone: rare, one at a time, with room around them
+    const RANDOM_RANGES = { pulse: [30, 90], low: [65, 100], power: [30, 90], space: [5, 85], bright: [0, 55], width: [30, 100], pitch: [0, 100], movement: [15, 85], echo: [0, 55], wash: [0, 55], ring: [0, 45], shimmer: [0, 45], choir: [25, 55], industrial: [20, 50], hit: [30, 70], arp: [20, 45] };
     // Characters: kinds of film, modelled on the references, each a set of tighter ranges for the rhythm, the look and the sound (all inside RANDOM_RANGES).
     // Random rolls inside the chosen one ("Any": a different one each time); the rules below then make the parts agree.
     const CHARACTERS = {
@@ -1165,42 +1151,42 @@
         rhythm: { mode: 'variable', start: [60, 120], end: [450, 900], ramp: [8, 16], at: 'end', mult: ['1', '1', '2'] },
         look: { invert: ['mono', 'mono', 'off'], zoom: ['out', 'out', 'in', 'off'], amount: [0.4, 2] },
         sound: { pulse: [40, 75], low: [75, 100], power: [40, 80], space: [50, 85], bright: [0, 35], width: [50, 100], pitch: [0, 45], movement: [20, 60], echo: [0, 35], wash: [15, 55], ring: [0, 25], shimmer: [0, 25], hit: [30, 60], arp: [0, 35],
-          chord: ['0', '0', '2'], subWave: ['0', '1'], padWave: ['0', '2'], hitType: ['0', '0', '1'], hitOn: ['3', '2'], dyn: ['2', '3'] } },
+          chord: ['0', '0', '2'], subWave: ['0', '1'], padWave: ['0', '2'], hitType: ['0', '0', '1'], hitOn: ['3', '2'], dyn: ['2', '3'], layer: { choir: [25, 50] } } },
       pulse: { name: 'Pulse',                                              // Helione / Moverunion: a steady tempo, cut 2 or 4 to the beat
         rhythm: { mode: 'flat', bpm: [118, 150], mult: ['1', '2', '2', '4'] },
         look: { invert: ['off', 'mono'], zoom: ['out', 'out', 'in', 'off'], amount: [0.4, 2] },
         sound: { pulse: [65, 90], low: [70, 100], power: [50, 90], space: [5, 35], bright: [10, 45], width: [30, 80], pitch: [20, 70], movement: [30, 70], echo: [0, 20], wash: [0, 25], ring: [0, 20], shimmer: [0, 20], hit: [40, 70], arp: [0, 30],
-          chord: ['0', '1', '3'], subWave: ['0', '1'], padWave: ['0', '1'], hitType: ['2', '2', '1'], hitOn: ['1', '0'], dyn: ['0'] } },
+          chord: ['0', '1', '3'], subWave: ['0', '1'], padWave: ['0', '1'], hitType: ['2', '2', '1'], hitOn: ['1', '0'], dyn: ['0'], layer: { industrial: [20, 45] } } },
       build: { name: 'Build',                                              // slow to fast, the notes rising with it
         rhythm: { mode: 'variable', start: [500, 900], end: [60, 110], ramp: [10, 20], at: 'start', mult: ['1', '2'] },
         look: { invert: ['off', 'colour', 'mono'], zoom: ['in', 'in', 'out', 'off'], amount: [0.6, 3] },
         sound: { pulse: [45, 80], low: [65, 95], power: [45, 85], space: [30, 65], bright: [20, 50], width: [40, 90], pitch: [30, 80], movement: [40, 85], echo: [0, 30], wash: [0, 30], ring: [0, 30], shimmer: [15, 40], hit: [35, 65], arp: [25, 45],
-          chord: ['2', '3', '1'], subWave: ['0', '1', '2'], padWave: ['0', '3'], hitType: ['3', '0', '4'], hitOn: ['3', '2'], dyn: ['1'] } },
+          chord: ['2', '3', '1'], subWave: ['0', '1', '2'], padWave: ['0', '3'], hitType: ['3', '0', '4'], hitOn: ['3', '2'], dyn: ['1'], layer: { choir: [25, 45] } } },
       float: { name: 'Float',                                              // slow and wide: a big room, wash, no hits
         rhythm: { mode: 'flat', bpm: [50, 80], mult: ['1', '2'] },
         look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.5, 2.5], trail: [10, 30] },
         sound: { pulse: [30, 45], low: [65, 90], power: [30, 55], space: [65, 85], bright: [0, 30], width: [70, 100], pitch: [0, 60], movement: [15, 45], echo: [15, 50], wash: [25, 55], ring: [0, 20], shimmer: [0, 30], hit: [30, 50], arp: [20, 35],
-          chord: ['1', '3', '0'], subWave: ['0'], padWave: ['2', '2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'] } },
+          chord: ['1', '3', '0'], subWave: ['0'], padWave: ['2', '2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'], layer: { choir: [30, 55] } } },
       machine: { name: 'Machine',                                          // very fast cuts, metal and a square sub
         rhythm: { mode: 'flat', bpm: [150, 200], mult: ['2', '3', '4', '4'] },
         look: { invert: ['colour', 'mono'], zoom: ['off', 'in', 'out'], amount: [0.3, 1.2] },
         sound: { pulse: [70, 90], low: [75, 100], power: [60, 90], space: [5, 30], bright: [25, 55], width: [30, 70], pitch: [30, 90], movement: [50, 85], echo: [0, 15], wash: [0, 15], ring: [20, 45], shimmer: [0, 20], hit: [45, 70], arp: [0, 30],
-          chord: ['0', '1'], subWave: ['2', '2', '1'], padWave: ['1', '3'], hitType: ['3', '3', '4'], hitOn: ['3', '1'], dyn: ['0', '3'] } },
+          chord: ['0', '1'], subWave: ['2', '2', '1'], padWave: ['1', '3'], hitType: ['3', '3', '4'], hitOn: ['3', '1'], dyn: ['0', '3'], layer: { industrial: [25, 50] } } },
       drift: { name: 'Drift',                                              // unhurried and changing slowly, no hits: a long breath of images
         rhythm: { mode: 'variable', start: [250, 450], end: [500, 900], ramp: [10, 20], at: ['end', 'start'], mult: ['1', '1', '2'] },
         look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.8, 3], trail: [15, 35] },
         sound: { pulse: [30, 50], low: [70, 95], power: [30, 60], space: [55, 85], bright: [0, 30], width: [60, 100], pitch: [0, 50], movement: [15, 40], echo: [10, 45], wash: [20, 55], ring: [0, 15], shimmer: [10, 35], hit: [30, 45], arp: [0, 30],
-          chord: ['1', '3', '2'], subWave: ['0'], padWave: ['2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'] } },
+          chord: ['1', '3', '2'], subWave: ['0'], padWave: ['2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'], layer: { choir: [25, 50] } } },
       strobe: { name: 'Strobe',                                            // colour-inverted flashes on a mid tempo, dark bursts on the accents
         rhythm: { mode: 'flat', bpm: [100, 140], mult: ['2', '3', '4'] },
         look: { invert: ['colour', 'colour', 'mono'], zoom: ['in', 'off'], amount: [0.5, 2] },
         sound: { pulse: [70, 90], low: [70, 100], power: [55, 90], space: [5, 35], bright: [20, 50], width: [30, 70], pitch: [20, 70], movement: [40, 80], echo: [0, 15], wash: [0, 20], ring: [0, 30], shimmer: [0, 25], hit: [45, 70], arp: [0, 30],
-          chord: ['0', '2'], subWave: ['0', '1'], padWave: ['1', '3'], hitType: ['4', '2'], hitOn: ['3', '1'], dyn: ['0'] } },
+          chord: ['0', '2'], subWave: ['0', '1'], padWave: ['1', '3'], hitType: ['4', '2'], hitOn: ['3', '1'], dyn: ['0'], layer: { industrial: [20, 40] } } },
       breath: { name: 'Breath',                                            // a calm pulse, a slow zoom, an arpeggio carrying it
         rhythm: { mode: 'flat', bpm: [70, 100], mult: ['1', '2'] },
         look: { invert: ['off', 'mono'], zoom: ['out', 'out', 'in'], amount: [0.8, 3] },
         sound: { pulse: [40, 70], low: [70, 95], power: [35, 65], space: [40, 75], bright: [10, 40], width: [50, 90], pitch: [10, 60], movement: [20, 55], echo: [0, 35], wash: [0, 40], ring: [0, 20], shimmer: [0, 30], hit: [30, 55], arp: [25, 45],
-          chord: ['2', '3', '1'], subWave: ['0', '1'], padWave: ['2', '0'], hitType: ['0', '1'], hitOn: ['2', '3'], dyn: ['0', '1'] } },
+          chord: ['2', '3', '1'], subWave: ['0', '1'], padWave: ['2', '0'], hitType: ['0', '1'], hitOn: ['2', '3'], dyn: ['0', '1'], layer: { choir: [25, 45] } } },
     };
     const rint = ([lo, hi]) => Math.round(lo + Math.random() * (hi - lo));
     const rpick = list => list[Math.floor(Math.random() * list.length)];
@@ -1343,6 +1329,12 @@
       if (getn('hitTypeSelect') === 3) setv('ringRange', Math.min(25, getn('ringRange')));
       const tex = ['echoRange', 'washRange', 'ringRange', 'shimmerRange'].filter(id => getn(id) > 0).sort((a, b) => getn(b) - getn(a));
       tex.slice(2).forEach(id => setv(id, 0));                                                   // two textures at most
+      if (getn('choirRange') > 0 && getn('industrialRange') > 0) setv('industrialRange', 0);    // one layer at a time
+      if (getn('choirRange') > 0 || getn('industrialRange') > 0) {                              // a layer needs room: one texture, and no clutter on the cuts
+        tex.slice(1).forEach(id => setv(id, 0));
+        if (getn('choirRange') > 0) { setv('arpRange', Math.min(30, getn('arpRange'))); if (getn('arpRange') < 20) setv('arpRange', 0); }   // voices and a busy arpeggio fight
+        if (getn('industrialRange') > 0) { setv('hitTypeSelect', 0); setv('ringRange', Math.min(20, getn('ringRange'))); }   // its bursts are the hits
+      }
     }
     function randomMusic(quiet) {
       if (quiet !== true) rememberForUndo();
@@ -1356,12 +1348,15 @@
       if (Math.random() < 0.55) setv('arpRange', 0);
       setv('subWaveSelect', r < 0.5 ? 0 : r < 0.75 ? 1 : 2);
       choice('padWaveSelect', 4); choice('chordSelect', 4);
+      setv('choirRange', 0); setv('industrialRange', 0);
+      if (Math.random() < 0.25) { const k = Math.random() < 0.5 ? 'choir' : 'industrial'; setv(`${k}Range`, rint(RANDOM_RANGES[k])); }   // a layer now and then, never both: the drone is the sound
       setv('seedVal', 1 + Math.floor(Math.random() * 99999));
       soundRules();
       if (quiet !== true) { updateMusic(); commitSettings('Random sound'); }
     }
     function applySound(c) {
-      for (const k of Object.keys(RANDOM_RANGES)) setv(`${k}Range`, rint(c[k]));
+      for (const k of Object.keys(RANDOM_RANGES)) if (!LAYERS.includes(k)) setv(`${k}Range`, rint(c[k]));
+      for (const k of LAYERS) setv(`${k}Range`, c.layer[k] && Math.random() < 0.3 ? rint(c.layer[k]) : 0);   // the type's layer, now and then
       for (const k of ['echo', 'wash', 'ring', 'shimmer']) if (c[k][0] === 0 && Math.random() < 0.4) setv(`${k}Range`, 0);
       setv('chordSelect', rpick(c.chord)); setv('subWaveSelect', rpick(c.subWave)); setv('padWaveSelect', rpick(c.padWave));
       setv('hitTypeSelect', rpick(c.hitType)); setv('hitOnSelect', rpick(c.hitOn)); setv('dynSelect', rpick(c.dyn));
@@ -1709,7 +1704,6 @@
     const ready = new Map();                                                // url -> Image, decoded (most recent last)
     const loading = new Map();                                              // url -> Image, decoding
     let lateFrames = 0;
-    let shownFile = null;                                                    // the image actually on the stage (Trash and Delete act on it)
     function preload(url) {
       if (!url || ready.has(url) || loading.has(url) || failed.has(url) || typeof Image !== 'function') return;
       const im = new Image();
@@ -1746,7 +1740,7 @@
       if (plan.plate !== aheadFrom) { aheadFrom = plan.plate; preloadAhead(plan.plate); }
       let held = false;
       if (stageImg.getAttribute('src') !== url) {
-        if (!isPlaying || isReady(url)) { stageImg.src = url; shownFile = active[plan.plate].filename; }   // paused or jumping: show it whatever it takes
+        if (!isPlaying || isReady(url)) stageImg.src = url;   // paused or jumping: show it whatever it takes
         else { held = true; lateFrames++; preload(url); }                  // playing: hold the last frame until this one can paint
       }
       if (!isPlaying) clearFx(); else if (!held) applyFx(plan, fx);        // a held frame keeps its own look
@@ -1799,7 +1793,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -2279,7 +2273,6 @@ Object.assign(window, {
   stageStats: () => ({ lateFrames, ready: ready.size }),
   toggleMini,
   restoreSelected,
-  trashCurrent,
   togglePromptOverlay,
   toggleReticle,
   toggleSettings,

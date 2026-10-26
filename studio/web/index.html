@@ -39,7 +39,6 @@
           <dt><kbd>S</kbd></dt><dd>Random sound</dd>
           <dt><kbd>T</kbd></dt><dd>Logo target</dd>
           <dt><kbd>F</kbd></dt><dd>Full screen</dd>
-          <dt><kbd>Delete</kbd></dt><dd>Trash the image on screen (Film)</dd>
           <dt><kbd>⌘</kbd> <kbd>Z</kbd></dt><dd>Undo</dd>
         </dl>
         <p>Keys do nothing while you type in a field.</p>
@@ -422,7 +421,7 @@
               <div class="sound-tabs" role="tablist" aria-label="Sound groups">
                 <button role="tab" id="soundTabBed" data-group="bed" onclick="showSoundGroup('bed')">Bed <span>6</span></button>
                 <button role="tab" id="soundTabTone" data-group="tone" onclick="showSoundGroup('tone')">Tone <span>5</span></button>
-                <button role="tab" id="soundTabTexture" data-group="texture" onclick="showSoundGroup('texture')">Texture <span>4</span></button>
+                <button role="tab" id="soundTabTexture" data-group="texture" onclick="showSoundGroup('texture')">Texture <span>6</span></button>
                 <button role="tab" id="soundTabNotes" data-group="notes" onclick="showSoundGroup('notes')">Notes <span>7</span></button>
               </div>
               <input type="hidden" id="soundGroupVal" value="bed" />
@@ -469,6 +468,8 @@
                 <label class="row"><span class="lbl">Wash</span><input type="range" id="washRange" min="0" max="100" value="0" oninput="updateMusic()" title="A slow wash of noise, drifting" /><span class="val" id="washVal">0</span></label>
                 <label class="row"><span class="lbl">Ring</span><input type="range" id="ringRange" min="0" max="100" value="0" oninput="updateMusic()" title="A metallic ring: bell-like partials" /><span class="val" id="ringVal">0</span></label>
                 <label class="row"><span class="lbl">Shimmer</span><input type="range" id="shimmerRange" min="0" max="100" value="0" oninput="updateMusic()" title="High partials trembling and beating between the sides" /><span class="val" id="shimmerVal">0</span></label>
+                <label class="row"><span class="lbl">Choir</span><input type="range" id="choirRange" min="0" max="100" value="0" oninput="updateMusic()" title="Low voices under the drone, through drifting vowels" /><span class="val" id="choirVal">0</span></label>
+                <label class="row"><span class="lbl">Industrial</span><input type="range" id="industrialRange" min="0" max="100" value="0" oninput="updateMusic()" title="Metal: a burst of noise on every other cut, a harder edge" /><span class="val" id="industrialVal">0</span></label>
               </div>
 
               <div class="sgroup" id="groupNotes" data-group="notes" hidden>

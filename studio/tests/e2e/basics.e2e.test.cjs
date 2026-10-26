@@ -247,7 +247,7 @@ test('the inspector: Rhythm, Look and Sound always open; Sound in four groups; A
   assert.ok(await page.locator('#soundOffNote').isVisible());
   await choose('musicSelect', 'on');
   assert.equal(await page.locator('#soundBtn').count(), 0, 'Source is the only sound switch');
-  const groups = { Bed: ['#pulseRange', '#lowRange', '#powerRange', '#spaceRange', '#brightRange', '#widthRange'], Tone: ['#pitchRange', '#chordSelect', '#subWaveSelect', '#padWaveSelect', '#movementRange'], Texture: ['#echoRange', '#washRange', '#ringRange', '#shimmerRange'], Notes: ['#hitTypeSelect', '#hitRange', '#hitOnSelect', '#arpRange', '#arpStepsSelect', '#arpRateSelect', '#dynSelect'] };
+  const groups = { Bed: ['#pulseRange', '#lowRange', '#powerRange', '#spaceRange', '#brightRange', '#widthRange'], Tone: ['#pitchRange', '#chordSelect', '#subWaveSelect', '#padWaveSelect', '#movementRange'], Texture: ['#echoRange', '#washRange', '#ringRange', '#shimmerRange', '#choirRange', '#industrialRange'], Notes: ['#hitTypeSelect', '#hitRange', '#hitOnSelect', '#arpRange', '#arpStepsSelect', '#arpRateSelect', '#dynSelect'] };
   for (const [g, ids] of Object.entries(groups)) {
     await page.click(`#soundTab${g}`);
     for (const id of ids) assert.ok(await page.locator(id).isVisible(), `${g}: ${id}`);
@@ -290,7 +290,7 @@ test('modes: Tab switches, Space plays (also after clicking a button), switching
   await ctx.close();
 });
 
-test('the film strip: one thumbnail per image in order, click jumps there, the image on screen can go to the Trash and come back', { skip }, async () => {
+test('the film strip: one thumbnail per image in order, click jumps there; no key trashes from the Film', { skip }, async () => {
   const ctx = await fresh();
   await film();
   assert.equal(await page.locator('#filmstrip button').count(), 3);
@@ -299,15 +299,11 @@ test('the film strip: one thumbnail per image in order, click jumps there, the i
   assert.match(await text('#curTitle'), /^3 · /);
   assert.equal(await page.locator('#filmstrip button.cur').count(), 1);
   assert.match(await text('#timecode'), /cut 3 \/ 3/);
-  await page.keyboard.press('Delete');                                            // no Trash button in Film: the Delete key
-  await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 2);
-  assert.match(await text('#toast'), /moved to Trash/);
-  assert.equal(await text('#tabSelection'), 'Selection (2)');
-  await page.click('#toast button');
-  await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 3);
-  const order = await page.locator('#filmstrip button').evaluateAll(b => b.map(x => x.title.split(' · ')[0]));
-  assert.deepEqual(order, ['1', '2', '3']);
-  assert.match(await page.locator('#filmstrip button').nth(2).getAttribute('title'), /k3|Plate k3/, 'back in its place');
+  await page.keyboard.press('Delete');                                            // Film never trashes: images go to the Trash by hand, in Curate
+  await page.keyboard.press('Backspace');
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('#filmstrip button').count(), 3);
+  assert.equal(await text('#tabSelection'), 'Selection (3)');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
@@ -689,10 +685,6 @@ test('keys in the page: arrows step, F fills the screen with the preview and F l
   await page.waitForFunction(() => document.fullscreenElement);
   await page.keyboard.press('f');
   await page.waitForFunction(() => !document.fullscreenElement);
-  await page.keyboard.press('Delete');
-  await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 2);
-  await page.keyboard.press('Meta+z');
-  await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 3);
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
@@ -750,7 +742,7 @@ test('the Keys panel: ? opens a tidy list under the hint, Esc and a click elsewh
   const ctx = await fresh({ width: 1512, height: 945 });
   await page.keyboard.press('?');
   await page.waitForSelector('#keysPanel:not([hidden])');
-  assert.equal(await page.locator('#keysPanel dt').count(), 10);
+  assert.equal(await page.locator('#keysPanel dt').count(), 9);
   const p = await page.locator('#keysPanel').boundingBox();
   assert.ok(p.x >= 0 && p.x + p.width <= 1512 && p.y + p.height <= 945, 'all of it on screen');
   await shot('22-keys');
