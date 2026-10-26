@@ -290,6 +290,28 @@ test('modes: Tab switches, Space plays (also after clicking a button), switching
   await ctx.close();
 });
 
+test('the logo target in Curate: the switch draws the 18% circle at dead-center on every card, and the Film preview follows', { skip }, async () => {
+  const ctx = await fresh();
+  await curate();
+  const circle = () => page.locator('.card-thumb').first().evaluate(el => {
+    const a = getComputedStyle(el, '::after'), r = el.getBoundingClientRect();
+    return { shown: a.content !== 'none' && a.display !== 'none', w: parseFloat(a.width) / r.width, x: parseFloat(a.left) / r.width, y: parseFloat(a.top) / r.height };
+  });
+  assert.equal((await circle()).shown, false);
+  await page.click('#gridTargetBtn');
+  const c = await circle();
+  assert.ok(c.shown && Math.abs(c.w - 0.18) < 0.01 && Math.abs(c.x - 0.5) < 0.01 && Math.abs(c.y - 0.5) < 0.01, JSON.stringify(c));
+  assert.equal(await page.locator('.card-thumb').count() > 1, true);
+  await shot('25-curate-target');
+  await film();
+  assert.equal(await page.locator('#reticle').evaluate(e => e.classList.contains('visible')), true, 'one switch: the Film shows it too');
+  await page.keyboard.press('t');
+  await curate();
+  assert.equal((await circle()).shown, false, 'T turned it off everywhere');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('the film strip: one thumbnail per image in order, click jumps there; no key trashes from the Film', { skip }, async () => {
   const ctx = await fresh();
   await film();

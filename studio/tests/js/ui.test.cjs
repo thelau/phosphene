@@ -1116,6 +1116,22 @@ test('Choir and Industrial: layers over the drone that Random adds now and then,
   assert.equal(JSON.parse(h.store.studioSettings).choirRange, '40', 'remembered');
 });
 
+test('the logo target: one switch for the Film preview and every Curate card (T or either button), remembered', async () => {
+  const h = load({ routes: baseRoutes() });
+  await settle();
+  const state = () => [h.$('reticle').classList.contains('visible'), h.ctx.document.body.classList.contains('target-on'), h.$('targetBtn').getAttribute('aria-pressed'), h.$('gridTargetBtn').getAttribute('aria-pressed')];
+  assert.deepEqual(state().slice(0, 2), [false, false], 'off at first');
+  h.run('toggleReticle()');                                                          // the Curate button
+  assert.deepEqual(state(), [true, true, 'true', 'true'], 'on in both modes at once');
+  assert.equal(h.store.studioTarget, '1');
+  h.ctx.onKey({ key: 't', target: { tagName: 'BODY' }, preventDefault() {} });
+  assert.deepEqual(state(), [false, false, 'false', 'false'], 'T turns it off everywhere');
+  const again = load({ routes: baseRoutes(), storage: { studioTarget: '1' } });
+  await settle();
+  assert.equal(again.ctx.document.body.classList.contains('target-on'), true, 'on again after a reload');
+  assert.equal(again.$('gridTargetBtn').getAttribute('aria-pressed'), 'true');
+});
+
 test('Curate and Film: the mode switch is remembered, and Tab / Space work except while typing', async () => {
   const h = await playerWith();
   assert.equal(h.ctx.document.body.dataset.mode, 'curate');                        // a first visit opens on the images

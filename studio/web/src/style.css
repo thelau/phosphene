@@ -325,6 +325,11 @@
     .card.drag-over .card-thumb { box-shadow: 0 0 0 2px var(--orange); }
     .card-thumb { position: relative; aspect-ratio: 9 / 16; border-radius: 6px; overflow: hidden; background: #000; transition: box-shadow .12s; }
     .card:hover .card-thumb { box-shadow: 0 0 0 1px var(--line-3); }
+    /* the logo target on every card (the T switch): the same crosshair and 18% dashed circle as the Film's reticle */
+    body.target-on .card-thumb::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+      background: linear-gradient(rgba(236, 84, 12, .55), rgba(236, 84, 12, .55)) center / 1px 100% no-repeat, linear-gradient(rgba(236, 84, 12, .55), rgba(236, 84, 12, .55)) center / 100% 1px no-repeat; }
+    body.target-on .card-thumb::after { content: ''; position: absolute; left: 50%; top: 50%; z-index: 1; width: 18%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; border: 1.5px dashed var(--orange); pointer-events: none; }
+    body.target-on .pending-card .card-thumb::before, body.target-on .pending-card .card-thumb::after { display: none; }
     .card-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
     body:has(#tabTrash.on) .card-num { display: none; }   /* a place in the order means nothing in the Trash */
     .card-num { position: absolute; left: 6px; top: 6px; font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(18, 17, 16, .75); color: var(--text); z-index: 4; pointer-events: none; }

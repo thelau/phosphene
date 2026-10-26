@@ -738,7 +738,7 @@
       else if (e.key === '0' || e.key === 'Home') { e.preventDefault(); flash('restartBtn'); toStart(); }
       else if (e.key === '?') { e.preventDefault(); toggleKeys(); }
       else if (e.key === 'Escape') { document.getElementById('keysPanel').hidden = true; if (pickSel.size) clearPicks(); }
-      else if (e.key === 't' || e.key === 'T') { e.preventDefault(); flash('targetBtn'); toggleReticle(); }
+      else if (e.key === 't' || e.key === 'T') { e.preventDefault(); flash(mode === 'film' ? 'targetBtn' : 'gridTargetBtn'); toggleReticle(); }
       else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); flash('randomAllBtn'); randomAll(); }
       else if (e.key === 's' || e.key === 'S') { e.preventDefault(); flash('randomBtn'); if (!musicOn()) { setv('musicSelect', 'on'); } randomMusic(); }
     }
@@ -1787,10 +1787,14 @@
       else if (musicOn()) startMusic(cutPos / 30);
     }
 
-    function toggleReticle() {
-      const on = document.getElementById('reticle').classList.toggle('visible');
-      document.getElementById('targetBtn').setAttribute('aria-pressed', String(on));
+    // the logo target (dead-center, 18% of the width): one switch for the Film's preview and every card in Curate, remembered
+    function toggleReticle(force) {
+      const on = document.getElementById('reticle').classList.toggle('visible', force === undefined ? undefined : !!force);
+      document.body.classList.toggle('target-on', on);
+      for (const id of ['targetBtn', 'gridTargetBtn']) document.getElementById(id).setAttribute('aria-pressed', String(on));
+      try { localStorage.setItem('studioTarget', on ? '1' : '0'); } catch (e) {}
     }
+    try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
     const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
