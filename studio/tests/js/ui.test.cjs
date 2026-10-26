@@ -466,7 +466,6 @@ test('export failures show a message and unlock the button; with no images there
   const r0 = baseRoutes();
   const h0 = load({ routes: r0 }); await settle(); await settle();
   assert.equal(h0.$('exportBtn').disabled, true, 'no images: Export is off');
-  assert.equal(h0.$('trashCurBtn').disabled, true);
   const r = baseRoutes();
   r['/api/state'] = { plates: [mkPlate('a')] };
   r['/api/export-video'] = { ok: false, error: 'No active plates' };

@@ -198,6 +198,8 @@
     .tl-head { flex: none; display: flex; align-items: center; gap: 12px; font-size: 12px; min-width: 0; }
     .tl-label { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); width: 52px; flex: none; }
     .tl-hint { color: var(--muted); white-space: nowrap; }
+    .csel[data-for="filmGroup"] { width: 220px; }
+    .tl-head .csel-face { height: 28px; font-size: 12px; }
     .tl-cur { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
     .filmstrip { flex: none; display: flex; gap: 3px; overflow-x: auto; padding: 3px 3px 6px 65px; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
     .filmstrip button { flex: none; width: 27px; height: 48px; padding: 0; border: 0; border-radius: 3px; background: #24221F; opacity: .82; overflow: hidden; }

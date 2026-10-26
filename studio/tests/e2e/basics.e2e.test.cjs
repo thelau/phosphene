@@ -299,7 +299,7 @@ test('the film strip: one thumbnail per image in order, click jumps there, the i
   assert.match(await text('#curTitle'), /^3 · /);
   assert.equal(await page.locator('#filmstrip button.cur').count(), 1);
   assert.match(await text('#timecode'), /cut 3 \/ 3/);
-  await page.click('#trashCurBtn');
+  await page.keyboard.press('Delete');                                            // no Trash button in Film: the Delete key
   await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 2);
   assert.match(await text('#toast'), /moved to Trash/);
   assert.equal(await text('#tabSelection'), 'Selection (2)');
@@ -944,6 +944,26 @@ test('Trail in the page: while playing, the previous image shows faintly just af
   assert.equal(await page.locator('#stageGhost').evaluate(e => getComputedStyle(e).opacity), '0', 'paused: no trail');
   await page.click('#exportBtn'); await page.waitForSelector('#exportDock[data-state="ready"]');
   assert.equal(api.state.calls.filter(c => c.path === '/api/export-video').pop().body.trail, 0.5);
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
+test('Film: no Trash button; the group is chosen from a dropdown above the film strip, the same choice as the chips in Curate', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  await film();
+  assert.equal(await page.locator('#trashCurBtn').count(), 0);
+  assert.equal(await page.locator('.csel[data-for="filmGroup"] .csel-face').textContent(), 'All (3)');
+  await page.click('.csel[data-for="filmGroup"]');
+  assert.deepEqual(await page.locator('#cselMenu .csel-item').allTextContents(), ['All (3)', 'Warm (2)']);
+  assert.equal(await page.locator('#cselMenu .csel-group').textContent(), 'Automatic');
+  await page.locator('#cselMenu .csel-item', { hasText: 'Warm' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 2);
+  await shot('27-film-group');
+  await curate();
+  assert.equal(await page.locator('#groupBar .chip.on').getAttribute('data-key'), 'look:warm', 'the same choice in Curate');
+  await page.click('#groupBar .chip[data-key="all"]');
+  await film();
+  assert.equal(await page.locator('.csel[data-for="filmGroup"] .csel-face').textContent(), 'All (3)');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });

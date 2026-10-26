@@ -517,7 +517,13 @@
   class Live {
     constructor() { this.ctx = null; this.inst = null; this.params = null; this.starts = null; this.t0 = 0; this.total = 0; this.timer = null; this.playing = false; this.holding = 0; this.cal = 1; this.pending = null; this.swapAt = 0; this.calTimer = null; this.ticker = null; this.rooms = new Map(); this.buildMs = 20; this.master = null; }
     get playingNow() { return this.playing; }
-    pos() { return this.playing && !this.holding ? (((this.ctx.currentTime - this.t0) % this.total) + this.total) % this.total : 0; }
+    // where the sound is in the clip. Just after a start, a restart or a seek the new sound has not begun yet (it starts a build's time
+    // ahead): that moment is the start position, not a negative one that would wrap to the end of the clip (the last frame flashed)
+    pos() {
+      if (!this.playing || this.holding) return 0;
+      const p = Math.max(this.ctx.currentTime - this.t0, this.startOffset || 0);
+      return ((p % this.total) + this.total) % this.total;
+    }
     _context() {
       if (!this.ctx) {
         const C = window.AudioContext || window.webkitAudioContext; this.ctx = new C({ latencyHint: 'interactive' });
@@ -550,6 +556,7 @@
       this.buildMs = Math.max(this.buildMs * 0.7, performance.now() - t);   // how long a build takes here, for the next lead
       graph.fade(1, startAt, 0.04);
       this.t0 = startAt - offset;
+      this.startOffset = ctx.currentTime < startAt ? offset : 0;           // until it begins, the sound is at its start offset
       this.inst = { graph, out, level, params: this.params, starts: this.starts };
       clearInterval(this.ticker);                                           // keep scheduling the next ~0.8 s of cuts, hits and notes
       this.ticker = setInterval(() => { if (this.inst && this.inst.graph === graph) graph.advance(ctx.currentTime - this.t0 + 0.8); }, 90);

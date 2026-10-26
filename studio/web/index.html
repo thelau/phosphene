@@ -259,14 +259,10 @@
         <section class="timeline" aria-label="Timeline">
           <div class="tl-head">
             <span class="tl-label">Film</span>
-            <span class="tl-hint" id="filmHint">click an image to jump there</span>
+            <select id="filmGroup" onchange="setGroup(this.value)" title="Which images the film plays: all, one of your groups, or an automatic one"></select>
             <span class="grow"></span>
             <span class="tl-cur" id="curTitle"></span>
             <button class="icon-btn refresh-btn" id="refreshFilmBtn" onclick="refreshLibrary(true)" title="Check for new images now: the film and the library refresh together" aria-label="Refresh the film"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
-            <button onclick="trashCurrent()" id="trashCurBtn" class="small-btn" title="Move the image on screen to the Trash">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path></svg>
-              Trash
-            </button>
           </div>
           <div class="filmstrip" id="filmstrip" onclick="filmstripClick(event)"></div>
           <div class="rstrip" id="rhythmStrip">

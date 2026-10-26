@@ -52,11 +52,16 @@ test('restart jumps the playing sound back to the start of the clip, even though
     await L.play(BASE, starts, 5);
     await sleep(600);
     const before = L.pos();
-    L.restart(); await sleep(300);
+    L.restart();
+    const right = [];                                                               // just after: the new sound has not begun yet
+    for (let i = 0; i < 20; i++) { right.push(L.pos()); await sleep(2); }
+    await sleep(260);
     const after = L.pos();
+    window.__right = right;
     L.stop();
-    return { before, after };
+    return { before, after, right: window.__right };
   }, { BASE });
+  assert.ok(r.right.every(p => p < 0.3), `never the end of the clip just after a restart (it flashed the last frame): ${r.right.map(p => p.toFixed(2))}`);
   assert.ok(r.before > 5.4, `it was running (${r.before})`);
   assert.ok(r.after < 0.8, `restart is back near the start (${r.after})`);
   await ctx.close();

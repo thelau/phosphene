@@ -212,6 +212,12 @@
       bar.innerHTML = chips.map(chip).join('') + (auto.length ? '<i class="chip-sep"></i>' + auto.map(chip).join('') : '');
       const own = ownGroup();
       document.getElementById('removeFromGroupBtn').hidden = !own;
+      // the same choice in Film, as a dropdown above the film strip
+      const fg = document.getElementById('filmGroup');
+      const opt = c => `<option value="${escapeHtml(c.key)}">${escapeHtml(c.name)} (${c.n})</option>`;
+      fg.innerHTML = chips.map(opt).join('') + (auto.length ? `<optgroup label="Automatic">${auto.map(opt).join('')}</optgroup>` : '');
+      fg.value = currentGroup;
+      syncSelects();
       document.getElementById('miniTitle').textContent = currentGroup === 'all' ? 'Film' : (chips.concat(auto).find(c => c.key === currentGroup) || { name: 'Film' }).name;
       const len = document.getElementById('aiLength');
       len.disabled = currentGroup !== 'all';                                 // best N is for the whole selection
@@ -930,7 +936,6 @@
       strip.innerHTML = active.map((p, i) => `<button type="button" data-i="${i}" title="${i + 1} · ${escapeHtml(p.title)}" aria-label="Jump to image ${i + 1}"><img src="${escapeHtml(p.thumb || p.url || '')}" loading="lazy" decoding="async" alt=""></button>`).join('');   // lazy: 400 thumbnails must not compete with the stage's images
       shownIdx = -1;
       const n = active.length, cut = activeCutOff();
-      document.getElementById('filmHint').textContent = n ? `${n} images in film order · click to jump` : '';
     }
     function filmstripClick(e) {
       const b = e.target && e.target.closest ? e.target.closest('button[data-i]') : null;
@@ -1960,7 +1965,6 @@
       ['worldSelect', 'directionInput', 'batchCountSelect', 'modelSelect', 'generateBtn'].forEach(id => { document.getElementById(id).disabled = lockGen; });
       document.getElementById('aiBtn').disabled = lockGen;
       document.getElementById('exportBtn').disabled = aiRunning || !activePlates().length;
-      document.getElementById('trashCurBtn').disabled = aiRunning || !activePlates().length;
       ['trashSelAll', 'trashEmpty'].forEach(id => { document.getElementById(id).disabled = aiRunning; });
       document.body.classList.toggle('ai-running', aiRunning);
       syncSelects();
