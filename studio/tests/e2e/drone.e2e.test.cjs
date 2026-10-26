@@ -305,6 +305,30 @@ test('Phase: the second loop is the same notes, a note longer, so the two only m
   assert.ok(r.pairs >= 12, `on the way, many different intervals between the two: ${r.pairs}`);
   await ctx.close();
 });
+test('chord changes: the bass moves to the next degree on time (Descend: down a tone after 4 cuts), and the level holds', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(async BASE => {
+    const starts = Array.from({ length: 25 }, (_, i) => i * 0.25);                 // 4 cuts a second: a chord a second
+    const x = await window.Drone.renderExport({ ...BASE, pitch: 0.5, chord: 1, prog: 1, progEvery: 1, pulse: 0, movement: 0 }, starts);
+    const peak = (a, b) => {                                                         // the strongest frequency between 30 and 90 Hz in [a, b] s
+      const sr = 44100, i0 = Math.round(a * sr), i1 = Math.round(b * sr); let best = 0, bf = 0;
+      for (let f = 30; f <= 90; f += 0.25) {
+        const w = (2 * Math.PI * f) / sr; let re = 0, im = 0;
+        for (let i = i0; i < i1; i += 2) { const v = x.left[i] + x.right[i]; re += v * Math.cos(w * i); im += v * Math.sin(w * i); }
+        const m = re * re + im * im; if (m > best) { best = m; bf = f; }
+      }
+      return bf;
+    };
+    let rms = 0; for (let i = 0; i < x.left.length; i++) rms += x.left[i] ** 2; rms = Math.sqrt(rms / x.left.length);
+    return { first: peak(0.25, 0.95), second: peak(1.25, 1.95), third: peak(2.25, 2.95), rms };
+  }, BASE);
+  const st = (a, b) => 12 * Math.log2(b / a);
+  assert.ok(Math.abs(st(r.first, r.second) + 2) < 0.6, `i to VII: down a tone (${r.first} Hz to ${r.second} Hz)`);
+  assert.ok(Math.abs(st(r.first, r.third) + 4) < 0.6, `then VI: down a major third (${r.third} Hz)`);
+  assert.ok(Math.abs(r.rms - 0.17) < 0.02, `the level holds: ${r.rms}`);
+  await ctx.close();
+});
+
 test('the engine finds no console errors across all of this', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(async (BASE) => {

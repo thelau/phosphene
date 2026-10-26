@@ -648,7 +648,7 @@ test('with the drone on, Play starts it live from the top with the settings and 
   await settle(); await settle();
   assert.equal(h.calls.some(c => c.url === '/api/music'), false);           // nothing is rendered on the server
   const play = h.ctx.__drone.plays[0];
-  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, choir: 0, industrial: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpMood: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
+  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, prog: 0, progEvery: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, choir: 0, industrial: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpMood: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
   assert.equal(play.offset, 0);
   assert.equal(play.starts.length, 3);                                      // the music follows the beats (2 of them for 6 picture cuts at 3 per beat) + the end
   assert.ok(Math.abs(play.starts[2] - 0.6) < 1e-9 && Math.abs(play.starts[1] - 0.3) < 1e-9);
@@ -1165,6 +1165,22 @@ test('arpeggio moods: Random draws them all (Pluck often), a type keeps to its o
   assert.equal(h.run('synthParams()').arpMood, 3);
   h.run('saveSettings()');
   assert.equal(JSON.parse(h.store.studioSettings).arpMoodSelect, '3', 'remembered');
+});
+
+test('chord changes: Random turns them on now and then, each chord about three seconds long whatever the speed; sent and remembered', async () => {
+  const h = await playerWith();
+  const n = id => +h.$(id).value;
+  const tempo = bpm => { h.$('rhythmSelect').value = 'flat'; h.$('bpmInput').value = String(bpm); h.$('bpmLock').checked = true; };
+  for (const [bpm, every] of [[60, 0], [160, 2], [480, 3]]) {                     // 1, 2.7 and 8 cuts a second: 2, 8 and 16 cuts a chord
+    tempo(bpm); let on = 0;
+    for (let i = 0; i < 300; i++) { h.run('randomMusic()'); if (n('progSelect')) { on++; assert.equal(n('progEverySelect'), every, `${bpm} BPM`); } }
+    assert.ok(on > 70 && on < 140, `now and then: ${on} of 300`);
+  }
+  h.$('bpmLock').checked = false;
+  h.$('progSelect').value = '1'; h.$('progEverySelect').value = '2'; h.run('updateMusic()');
+  assert.deepEqual([h.run('synthParams()').prog, h.run('synthParams()').progEvery], [1, 2]);
+  h.run('saveSettings()');
+  assert.equal(JSON.parse(h.store.studioSettings).progSelect, '1');
 });
 
 test('Curate and Film: the mode switch is remembered, and Tab / Space work except while typing', async () => {

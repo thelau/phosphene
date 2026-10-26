@@ -434,7 +434,7 @@
             <div id="synthBox" hidden>
               <div class="sound-tabs" role="tablist" aria-label="Sound groups">
                 <button role="tab" id="soundTabBed" data-group="bed" onclick="showSoundGroup('bed')">Bed <span>6</span></button>
-                <button role="tab" id="soundTabTone" data-group="tone" onclick="showSoundGroup('tone')">Tone <span>5</span></button>
+                <button role="tab" id="soundTabTone" data-group="tone" onclick="showSoundGroup('tone')">Tone <span>7</span></button>
                 <button role="tab" id="soundTabTexture" data-group="texture" onclick="showSoundGroup('texture')">Texture <span>6</span></button>
                 <button role="tab" id="soundTabNotes" data-group="notes" onclick="showSoundGroup('notes')">Notes <span>8</span></button>
               </div>
@@ -457,6 +457,23 @@
                     <option value="1">Open fifth</option>
                     <option value="2">Minor</option>
                     <option value="3">Suspended</option>
+                  </select>
+                </label>
+                <label class="row"><span class="lbl">Changes</span>
+                  <select id="progSelect" onchange="updateMusic()" title="Chord changes in the minor key: the bed moves to another chord every few cuts and comes round; the arpeggio stays in the key above it. With changes on, Minor plays suspended and the Dark cluster an open fifth, so every chord stays in key.">
+                    <option value="0">Off · one chord</option>
+                    <option value="1">Descend · i VII VI V</option>
+                    <option value="2">Lift · i III iv III</option>
+                    <option value="3">Pendulum · i v</option>
+                    <option value="4">Wander · in the key</option>
+                  </select>
+                </label>
+                <label class="row" id="progEveryRow"><span class="lbl">Every</span>
+                  <select id="progEverySelect" onchange="updateMusic()" title="How many of the music's cuts each chord lasts">
+                    <option value="0">2 cuts</option>
+                    <option value="1" selected>4 cuts</option>
+                    <option value="2">8 cuts</option>
+                    <option value="3">16 cuts</option>
                   </select>
                 </label>
                 <label class="row"><span class="lbl">Sub wave</span>

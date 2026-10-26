@@ -148,6 +148,19 @@
     return ctx.createPeriodicWave(real, imag);
   }
   const ARP_STEPS = [4, 6, 8, 16];
+  // Chord changes, in the minor key of the root: the bed (sub, pad, chord, choir, textures) moves to another degree every few cuts and comes
+  // round again, while the arpeggio stays in the home key, a melody over a moving bass. Semitones from the root, all degrees of the natural
+  // minor and within a fourth either way, so the drone stays heavy: Descend i-VII-VI-V (the Andalusian cadence), Lift i-III-iv-III,
+  // Pendulum i-v, Wander a seeded walk over i, VII, III, v, iv, VI. With changes on, the chord sheds its third (minor plays suspended, the
+  // dark cluster an open fifth): a third moved in parallel leaves the key and clashes with the melody; without it every chord stays in key.
+  const PROGRESSIONS = [
+    null,
+    { name: 'Descend', steps: [0, -2, -4, -5] },
+    { name: 'Lift', steps: [0, 3, 5, 3] },
+    { name: 'Pendulum', steps: [0, -5] },
+    { name: 'Wander', walk: [0, -2, 3, -5, 5, -4] },
+  ];
+  const PROG_EVERY = [2, 4, 8, 16];                                     // cuts per chord
   // Arpeggio moods. One instrument for all of them, the first arpeggio's patch (two detuned saws into a resonant low-pass that snaps shut on
   // each note: the modular sound), played differently, as a player turns the same patch: the notes (scale over the tonic, two octaves above
   // the root; register lo..hi times the tonic), the shape (Dark falls; Phase: two voices loop the same notes, one a note longer, so they drift
@@ -202,7 +215,9 @@
     const nCuts = starts.length - 1;
     const land = opts.landing === false ? Infinity : (Number.isFinite(+p.landAt) ? +p.landAt : starts[Math.max(0, nCuts - (p.paired ? 2 : 1))]);   // where the last image begins
     const f0 = Number.isFinite(+p.pitch) && p.pitch !== null && p.pitch !== undefined ? rootHz(clamp01(p.pitch)) : 51 + 6 * rand();
-    const chord = CHORDS[Math.max(0, Math.min(CHORDS.length - 1, Math.round(+p.chord || 0)))];
+    const chordIdx = Math.max(0, Math.min(CHORDS.length - 1, Math.round(+p.chord || 0)));
+    const progOn = PROGRESSIONS[Math.max(0, Math.min(PROGRESSIONS.length - 1, Math.round(+p.prog || 0)))] !== null;
+    const chord = CHORDS[progOn ? ({ 0: 1, 2: 3 }[chordIdx] ?? chordIdx) : chordIdx];   // with chord changes, no third (see PROGRESSIONS)
     const echo = clamp01(p.echo === undefined ? 0 : p.echo);
     let wash = clamp01(p.wash || 0), ring = clamp01(p.ring || 0), shimmer = clamp01(p.shimmer || 0);
     const pick = (v, n) => Math.max(0, Math.min(n - 1, Math.round(+v || 0)));
@@ -211,6 +226,7 @@
     const arpMood = ARP_MOODS[pick(p.arpMood, ARP_MOODS.length)];
     const arpAmt = clamp01(p.arp || 0), arpSteps = ARP_STEPS[pick(p.arpSteps, ARP_STEPS.length)], arpRate = pick(p.arpRate, 4);
     const dynamics = opts.dynamics === false ? 0 : pick(p.dynamics, 4);
+    const prog = PROGRESSIONS[pick(p.prog, PROGRESSIONS.length)], progEvery = PROG_EVERY[pick(p.progEvery, PROG_EVERY.length)];
     const subWave = Math.max(0, Math.min(SUB_WAVES.length - 1, Math.round(+p.subWave || 0)));
     const padWave = Math.max(0, Math.min(PAD_WAVES.length - 1, Math.round(+p.padWave || 0)));
     const move = Math.pow(2, 2 * (clamp01(p.movement === undefined ? 0.5 : p.movement) - 0.5));   // 0.5 = as measured; 1 = twice as fast
@@ -219,12 +235,13 @@
     const links = [];                                                      // connections to unplug when this sound is retired (a shared room outlives it)
     const keep = n => { nodes.push(n); return n; };
     const gain = (v, to) => { const g = ctx.createGain(); g.gain.value = v; if (to) g.connect(to); return g; };
+    const pitched = [];                                                    // every oscillator that plays a note (not the LFOs): what chord changes move
     const osc = (type, freq, to, inPhase = false) => {
-      const o = keep(ctx.createOscillator()); o.type = type; o.frequency.value = freq;
+      const o = keep(ctx.createOscillator()); o.type = type; o.frequency.value = freq; pitched.push(o);
       if (inPhase && offset > 0 && type === 'sine') o.setPeriodicWave(phasedWave(ctx, type, freq * offset));     // in phase with where the clip is (only the sub: it is coherent between the old sound and the new one; the rest is not worth a wave each)
       if (to) o.connect(to); return o;
     };
-    const lfo = (rate, depth, param) => { const o = osc('sine', rate); const g = gain(depth, param); o.connect(g); return o; };
+    const lfo = (rate, depth, param) => { const o = osc('sine', rate); pitched.pop(); const g = gain(depth, param); o.connect(g); return o; };
     const shaper = (curve, to) => { const s = ctx.createWaveShaper(); s.curve = curve; if (to) s.connect(to); return s; };
     const lowpass = (fc, to) => { const a = ctx.createBiquadFilter(); a.type = 'lowpass'; a.frequency.value = fc; a.Q.value = 0.707; const b = ctx.createBiquadFilter(); b.type = 'lowpass'; b.frequency.value = fc; b.Q.value = 0.707; a.connect(b); if (to) b.connect(to); return [a, b]; };
 
@@ -415,6 +432,7 @@
     accents[0] = true;
     // an envelope on a gain: a fast rise to peak, then an exponential fall (setTarget is open-ended, so the next hit simply takes over)
     const strike = (g, t, peak, decay) => { g.gain.setTargetAtTime(peak, t, 0.0015); g.gain.setTargetAtTime(0, t + 0.012, decay / 3); };
+    const bedVoices = pitched.length;                                      // what came before is the bed; hits and the arpeggio stay in the home key
     const voiceOsc = (type, to) => { const o = osc(type, 100); const g = gain(0, to); o.connect(g); return [o, g]; };
     const voiceNoise = (secs, filterType, fc, q, to) => {
       const n = ctx.createBufferSource(); n.buffer = knockNoise(ctx, secs); n.loop = true; keep(n);
@@ -531,6 +549,15 @@
     merger.connect(dyn);
     if (opts.tap === 'sub') subBus.connect(dest); else if (opts.tap === 'dry') { mix[0].connect(dest); } else dyn.connect(dest);
 
+    // chord changes: one control signal (cents) into the bed's oscillators' detune, so it adds to whatever else moves the pitch;
+    // a short glide at each change, as a modular's portamento
+    if (prog) {
+      const seq = prog.steps || (() => { const r = mulberry32(seedN + 31), out = [0]; for (let k = 1; k < 8; k++) out.push(prog.walk[1 + Math.floor(r() * (prog.walk.length - 1))]); return out; })();
+      const cents = i => 100 * seq[Math.floor(i / progEvery) % seq.length];
+      const tr = keep(ctx.createConstantSource()); tr.offset.value = cents(Math.min(cursor, Math.max(0, nCuts - 1)));
+      for (const o of pitched.slice(0, bedVoices)) { tr.connect(o.detune); links.push([tr, o.detune]); }
+      perCut.push((i, t) => { if (i % progEvery === 0) tr.offset.setTargetAtTime(cents(i), t, 0.025); });
+    }
     for (const n of nodes) n.start(opts.startAt || 0);                      // live: all together, at the moment the sound is meant to begin
     if (opts.live) advance(offset + (opts.lookahead || 0.8)); else advance(Infinity);     // live: the rest is scheduled as the sound plays (Live.tick)
     const fade = (to, when, dur) => { for (const g of sends) { g.gain.cancelScheduledValues(when); g.gain.setValueAtTime(g.gain.value, when); g.gain.linearRampToValueAtTime(to, when + dur); } };
@@ -546,7 +573,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   const cutSignature = starts => { const head = []; for (const t of starts) { head.push(Math.round(t * 1000)); if (t > 4) break; } return head.join(','); };   // the cuts of the window the level is measured on: faster cuts pump differently
-  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood]);
+  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery]);
   async function level(p, starts) {
     starts = cleanStarts(starts);
     const key = levelKey(p, starts);
@@ -762,5 +789,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, phaseLoop, rootHz };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, PROGRESSIONS, PROG_EVERY, phaseLoop, rootHz };
 })();
