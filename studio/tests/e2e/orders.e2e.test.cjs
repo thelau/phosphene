@@ -97,17 +97,18 @@ test('orders: a restored image lands at the end of both orders, and the order to
   await ctx.close();
 });
 
-test('orders: the tools sit on the right of the gallery bar, where the trash buttons take over in the trash tab', { skip }, async () => {
+test('orders: the order tools sit right after the Selection / Trash tabs, the trash buttons take their place in the trash, size and hint on the right', { skip }, async () => {
   const ctx = await fresh();
   const bar = await page.locator('.gallery-head').boundingBox();
   const tabs = await page.locator('.gallery-head > .seg').boundingBox();
   const tools = await page.locator('#seqBox').boundingBox();
-  assert.ok(tools.x > tabs.x + tabs.width, 'right of the tabs');
-  assert.ok(tools.x + tools.width > bar.x + bar.width - 40, 'pushed to the right edge');
+  const size = await page.locator('.size-seg').boundingBox();
+  assert.ok(tools.x > tabs.x + tabs.width && tools.x < tabs.x + tabs.width + 40, 'right after the tabs');
+  assert.ok(size.x + size.width > bar.x + bar.width - 40, 'the thumbnail size on the right edge');
   await page.click('#tabTrash');
   await page.waitForSelector('#trashBar:not([hidden])');
   const trash = await page.locator('#trashBar').boundingBox();
-  assert.ok(trash.x + trash.width > bar.x + bar.width - 40, 'trash buttons on the same right edge');
+  assert.ok(trash.x > tabs.x + tabs.width && trash.x < tabs.x + tabs.width + 40, 'trash buttons in the same place');
   assert.equal(await page.locator('#seqBox').isHidden(), true);
   await shot('14-orders-right');
   await ctx.close();

@@ -289,6 +289,7 @@
       document.getElementById('trashBar').hidden = !(showTrash && trashed.length);
       document.getElementById('trashSelCount').textContent = `${trashSel.size} selected`;
       document.getElementById('trashDelSel').disabled = aiRunning || trashSel.size === 0;
+      document.getElementById('trashRestoreSel').disabled = aiRunning || trashSel.size === 0;
       document.getElementById('trashDelSel').textContent = trashSel.size ? `Delete ${trashSel.size} selected…` : 'Delete selected…';
       document.getElementById('trashSelAll').textContent = trashSel.size && trashSel.size === trashed.length ? 'Clear selection' : 'Select all';
       document.getElementById('trashEmpty').textContent = `Empty trash (${trashed.length})…`;
@@ -349,13 +350,15 @@
       return purge({ all: true }, `Empty the trash (${n} images)?`, `Every image in the trash is deleted permanently. This can't be undone. ${KEEPS_LEARNING}`, `Delete all ${n}`);
     }
 
+    // images that arrived since the page opened get a "New" mark
+    let seenAtLoad = null;
     function renderGrid() {
       const grid = document.getElementById('grid');
       const visible = visiblePlates();
-
+      if (seenAtLoad === null && plates.length) seenAtLoad = new Set(plates.map(p => p.filename));
       const cutOff = showTrash ? null : activeCutOff();
       grid.innerHTML = visible.map((p, i) => `${cutOff && i === cutOff && i < visible.length ? `<div class="edit-divider">left out of this edit (${visible.length - cutOff}) <button onclick="includeAll()">Include them all</button></div>` : ''}
-        <div class="card"
+        <div class="card${cutOff && i >= cutOff ? ' out' : ''}"
              id="card-${CSS.escape(p.filename)}"
              draggable="${!showTrash}"
              data-filename="${p.filename}"
@@ -366,12 +369,16 @@
              ondragend="onDragEnd(event)"
              onclick="cardClick(event, '${p.filename}')">
           <div class="card-thumb">
-            <img src="${p.thumb || p.url}" loading="lazy" decoding="async" />
-            <button class="info-btn" title="View prompt & model" onclick="togglePromptOverlay(event, '${p.filename}')">i</button>
+            <img src="${p.thumb || p.url}" loading="lazy" decoding="async" alt="" />
+            <span class="card-num">${String(i + 1).padStart(2, '0')}</span>
+            ${!showTrash && seenAtLoad && !seenAtLoad.has(p.filename) ? '<span class="card-new">New</span>' : ''}
+            ${showTrash ? '<span class="card-pick" aria-hidden="true"></span>' : ''}
             <div class="card-actions">
+              ${showTrash ? '' : '<span class="drag-handle" title="Drag to reorder" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span><span class="grow"></span>'}
+              <button class="action-btn info-btn" title="The prompt and the model" aria-label="Info for ${escapeHtml(p.title)}" onclick="togglePromptOverlay(event, '${p.filename}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></button>
               ${p.trashed
-                ? `<button class="action-btn" onclick="setTrash(event, '${p.filename}', false)">↩️ Restore</button>`
-                : `<button class="action-btn trash-btn" title="Move to trash" onclick="setTrash(event, '${p.filename}', true)">🗑️</button>`
+                ? `<button class="action-btn restore-btn" onclick="setTrash(event, '${p.filename}', false)">Restore</button>`
+                : `<button class="action-btn trash-btn" title="Move to the Trash" aria-label="Move ${escapeHtml(p.title)} to the Trash" onclick="setTrash(event, '${p.filename}', true)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>`
               }
             </div>
             <div class="prompt-overlay" id="overlay-${CSS.escape(p.filename)}" onclick="togglePromptOverlay(event, '${p.filename}')">
@@ -381,20 +388,56 @@
                 <button style="padding:2px 7px;font-size:10px;" onclick="copyPromptText(event, ${JSON.stringify(p.prompt || p.title)})">Copy</button>
               </div>
             </div>
-            <div class="card-footer">
-              <div class="card-title-row">#${String(i + 1).padStart(2, '0')} · ${escapeHtml(p.title)}</div>
-              <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
-                <span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>
-
-                ${p.critic ? `<span class="card-model-badge" title="${escapeHtml(p.critic.reason)}">AI ${p.critic.mean}</span>` : ''}
-                ${p.trash_reason ? `<span class="card-model-badge" style="background:rgba(244,63,94,0.22);border-color:rgba(244,63,94,0.5);color:#fda4af;" title="${escapeHtml(p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
-                ${!p.qa_passed ? `<span class="card-model-badge" style="background:rgba(244,63,94,0.22);border-color:rgba(244,63,94,0.5);color:#fda4af;" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA Flagged</span>` : ''}
-              </div>
-            </div>
+          </div>
+          <div class="card-title" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</div>
+          <div class="card-meta">
+            <span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>
+            ${p.critic ? `<span class="card-model-badge" title="${escapeHtml(p.critic.reason)}">AI ${p.critic.mean}</span>` : ''}
+            ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
+            ${!p.qa_passed ? `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>` : ''}
           </div>
         </div>
-      `).join('');
+      `).join('') + (showTrash ? '' : pendingCards());
+      document.getElementById('gridHint').textContent = showTrash ? 'Trashed images stay restorable' : aiRunning ? 'Locked while the AI orders' : 'Drag to reorder';
       syncSelection();
+    }
+    // the images still being made, at the end of the selection while a batch runs
+    function pendingCards() {
+      if (!generating || prog.stage !== 'render') return '';
+      return prog.slots.map((st, i) => (st === 'wait' || st === 'run'
+        ? `<div class="card pending-card" aria-hidden="true"><div class="card-thumb"><div class="pending-ring"></div><span class="pending-label">${st === 'run' ? 'Rendering' : 'Queued'}</span><div class="pending-bar ${st}"><i></i></div></div><div class="card-title">${escapeHtml(prog.titles[i] || '')}</div><div class="card-meta"><span class="card-model-badge">generating…</span></div></div>`
+        : '')).join('');
+    }
+    function refreshPending() {
+      const grid = document.getElementById('grid');
+      if (showTrash || !grid.querySelectorAll) return;
+      grid.querySelectorAll('.pending-card').forEach(el => el.remove());
+      grid.insertAdjacentHTML && grid.insertAdjacentHTML('beforeend', pendingCards());
+    }
+    // thumbnail size in Curate: S, M or L
+    function setThumbSize(v) {
+      if (!['S', 'M', 'L'].includes(v)) v = 'M';
+      document.getElementById('thumbSizeVal').value = v;
+      document.getElementById('grid').dataset.size = v;
+      for (const k of ['S', 'M', 'L']) document.getElementById(`thumb${k}`).setAttribute('aria-pressed', String(k === v));
+      saveSettings();
+    }
+    // the floating film preview in Curate: the same stage, moved here, so there is one player and one sound
+    let miniOpen = true;
+    function toggleMini(open) {
+      miniOpen = open;
+      document.getElementById('miniPlayer').hidden = !open;
+      document.getElementById('miniPill').hidden = open;
+      try { localStorage.setItem('studioMini', open ? '1' : '0'); } catch (e) {}
+    }
+    // trashed images go back to the selection, in one go
+    async function restoreSelected() {
+      if (blockedByAi() || !trashSel.size) return;
+      const files = [...trashSel];
+      for (const filename of files) await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename, trashed: false }) });
+      trashSel = new Set();
+      setStatus(`${files.length} image${files.length === 1 ? '' : 's'} back in the selection.`);
+      await loadState();
     }
 
     function escapeHtml(str) {
@@ -478,6 +521,8 @@
       document.getElementById('modeCurate').setAttribute('aria-pressed', String(mode === 'curate'));
       document.getElementById('modeFilm').setAttribute('aria-pressed', String(mode === 'film'));
       try { localStorage.setItem('studioMode', mode); } catch (e) {}
+      const stage = document.getElementById('stage'), host = document.getElementById(mode === 'film' ? 'stageHome' : 'stageMini');
+      if (stage.parentNode !== host && host.appendChild) host.appendChild(stage);
       if (mode === 'film') scrollFilmstripTo(currentIdx);
     }
     // Tab switches the mode and Space plays, except while typing in a field (Tab still moves between fields there)
@@ -1095,6 +1140,7 @@
       if (txt !== shownTime) {
         shownTime = txt;
         document.getElementById('timecode').innerHTML = `${clock(t)} <span>/ ${clock(total)} · cut ${plan.cut + 1} / ${tl.length - 1}</span>`;
+        document.getElementById('miniCount').textContent = `${plan.plate + 1} / ${active.length}`;
       }
     }
 
@@ -1109,6 +1155,8 @@
       b.textContent = isPlaying ? 'Pause' : 'Play';
       b.setAttribute('aria-label', b.textContent);
       b.classList.toggle('playing', isPlaying);
+      const m = document.getElementById('miniPlayBtn');
+      m.textContent = b.textContent; m.setAttribute('aria-label', b.textContent); m.classList.toggle('playing', isPlaying);
     }
     // play carries on from where the playhead is (Restart goes back to the start)
     function togglePlay() {
@@ -1128,7 +1176,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -1192,12 +1240,15 @@
     async function setTrash(e, filename, trashed) {
       if (blockedByAi(e)) return;
       e.stopPropagation();
+      const order = plates.filter(x => !x.trashed).map(x => x.filename);
       await fetch('/api/trash', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ filename, trashed })
       });
       await loadState();
+      const p = plates.find(x => x.filename === filename);
+      if (trashed && p) setStatus(`“${p.title}” moved to Trash`, { label: 'Undo', run: () => untrash(filename, order) });
     }
 
     function ensureKimiReady() {
@@ -1256,6 +1307,7 @@
     const prog = { t0: 0, timer: null, slots: [], titles: [], world: '', stage: '', note: '', total: 0, summary: '' };
     function fmtElapsed(ms) { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
     function progRender() {
+      refreshPending();
       const el = document.getElementById('statusText');
       const done = prog.slots.filter(x => x === 'ok' || x === 'trash' || x === 'err').length;
       const running = prog.slots.filter(x => x === 'run').length;
@@ -1288,6 +1340,8 @@
       ['trashSelAll', 'trashEmpty', 'resetAi'].forEach(id => { document.getElementById(id).disabled = aiRunning; });
       document.querySelectorAll('#orderSeg button').forEach(b => { b.disabled = aiRunning; });
       document.body.classList.toggle('ai-running', aiRunning);
+      document.getElementById('aiLock').hidden = !aiRunning;
+      document.getElementById('gridHint').textContent = showTrash ? 'Trashed images stay restorable' : aiRunning ? 'Locked while the AI orders' : 'Drag to reorder';
       updateTrashBar();
     }
     function setGenerating(on) { generating = on; applyLocks(); }
@@ -1494,6 +1548,8 @@
     showSoundGroup(document.getElementById('soundGroupVal').value);
     setPlayLabel();
     try { setMode(localStorage.getItem('studioMode') || 'curate'); } catch (e) { setMode('curate'); }
+    try { toggleMini(localStorage.getItem('studioMini') !== '0'); } catch (e) { toggleMini(true); }
+    setThumbSize(document.getElementById('thumbSizeVal').value);
     ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'].forEach(id => document.getElementById(id).addEventListener('change', saveSettings));
     document.getElementById('worldSelect').addEventListener('change', () => { document.getElementById('directionInput').value = ''; saveSettings(); updateDirectionHint(); });
     loadWorlds();
@@ -1573,6 +1629,9 @@ Object.assign(window, {
   pickCharacter,
   filmstripClick,
   rhythmStripClick,
+  setThumbSize,
+  toggleMini,
+  restoreSelected,
   trashCurrent,
   togglePromptOverlay,
   toggleReticle,

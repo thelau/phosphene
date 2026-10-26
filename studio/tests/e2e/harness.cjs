@@ -13,8 +13,15 @@ const { start, makeState, addAi } = require('./fakeapi.cjs');
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const SHOTS = process.env.E2E_SHOTS;
 
+// Playwright's chrome-headless-shell first: a bare headless build, so no app opens (Brave or Chrome show a Dock icon even headless)
+function headlessShells() {
+  const dir = path.join(require('os').homedir(), 'Library', 'Caches', 'ms-playwright');
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter(d => d.startsWith('chromium_headless_shell-')).sort((a, b) => parseInt(b.split('-')[1], 10) - parseInt(a.split('-')[1], 10))
+    .flatMap(d => ['chrome-headless-shell-mac-arm64', 'chrome-headless-shell-mac-x64', 'chrome-mac'].map(sub => path.join(dir, d, sub, 'chrome-headless-shell')));
+}
 function findBrowser() {
-  const c = [process.env.BROWSER_PATH, '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  const c = [process.env.BROWSER_PATH, ...headlessShells(), '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/Applications/Chromium.app/Contents/MacOS/Chromium', '/usr/bin/google-chrome', '/usr/bin/chromium'].filter(Boolean);
   return c.find(p => fs.existsSync(p));
 }

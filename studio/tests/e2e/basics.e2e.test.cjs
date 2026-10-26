@@ -529,3 +529,47 @@ test('the rhythm strip stays readable from 1 image to 300 at one frame a cut', {
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('Curate: thumbnail sizes, trash from the grid with Undo, restore picked images, the floating preview', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  const cols = async () => page.evaluate(() => getComputedStyle(document.getElementById('grid')).gridTemplateColumns.split(' ').length);
+  const m = await cols();
+  await page.click('#thumbS'); const sm = await cols();
+  await page.click('#thumbL'); const lg = await cols();
+  assert.ok(sm > m && m > lg, `S ${sm} > M ${m} > L ${lg} columns`);
+  await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
+  assert.equal(await page.locator('#thumbL').getAttribute('aria-pressed'), 'true', 'the size is remembered');
+  // trash from the grid, then Undo: back in its place
+  await page.locator('.card[data-filename="k2"]').hover();
+  await page.locator('.card[data-filename="k2"] .trash-btn').click();
+  await page.waitForFunction(() => !document.querySelector('.card[data-filename="k2"]'));
+  assert.match(await text('#toast'), /moved to Trash/);
+  await page.click('#toast button');
+  await page.waitForFunction(() => [...document.querySelectorAll('.card')].map(c => c.dataset.filename).join() === 'k1,k2,k3');
+  // restore picked images from the Trash in one go
+  await page.click('#tabTrash');
+  await page.locator('.card').nth(0).click({ position: { x: 60, y: 120 } });
+  await page.locator('.card').nth(1).click({ position: { x: 60, y: 120 } });
+  assert.equal(await page.locator('.card.sel .card-pick').count(), 2);
+  await page.click('#trashRestoreSel');
+  await page.waitForFunction(() => document.getElementById('tabSelection').textContent.includes('(5)'));
+  assert.equal(await page.locator('.card').count(), 2);
+  await page.click('#tabSelection');
+  // the floating preview plays the film in Curate, hides to a pill, and opens Film
+  assert.equal(await page.locator('#miniPlayer #stageImg').count(), 1, 'the one stage sits in the floating preview');
+  await page.click('#miniPlayBtn');
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('#miniPlayBtn').getAttribute('aria-label'), 'Pause');
+  assert.match(await text('#miniCount'), /^\d \/ 5$/);
+  await page.click('#miniHide');
+  assert.equal(await page.locator('#miniPlayer').isVisible(), false);
+  assert.equal(await page.locator('#miniPill').isVisible(), true);
+  await page.click('#miniPill');
+  await page.click('#miniOpenFilm');
+  assert.equal(await page.evaluate(() => document.body.dataset.mode), 'film');
+  assert.equal(await page.locator('#stageHome #stageImg').count(), 1, 'and back on the Film stage');
+  assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Pause', 'still playing');
+  await shot('20-curate-film');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

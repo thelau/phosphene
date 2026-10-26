@@ -17,10 +17,13 @@ test('AI order: panel, note, live progress, and the Manual order stays exactly a
   await page.waitForSelector('#statusText .slot');
   assert.match(await text('#statusText'), /AI order/);
   assert.equal(await page.locator('#statusText .slot').count(), 4);
+  assert.equal(await page.locator('#aiLock').isVisible(), true, 'a banner says the selection is locked');
+  assert.equal(await text('#gridHint'), 'Locked while the AI orders');
   await shot('16-ai-progress');
   await page.waitForFunction(() => /Done — AI: Opens on k3/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   await enabled('#aiBtn');
   assert.equal(await page.locator('#statusText .slot.ok').count(), 4);
+  assert.equal(await page.locator('#aiLock').isVisible(), false);
   const body = api.state.jobs[0].body;
   assert.deepEqual([body.direction, body.length, 'first' in body, 'last' in body], ['end on the blue one', null, false, false]);
   assert.deepEqual(await seg(), [{ text: '✋ Manual (3)', on: false }, { text: '✨ AI (3)', on: true }]);

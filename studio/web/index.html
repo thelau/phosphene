@@ -152,13 +152,48 @@
           <div class="trash-bar" id="trashBar" hidden>
             <span id="trashSelCount">0 selected</span>
             <button id="trashSelAll" onclick="selectAllTrash()">Select all</button>
+            <button id="trashRestoreSel" onclick="restoreSelected()">Restore</button>
             <button id="trashDelSel" class="danger" onclick="deleteSelected()">Delete selected…</button>
             <button id="trashEmpty" class="danger" onclick="emptyTrash()">Empty trash…</button>
           </div>
+          <span class="grow"></span>
+          <span class="grid-hint" id="gridHint">Drag to reorder</span>
+          <div class="size-seg" role="group" aria-label="Thumbnail size">
+            <button id="thumbS" onclick="setThumbSize('S')" aria-label="Small thumbnails" title="Small thumbnails"><i style="width:8px;height:12px"></i></button>
+            <button id="thumbM" onclick="setThumbSize('M')" aria-label="Medium thumbnails" title="Medium thumbnails"><i style="width:10px;height:15px"></i></button>
+            <button id="thumbL" onclick="setThumbSize('L')" aria-label="Large thumbnails" title="Large thumbnails"><i style="width:12px;height:18px"></i></button>
+          </div>
+          <input type="hidden" id="thumbSizeVal" value="M" />
+        </div>
+        <div class="lock-banner" id="aiLock" role="status" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EC540C" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+          <b>Ordering with AI</b>
+          <span>The selection is locked until it finishes: no trashing, dragging or generating.</span>
         </div>
         <div class="ai-note" id="aiNote" hidden><b>✨ The AI's note</b><span id="seqSummary"></span><button id="makeManual" onclick="makeManual()" title="Copy this order over your Manual order">Use as my Manual order…</button></div>
-        <div class="grid-col" id="grid"></div>
+        <div class="grid-col" id="grid" data-size="M"></div>
       </div>
+
+      <aside class="mini" id="miniPlayer" aria-label="Film preview">
+        <div class="mini-head">
+          <span>Film</span>
+          <button class="mini-x" onclick="toggleMini(false)" id="miniHide" aria-label="Hide the preview" title="Hide the preview">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+          </button>
+        </div>
+        <div class="mini-stage" id="stageMini"></div>
+        <div class="mini-foot">
+          <button onclick="togglePlay()" id="miniPlayBtn" class="play-btn small" aria-label="Play">Play</button>
+          <span class="mini-count" id="miniCount"></span>
+          <button onclick="setMode('film')" id="miniOpenFilm" class="icon-btn small" aria-label="Open in Film" title="Open in Film">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-7 7"></path><path d="M10 20H4v-6"></path><path d="M4 20l7-7"></path></svg>
+          </button>
+        </div>
+      </aside>
+      <button class="mini-pill" id="miniPill" onclick="toggleMini(true)" hidden>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5l11 7-11 7z"></path></svg>
+        Film preview
+      </button>
     </section>
 
     <!-- ============ FILM: the result ============ -->

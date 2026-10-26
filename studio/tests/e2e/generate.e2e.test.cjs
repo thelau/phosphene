@@ -22,11 +22,15 @@ test('generate: controls lock, progress shows per image, direction clears afterw
   await page.waitForSelector('#statusText .slot.run');
   assert.match(await text('#statusText'), /Fog & Vapor/);
   await shot('06-rendering');
+  await page.waitForSelector('.pending-card');                                    // the images still coming hold their place at the end of the grid
+  assert.ok(await page.locator('.pending-card').count() >= 1);
   await page.waitForFunction(() => /Done — 4 added/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   for (const id of ['#worldSelect', '#directionInput', '#batchCountSelect', '#generateBtn']) await enabled(id);
   assert.equal(await page.inputValue('#directionInput'), '');
   assert.equal(await page.locator('#statusText .slot.ok').count(), 4);
   await page.waitForFunction(() => document.getElementById('tabSelection').textContent.includes('(7)'));
+  assert.equal(await page.locator('.pending-card').count(), 0);
+  assert.equal(await page.locator('.card .card-new').count(), 4, 'the new images are marked New');
   const inv = api.state.calls.find(c => c.path === '/api/invent-prompts').body;
   assert.deepEqual([inv.world, inv.direction, inv.count], ['__custom__', 'fog, clouds, rain', 4]);
   await shot('07-done');
