@@ -1328,3 +1328,63 @@ test('keys: ← → step one image (wrapping), Delete trashes the image on scree
   assert.equal(snap(), before, 'Ctrl+Z undoes a Random');
   key('z', { metaKey: true });                                                     // nothing left: harmless
 });
+
+test('the inner point of the rhythm strip sets Change over when dragged sideways, snapping to the cuts of the run', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: 24 }, (_, i) => mkPlate('p' + i)) };
+  const h = load({ routes: r }); await settle(); await settle();
+  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '100'; h.$('endMsRange').value = '600'; h.$('rampRange').value = '8'; h.$('atSelect').value = 'end'; h.$('multSelect').value = '1';
+  h.run('updateTempo(); updateRhythm()');
+  assert.equal(h.$('rsH0').classList.contains('inner'), true, 'landing: the Start point is the one to drag');
+  assert.equal(h.$('rsH1').classList.contains('inner'), false);
+  // wherever it is dropped, the point lands there: Change over is solved for that, since the change itself makes the film longer or shorter
+  const pointAt = () => JSON.parse(JSON.stringify(h.run('rhythmStripModel(24)'))).band.left / 100;
+  for (const u of [0.2, 0.35, 0.5, 0.7]) {
+    h.$('rampRange').value = String(h.run(`rampAt(${u})`)); h.run('updateRhythm()');
+    assert.ok(Math.abs(pointAt() - u) < 0.06, `dropped at ${u}, the point is at ${pointAt().toFixed(3)}`);
+  }
+  assert.equal(h.run('rampAt(-1)'), 24, 'all the way left: every cut');
+  assert.equal(h.run('rampAt(2)'), 2, 'all the way right: the least there is');
+  h.$('rsBody').getBoundingClientRect = () => ({ left: 0, width: 1000 });
+  const target = { classList: h.$('rsH0').classList, setPointerCapture() {} };
+  h.run('pointDown')({ currentTarget: target, preventDefault() {}, stopPropagation() {}, pointerId: 1 });
+  h.run('pointMove')({ clientX: 500 });
+  const k = h.$('rampRange').value;
+  assert.equal(k, String(h.run('rampAt(0.5)')));
+  assert.equal(h.run('rhythmStripModel(24)').band.label, `Landing · ${k} cuts`, 'the band follows while dragging');
+  h.run('pointUp')();
+  const before = h.run('cutPos');
+  h.run('rhythmStripClick({ clientX: 10 })');
+  assert.equal(h.run('cutPos'), before, 'letting go is not a click that jumps');
+  h.$('atSelect').value = 'start'; h.$('startMsRange').value = '600'; h.$('endMsRange').value = '100'; h.run('updateRhythm()');
+  assert.equal(h.$('rsH1').classList.contains('inner'), true, 'build-up: the End point is the one to drag');
+  h.$('rampRange').value = String(h.run('rampAt(0.4)')); h.run('updateRhythm()');
+  const m = JSON.parse(JSON.stringify(h.run('rhythmStripModel(24)')));
+  assert.ok(Math.abs(m.band.width / 100 - 0.4) < 0.06, `build-up: the End point lands where it is dropped (${m.band.width})`);
+});
+
+test('the Start and End points say what the picture does: with a Multiple, the cut the picture really makes', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: 24 }, (_, i) => mkPlate('p' + i)) };
+  const h = load({ routes: r }); await settle(); await settle();
+  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '840'; h.$('endMsRange').value = '110'; h.$('atSelect').value = 'start'; h.$('multSelect').value = '2';
+  h.run('updateTempo(); updateRhythm()');
+  const m = JSON.parse(JSON.stringify(h.run('rhythmStripModel(24)')));
+  assert.deepEqual(m.handles.map(x => x.label), ['Start 420 ms', 'End 55 ms'], 'as in the line under the strip');
+});
+
+test('Export says how long it will take once it has seen one: the median of the last exports, per second of film', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: [mkPlate('a'), mkPlate('b'), mkPlate('c')] };
+  r['/api/export-video'] = { ok: true, images: 3, seconds: 2, video_url: '/outputs/x.mp4', filename: 'x.mp4' };
+  const h = load({ routes: r }); await settle(); await settle();
+  h.$('bpmInput').value = '60'; h.$('multSelect').value = '1'; h.run('updateTempo()');
+  assert.doesNotMatch(h.$('exportMeta').textContent, /to make/, 'no guess before the first export');
+  h.run("localStorage.setItem('studioExportRates', JSON.stringify([2, 4, 3]))"); h.run('drawInfo()');
+  assert.match(h.$('exportMeta').textContent, /about 9 s to make$/, '3 s of film × the median 3');
+  let t = 1000; h.ctx.performance.now = () => (t += 6000);
+  await h.run('exportVideo()');
+  assert.equal(JSON.parse(h.store.studioExportRates).length, 4);
+  h.run("localStorage.setItem('studioExportRates', 'nonsense')"); h.run('drawInfo()');
+  assert.doesNotMatch(h.$('exportMeta').textContent, /to make/, 'a broken memory is ignored');
+});

@@ -671,3 +671,30 @@ test('keys in the page: arrows step, F fills the screen with the preview and F l
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('dragging the inner point of a landing with the mouse sets Change over; the playhead does not jump', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  for (let i = 0; i < 21; i++) { const f = `d${i}`; api.state.plates.push({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` }); api.state.sequences[0].order.push(f); }
+  await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
+  await film();
+  await choose('rhythmSelect', 'variable');
+  await page.selectOption('#multSelect', '1');
+  await page.fill('#rampRange', '6'); await page.locator('#rampRange').dispatchEvent('input');
+  const dot = await page.locator('#rsH0.inner').boundingBox();
+  const body = await page.locator('#rsBody').boundingBox();
+  const head = await page.evaluate(() => document.getElementById('rsPlayhead').style.left);
+  await page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(body.x + body.width * 0.25, dot.y + dot.height / 2, { steps: 8 });
+  await page.mouse.up();
+  const ramp = +(await page.locator('#rampRange').inputValue());
+  assert.ok(ramp > 6, `dragged left: the change takes more cuts (${ramp})`);
+  const dot2 = await page.locator('#rsH0').boundingBox();
+  assert.ok(Math.abs(dot2.x + dot2.width / 2 - (body.x + body.width * 0.25)) < body.width * 0.06, 'the point stays under the pointer');
+  assert.equal(await text('#rsBandLabel'), `Landing · ${ramp} cuts`);
+  assert.equal(await page.evaluate(() => document.getElementById('rsPlayhead').style.left), head, 'letting go did not jump the playhead');
+  assert.equal(await page.locator('#rsH1.inner').count(), 0, 'the End point at the very end does not drag');
+  await shot('21-drag-point');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

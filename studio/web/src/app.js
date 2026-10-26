@@ -1016,9 +1016,22 @@
       const whole = v.ramp >= Math.ceil(cuts / (parseFloat(document.getElementById('multSelect').value) || 1) - 1e-9);
       const pace = rhythmMode() === 'variable' ? (v.start_ms === v.end_ms ? f(lens[0]) : whole ? `${f(lens[0])} → ${f(lens[lens.length - 1])}` : v.at === 'start' ? `${f(lens[0])} → ${f(lens[lens.length - 1])} over the first ${v.ramp}` : `${f(lens[0])}, then ${f(lens[lens.length - 1])} over the last ${v.ramp}`) : hi > lo * 1.05 ? `${f(lo)} – ${f(hi)}` : f(lo);
       info.textContent = `${n} images · ${fmtDuration(sec(starts[cuts]))} · cuts ${pace}`;
-      document.getElementById('exportMeta').textContent = `1080 × 1920 · ${fmtDuration(sec(starts[cuts]))} · ${musicOn() ? 'sound included' : 'silent'}`;
+      const est = exportEstimate(sec(starts[cuts]));
+      document.getElementById('exportMeta').textContent = `1080 × 1920 · ${fmtDuration(sec(starts[cuts]))} · ${musicOn() ? 'sound included' : 'silent'}${est ? ` · about ${est} to make` : ''}`;
     }
 
+    // How long an export takes, learned from the last ones on this computer: seconds of waiting per second of film (median of the last 5)
+    function exportRates() { try { return JSON.parse(localStorage.getItem('studioExportRates') || '[]').filter(Number.isFinite); } catch (e) { return []; } }
+    function noteExportRate(filmSec, tookSec) {
+      if (!(filmSec > 0) || !(tookSec > 0)) return;
+      try { localStorage.setItem('studioExportRates', JSON.stringify(exportRates().concat([tookSec / filmSec]).slice(-5))); } catch (e) {}
+    }
+    function exportEstimate(filmSec) {
+      const r = exportRates().sort((a, b) => a - b);
+      if (!r.length || !(filmSec > 0)) return '';
+      const t = Math.max(1, Math.round(r[Math.floor(r.length / 2)] * filmSec));
+      return t < 60 ? `${t} s` : `${Math.round(t / 60)} min`;
+    }
     // ---- the rhythm strip: the whole film as one line, drawn in time from the same timeline the player and the export use ----
     // x runs 0..1000 over the clip; the speed line is high where the cuts are short (fast) and low where they are long
     function rhythmStripModel(n) {
@@ -1035,15 +1048,17 @@
       let band = null, handles = [];
       if (variable && v.start_ms !== v.end_ms) {
         const nBase = r.base.length - 1, ramp = Math.max(1, Math.min(nBase, Math.min(200, Math.max(2, v.ramp))));
-        const yOfMs = ms => Y(Math.max(1, (ms * 30) / 1000 / (parseFloat(document.getElementById('multSelect').value) || 1)));
+        const mult = parseFloat(document.getElementById('multSelect').value) || 1;
+        const yOfMs = ms => Y(Math.max(1, (ms * 30) / 1000 / mult));
+        const picMs = ms => Math.round(Math.max(1000 / 30, ms / mult));     // what the picture does: with a Multiple, its cuts are shorter than the run's
         if (v.at === 'end') {
           const from = Math.min(r.base[nBase - ramp], total);
           band = { left: X(from) / 10, width: 100 - X(from) / 10, label: `Landing · ${ramp} cuts` };
-          handles = [{ left: band.left, top: yOfMs(v.start_ms), label: `Start ${v.start_ms} ms`, side: 'left' }, { left: 100, top: yOfMs(v.end_ms), label: `End ${v.end_ms} ms`, side: 'left' }];
+          handles = [{ left: band.left, top: yOfMs(v.start_ms), label: `Start ${picMs(v.start_ms)} ms`, inner: true }, { left: 100, top: yOfMs(v.end_ms), label: `End ${picMs(v.end_ms)} ms` }];
         } else {
           const to = Math.min(r.base[Math.min(nBase, ramp)], total);
           band = { left: 0, width: X(to) / 10, label: `Build-up · ${ramp} cuts` };
-          handles = [{ left: 0, top: yOfMs(v.start_ms), label: `Start ${v.start_ms} ms`, side: 'right' }, { left: band.width, top: yOfMs(v.end_ms), label: `End ${v.end_ms} ms`, side: 'right' }];
+          handles = [{ left: 0, top: yOfMs(v.start_ms), label: `Start ${picMs(v.start_ms)} ms` }, { left: band.width, top: yOfMs(v.end_ms), label: `End ${picMs(v.end_ms)} ms`, inner: true }];
         }
       }
       const beats = r.audio.slice(0, -1).map(t => X(t * 30)).filter(x => x < 1000).slice(0, 2000);
@@ -1075,6 +1090,8 @@
         dot.style.top = lab.style.top = `${(h.top / 48) * 100}%`;
         lab.textContent = h.label;
         lab.className = `rs-hlabel ${h.left < 25 ? 'right' : 'left'}`;                    // near the left edge the label reads to the right, so it stays inside
+        dot.classList.toggle('inner', !!h.inner);                               // the point where the change begins or ends: drag it sideways
+        dot.title = h.inner ? 'Drag sideways: how many cuts the change takes' : '';
       }
       el('rsAxis').innerHTML = m.axis.map((a, i) => `<span style="left:${a.left}%"${i === 0 ? ' class="first"' : ''}>${a.text}</span>`).join('');
       el('rsBeatText').textContent = m.beatText;
@@ -1093,8 +1110,49 @@
       shownHead = pct;
       document.getElementById('rsPlayhead').style.left = `${pct}%`;
     }
+    // Dragging the inner point (where a landing begins, where a build-up ends) sets Change over: it snaps to the nearest cut of the run
+    // The change itself moves the film's length, so the point is placed by trying every Change over and keeping the one whose point lands nearest
+    function rampAt(u) {
+      const n = activePlates().length;
+      if (!n) return null;
+      const paired = ['mono', 'colour'].includes(document.getElementById('invertSelect').value);
+      const nCuts = n * (paired ? 2 : 1), mult = parseFloat(document.getElementById('multSelect').value) || 1;
+      const nBase = Math.max(1, Math.ceil(nCuts / Math.max(0.05, mult) - 1e-9));
+      const v = variableParams(), target = Math.max(0, Math.min(1, u));
+      let best = null, bestD = Infinity;
+      for (let k = 2; k <= Math.max(2, nBase); k++) {
+        const base = variableStarts(nBase, v.start_ms, v.end_ms, k, v.at), total = subdivideStarts(base, mult, nCuts)[nCuts];
+        const at = v.at === 'end' ? base[Math.max(0, nBase - k)] : base[Math.min(nBase, k)];
+        const d = Math.abs(Math.min(at, total) / total - target);
+        if (d < bestD - 1e-9) { bestD = d; best = k; }
+      }
+      return Math.max(2, Math.min(nBase, best));
+    }
+    let draggingPoint = false, dragEndedAt = 0;
+    function pointDown(e) {
+      if (!e.currentTarget.classList.contains('inner')) return;
+      e.preventDefault(); e.stopPropagation();
+      draggingPoint = true;
+      if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
+    }
+    function pointMove(e) {
+      if (!draggingPoint) return;
+      const b = document.getElementById('rsBody').getBoundingClientRect();
+      const ramp = rampAt((e.clientX - b.left) / b.width);
+      const el = document.getElementById('rampRange');
+      if (ramp !== null && String(ramp) !== el.value) { el.value = String(ramp); updateRhythm(); }
+    }
+    function pointUp() { if (draggingPoint) { draggingPoint = false; dragEndedAt = Date.now(); } }
+    ['rsH0', 'rsH1'].forEach(id => {
+      const d = document.getElementById(id);
+      d.addEventListener('pointerdown', pointDown);
+      d.addEventListener('pointermove', pointMove);
+      d.addEventListener('pointerup', pointUp);
+      d.addEventListener('pointercancel', pointUp);
+    });
     // a click on the strip puts the playhead there
     function rhythmStripClick(e) {
+      if (draggingPoint || Date.now() - dragEndedAt < 300) return;             // the end of a drag is not a click
       const body = document.getElementById('rsBody');
       const n = activePlates().length;
       if (!n || !body.getBoundingClientRect) return;
@@ -1587,6 +1645,7 @@
       if (blockedByAi()) return;
       if (exporting) return;
       exporting = true;
+      const t0 = performance.now();
       setExportState('busy');
       setMusicState('busy', 'Rendering on the server…');
       let ok = false;
@@ -1622,6 +1681,8 @@
           document.getElementById('exportFile').textContent = data.filename || 'MP4';
           link.click();                                                  // the file saves itself; the link stays as a way to get it again
           ok = true;
+          noteExportRate(rhythmFor(activePlates().length).end / 30, (performance.now() - t0) / 1000);
+          drawInfo();
           setStatus(`Export ready, downloading: ${data.images} images, ${data.seconds}s.`);
         } else {
           setStatus(`Export failed: ${data.error || 'unknown error'}`);
