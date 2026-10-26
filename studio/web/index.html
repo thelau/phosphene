@@ -300,6 +300,65 @@
               <input type="range" id="shimmerRange" min="0" max="100" value="0" oninput="updateMusic()" title="High partials trembling and beating between the sides" />
               <span id="shimmerVal">0</span>
             </div>
+            <div class="subhead">Hits</div>
+            <div class="control-line">
+              <span>Hit</span>
+              <select id="hitTypeSelect" onchange="updateMusic()" style="flex:1" title="A percussive impact on the cuts">
+                <option value="0">None</option>
+                <option value="1">Thud · a sub drop</option>
+                <option value="2">Knock · short and dull</option>
+                <option value="3">Metal · a ringing strike</option>
+                <option value="4">Noise · a dark burst</option>
+              </select>
+            </div>
+            <div class="control-line">
+              <span>Impact</span>
+              <input type="range" id="hitRange" min="0" max="100" value="60" oninput="updateMusic()" title="How hard the hits land" />
+              <span id="hitVal">60</span>
+            </div>
+            <div class="control-line">
+              <span>Hit on</span>
+              <select id="hitOnSelect" onchange="updateMusic()" style="flex:1" title="Which cuts get a hit">
+                <option value="0">Every cut</option>
+                <option value="1">Every 2nd cut</option>
+                <option value="2">Every 4th cut</option>
+                <option value="3">Accents · an uneven pattern</option>
+              </select>
+            </div>
+            <div class="subhead">Arpeggio</div>
+            <div class="control-line">
+              <span>Arp</span>
+              <input type="range" id="arpRange" min="0" max="100" value="0" oninput="updateMusic()" title="A short pattern of plucked notes that repeats, in the chord's notes" />
+              <span id="arpVal">0</span>
+            </div>
+            <div class="control-line">
+              <span>Pattern</span>
+              <select id="arpStepsSelect" onchange="updateMusic()" style="flex:1" title="How many notes before the pattern repeats">
+                <option value="0">4 notes</option>
+                <option value="1">6 notes</option>
+                <option value="2" selected>8 notes</option>
+                <option value="3">16 notes</option>
+              </select>
+            </div>
+            <div class="control-line">
+              <span>Speed</span>
+              <select id="arpRateSelect" onchange="updateMusic()" style="flex:1" title="Notes per cut: it speeds up and slows down with the cuts">
+                <option value="0">1 note per 2 cuts</option>
+                <option value="1">1 note per cut</option>
+                <option value="2" selected>2 notes per cut</option>
+                <option value="3">4 notes per cut</option>
+              </select>
+            </div>
+            <div class="subhead">Dynamics</div>
+            <div class="control-line">
+              <span>Dynamics</span>
+              <select id="dynSelect" onchange="updateMusic()" style="flex:1" title="Off: steady. Build up / fade out: the whole clip. Follows the speed: louder when the cuts are fast, softer as they slow (with Variable speed).">
+                <option value="0">Off · steady</option>
+                <option value="1">Build up · crescendo</option>
+                <option value="2">Fade out · decrescendo</option>
+                <option value="3">Follows the speed</option>
+              </select>
+            </div>
           </div>
         </div>
 

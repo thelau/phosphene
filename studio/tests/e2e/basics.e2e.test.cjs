@@ -268,6 +268,49 @@ test('the drone engine measures like the references: sub-bass bed, dark, level, 
   await ctx.close();
 });
 
+test('hits, the arpeggio and the dynamics are heard in the real engine and stay dark and level', { skip }, async () => {
+  const ctx = await fresh();
+  const rows = await page.evaluate(async () => {
+    const stats = (r) => {
+      const n = r.left.length; let s = 0, mx = 0;
+      for (let i = 0; i < n; i++) { s += r.left[i] ** 2 + r.right[i] ** 2; mx = Math.max(mx, Math.abs(r.left[i]), Math.abs(r.right[i])); }
+      const half = (a, b) => { let t = 0; for (let i = a; i < b; i++) t += r.left[i] ** 2 + r.right[i] ** 2; return Math.sqrt(t / (2 * (b - a))); };
+      // energy above 2 kHz and between 120 Hz and 900 Hz through simple one-pole splits
+      const mono = new Float32Array(n); for (let i = 0; i < n; i++) mono[i] = (r.left[i] + r.right[i]) / 2;
+      const lp = (x, fc) => { const a = 1 - Math.exp(-2 * Math.PI * fc / 44100); const y = new Float32Array(x.length); let v = 0; for (let i = 0; i < x.length; i++) { v += a * (x[i] - v); y[i] = v; } return y; };
+      const e = x => { let t = 0; for (const v of x) t += v * v; return t; };
+      const l250 = lp(lp(mono, 120), 120), l1k = lp(lp(mono, 900), 900), l2k = lp(lp(mono, 2000), 2000);
+      const total = e(mono);
+      return { rms: Math.sqrt(s / (2 * n)), crest: mx / Math.sqrt(s / (2 * n)), first: half(0, n >> 1), second: half(n >> 1, n), mid: (e(l1k) - e(l250)) / total, high: (total - e(l2k)) / total, peak: mx };
+    };
+    const base = { pulse: 0.65, low: 0.93, bright: 0.3, width: 0.6, space: 0.06, power: 0.6, seed: 7 };
+    const starts = Array.from({ length: 41 }, (_, i) => i * 0.2);
+    const out = {};
+    const go = async (name, extra, st = starts) => { out[name] = stats(await window.Drone.renderExport({ ...base, ...extra }, st)); };
+    await go('plain', {});
+    for (const t of [1, 2, 3, 4]) await go('hit' + t, { hitType: t, hit: 0.8, hitOn: 0 });
+    await go('accents', { hitType: 1, hit: 0.8, hitOn: 3 });
+    await go('arp', { arp: 0.6, arpSteps: 2, arpRate: 2 });
+    await go('build', { dynamics: 1 });
+    await go('fade', { dynamics: 2 });
+    const variable = [0]; for (let i = 0; i < 40; i++) variable.push(variable[i] + (i < 28 ? 0.1 : 0.1 * Math.pow(7, (i - 27) / 12)));
+    await go('follow', { dynamics: 3 }, variable);
+    await go('followFlat', { dynamics: 3 });
+    return out;
+  });
+  for (const [name, m] of Object.entries(rows)) {
+    assert.ok(Math.abs(m.rms - 0.17) < 0.01 && m.peak <= 0.97 + 1e-6, `${name}: level ${m.rms}, peak ${m.peak}`);
+    assert.ok(m.high < 0.02, `${name}: dark, ${m.high} above 2 kHz`);
+  }
+  for (const t of [1, 2, 3, 4]) assert.ok(rows['hit' + t].crest > rows.plain.crest + 0.1, `hit type ${t} adds transients (${rows['hit' + t].crest} vs ${rows.plain.crest})`);
+  assert.ok(rows.arp.mid > rows.plain.mid * 1.1, `the arpeggio adds notes in the mids (${rows.arp.mid} vs ${rows.plain.mid})`);
+  assert.ok(rows.build.second > rows.build.first * 1.4, 'build up: louder at the end');
+  assert.ok(rows.fade.first > rows.fade.second * 1.4, 'fade out: softer at the end');
+  assert.ok(rows.follow.first > rows.follow.second * 1.2, 'follows the speed: loud while the cuts are fast, softer as they slow');
+  assert.ok(Math.abs(rows.followFlat.first - rows.followFlat.second) < rows.followFlat.rms * 0.2, 'a flat speed has nothing to follow');
+  await ctx.close();
+});
+
 test('Random sound: every draw stays a dark, heavy, level drone and a new sound plays live', { skip }, async () => {
   const ctx = await fresh();
   await page.click('#tabMusic');
@@ -282,7 +325,7 @@ test('Random sound: every draw stays a dark, heavy, level drone and a new sound 
     for (let t = 0; t < 4; t++) {
       randomMusic();                                                           // the page's own draw, rendered by the real engine
       const u = id => parseInt(document.getElementById(id).value, 10) / 100;
-      const prm = { pulse: u('pulseRange'), low: u('lowRange'), bright: u('brightRange'), width: u('widthRange'), space: u('spaceRange'), power: u('powerRange'), pitch: u('pitchRange'), movement: u('movementRange'), echo: u('echoRange'), wash: u('washRange'), ring: u('ringRange'), shimmer: u('shimmerRange'), subWave: parseInt(document.getElementById('subWaveSelect').value, 10), padWave: parseInt(document.getElementById('padWaveSelect').value, 10), chord: parseInt(document.getElementById('chordSelect').value, 10), seed: parseInt(document.getElementById('seedVal').value, 10) };
+      const prm = { pulse: u('pulseRange'), low: u('lowRange'), bright: u('brightRange'), width: u('widthRange'), space: u('spaceRange'), power: u('powerRange'), pitch: u('pitchRange'), movement: u('movementRange'), echo: u('echoRange'), wash: u('washRange'), ring: u('ringRange'), shimmer: u('shimmerRange'), hitType: parseInt(document.getElementById('hitTypeSelect').value, 10), hit: u('hitRange'), hitOn: parseInt(document.getElementById('hitOnSelect').value, 10), arp: u('arpRange'), arpSteps: parseInt(document.getElementById('arpStepsSelect').value, 10), arpRate: parseInt(document.getElementById('arpRateSelect').value, 10), dynamics: parseInt(document.getElementById('dynSelect').value, 10), subWave: parseInt(document.getElementById('subWaveSelect').value, 10), padWave: parseInt(document.getElementById('padWaveSelect').value, 10), chord: parseInt(document.getElementById('chordSelect').value, 10), seed: parseInt(document.getElementById('seedVal').value, 10) };
       const r = await window.Drone.renderExport(prm, starts);
       const n = 1 << 16, re = new Float64Array(n), im = new Float64Array(n);
       for (let i = 0; i < n; i++) re[i] = (r.left[i] + r.right[i]) / 2 * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)));

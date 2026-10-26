@@ -637,12 +637,14 @@ test('with the drone on, Play starts it live from the top with the settings and 
   h.$('musicSelect').value = 'on'; h.$('invertSelect').value = 'colour';
   h.$('pulseRange').value = '40'; h.$('lowRange').value = '80'; h.$('brightRange').value = '20'; h.$('widthRange').value = '90'; h.$('spaceRange').value = '75'; h.$('powerRange').value = '55'; h.$('seedVal').value = '42';
   h.$('pitchRange').value = '50'; h.$('movementRange').value = '50'; h.$('echoRange').value = '0'; h.$('chordSelect').value = '0'; h.$('washRange').value = '0'; h.$('ringRange').value = '0'; h.$('shimmerRange').value = '0'; h.$('subWaveSelect').value = '0'; h.$('padWaveSelect').value = '0';
+  for (const id of ['hitTypeSelect', 'hitOnSelect', 'arpStepsSelect', 'arpRateSelect', 'dynSelect']) h.$(id).value = '0';
+  h.$('hitRange').value = '0'; h.$('arpRange').value = '0';
   h.run('framesPerCut = 3');                                                // 100 ms per cut
   h.run('togglePlay()');
   await settle(); await settle();
   assert.equal(h.calls.some(c => c.url === '/api/music'), false);           // nothing is rendered on the server
   const play = h.ctx.__drone.plays[0];
-  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, subWave: 0, padWave: 0, seed: 42, paired: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true });
   assert.equal(play.offset, 0);
   assert.equal(play.starts.length, 7);                                      // 3 images x 2 (colour pairs) + the end
   assert.ok(Math.abs(play.starts[6] - 0.6) < 1e-9 && Math.abs(play.starts[1] - 0.1) < 1e-9);

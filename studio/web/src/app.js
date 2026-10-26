@@ -530,6 +530,9 @@
         pulse: unit('pulseRange'), low: unit('lowRange'), bright: unit('brightRange'), width: unit('widthRange'), space: unit('spaceRange'), power: unit('powerRange'),
         pitch: unit('pitchRange'), chord: parseInt(document.getElementById('chordSelect').value, 10) || 0, movement: unit('movementRange'), echo: unit('echoRange'),
         wash: unit('washRange'), ring: unit('ringRange'), shimmer: unit('shimmerRange'),
+        hitType: parseInt(document.getElementById('hitTypeSelect').value, 10) || 0, hit: unit('hitRange'), hitOn: parseInt(document.getElementById('hitOnSelect').value, 10) || 0,
+        arp: unit('arpRange'), arpSteps: parseInt(document.getElementById('arpStepsSelect').value, 10) || 0, arpRate: parseInt(document.getElementById('arpRateSelect').value, 10) || 0,
+        dynamics: parseInt(document.getElementById('dynSelect').value, 10) || 0,
         subWave: parseInt(document.getElementById('subWaveSelect').value, 10) || 0, padWave: parseInt(document.getElementById('padWaveSelect').value, 10) || 0,
         seed: parseInt(document.getElementById('seedVal').value, 10) || 7, paired
       };
@@ -545,18 +548,22 @@
     function updateMusic() {
       const on = musicOn();
       document.getElementById('synthBox').hidden = !on;
-      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
+      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer', 'hit', 'arp']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
       document.getElementById('styleHint').textContent = on ? MUSIC_HINT : 'No music: the preview and the export stay silent.';
       saveSettings();
       musicChanged();
     }
     // a random sound within what works: every setting is drawn from a range that stays a dark, heavy drone (the ranges are the taste)
-    const RANDOM_RANGES = { pulse: [30, 90], low: [65, 100], power: [30, 90], space: [5, 85], bright: [0, 55], width: [30, 100], pitch: [0, 100], movement: [15, 85], echo: [0, 55], wash: [0, 55], ring: [0, 45], shimmer: [0, 45] };
+    const RANDOM_RANGES = { pulse: [30, 90], low: [65, 100], power: [30, 90], space: [5, 85], bright: [0, 55], width: [30, 100], pitch: [0, 100], movement: [15, 85], echo: [0, 55], wash: [0, 55], ring: [0, 45], shimmer: [0, 45], hit: [35, 85], arp: [25, 60] };
     function randomMusic() {
       const pick = ([lo, hi]) => Math.round(lo + Math.random() * (hi - lo));
       for (const [k, range] of Object.entries(RANDOM_RANGES)) document.getElementById(`${k}Range`).value = String(pick(range));
       for (const k of ['echo', 'wash', 'ring', 'shimmer']) if (Math.random() < 0.5) document.getElementById(`${k}Range`).value = '0';   // flavours, not the rule: often none
       const r = Math.random();
+      const choice = (id, n) => { document.getElementById(id).value = String(Math.floor(Math.random() * n)); };
+      choice('hitTypeSelect', 5); choice('hitOnSelect', 4); choice('arpStepsSelect', 4); choice('arpRateSelect', 4); choice('dynSelect', 4);
+      if (document.getElementById('hitTypeSelect').value === '0' || Math.random() < 0.25) document.getElementById('hitTypeSelect').value = '0';   // hits and arpeggios come and go
+      if (Math.random() < 0.55) document.getElementById('arpRange').value = '0';
       document.getElementById('subWaveSelect').value = r < 0.5 ? '0' : r < 0.75 ? '1' : '2';
       document.getElementById('padWaveSelect').value = String(Math.floor(Math.random() * 4));
       document.getElementById('chordSelect').value = String(Math.floor(Math.random() * 4));
@@ -704,7 +711,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmSlider', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'subWaveSelect', 'padWaveSelect', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmSlider', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');

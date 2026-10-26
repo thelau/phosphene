@@ -66,6 +66,19 @@
     return b;
   }
 
+  // a short burst of white noise for the knock and noise hits
+  const noiseCache = new WeakMap();
+  function knockNoise(ctx, seconds = 0.12) {
+    const key = ctx.sampleRate + ':' + seconds;
+    let m = noiseCache.get(ctx); if (!m) noiseCache.set(ctx, m = new Map());
+    if (!m.has(key)) {
+      const r = mulberry32(99), n = Math.floor(seconds * ctx.sampleRate), b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = gauss(r);
+      m.set(key, b);
+    }
+    return m.get(key);
+  }
+
   function cutAtTime(starts, t) {
     let lo = 0, hi = starts.length - 2;
     while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= t) lo = mid; else hi = mid - 1; }
@@ -88,6 +101,8 @@
     for (let k = 1; k <= n; k++) { const a = (2 / (k * Math.PI)) * Math.sin(k * Math.PI * duty); real[k] = a * Math.cos(k * Math.PI * duty); imag[k] = a * Math.sin(k * Math.PI * duty); }
     return ctx.createPeriodicWave(real, imag);
   }
+  const ARP_STEPS = [4, 6, 8, 16];
+  const ARP_PER_CUT = [0.5, 1, 2, 4];                                  // arpeggio notes per cut
   const rootHz = pitch => 38 * Math.pow(2, 0.9 * pitch);                // 38..71 Hz
 
   // Builds the drone into ctx and connects it to `dest` (stereo, before the final glue).
@@ -106,6 +121,10 @@
     const chord = CHORDS[Math.max(0, Math.min(CHORDS.length - 1, Math.round(+p.chord || 0)))];
     const echo = clamp01(p.echo === undefined ? 0 : p.echo);
     const wash = clamp01(p.wash || 0), ring = clamp01(p.ring || 0), shimmer = clamp01(p.shimmer || 0);
+    const pick = (v, n) => Math.max(0, Math.min(n - 1, Math.round(+v || 0)));
+    const hitType = pick(p.hitType, 5), hitAmt = clamp01(p.hit || 0), hitOn = pick(p.hitOn, 4);
+    const arpAmt = clamp01(p.arp || 0), arpSteps = ARP_STEPS[pick(p.arpSteps, ARP_STEPS.length)], arpRate = pick(p.arpRate, 4);
+    const dynamics = opts.dynamics === false ? 0 : pick(p.dynamics, 4);
     const subWave = Math.max(0, Math.min(SUB_WAVES.length - 1, Math.round(+p.subWave || 0)));
     const padWave = Math.max(0, Math.min(PAD_WAVES.length - 1, Math.round(+p.padWave || 0)));
     const move = Math.pow(2, 2 * (clamp01(p.movement === undefined ? 0.5 : p.movement) - 0.5));   // 0.5 = as measured; 1 = twice as fast
@@ -257,12 +276,86 @@
         br.connect(hp2); hp2.connect(dl); dl.connect(dark); dark.connect(fb); fb.connect(dl); dark.connect(gain(0.7 * echo, mix[i]));
       }
     });
+    // ---- hits: a percussive impact on some of the cuts ----
+    const hitBus = gain(1);
+    sides.forEach(br => hitBus.connect(gain(0.9, br)));
+    const accents = Array.from({ length: 8 }, () => rand() < 0.4);       // an irregular pattern for "accents"
+    accents[0] = true;
+    if (hitType > 0 && hitAmt > 0.01) {
+      for (let i = 0; i < nCuts; i++) {
+        const on = hitOn === 0 ? true : hitOn === 1 ? i % 2 === 0 : hitOn === 2 ? i % 4 === 0 : accents[i % 8];
+        if (!on || starts[i] < offset - 0.001) continue;
+        const t = at(starts[i]), a = hitAmt, env = (g, peak, decay, delay = 0) => {
+          g.gain.setValueAtTime(0, t + delay); g.gain.linearRampToValueAtTime(peak, t + delay + 0.004); g.gain.setTargetAtTime(0, t + delay + 0.004, decay / 3);
+        };
+        const tone = (type, f1, f2, drop, peak, decay, to) => {
+          const o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + drop);
+          const g = ctx.createGain(); env(g, peak, decay); o.connect(g); g.connect(to); o.start(t); o.stop(t + decay * 1.6 + 0.05);
+        };
+        if (hitType === 1) tone('sine', f0 * 3.2, f0, 0.11, 1.1 * a, 0.32, hitBus);                       // thud: a sub that drops onto the root
+        else if (hitType === 2) {                                                                        // knock: a short low tone and a dull click
+          tone('triangle', f0 * 5, f0 * 2.2, 0.05, 0.75 * a, 0.14, hitBus);
+          const n = ctx.createBufferSource(); n.buffer = knockNoise(ctx); const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700;
+          const g = ctx.createGain(); env(g, 0.5 * a, 0.04); n.connect(lp); lp.connect(g); g.connect(hitBus); n.start(t); n.stop(t + 0.12);
+        } else if (hitType === 3) {                                                                      // metal: inharmonic partials ringing out
+          [[1, 1, 0.42], [2.76, 0.6, 0.26], [5.4, 0.35, 0.16]].forEach(([r, g0, d]) => tone('sine', f0 * 5 * r, f0 * 5 * r, 0.01, 0.4 * a * g0, d, hitBus));
+        } else {                                                                                         // noise burst: a dark, short snare
+          const n = ctx.createBufferSource(); n.buffer = knockNoise(ctx, 0.3); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 420; bp.Q.value = 0.8;
+          const g = ctx.createGain(); env(g, 1.3 * a, 0.16); n.connect(bp); bp.connect(g); g.connect(hitBus); n.start(t); n.stop(t + 0.35);
+        }
+      }
+    }
+
+    // ---- arpeggio: a short pattern of plucked notes that repeats, one step per beat of the cuts ----
+    if (arpAmt > 0.01) {
+      const degrees = [];                                                // the notes it may use: the chord's tones over two octaves, kept dark
+      for (const r of chord.ratios) for (const oct of [0.5, 1]) { const f = f0 * r * oct; if (f > 100 && f < 700) degrees.push(f); }
+      degrees.sort((x, y) => x - y);
+      const pattern = [];
+      let cur = Math.floor(rand() * degrees.length);
+      for (let k = 0; k < arpSteps; k++) { pattern.push(degrees[cur]); cur = Math.max(0, Math.min(degrees.length - 1, cur + [-2, -1, 1, 2, 3][Math.floor(rand() * 5)])); }
+      const arpBus = [gain(1), gain(1)];
+      arpBus.forEach((b, i) => b.connect(sides[i]));
+      const per = ARP_PER_CUT[arpRate];
+      let step = 0;
+      for (let i = 0; i < nCuts; i++) {
+        const n = per < 1 ? (i % 2 === 0 ? 1 : 0) : per, len = starts[i + 1] - starts[i];
+        for (let k = 0; k < n; k++, step++) {
+          const ts = starts[i] + (per < 1 ? 0 : (len * k) / n);
+          if (ts < offset - 0.001) continue;
+          const stepLen = per < 1 ? len * 2 : len / n, decay = Math.min(0.5, Math.max(0.07, stepLen * 0.9)), t = at(ts), f = pattern[step % arpSteps];
+          const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 2;
+          lp.frequency.setValueAtTime(1900, t); lp.frequency.exponentialRampToValueAtTime(420, t + decay);
+          const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(2.2 * arpAmt, t + 0.004); g.gain.setTargetAtTime(0, t + 0.004, decay / 3);
+          lp.connect(g);
+          for (const det of [-0.004, 0.004]) {                           // two detuned saws
+            const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f * (1 + det); o.connect(lp); o.start(t); o.stop(t + decay * 1.6 + 0.05);
+          }
+          g.connect(gain(0.85, arpBus[step % 2])); g.connect(gain(0.35, arpBus[(step + 1) % 2]));   // the note sits to one side, alternating
+        }
+      }
+    }
+
     // stereo width: mid/side
     const w = 0.25 + 0.9 * width;
     const merger = ctx.createChannelMerger(2);
     const cross = (a, b, ch) => { const g1 = gain((1 + w) / 2); const g2 = gain((1 - w) / 2); mix[a].connect(g1); mix[b].connect(g2); g1.connect(merger, 0, ch); g2.connect(merger, 0, ch); };
     cross(0, 1, 0); cross(1, 0, 1);
-    if (opts.tap === 'sub') subBus.connect(dest); else if (opts.tap === 'dry') { mix[0].connect(dest); } else merger.connect(dest);
+    // dynamics: the whole sound swells, fades, or follows how fast the cuts are (faster = louder)
+    const dyn = ctx.createGain();
+    if (dynamics) {
+      const lens = starts.slice(1).map((v, i) => v - starts[i]);
+      const lo = Math.min(...lens), hi = Math.max(...lens);
+      const lenAt = t => lens[Math.min(lens.length - 1, cutAtTime(starts, t))];
+      sampled(dyn.gain, t => {
+        const u = Math.min(1, t / total);
+        if (dynamics === 1) return 0.3 + 0.7 * Math.pow(u, 1.4);                                   // build up
+        if (dynamics === 2) return 1 - 0.7 * Math.pow(u, 1.2);                                     // fade out
+        return hi > lo * 1.05 ? 0.35 + 0.65 * (Math.log(hi / lenAt(t)) / Math.log(hi / lo)) : 1;   // follow the speed
+      });
+    }
+    merger.connect(dyn);
+    if (opts.tap === 'sub') subBus.connect(dest); else if (opts.tap === 'dry') { mix[0].connect(dest); } else dyn.connect(dest);
 
     for (const n of nodes) n.start();
     return { stop: when => { for (const n of nodes) { try { n.stop(when); } catch (e) {} } } };
@@ -277,12 +370,12 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   async function level(p, starts) {
-    const key = JSON.stringify([p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave]);
+    const key = JSON.stringify([p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate]);
     if (levelCache.has(key)) return levelCache.get(key);
     const rate = 22050, secs = Math.min(4, starts[starts.length - 1]);
     const trimmed = starts.filter(s => s < secs); trimmed.push(secs);
     const ctx = new OfflineAudioContext(2, Math.max(1, Math.floor(secs * rate)), rate);
-    build(ctx, ctx.destination, p, trimmed, { offset: 0, t0: 0, total: starts[starts.length - 1], landing: false });
+    build(ctx, ctx.destination, p, trimmed, { offset: 0, t0: 0, total: starts[starts.length - 1], landing: false, dynamics: false });
     const g = TARGET_RMS / (rmsOf(await ctx.startRendering()) + 1e-9);
     levelCache.set(key, g);
     if (levelCache.size > 40) levelCache.delete(levelCache.keys().next().value);
