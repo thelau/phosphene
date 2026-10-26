@@ -436,7 +436,7 @@
                 <button role="tab" id="soundTabBed" data-group="bed" onclick="showSoundGroup('bed')">Bed <span>6</span></button>
                 <button role="tab" id="soundTabTone" data-group="tone" onclick="showSoundGroup('tone')">Tone <span>7</span></button>
                 <button role="tab" id="soundTabTexture" data-group="texture" onclick="showSoundGroup('texture')">Texture <span>6</span></button>
-                <button role="tab" id="soundTabNotes" data-group="notes" onclick="showSoundGroup('notes')">Notes <span>8</span></button>
+                <button role="tab" id="soundTabNotes" data-group="notes" onclick="showSoundGroup('notes')">Notes <span>12</span></button>
               </div>
               <input type="hidden" id="soundGroupVal" value="bed" />
 
@@ -551,7 +551,33 @@
                     <option value="3">4 notes per cut</option>
                   </select>
                 </label>
-                <div class="subhead">Dynamics</div>
+                <div class="subhead">Bassline</div>
+                <label class="row"><span class="lbl">Amount</span><input type="range" id="bassRange" min="0" max="100" value="0" oninput="updateMusic()" title="A sequenced bassline on the cuts, an octave over the sub: root, fifth and octave, so it stays in key" /><span class="val" id="bassVal">0</span></label>
+                <label class="row"><span class="lbl">Pattern</span>
+                  <select id="bassPatternSelect" onchange="updateMusic()" title="The bassline's four steps">
+                    <option value="0">Pulse · the root</option>
+                    <option value="1">Octave · up and down</option>
+                    <option value="2">Fifths · root, fifth, octave</option>
+                    <option value="3">Gallop · a rest, then two</option>
+                  </select>
+                </label>
+                <label class="row"><span class="lbl">Speed</span>
+                  <select id="bassRateSelect" onchange="updateMusic()" title="Bass notes per cut of the music">
+                    <option value="0">1 note per cut</option>
+                    <option value="1" selected>2 notes per cut</option>
+                    <option value="2">4 notes per cut</option>
+                  </select>
+                </label>
+                <div class="subhead">Shape</div>
+                <label class="row"><span class="lbl">Arrangement</span>
+                  <select id="arrangeSelect" onchange="updateMusic()" title="How the arpeggio, the bassline and the hits come and go over the film (the drone stays)">
+                    <option value="0">Off · all at once</option>
+                    <option value="1">Build-up · in one by one</option>
+                    <option value="2">Sections · sparse and full</option>
+                    <option value="3">Follows the speed</option>
+                  </select>
+                </label>
+
                 <label class="row"><span class="lbl">Dynamics</span>
                   <select id="dynSelect" onchange="updateMusic()" title="Off: steady. Rise / Fall: the notes climb or sink over the whole clip. Follows the speed: higher and brighter while the cuts are fast (with Variable speed).">
                     <option value="0">Off · steady</option>

@@ -160,7 +160,22 @@
     { name: 'Pendulum', steps: [0, -5] },
     { name: 'Wander', walk: [0, -2, 3, -5, 5, -4] },
   ];
-  const PROG_EVERY = [2, 4, 8, 16];                                     // cuts per chord
+  const PROG_EVERY = [2, 4, 8, 16];
+  // The bassline: a sequencer on a plucked saw an octave over the sub (it follows the chord changes). Only root, fifth and octave, so it
+  // stays in key on every chord; the rhythm comes from rests and accents. Four steps, 1 / 2 / 4 a cut.
+  const BASS_PATTERNS = [
+    { name: 'Pulse', notes: [0, 0, 0, 0], acc: [1, 0, 0.5, 0] },
+    { name: 'Octave', notes: [0, 12, 0, 12], acc: [1, 0, 0.5, 0] },
+    { name: 'Fifths', notes: [0, 7, 12, 7], acc: [1, 0, 0.5, 0] },
+    { name: 'Gallop', notes: [0, null, 0, 0], acc: [1, 0, 0.4, 0.7] },
+  ];
+  const BASS_PER_CUT = [1, 2, 4];
+  // Arrangement: the arpeggio, the bassline and the hits come and go over the film instead of all playing throughout (the bed stays).
+  // Build-up: they enter one by one and the ending strips back; Sections: sparse and full by turns, every 8 of the music's cuts;
+  // Follows the speed: fuller while the cuts are fast (a flat speed builds up instead).
+  const ARRANGEMENTS = ['Off', 'Build-up', 'Sections', 'Follows the speed'];
+  const SECTION_CUTS = 8;
+  const SECTIONS = [{ arp: 1, bass: 0, hits: 0 }, { arp: 1, bass: 1, hits: 1 }, { arp: 0, bass: 1, hits: 0 }, { arp: 1, bass: 1, hits: 1 }];                                     // cuts per chord
   // Arpeggio moods. One instrument for all of them, the first arpeggio's patch (two detuned saws into a resonant low-pass that snaps shut on
   // each note: the modular sound), played differently, as a player turns the same patch: the notes (scale over the tonic, two octaves above
   // the root; register lo..hi times the tonic), the shape (Dark falls; Phase: two voices loop the same notes, one a note longer, so they drift
@@ -227,6 +242,8 @@
     const arpAmt = clamp01(p.arp || 0), arpSteps = ARP_STEPS[pick(p.arpSteps, ARP_STEPS.length)], arpRate = pick(p.arpRate, 4);
     const dynamics = opts.dynamics === false ? 0 : pick(p.dynamics, 4);
     const prog = PROGRESSIONS[pick(p.prog, PROGRESSIONS.length)], progEvery = PROG_EVERY[pick(p.progEvery, PROG_EVERY.length)];
+    const bassAmt = clamp01(p.bass || 0), bassPat = BASS_PATTERNS[pick(p.bassPattern, BASS_PATTERNS.length)], bassPer = BASS_PER_CUT[pick(p.bassRate, BASS_PER_CUT.length)];
+    const arrange = pick(p.arrange, ARRANGEMENTS.length);
     const subWave = Math.max(0, Math.min(SUB_WAVES.length - 1, Math.round(+p.subWave || 0)));
     const padWave = Math.max(0, Math.min(PAD_WAVES.length - 1, Math.round(+p.padWave || 0)));
     const move = Math.pow(2, 2 * (clamp01(p.movement === undefined ? 0.5 : p.movement) - 0.5));   // 0.5 = as measured; 1 = twice as fast
@@ -426,8 +443,30 @@
       }
     });
     // ---- hits: a percussive impact on some of the cuts. Fixed voices (made once), retriggered by automation: no node per hit ----
-    const hitBus = gain(1);
-    sides.forEach(br => hitBus.connect(gain(0.9, br)));
+    // each layer the arrangement moves has its own level on the way to the sides
+    const arr = { hits: gain(1), arp: [gain(1, sides[0]), gain(1, sides[1])], bass: [gain(1, sides[0]), gain(1, sides[1])] };
+    const hitBus = gain(1, arr.hits);
+    sides.forEach(br => arr.hits.connect(gain(0.9, br)));
+
+    // ---- the bassline: before the hits, so the chord changes move it with the bed ----
+    if (bassAmt > 0.01) {
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 5; lp.frequency.value = 200;
+      const env = gain(0); lp.connect(env); env.connect(gain(0.55, arr.bass[0])); env.connect(gain(0.55, arr.bass[1]));
+      const oscs = [['sawtooth', -0.003, 1], ['square', 0.003, 0.5]].map(([w, det, g]) => { const o = osc(w, f0 * 2); o.connect(gain(g, lp)); return [o, det]; });
+      const L = bassPat.notes.length;
+      perCut.push((i, tc) => {
+        const len = starts[i + 1] - starts[i], stepLen = len / bassPer;
+        for (let k = 0; k < bassPer; k++) {
+          const st = i * bassPer + k, note = bassPat.notes[st % L];
+          if (note === null) continue;
+          const t = tc + k * stepLen, s = arc(starts[i] + k * stepLen), accent = 0.65 + 0.35 * bassPat.acc[st % L];
+          const f = f0 * 2 * Math.pow(2, note / 12), decay = Math.min(0.35, Math.max(0.06, stepLen * 0.8));
+          for (const [o, det] of oscs) o.frequency.setValueAtTime(f * (1 + det), t);
+          lp.frequency.setValueAtTime((500 + 1300 * accent) * lift(s, 0.8), t); lp.frequency.setTargetAtTime(140, t + 0.004, decay / 2.5);
+          strike(env, t, 1.7 * bassAmt * accent, decay);
+        }
+      });
+    }
     const accents = Array.from({ length: 8 }, () => rand() < 0.4);       // an irregular pattern for "accents"
     accents[0] = true;
     // an envelope on a gain: a fast rise to peak, then an exponential fall (setTarget is open-ended, so the next hit simply takes over)
@@ -478,7 +517,7 @@
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = m.q; lp.frequency.value = m.open;
         const env = gain(0); lp.connect(env);
         const pan = phase ? (vi ? [0.15, 1] : [1, 0.15]) : [1, 1];            // Phase: one loop leans left, the other right
-        env.connect(gain(0.6 * m.gain * pan[0], sides[0])); env.connect(gain(0.6 * m.gain * pan[1], sides[1]));
+        env.connect(gain(0.6 * m.gain * pan[0], arr.arp[0])); env.connect(gain(0.6 * m.gain * pan[1], arr.arp[1]));
         const oscs = [-MOOD_DETUNE, MOOD_DETUNE].map(det => { const o = osc('sawtooth', 200); o.connect(lp); return [o, det]; });
         return { lp, env, oscs };
       });
@@ -517,7 +556,7 @@
       let cur = Math.floor(rand() * degrees.length);
       for (let k = 0; k < arpSteps; k++) { pattern.push(degrees[cur]); cur = Math.max(0, Math.min(degrees.length - 1, cur + [-2, -1, 1, 2, 3][Math.floor(rand() * 5)])); }
       const arpBus = [gain(1), gain(1)];
-      arpBus.forEach((b, i) => b.connect(sides[i]));
+      arpBus.forEach((b, i) => b.connect(arr.arp[i]));
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 2; lp.frequency.value = 1900;
       const env = gain(0);
       const voices = [-0.004, 0.004].map(det => { const o = osc('sawtooth', 200); o.connect(lp); return [o, det]; });
@@ -549,6 +588,28 @@
     merger.connect(dyn);
     if (opts.tap === 'sub') subBus.connect(dest); else if (opts.tap === 'dry') { mix[0].connect(dest); } else dyn.connect(dest);
 
+    // arrangement: the levels of the arpeggio, the bassline and the hits over the film
+    if (arrange) {
+      const ramp = (u, a, b) => Math.min(1, Math.max(0, (u - a) / (b - a)));
+      const set = (layer, fn) => { for (const g of [].concat(arr[layer])) sampled(g.gain, fn); };
+      if (arrange === 2) {                                                   // sections: switched on the music's cuts, a quick fade
+        const lv = i => SECTIONS[Math.floor(i / SECTION_CUTS) % SECTIONS.length];
+        const first = lv(Math.min(cursor, Math.max(0, nCuts - 1)));
+        for (const layer of ['arp', 'bass', 'hits']) for (const g of [].concat(arr[layer])) g.gain.setValueAtTime(first[layer], at(offset));
+        perCut.push((i, t) => { if (i % SECTION_CUTS === 0) for (const layer of ['arp', 'bass', 'hits']) for (const g of [].concat(arr[layer])) g.gain.setTargetAtTime(lv(i)[layer], t, 0.012); });
+      } else {
+        const lens = starts.slice(1).map((v, i) => v - starts[i]), whole = lens.length > 2 ? lens.slice(0, -1) : lens;
+        const lo = Math.min(...whole), hi = Math.max(...whole), varies = hi > lo * 1.05;
+        const speed = t => Math.min(1, Math.max(0, Math.log(hi / lens[Math.min(lens.length - 1, cutAtTime(starts, t))]) / Math.log(hi / lo)));
+        if (arrange === 3 && varies) {                                       // follows the speed: fast = full
+          set('arp', t => ramp(speed(t), 0.05, 0.25)); set('bass', t => ramp(speed(t), 0.35, 0.55)); set('hits', t => ramp(speed(t), 0.65, 0.85));
+        } else {                                                             // build-up: in one by one, out for the ending
+          set('arp', t => ramp(t / total, 0.1, 0.18));
+          set('bass', t => ramp(t / total, 0.28, 0.34) * (1 - ramp(t / total, 0.88, 0.94)));
+          set('hits', t => ramp(t / total, 0.45, 0.5) * (1 - ramp(t / total, 0.8, 0.86)));
+        }
+      }
+    }
     // chord changes: one control signal (cents) into the bed's oscillators' detune, so it adds to whatever else moves the pitch;
     // a short glide at each change, as a modular's portamento
     if (prog) {
@@ -573,7 +634,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   const cutSignature = starts => { const head = []; for (const t of starts) { head.push(Math.round(t * 1000)); if (t > 4) break; } return head.join(','); };   // the cuts of the window the level is measured on: faster cuts pump differently
-  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery]);
+  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.bass, p.bassPattern, p.bassRate, p.arrange]);
   async function level(p, starts) {
     starts = cleanStarts(starts);
     const key = levelKey(p, starts);
@@ -789,5 +850,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, PROGRESSIONS, PROG_EVERY, phaseLoop, rootHz };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz };
 })();

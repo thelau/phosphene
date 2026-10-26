@@ -648,7 +648,7 @@ test('with the drone on, Play starts it live from the top with the settings and 
   await settle(); await settle();
   assert.equal(h.calls.some(c => c.url === '/api/music'), false);           // nothing is rendered on the server
   const play = h.ctx.__drone.plays[0];
-  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, prog: 0, progEvery: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, choir: 0, industrial: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpMood: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
+  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, prog: 0, progEvery: 0, bass: 0, bassPattern: 0, bassRate: 0, arrange: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, choir: 0, industrial: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpMood: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
   assert.equal(play.offset, 0);
   assert.equal(play.starts.length, 3);                                      // the music follows the beats (2 of them for 6 picture cuts at 3 per beat) + the end
   assert.ok(Math.abs(play.starts[2] - 0.6) < 1e-9 && Math.abs(play.starts[1] - 0.3) < 1e-9);
@@ -1182,6 +1182,27 @@ test('chord changes: Random turns them on now and then, each chord 1 to 4 second
   assert.deepEqual([h.run('synthParams()').prog, h.run('synthParams()').progEvery], [1, 2]);
   h.run('saveSettings()');
   assert.equal(JSON.parse(h.store.studioSettings).progSelect, '1');
+});
+
+test('bassline and arrangement: Random brings them in by type, an arrangement always has layers to move, Follows needs a changing speed; sent', async () => {
+  const h = await playerWith();
+  const n = id => +h.$(id).value;
+  const types = JSON.parse(JSON.stringify(h.run('CHARACTERS')));
+  for (const key of ['any', ...Object.keys(types)]) {
+    h.$('characterSelect').value = key; let bass = 0;
+    for (let i = 0; i < 60; i++) {
+      h.run('randomAll()');
+      if (n('bassRange')) bass++;
+      if (n('arrangeSelect')) assert.ok([n('arpRange'), n('bassRange'), n('hitTypeSelect')].filter(Boolean).length >= 2, `${key}: an arrangement has at least two layers to move`);
+      if (n('arrangeSelect') === 3) assert.equal(h.$('rhythmSelect').value, 'variable', `${key}: Follows the speed only on a changing speed`);
+      if (h.run('rhythmCutsPerSecond()') > 5) assert.equal(n('bassRateSelect'), 0, `${key}: fast cuts, a bass note a cut`);
+      if (types[key]) assert.ok(types[key].sound.shape.arrange.includes(h.$('arrangeSelect').value) || (h.$('arrangeSelect').value === '1' && types[key].sound.shape.arrange.includes('3')), `${key}: arrangement ${h.$('arrangeSelect').value}`);
+    }
+    if (types[key] && types[key].sound.shape.bass >= 0.7) assert.ok(bass > 30, `${key}: mostly a bassline (${bass} of 60)`);
+  }
+  h.$('bassRange').value = '50'; h.$('bassPatternSelect').value = '3'; h.$('arrangeSelect').value = '2'; h.run('updateMusic()');
+  const p = h.run('synthParams()');
+  assert.deepEqual([p.bass, p.bassPattern, p.arrange], [0.5, 3, 2]);
 });
 
 test('Curate and Film: the mode switch is remembered, and Tab / Space work except while typing', async () => {

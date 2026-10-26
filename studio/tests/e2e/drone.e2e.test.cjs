@@ -329,6 +329,29 @@ test('chord changes: the bass moves to the next degree on time (Descend: down a 
   await ctx.close();
 });
 
+test('bassline and arrangement: the bass is heard and the drone stays heavy; Build-up starts sparse and fills in, Sections switch', { skip }, async () => {
+  const ctx = await fresh();
+  const rows = await spectra([{}, { bass: 0.6, bassPattern: 2, bassRate: 1 }]);
+  const [plain, bass] = rows;
+  assert.ok(Math.abs(bass.rms - 0.17) < 0.01 && bass.high < 0.01 && bass.sub > 0.35, `the bass keeps it level and dark: ${JSON.stringify(bass)}`);
+  assert.ok(bass.mid > plain.mid * 1.1, `the bass is heard: mid ${bass.mid.toFixed(3)} vs ${plain.mid.toFixed(3)}`);
+  const r = await page.evaluate(async BASE => {
+    const starts = Array.from({ length: 81 }, (_, i) => i * 0.125);               // 10 s, 8 cuts a second
+    const busy = (x, a, b) => { let e = 0; const i0 = Math.round(a * 44100), i1 = Math.round(b * 44100); for (let i = i0 + 1; i < i1; i++) { const d = x.left[i] - x.left[i - 1]; e += d * d; } return e / (i1 - i0); };   // energy of the changes: the notes, not the sub
+    const p = { ...BASE, pitch: 0.5, arp: 0.45, arpRate: 1, bass: 0.6, bassRate: 1, hitType: 1, hit: 0.6, hitOn: 0 };
+    const off = await window.Drone.renderExport({ ...p, arrange: 0 }, starts), build = await window.Drone.renderExport({ ...p, arrange: 1 }, starts);
+    // Sections, the bassline alone: the same film with and without it (the bass draws no random numbers, so the rest is identical), scaled to fit
+    const sec = await window.Drone.renderExport({ ...p, arrange: 2 }, starts), secNoBass = await window.Drone.renderExport({ ...p, arrange: 2, bass: 0 }, starts);
+    let num = 0, den = 0; for (let i = 0; i < sec.left.length; i++) { num += sec.left[i] * secNoBass.left[i]; den += secNoBass.left[i] ** 2; }
+    const k = num / den, bassOnly = (a, b) => { let e = 0; for (let i = Math.round(a * 44100); i < Math.round(b * 44100); i++) e += (sec.left[i] - k * secNoBass.left[i]) ** 2; return e; };
+    return { offEarly: busy(off, 0.1, 0.8), offMid: busy(off, 6, 7.5), buildEarly: busy(build, 0.1, 0.8), buildMid: busy(build, 6, 7.5),
+      bassSparse: bassOnly(0.2, 0.9), bassFull: bassOnly(1.2, 1.9) };              // section 1: the arpeggio only; section 2: everything
+  }, BASE);
+  assert.ok(r.buildEarly / r.buildMid < 0.65 * (r.offEarly / r.offMid), `Build-up: sparse at first, full later (${(r.buildEarly / r.buildMid).toFixed(2)} vs all at once ${(r.offEarly / r.offMid).toFixed(2)})`);
+  assert.ok(r.bassFull > 20 * r.bassSparse, `Sections: the bassline sits out the sparse section and plays in the full one (${r.bassSparse.toExponential(1)} vs ${r.bassFull.toExponential(1)})`);
+  await ctx.close();
+});
+
 test('the engine finds no console errors across all of this', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(async (BASE) => {
