@@ -764,7 +764,7 @@ test('the Keys panel: ? opens a tidy list under the hint, Esc and a click elsewh
   const ctx = await fresh({ width: 1512, height: 945 });
   await page.keyboard.press('?');
   await page.waitForSelector('#keysPanel:not([hidden])');
-  assert.equal(await page.locator('#keysPanel dt').count(), 9);
+  assert.equal(await page.locator('#keysPanel dt').count(), 12);
   const p = await page.locator('#keysPanel').boundingBox();
   assert.ok(p.x >= 0 && p.x + p.width <= 1512 && p.y + p.height <= 945, 'all of it on screen');
   await shot('22-keys');
@@ -902,9 +902,12 @@ test('groups: chips for All, yours and the automatic looks; pick cards, make a g
   await curate();
   await page.click('#groupBar .chip[data-key="all"]');
   // pick two with Cmd-click, make a group of them
+  const rowBox = () => page.locator('#groupRow').evaluate(r => { const b = r.getBoundingClientRect(), c = r.querySelector('.chip').getBoundingClientRect(); return [b.height, c.top]; });
+  const before = await rowBox();
   await page.locator('.card[data-filename="k1"]').click({ modifiers: ['Meta'] });
   await page.locator('.card[data-filename="k3"]').click({ modifiers: ['Meta'] });
   assert.equal(await text('#pickCount'), '2 selected');
+  assert.deepEqual(await rowBox(), before, 'the pick bar does not move the chips');
   await page.click('#addToGroupBtn');
   await page.fill('#groupNameInput', 'Night');
   await page.keyboard.press('Enter');

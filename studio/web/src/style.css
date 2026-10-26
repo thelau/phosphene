@@ -395,7 +395,8 @@
     .chip-sep { flex: none; width: 1px; margin: 4px 4px; background: var(--line-2); }
     .pick-bar { flex: none; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
     .pick-bar[hidden] { display: none; }
-    .pick-bar button:not(.icon-btn) { height: 30px; padding: 0 12px; font-size: 12px; }
+    .pick-bar button:not(.icon-btn) { height: 28px; padding: 0 12px; font-size: 12px; }
+    .pick-bar .icon-btn.small { width: 28px; height: 28px; }   /* the chips' height: picking must not move the row */
     .group-menu { position: fixed; z-index: 120; min-width: 220px; padding: 6px; display: flex; flex-direction: column; gap: 2px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 20px 50px rgba(0,0,0,.55); }
     .group-menu[hidden] { display: none; }
     .gm-item { text-align: left; height: 32px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 500; }
