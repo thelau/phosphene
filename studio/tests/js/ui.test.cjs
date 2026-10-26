@@ -1167,14 +1167,15 @@ test('arpeggio moods: Random draws them all (Pluck often), a type keeps to its o
   assert.equal(JSON.parse(h.store.studioSettings).arpMoodSelect, '3', 'remembered');
 });
 
-test('chord changes: Random turns them on now and then, each chord about three seconds long whatever the speed; sent and remembered', async () => {
+test('chord changes: Random turns them on now and then, each chord 1 to 4 seconds long whatever the speed; sent and remembered', async () => {
   const h = await playerWith();
   const n = id => +h.$(id).value;
   const tempo = bpm => { h.$('rhythmSelect').value = 'flat'; h.$('bpmInput').value = String(bpm); h.$('bpmLock').checked = true; };
-  for (const [bpm, every] of [[60, 0], [160, 2], [480, 3]]) {                     // 1, 2.7 and 8 cuts a second: 2, 8 and 16 cuts a chord
-    tempo(bpm); let on = 0;
-    for (let i = 0; i < 300; i++) { h.run('randomMusic()'); if (n('progSelect')) { on++; assert.equal(n('progEverySelect'), every, `${bpm} BPM`); } }
+  for (const [bpm, allowed] of [[60, [0, 1]], [160, [0, 1, 2]], [480, [2, 3]]]) {  // 1, 2.7 and 8 cuts a second: 1-4 s a chord in whole cut counts
+    tempo(bpm); let on = 0; const seen = new Set();
+    for (let i = 0; i < 300; i++) { h.run('randomMusic()'); if (n('progSelect')) { on++; seen.add(n('progEverySelect')); assert.ok(allowed.includes(n('progEverySelect')), `${bpm} BPM: every ${n('progEverySelect')}`); } }
     assert.ok(on > 70 && on < 140, `now and then: ${on} of 300`);
+    assert.ok(seen.size >= 2, `${bpm} BPM: the pace varies: ${[...seen]}`);
   }
   h.$('bpmLock').checked = false;
   h.$('progSelect').value = '1'; h.$('progEverySelect').value = '2'; h.run('updateMusic()');

@@ -1515,11 +1515,11 @@
       soundRules();
       if (quiet !== true) { updateMusic(); commitSettings('Random sound'); }
     }
-    // chord changes now and then (a third of the time), each chord lasting about three seconds of this film's music
+    // chord changes now and then (a third of the time), each chord lasting 1 to 4 seconds of this film's music: the harmonic pace varies too
     function rollChanges() {
       if (Math.random() >= 0.35) { setv('progSelect', 0); return; }
       setv('progSelect', 1 + Math.floor(Math.random() * 4));
-      const want = rhythmCutsPerSecond() * 3, every = [2, 4, 8, 16];
+      const want = rhythmCutsPerSecond() * (1 + 3 * Math.random()), every = [2, 4, 8, 16];
       setv('progEverySelect', every.reduce((b, n, i) => (Math.abs(n - want) < Math.abs(every[b] - want) ? i : b), 0));
     }
     function applySound(c) {
