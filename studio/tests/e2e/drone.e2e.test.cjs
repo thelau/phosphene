@@ -256,9 +256,9 @@ async function spectra(variants) {
       for (let len = 2; len <= n; len <<= 1) { const ang = (-2 * Math.PI) / len, wr = Math.cos(ang), wi = Math.sin(ang);
         for (let i = 0; i < n; i += len) { let cr = 1, ci = 0; for (let k = 0; k < len / 2; k++) { const a = i + k, b = i + k + len / 2, tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr; re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti; const q = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = q; } } }
       const b = { sub: 0, mid: 0, upper: 0, high: 0 }; let tot = 0, cw = 0, cp = 0;
-      for (let k = 1; k < n / 2; k++) { const f = (k * 44100) / n, pw = re[k] ** 2 + im[k] ** 2; tot += pw; if (f < 80) b.sub += pw; else if (f >= 150 && f < 700) b.mid += pw; else if (f >= 700 && f < 2000) b.upper += pw; else if (f >= 2000) b.high += pw; if (f >= 120 && f < 2000) { cw += f * pw; cp += pw; } }
+      for (let k = 1; k < n / 2; k++) { const f = (k * 44100) / n, pw = re[k] ** 2 + im[k] ** 2; tot += pw; if (f < 80) b.sub += pw; else if (f >= 150 && f < 700) b.mid += pw; else if (f >= 700 && f < 2000) b.upper += pw; else if (f >= 2000) b.high += pw; if (f >= 120 && f < 2000) { cw += f * pw; cp += pw; } if (f >= 8000) b.air = (b.air || 0) + pw; }
       let s = 0, mx = 0, bad = false; for (let i = 0; i < r.left.length; i++) { const a = r.left[i], c = r.right[i]; if (!Number.isFinite(a) || !Number.isFinite(c)) bad = true; s += a * a + c * c; mx = Math.max(mx, Math.abs(a), Math.abs(c)); }
-      out.push({ rms: Math.sqrt(s / (2 * r.left.length)), peak: mx, bad, sub: b.sub / tot, mid: b.mid / tot, upper: b.upper / tot, high: b.high / tot, cent: cw / cp });
+      out.push({ rms: Math.sqrt(s / (2 * r.left.length)), peak: mx, bad, sub: b.sub / tot, mid: b.mid / tot, upper: b.upper / tot, high: b.high / tot, air: (b.air || 0) / tot, cent: cw / cp });
     }
     return out;
   }, [BASE, variants]);
@@ -349,6 +349,31 @@ test('bassline and arrangement: the bass is heard and the drone stays heavy; Bui
   }, BASE);
   assert.ok(r.buildEarly / r.buildMid < 0.65 * (r.offEarly / r.offMid), `Build-up: sparse at first, full later (${(r.buildEarly / r.buildMid).toFixed(2)} vs all at once ${(r.offEarly / r.offMid).toFixed(2)})`);
   assert.ok(r.bassFull > 20 * r.bassSparse, `Sections: the bassline sits out the sparse section and plays in the full one (${r.bassSparse.toExponential(1)} vs ${r.bassFull.toExponential(1)})`);
+  await ctx.close();
+});
+
+test('pad, acid and tape: the pad voices each chord in the key (VI gets its major third), Acid and Tape keep the level, Tape darkens the top', { skip }, async () => {
+  const ctx = await fresh();
+  const voiced = await page.evaluate(() => [0, -2, -4, -5, 3, 5].map(d => window.Drone.padChord(d)));
+  assert.deepEqual(voiced, [[0, 7, 10, 15], [-2, 5, 8, 14], [-4, 3, 7, 12], [-5, 2, 5, 10], [3, 10, 14, 19], [5, 12, 15, 20]], 'i m7, VII 7, VI maj7, v m7, III maj7, iv m7: all in the key');
+  const r = await page.evaluate(async BASE => {
+    const sr = 44100, starts = Array.from({ length: 25 }, (_, i) => i * 0.25);     // Descend, a chord a second: i, VII, VI, v
+    const at = (x, f, a, b) => { const w = (2 * Math.PI * f) / sr; let re = 0, im = 0; for (let i = Math.round(a * sr); i < Math.round(b * sr); i++) { const v = x.left[i] + x.right[i]; re += v * Math.cos(w * i); im += v * Math.sin(w * i); } return re * re + im * im; };
+    const p = { ...BASE, pitch: 0.5, chord: 1, prog: 1, progEvery: 1, movement: 0 };
+    const withPad = await window.Drone.renderExport({ ...p, pad: 0.7 }, starts), noPad = await window.Drone.renderExport({ ...p, pad: 0 }, starts);
+    const T = 38 * Math.pow(2, 0.9 * 0.5) * 4;                                       // the tonic, two octaves over the root
+    // on VI (2-3 s) the chord's third is the tonic (voiced an octave up, 2T): the pad brings it; a semitone under it (a minor third on VI) it does not
+    const gainAt = f => at(withPad, f, 2.2, 2.9) / at(noPad, f, 2.2, 2.9);
+    const level = x => { let s2 = 0; for (let i = 0; i < x.left.length; i++) s2 += x.left[i] ** 2; return Math.sqrt(s2 / x.left.length); };
+    const acid = await window.Drone.renderExport({ ...BASE, arp: 0.5, arpMood: 6, arpRate: 1 }, starts);
+    const taped = await window.Drone.renderExport({ ...BASE, arp: 0.4, arpRate: 1, tape: 0.8 }, starts);
+    return { third: gainAt(2 * T), flat: gainAt(2 * T * Math.pow(2, -1 / 12)), padLevel: level(withPad), acidLevel: level(acid), tapeLevel: level(taped) };
+  }, BASE);
+  assert.ok(r.third > 2 * r.flat && r.third > 1.5, `on VI the pad sounds the major third (×${r.third.toFixed(1)}), not the minor (×${r.flat.toFixed(1)})`);
+  for (const k of ['padLevel', 'acidLevel', 'tapeLevel']) assert.ok(Math.abs(r[k] - 0.17) < 0.015, `${k}: ${r[k].toFixed(3)}`);
+  const [plain, taped] = await spectra([{ arp: 0.4, arpRate: 1 }, { arp: 0.4, arpRate: 1, tape: 0.8 }]);
+  assert.ok(taped.air < plain.air * 0.7, `tape darkens the very top (above 8 kHz): ${taped.air.toExponential(2)} vs ${plain.air.toExponential(2)}`);
+  assert.ok(taped.sub > 0.35 && taped.high < 0.02, `and stays a heavy drone: ${JSON.stringify(taped)}`);
   await ctx.close();
 });
 

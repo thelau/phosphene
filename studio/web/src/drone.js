@@ -35,6 +35,12 @@
   function bufferOf(ctx, data) { const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.getChannelData(0).set(data); return b; }
 
   // soft saturation curve: y = tanh(k * 4x) / norm, for an input scaled by 1/4 (so values up to 4 are kept, not clipped by the shaper)
+  // a plain drive over -1..1 (Acid, tape): tanh(k x) / tanh(k), made once per k
+  const satCache = new Map();
+  function satCurve(k) {
+    if (!satCache.has(k)) { const n = 1024, c = new Float32Array(n); for (let i = 0; i < n; i++) c[i] = Math.tanh(k * ((i / (n - 1)) * 2 - 1)) / Math.tanh(k); satCache.set(k, c); }
+    return satCache.get(k);
+  }
   function tanhCurve(k, norm) {
     const n = 4097, c = new Float32Array(n);
     for (let i = 0; i < n; i++) c[i] = Math.tanh(k * 4 * ((i / (n - 1)) * 2 - 1)) / norm;
@@ -191,8 +197,27 @@
     { name: 'Sweep', scale: [0, 3, 7, 10], lo: 1, hi: 2.2, open: 1600, close: 300, q: 6, sustain: 1.4, gain: 0.9, voices: 2, shape: 'walk', sweep: 7 },
     { name: 'Mutate', scale: [0, 2, 3, 7, 10], lo: 0.75, hi: 2.6, open: 1700, close: 400, q: 2.5, sustain: 1.2, gain: 1.0, voices: 2, shape: 'walk', mutate: true },
     { name: 'Accumulate', scale: [0, 3, 5, 7, 10], lo: 0.75, hi: 2.6, open: 1700, close: 400, q: 2.5, sustain: 1.2, gain: 1.0, voices: 2, shape: 'walk', accumulate: true },
+    // Acid: the same saws, low, with a very resonant filter, some steps accented (the filter opens wider, louder), some sliding into the
+    // next note, and saturation after the filter: the squelch of Maelstrom, Plant43, Kangding Ray
+    { name: 'Acid', scale: [0, 3, 5, 7, 10], lo: 0.5, hi: 1.6, open: 2200, close: 170, q: 13, sustain: 1.0, gain: 0.7, voices: 1, shape: 'walk', acid: true },
   ];
   const MOOD_DETUNE = 0.004, MOOD_ATTACK = 0.0015;                   // the first arpeggio's: two saws a hair apart, a pluck
+  // the natural minor over the root: the Pad voices its chords on these degrees (i m7, III maj7, iv m7, v m7, VI maj7, VII 7)
+  const MINOR = [0, 2, 3, 5, 7, 8, 10];
+  function padChord(degree) {                                           // semitones from the tonic, voiced root, fifth, seventh, third an octave up
+    const dn = ((degree % 12) + 12) % 12, idx = Math.max(0, MINOR.indexOf(dn)), at = k => MINOR[(idx + k) % 7] + 12 * Math.floor((idx + k) / 7) - dn + degree;
+    return [at(0), at(4), at(6), at(2) + 12];
+  }
+  // tape: wow and flutter, saturation, a darker top, dust. The dust is a few sparse clicks, made once per sample rate
+  const dustCache = new Map();
+  function dustBuffer(ctx) {
+    if (!dustCache.has(ctx.sampleRate)) {
+      const r = mulberry32(5), n = Math.floor(3 * ctx.sampleRate), b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0);
+      for (let i = 0; i < n; i++) if (r() < 0.0004) { const a = (r() - 0.5) * 2; for (let j = 0; j < 12 && i + j < n; j++) d[i + j] += a * Math.exp(-j / 3); }
+      dustCache.set(ctx.sampleRate, b);
+    }
+    return dustCache.get(ctx.sampleRate);
+  }
   const moodNotes = (m, tonic) => {                                    // every note of the mood's scale inside its register, low to high
     const out = [];
     for (let o = -2; o <= 3; o++) for (const st of m.scale) { const f = tonic * Math.pow(2, (st + 12 * o) / 12); if (f >= tonic * m.lo && f <= tonic * m.hi) out.push(f); }
@@ -242,6 +267,9 @@
     const arpAmt = clamp01(p.arp || 0), arpSteps = ARP_STEPS[pick(p.arpSteps, ARP_STEPS.length)], arpRate = pick(p.arpRate, 4);
     const dynamics = opts.dynamics === false ? 0 : pick(p.dynamics, 4);
     const prog = PROGRESSIONS[pick(p.prog, PROGRESSIONS.length)], progEvery = PROG_EVERY[pick(p.progEvery, PROG_EVERY.length)];
+    const progSeq = !prog ? [0] : prog.steps || (() => { const r = mulberry32(seedN + 31), out = [0]; for (let k = 1; k < 8; k++) out.push(prog.walk[1 + Math.floor(r() * (prog.walk.length - 1))]); return out; })();
+    const degreeAt = i => progSeq[Math.floor(i / progEvery) % progSeq.length];   // the chord at music cut i, in semitones from the root
+    const padAmt = clamp01(p.pad || 0), tape = clamp01(p.tape || 0);
     const bassAmt = clamp01(p.bass || 0), bassPat = BASS_PATTERNS[pick(p.bassPattern, BASS_PATTERNS.length)], bassPer = BASS_PER_CUT[pick(p.bassRate, BASS_PER_CUT.length)];
     const arrange = pick(p.arrange, ARRANGEMENTS.length);
     const subWave = Math.max(0, Math.min(SUB_WAVES.length - 1, Math.round(+p.subWave || 0)));
@@ -515,13 +543,15 @@
       const patternB = phase ? phaseLoop(pattern) : null;
       const voices = Array.from({ length: m.voices }, (_, vi) => {          // fixed voices: no node per note
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = m.q; lp.frequency.value = m.open;
-        const env = gain(0); lp.connect(env);
+        const env = gain(0);
+        if (m.acid) lp.connect(shaper(satCurve(3), env)); else lp.connect(env);   // Acid: driven after the filter
         const pan = phase ? (vi ? [0.15, 1] : [1, 0.15]) : [1, 1];            // Phase: one loop leans left, the other right
         env.connect(gain(0.6 * m.gain * pan[0], arr.arp[0])); env.connect(gain(0.6 * m.gain * pan[1], arr.arp[1]));
         const oscs = [-MOOD_DETUNE, MOOD_DETUNE].map(det => { const o = osc('sawtooth', 200); o.connect(lp); return [o, det]; });
         return { lp, env, oscs };
       });
       const L = pattern.length, mrand = mulberry32(seedN + 977);
+      const accent = m.acid ? pattern.map(() => mrand() < 0.3) : null, slide = m.acid ? pattern.map(() => mrand() < 0.25) : null;   // fixed per step: a line, not noise
       const accPos = [];                                                  // Accumulate: 2 notes, then 3, ... then the whole pattern, over again
       if (m.accumulate) for (let k = Math.min(2, L); k <= L; k++) for (let j = 0; j < k; j++) accPos.push(j);
       let mutCycle = 0; const mutated = pattern.slice();                 // Mutate: the pattern as it stands this round; one note changes per round
@@ -539,10 +569,11 @@
           const stepLen = per < 1 ? len * 2 : len / n;
           const decay = Math.min(1.6, Math.max(0.08, stepLen * 0.9 * m.sustain)) * (1.5 - s), f = noteAt(step) * lift(s, 1.2);
           const sw = m.sweep ? 0.15 + 0.85 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / m.sweep)) : 1;   // Sweep: how far the filter opens now
+          const acc = accent ? (accent[step % L] ? 1.35 : 0.8) : 1, glide = slide && slide[step % L];
           const play = (v, fq, tt) => {
-            for (const [o, det] of v.oscs) o.frequency.setValueAtTime(fq * (1 + det), tt);
-            v.lp.frequency.setValueAtTime(Math.max(m.close * 1.2, m.open * sw) * lift(s, 0.8), tt); v.lp.frequency.setTargetAtTime(m.close * lift(s, 1.2), tt + 0.003, decay / 3);
-            strike(v.env, tt, 2.2 * arpAmt, decay);
+            for (const [o, det] of v.oscs) { if (glide) o.frequency.setTargetAtTime(fq * (1 + det), tt, 0.045); else o.frequency.setValueAtTime(fq * (1 + det), tt); }
+            v.lp.frequency.setValueAtTime(Math.max(m.close * 1.2, m.open * sw * acc) * lift(s, 0.8), tt); v.lp.frequency.setTargetAtTime(m.close * lift(s, 1.2), tt + 0.003, decay / 3);
+            strike(v.env, tt, 2.2 * arpAmt * (accent ? (acc > 1 ? 1.2 : 0.85) : 1), decay);
           };
           if (phase) { play(voices[0], f, t); play(voices[1], patternB[step % patternB.length] * lift(s, 1.2), t); }   // both on every step, each round its own loop
           else play(voices[step % voices.length], f, t);
@@ -579,6 +610,25 @@
       });
     }
 
+    // ---- the pad: a warm analog chord (two detuned saws a note, chorus, a slow filter), voiced in the key on each chord of the changes ----
+    if (padAmt > 0.01) {
+      const T = f0 * 4, chordAt = i => padChord(degreeAt(i));
+      const first = chordAt(Math.min(cursor, Math.max(0, nCuts - 1)));
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1100; lp.Q.value = 0.6;
+      lfo(0.06 * move, 320, lp.frequency);
+      const body = gain(0.22 * padAmt); lp.connect(body);
+      sides.forEach((br, i) => {                                           // a chorus each side, a little apart: the Juno width
+        const dl = ctx.createDelay(0.05); dl.delayTime.value = 0.012 + 0.004 * i;
+        lfo(0.31 + 0.07 * i, 0.0028, dl.delayTime);
+        body.connect(dl); dl.connect(gain(0.7, br)); body.connect(gain(0.5, br));
+      });
+      const voices = first.map(st => [-0.007, 0.007].map(det => { const o = osc('sawtooth', T * Math.pow(2, st / 12) * (1 + det)); o.connect(lp); return [o, det]; }));
+      perCut.push((i, t) => {
+        if (!prog || i % progEvery) return;
+        chordAt(i).forEach((st, n) => { for (const [o, det] of voices[n]) o.frequency.setTargetAtTime(T * Math.pow(2, st / 12) * (1 + det), t, 0.06); });
+      });
+    }
+
     // stereo width: mid/side
     const w = 0.25 + 0.9 * width;
     const merger = ctx.createChannelMerger(2);
@@ -586,7 +636,17 @@
     cross(0, 1, 0); cross(1, 0, 1);
     const dyn = ctx.createGain();                                           // the volume is never touched by Dynamics: it shapes the notes (see arc)
     merger.connect(dyn);
-    if (opts.tap === 'sub') subBus.connect(dest); else if (opts.tap === 'dry') { mix[0].connect(dest); } else dyn.connect(dest);
+    let out = dyn;
+    if (tape > 0.01) {                                                      // tape: wow and flutter, saturation, a darker top, a little dust
+      const wow = ctx.createDelay(0.1); wow.delayTime.value = 0.012;
+      lfo(0.55, 0.0018 * tape, wow.delayTime); lfo(6.5, 0.00022 * tape, wow.delayTime);
+      const sat = shaper(satCurve(1 + 2.5 * tape)), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 14000 - 9500 * tape; lp.Q.value = 0.5;
+      dyn.connect(wow); wow.connect(sat); sat.connect(lp);
+      const dust = ctx.createBufferSource(); dust.buffer = dustBuffer(ctx); dust.loop = true; keep(dust);
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500; dust.connect(hp); hp.connect(gain(0.025 * tape, lp));
+      out = lp;
+    }
+    if (opts.tap === 'sub') subBus.connect(dest); else if (opts.tap === 'dry') { mix[0].connect(dest); } else out.connect(dest);
 
     // arrangement: the levels of the arpeggio, the bassline and the hits over the film
     if (arrange) {
@@ -613,8 +673,7 @@
     // chord changes: one control signal (cents) into the bed's oscillators' detune, so it adds to whatever else moves the pitch;
     // a short glide at each change, as a modular's portamento
     if (prog) {
-      const seq = prog.steps || (() => { const r = mulberry32(seedN + 31), out = [0]; for (let k = 1; k < 8; k++) out.push(prog.walk[1 + Math.floor(r() * (prog.walk.length - 1))]); return out; })();
-      const cents = i => 100 * seq[Math.floor(i / progEvery) % seq.length];
+      const cents = i => 100 * degreeAt(i);
       const tr = keep(ctx.createConstantSource()); tr.offset.value = cents(Math.min(cursor, Math.max(0, nCuts - 1)));
       for (const o of pitched.slice(0, bedVoices)) { tr.connect(o.detune); links.push([tr, o.detune]); }
       perCut.push((i, t) => { if (i % progEvery === 0) tr.offset.setTargetAtTime(cents(i), t, 0.025); });
@@ -634,7 +693,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   const cutSignature = starts => { const head = []; for (const t of starts) { head.push(Math.round(t * 1000)); if (t > 4) break; } return head.join(','); };   // the cuts of the window the level is measured on: faster cuts pump differently
-  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.bass, p.bassPattern, p.bassRate, p.arrange]);
+  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.tape]);
   async function level(p, starts) {
     starts = cleanStarts(starts);
     const key = levelKey(p, starts);
@@ -850,5 +909,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz };
 })();
