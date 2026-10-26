@@ -352,40 +352,6 @@ test('bassline and arrangement: the bass is heard and the drone stays heavy; Bui
   await ctx.close();
 });
 
-test('styles: drums on a musical tempo, the kick on the beat, air from the hats, level and no clipping; a very fast film keeps the tempo; Drone ignores drum settings', { skip }, async () => {
-  const ctx = await fresh();
-  const r = await page.evaluate(async BASE => {
-    const sr = 44100, drums = { kick: 0.75, hats: 0.5, clap: 0.5, perc: 0.3, bass: 0.45 };
-    const lowFrames = x => { const out = []; let y = 0; const a = 1 - Math.exp(-2 * Math.PI * 120 / sr); for (let f = 0; f < Math.floor(x.left.length / 441); f++) { let e = 0; for (let i = f * 441; i < (f + 1) * 441; i++) { y += a * (x.left[i] + x.right[i] - y); e += y * y; } out.push(e); } return out; };   // 10 ms frames under 120 Hz
-    const onsets = fr => { let n = 0, last = -99; for (let f = 2; f < fr.length; f++) if (fr[f] > 2.5 * Math.min(fr[f - 1], fr[f - 2]) + 1e-4 && f - last > 12) { n++; last = f; } return n; };
-    const air = x => { let hi = 0, all = 0, prev = 0; for (let i = 0; i < x.left.length; i++) { const v = x.left[i]; const d = v - prev; prev = v; hi += d * d; all += v * v; } return hi / all; };   // first difference: weighs the top
-    const level = x => { let s2 = 0, pk = 0; for (let i = 0; i < x.left.length; i++) { const v = x.left[i]; s2 += v * v; pk = Math.max(pk, Math.abs(v), Math.abs(x.right[i])); } return { rms: Math.sqrt(s2 / x.left.length), peak: pk }; };
-    const beat = Array.from({ length: 17 }, (_, i) => i * 0.476);                   // 126 BPM, a cut a beat, 8 s
-    const out = {};
-    for (const style of [1, 2, 3, 4]) {
-      const x = await window.Drone.renderExport({ ...BASE, ...drums, style, bassPattern: [0, 4, 5, 2, 6][style] }, beat);
-      out[style] = { ...level(x), kicks: onsets(lowFrames(x)), air: air(x) };
-    }
-    const fast = await window.Drone.renderExport({ ...BASE, ...drums, style: 1 }, Array.from({ length: 65 }, (_, i) => i * 0.125));   // 8 cuts a second
-    out.fastKicks = onsets(lowFrames(fast));
-    out.droneAir = air(await window.Drone.renderExport({ ...BASE }, beat));
-    const a = await window.Drone.renderExport({ ...BASE }, beat), a2 = await window.Drone.renderExport({ ...BASE }, beat), b = await window.Drone.renderExport({ ...BASE, kick: 1, hats: 1, clap: 1, style: 0 }, beat);
-    const diff = (u, v) => { let m = 0; for (let i = 0; i < u.left.length; i++) m = Math.max(m, Math.abs(u.left[i] - v.left[i])); return m; };
-    out.droneDiff = diff(a, b); out.renderNoise = diff(a, a2);
-    return out;
-  }, BASE);
-  for (const st of [1, 2, 3, 4]) {
-    const m = r[st];
-    assert.ok(Math.abs(m.rms - 0.17) < 0.015 && m.peak <= 0.99, `style ${st}: level ${m.rms.toFixed(3)}, peak ${m.peak.toFixed(2)}`);
-    assert.ok(m.air > r.droneAir * 2, `style ${st}: the hats bring air (${m.air.toExponential(2)} vs the drone ${r.droneAir.toExponential(2)})`);
-  }
-  assert.ok(r[1].kicks >= 15 && r[1].kicks <= 23, `melodic techno: four on the floor, ~17 kicks in 8 s at 126 BPM plus a fill (${r[1].kicks})`);
-  assert.ok(r[4].kicks < r[1].kicks, `downtempo kicks less often than techno (${r[4].kicks} vs ${r[1].kicks})`);
-  assert.ok(r.fastKicks >= 12 && r.fastKicks <= 24, `8 cuts a second: still ~2 kicks a second, not 8 (${r.fastKicks} in 8 s)`);
-  assert.ok(r.droneDiff <= r.renderNoise + 1e-4, `Drone ignores drum settings: the same sound (${r.droneDiff} vs ${r.renderNoise} between two renders)`);
-  await ctx.close();
-});
-
 test('the engine finds no console errors across all of this', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(async (BASE) => {

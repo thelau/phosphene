@@ -437,22 +437,6 @@ test('snapshots: ＋ Snapshot keeps the film under a name it picks, switching br
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
-test('a drum style: the Drums tab joins the sound tabs on one line at 1366 × 768, and goes with Drone', { skip }, async () => {
-  const ctx = await fresh({ width: 1366, height: 768 });
-  await film();
-  await choose('musicSelect', 'on');
-  assert.equal(await page.locator('#soundTabDrums').isVisible(), false);
-  await page.selectOption('#styleSelect', '1');
-  assert.equal(await page.locator('#groupDrums').isVisible(), true, 'it opens on the drums');
-  const heights = await page.locator('.sound-tabs button:not([hidden])').evaluateAll(b => b.map(x => x.getBoundingClientRect().height));
-  assert.equal(heights.length, 5); assert.ok(heights.every(hh => hh <= 34), `one line each: ${heights}`);
-  await shot('29-drums');
-  await page.selectOption('#styleSelect', '0');
-  assert.equal(await page.locator('#soundTabDrums').isVisible(), false);
-  assert.deepEqual(consoleErrors, []);
-  await ctx.close();
-});
-
 test('the film strip: one thumbnail per image in order, click jumps there; no key trashes from the Film', { skip }, async () => {
   const ctx = await fresh();
   await film();

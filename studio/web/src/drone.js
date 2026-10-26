@@ -168,43 +168,14 @@
     { name: 'Octave', notes: [0, 12, 0, 12], acc: [1, 0, 0.5, 0] },
     { name: 'Fifths', notes: [0, 7, 12, 7], acc: [1, 0, 0.5, 0] },
     { name: 'Gallop', notes: [0, null, 0, 0], acc: [1, 0, 0.4, 0.7] },
-    // on the drums' 16-step loop (any style): offbeat rolling 16ths, an 808 that glides, sparse long notes
-    { name: 'Rolling', grid: '.ooo.ooo.ooo.ooo', notes: [0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 7, 0], decay: 0.11 },
-    { name: '808', grid: 'x......x..x.....', notes: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0], decay: 0.9, glide: true, sub: true },
-    { name: 'Sparse', grid: 'x.......x.....x.', notes: [0, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 12, 0], decay: 0.6 },
   ];
   const BASS_PER_CUT = [1, 2, 4];
-  // Styles. Drone is the sound measured on the reference clips. The others (from the user's playlist: melodic techno, electro, broken /
-  // IDM, downtempo) add a drum machine on a 16-step loop whose beat is the music's cut, scaled to a musical tempo (`bps`, beats a second:
-  // a fast film plays a beat every 2, 4 or 8 cuts, a slow one two beats a cut), and the kick drives a sidechain on the bed. Loops, not
-  // songs: three variations per style, a fill at the end of every fourth bar. x = accent, o = hit, g = ghost, . = rest.
-  const STYLES = [
-    { name: 'Drone' },
-    { name: 'Melodic techno', bps: 2.1, kick: { decay: 0.32, from: 3.2 }, bass: 4, variants: [
-      { k: 'x...x...x...x...', ch: '..o...o...o...o.', oh: '', cl: '....x.......x...', rm: '' },
-      { k: 'x...x...x...x...', ch: 'gg.ggg.ggg.ggg.g', oh: '..o...o...o...o.', cl: '....x.......x...', rm: '' },
-      { k: 'x...x...x...x..o', ch: 'g.o.g.o.g.o.g.og', oh: '', cl: '....x.......x...', rm: '...o..o....o.o..' }] },
-    { name: 'Electro', bps: 2.15, kick: { decay: 0.8, from: 2, glide: 0.12 }, bass: 5, variants: [
-      { k: 'x......x..x.....', ch: 'o.o.o.o.o.o.o.o.', oh: '', cl: '....x.......x...', rm: '' },
-      { k: 'x..x......x..x..', ch: 'ogogogogogogogog', oh: '', cl: '....x.......x..o', rm: '..o.....o.o.....' },
-      { k: 'x.....x.x.......', ch: 'o.oo.o.oo.oo.o.o', oh: '', cl: '....x.......x...', rm: '.o.....o...o....' }] },
-    { name: 'Broken', bps: 2.2, kick: { decay: 0.28, from: 3 }, bass: 2, variants: [
-      { k: 'x..x....x.x.....', ch: 'oo.oo.o.oo.o.oo.', oh: '', cl: '....x.....g..x..', rm: '......o.......o.' },
-      { k: 'x.....x...x..x..', ch: 'g.gog.gog.go.ggo', oh: '', cl: '....x..g....x...', rm: '.o..o.....o...o.' },
-      { k: 'x..x..x...x.....', ch: 'oggoggoggoggogog', oh: '', cl: '....x.......x.g.', rm: '...o.......o....' }] },
-    { name: 'Downtempo', bps: 1.55, kick: { decay: 0.45, from: 2.6 }, bass: 6, variants: [
-      { k: 'x.........x.....', ch: '..o...o...o...o.', oh: '', cl: '........x.......', rm: '' },
-      { k: 'x......x..x.....', ch: 'g.o.g.o.g.o.g.o.', oh: '', cl: '........x.......', rm: '....o.......o...' },
-      { k: 'x.........x..x..', ch: '..o..o....o..o..', oh: '', cl: '........x......g', rm: '' }] },
-  ];
-  const HIT_VEL = { x: 1, o: 0.62, g: 0.3 };
-  const FILL = { k: 'x...x...x.x.xxxx', cl: '....x.......x.xx' };            // the last bar of four: a roll into the next loop
   // Arrangement: the arpeggio, the bassline and the hits come and go over the film instead of all playing throughout (the bed stays).
   // Build-up: they enter one by one and the ending strips back; Sections: sparse and full by turns, every 8 of the music's cuts;
   // Follows the speed: fuller while the cuts are fast (a flat speed builds up instead).
   const ARRANGEMENTS = ['Off', 'Build-up', 'Sections', 'Follows the speed'];
   const SECTION_CUTS = 8;
-  const SECTIONS = [{ arp: 1, bass: 0, hits: 0, drums: 0.35 }, { arp: 1, bass: 1, hits: 1, drums: 1 }, { arp: 0, bass: 1, hits: 0, drums: 1 }, { arp: 1, bass: 1, hits: 1, drums: 1 }];                                     // cuts per chord
+  const SECTIONS = [{ arp: 1, bass: 0, hits: 0 }, { arp: 1, bass: 1, hits: 1 }, { arp: 0, bass: 1, hits: 0 }, { arp: 1, bass: 1, hits: 1 }];                                     // cuts per chord
   // Arpeggio moods. One instrument for all of them, the first arpeggio's patch (two detuned saws into a resonant low-pass that snaps shut on
   // each note: the modular sound), played differently, as a player turns the same patch: the notes (scale over the tonic, two octaves above
   // the root; register lo..hi times the tonic), the shape (Dark falls; Phase: two voices loop the same notes, one a note longer, so they drift
@@ -242,7 +213,6 @@
   }
 
   const ARP_PER_CUT = [0.5, 1, 2, 4];                                  // arpeggio notes per cut
-  const nCutsOf = st => Math.max(1, st.length - 1);
   const rootHz = pitch => 38 * Math.pow(2, 0.9 * pitch);                // 38..71 Hz
 
   // Builds the drone into ctx and connects it to `dest` (stereo, before the final glue).
@@ -274,13 +244,6 @@
     const prog = PROGRESSIONS[pick(p.prog, PROGRESSIONS.length)], progEvery = PROG_EVERY[pick(p.progEvery, PROG_EVERY.length)];
     const bassAmt = clamp01(p.bass || 0), bassPat = BASS_PATTERNS[pick(p.bassPattern, BASS_PATTERNS.length)], bassPer = BASS_PER_CUT[pick(p.bassRate, BASS_PER_CUT.length)];
     const arrange = pick(p.arrange, ARRANGEMENTS.length);
-    const style = STYLES[pick(p.style, STYLES.length)], styled = !!style.variants;
-    const drum = { k: clamp01(p.kick || 0), ch: clamp01(p.hats || 0), cl: clamp01(p.clap || 0), rm: clamp01(p.perc || 0) };
-    const swing = clamp01(p.swing || 0);
-    // the drums' loop: 4 steps a beat, a beat every `cpb` music cuts, chosen so the tempo sits near the style's
-    const cutRate = nCutsOf(starts) / Math.max(0.01, starts[starts.length - 1] - starts[0]);
-    const cpb = Math.pow(2, Math.max(-2, Math.min(3, Math.round(Math.log2(Math.max(0.01, cutRate) / (style.bps || 2.1))))));
-    const spc = 4 / cpb;                                                   // grid steps per music cut
     const subWave = Math.max(0, Math.min(SUB_WAVES.length - 1, Math.round(+p.subWave || 0)));
     const padWave = Math.max(0, Math.min(PAD_WAVES.length - 1, Math.round(+p.padWave || 0)));
     const move = Math.pow(2, 2 * (clamp01(p.movement === undefined ? 0.5 : p.movement) - 0.5));   // 0.5 = as measured; 1 = twice as fast
@@ -330,13 +293,7 @@
     const advance = to => {
       while (cursor < nCuts && starts[cursor] <= to) { const i = cursor++; for (const h of perCut) h(i, at(starts[i])); }
     };
-    // the drums' 16-step loop over the music's cuts: (step, context time, step length) for every step, swing on the odd steps
-    const onGrid = fn => perCut.push((i, tc) => {
-      const len = starts[i + 1] - starts[i], stepLen = len / spc;
-      for (let st = Math.ceil(i * spc - 1e-9); st < (i + 1) * spc - 1e-9; st++) fn(st, tc + (st / spc - i) * len + (st % 2 ? swing * stepLen * 0.33 : 0), stepLen);
-    });
-    const pump = (param, depth, decay) => {                                // dips and comes back on every cut (Drone; a style's kick pumps instead)
-      if (styled) return;
+    const pump = (param, depth, decay) => {                                // dips and comes back on every cut
       const c = cutAtTime(starts, offset), tau = offset - starts[c];
       param.setValueAtTime(1 - depth * (1 - Math.exp(-tau / decay)), at(offset));
       param.setTargetAtTime(1 - depth, at(offset), decay);
@@ -467,9 +424,7 @@
     // ---- the room: the send skips the sub ----
     const roomSeconds = Math.round(2.4 + 3.6 * space), wet = 0.05 + 0.5 * space;    // the room's length in whole-second steps, so it can be reused while a slider moves
     const mix = [gain(1), gain(1)];
-    const duck = [gain(1), gain(1)];                                        // the sidechain: the kick pushes the bed (and its room) down
-    sides.forEach((br0, i) => {
-      const br = duck[i]; br0.connect(br);
+    sides.forEach((br, i) => {
       br.connect(mix[i]);
       const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 140; hp.Q.value = 0.707;
       // the room is a convolver, and loading its impulse response is the costliest step of a rebuild: the live preview passes in a shared one
@@ -489,8 +444,7 @@
     });
     // ---- hits: a percussive impact on some of the cuts. Fixed voices (made once), retriggered by automation: no node per hit ----
     // each layer the arrangement moves has its own level on the way to the sides
-    const arr = { hits: gain(1), arp: [gain(1, sides[0]), gain(1, sides[1])], bass: [gain(1, sides[0]), gain(1, sides[1])], drums: gain(1) };
-    arr.drums.connect(mix[0]); arr.drums.connect(mix[1]);                  // drums sit after the sidechain, in the middle
+    const arr = { hits: gain(1), arp: [gain(1, sides[0]), gain(1, sides[1])], bass: [gain(1, sides[0]), gain(1, sides[1])] };
     const hitBus = gain(1, arr.hits);
     sides.forEach(br => arr.hits.connect(gain(0.9, br)));
 
@@ -498,18 +452,9 @@
     if (bassAmt > 0.01) {
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 5; lp.frequency.value = 200;
       const env = gain(0); lp.connect(env); env.connect(gain(0.55, arr.bass[0])); env.connect(gain(0.55, arr.bass[1]));
-      const oscs = (bassPat.sub ? [['sine', 0, 1.6], ['triangle', 0, 0.6]] : [['sawtooth', -0.003, 1], ['square', 0.003, 0.5]]).map(([w, det, g]) => { const o = osc(w, f0 * (bassPat.sub ? 1 : 2)); o.connect(gain(g, lp)); return [o, det]; });
+      const oscs = [['sawtooth', -0.003, 1], ['square', 0.003, 0.5]].map(([w, det, g]) => { const o = osc(w, f0 * 2); o.connect(gain(g, lp)); return [o, det]; });
       const L = bassPat.notes.length;
-      if (bassPat.grid) onGrid((st, t, stepLen) => {                       // on the drums' loop
-        const ch = bassPat.grid[st % 16];
-        if (ch === '.') return;
-        const accent = HIT_VEL[ch], s = arc(t - at(0)), f = f0 * (bassPat.sub ? 1 : 2) * Math.pow(2, bassPat.notes[st % 16] / 12);
-        const decay = Math.min(bassPat.decay, Math.max(0.06, stepLen * (bassPat.sub ? 6 : 0.9)));
-        for (const [o, det] of oscs) { if (bassPat.glide) o.frequency.setTargetAtTime(f * (1 + det), t, 0.03); else o.frequency.setValueAtTime(f * (1 + det), t); }
-        lp.frequency.setValueAtTime((bassPat.sub ? 900 : 500 + 1300 * accent) * lift(s, 0.8), t); lp.frequency.setTargetAtTime(bassPat.sub ? 400 : 140, t + 0.004, decay / 2.5);
-        strike(env, t, 1.7 * bassAmt * (0.65 + 0.35 * accent), decay);
-      });
-      else perCut.push((i, tc) => {
+      perCut.push((i, tc) => {
         const len = starts[i + 1] - starts[i], stepLen = len / bassPer;
         for (let k = 0; k < bassPer; k++) {
           const st = i * bassPer + k, note = bassPat.notes[st % L];
@@ -634,34 +579,6 @@
       });
     }
 
-    // ---- the drum machine (styles): fixed voices retriggered on the loop; the kick is tuned to the root and pumps the bed ----
-    if (styled && (drum.k + drum.ch + drum.cl + drum.rm) > 0.01) {
-      const v = style.variants[pick(p.drumPattern, style.variants.length)];
-      const out = gain(0.9, arr.drums), pumpDepth = 0.35 + 0.45 * pulse;
-      const kickO = osc('sine', f0), kickG = gain(0, out), click = voiceNoise(0.12, 'highpass', 2500, 0.7, out); kickO.connect(kickG);
-      const chG = voiceNoise(1, 'highpass', 7500, 0.7, out), ohG = voiceNoise(1, 'highpass', 6200, 0.7, out);
-      const clG = voiceNoise(1, 'bandpass', 1400, 1.1, out); for (const sd of sends) clG.connect(gain(0.35, sd));   // the clap in the room
-      const rmO = osc('square', 1650), rmF = ctx.createBiquadFilter(); rmF.type = 'bandpass'; rmF.frequency.value = 1650; rmF.Q.value = 6; const rmG = gain(0, out); rmO.connect(rmF); rmF.connect(rmG);
-      const at16 = (pat, st) => (pat && pat[st % 16] !== '.' ? HIT_VEL[pat[st % 16]] : 0);
-      onGrid((st, t) => {
-        const fill = Math.floor(st / 16) % 4 === 3 && st % 16 >= 8;          // the second half of every fourth bar rolls into the next
-        const k = at16(fill ? FILL.k : v.k, st), c = at16(v.ch, st), o = at16(v.oh, st), cl = at16(fill ? FILL.cl : v.cl, st), r = at16(v.rm, st);
-        if (k && drum.k) {
-          const kc = style.kick;
-          kickO.frequency.setValueAtTime(f0 * kc.from, t); kickO.frequency.setTargetAtTime(f0, t, kc.glide || 0.025);
-          strike(kickG, t, 1.6 * drum.k * k, kc.decay); strike(click, t, 0.5 * drum.k * k, 0.012);
-          for (const g of duck) { g.gain.setTargetAtTime(1 - pumpDepth * k, t, 0.004); g.gain.setTargetAtTime(1, t + 0.03, 0.09); }   // sidechain
-        }
-        if (c && drum.ch) { strike(chG, t, 0.32 * drum.ch * c, 0.035); ohG.gain.setTargetAtTime(0, t, 0.006); }   // a closed hat chokes the open one
-        if (o && drum.ch) strike(ohG, t, 0.26 * drum.ch * o, 0.24);
-        if (cl && drum.cl) {                                              // a clap: three quick bursts, then the tail
-          for (const d of [0, 0.011, 0.022]) { clG.gain.setValueAtTime(0.7 * drum.cl * cl, t + d); clG.gain.setTargetAtTime(0, t + d + 0.001, 0.003); }
-          clG.gain.setValueAtTime(0.55 * drum.cl * cl, t + 0.03); clG.gain.setTargetAtTime(0, t + 0.031, 0.05);
-        }
-        if (r && drum.rm) strike(rmG, t, 0.35 * drum.rm * r, 0.02);
-      });
-    }
-
     // stereo width: mid/side
     const w = 0.25 + 0.9 * width;
     const merger = ctx.createChannelMerger(2);
@@ -678,18 +595,17 @@
       if (arrange === 2) {                                                   // sections: switched on the music's cuts, a quick fade
         const lv = i => SECTIONS[Math.floor(i / SECTION_CUTS) % SECTIONS.length];
         const first = lv(Math.min(cursor, Math.max(0, nCuts - 1)));
-        for (const layer of ['arp', 'bass', 'hits', 'drums']) for (const g of [].concat(arr[layer])) g.gain.setValueAtTime(first[layer], at(offset));
-        perCut.push((i, t) => { if (i % SECTION_CUTS === 0) for (const layer of ['arp', 'bass', 'hits', 'drums']) for (const g of [].concat(arr[layer])) g.gain.setTargetAtTime(lv(i)[layer], t, 0.012); });
+        for (const layer of ['arp', 'bass', 'hits']) for (const g of [].concat(arr[layer])) g.gain.setValueAtTime(first[layer], at(offset));
+        perCut.push((i, t) => { if (i % SECTION_CUTS === 0) for (const layer of ['arp', 'bass', 'hits']) for (const g of [].concat(arr[layer])) g.gain.setTargetAtTime(lv(i)[layer], t, 0.012); });
       } else {
         const lens = starts.slice(1).map((v, i) => v - starts[i]), whole = lens.length > 2 ? lens.slice(0, -1) : lens;
         const lo = Math.min(...whole), hi = Math.max(...whole), varies = hi > lo * 1.05;
         const speed = t => Math.min(1, Math.max(0, Math.log(hi / lens[Math.min(lens.length - 1, cutAtTime(starts, t))]) / Math.log(hi / lo)));
         if (arrange === 3 && varies) {                                       // follows the speed: fast = full
-          set('arp', t => ramp(speed(t), 0.05, 0.25)); set('bass', t => ramp(speed(t), 0.35, 0.55)); set('drums', t => 0.3 + 0.7 * ramp(speed(t), 0.3, 0.5)); set('hits', t => ramp(speed(t), 0.65, 0.85));
+          set('arp', t => ramp(speed(t), 0.05, 0.25)); set('bass', t => ramp(speed(t), 0.35, 0.55)); set('hits', t => ramp(speed(t), 0.65, 0.85));
         } else {                                                             // build-up: in one by one, out for the ending
           set('arp', t => ramp(t / total, 0.1, 0.18));
           set('bass', t => ramp(t / total, 0.28, 0.34) * (1 - ramp(t / total, 0.88, 0.94)));
-          set('drums', t => ramp(t / total, 0.18, 0.2) * (1 - ramp(t / total, 0.9, 0.93)));
           set('hits', t => ramp(t / total, 0.45, 0.5) * (1 - ramp(t / total, 0.8, 0.86)));
         }
       }
@@ -718,7 +634,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   const cutSignature = starts => { const head = []; for (const t of starts) { head.push(Math.round(t * 1000)); if (t > 4) break; } return head.join(','); };   // the cuts of the window the level is measured on: faster cuts pump differently
-  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.bass, p.bassPattern, p.bassRate, p.arrange, p.style, p.drumPattern, p.kick, p.hats, p.clap, p.perc, p.swing]);
+  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.bass, p.bassPattern, p.bassRate, p.arrange]);
   async function level(p, starts) {
     starts = cleanStarts(starts);
     const key = levelKey(p, starts);
@@ -934,5 +850,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, STYLES, phaseLoop, rootHz };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz };
 })();

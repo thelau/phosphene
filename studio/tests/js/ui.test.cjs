@@ -648,7 +648,7 @@ test('with the drone on, Play starts it live from the top with the settings and 
   await settle(); await settle();
   assert.equal(h.calls.some(c => c.url === '/api/music'), false);           // nothing is rendered on the server
   const play = h.ctx.__drone.plays[0];
-  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, prog: 0, progEvery: 0, bass: 0, bassPattern: 0, bassRate: 0, arrange: 0, style: 0, drumPattern: 0, kick: 0, hats: 0, clap: 0, perc: 0, swing: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, choir: 0, industrial: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpMood: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
+  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, prog: 0, progEvery: 0, bass: 0, bassPattern: 0, bassRate: 0, arrange: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, choir: 0, industrial: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpMood: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
   assert.equal(play.offset, 0);
   assert.equal(play.starts.length, 3);                                      // the music follows the beats (2 of them for 6 picture cuts at 3 per beat) + the end
   assert.ok(Math.abs(play.starts[2] - 0.6) < 1e-9 && Math.abs(play.starts[1] - 0.3) < 1e-9);
@@ -1203,27 +1203,6 @@ test('bassline and arrangement: Random brings them in by type, an arrangement al
   h.$('bassRange').value = '50'; h.$('bassPatternSelect').value = '3'; h.$('arrangeSelect').value = '2'; h.run('updateMusic()');
   const p = h.run('synthParams()');
   assert.deepEqual([p.bass, p.bassPattern, p.arrange], [0.5, 3, 2]);
-});
-
-test('styles: picking one brings drums (its bassline, a sidechain) and the Drums tab; Random keeps the style and rolls its drums; no cut hits with drums; Drone hides the tab', async () => {
-  const h = await playerWith();
-  const n = id => +h.$(id).value;
-  assert.equal(h.$('soundTabDrums').hidden, true, 'Drone: no drums tab');
-  h.$('styleSelect').value = '1'; h.run('pickStyle()');
-  assert.equal(h.$('soundTabDrums').hidden, false);
-  assert.equal(h.$('groupDrums').hidden, false, 'it opens on the drums');
-  assert.ok(n('kickRange') >= 60 && n('hatsRange') > 0, 'drums to hear at once');
-  const p = h.run('synthParams()');
-  assert.equal(p.style, 1); assert.ok(p.kick > 0.5);
-  for (let i = 0; i < 200; i++) {
-    h.run(i % 2 ? 'randomMusic()' : 'randomAll()');
-    assert.equal(n('styleSelect'), 1, 'Random keeps the style');
-    assert.equal(n('hitTypeSelect'), 0, 'with drums, no hits on the cuts as well');
-    assert.ok(n('kickRange') >= 60, 'and keeps a kick');
-  }
-  h.$('styleSelect').value = '0'; h.run('pickStyle()');
-  assert.equal(h.$('soundTabDrums').hidden, true, 'back to Drone: no drums tab');
-  assert.equal(h.$('groupDrums').hidden, true);
 });
 
 test('Curate and Film: the mode switch is remembered, and Tab / Space work except while typing', async () => {
