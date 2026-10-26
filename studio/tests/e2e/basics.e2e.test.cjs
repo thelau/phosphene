@@ -761,3 +761,67 @@ test('the Keys panel: ? opens a tidy list under the hint, Esc and a click elsewh
   assert.equal(await page.locator('#keysPanel').isVisible(), false);
   await ctx.close();
 });
+
+test('dropdowns in the app style: open below or above depending on room, pick with the mouse or the keyboard, Esc closes', { skip }, async () => {
+  const ctx = await fresh({ width: 1280, height: 720 });
+  await film();
+  await choose('musicSelect', 'on');
+  // the Multiple, high on the page: opens downward
+  await page.click('.csel[data-for="multSelect"]');
+  await page.waitForSelector('#cselMenu:not([hidden])');
+  assert.equal(await page.locator('#cselMenu').getAttribute('data-side'), 'down');
+  assert.deepEqual(await page.locator('#cselMenu .csel-item').allTextContents(), ['×¼', '×½', '×1', '×1⅓', '×2', '×3', '×4', '×6', '×8', '×9']);
+  assert.equal(await page.locator('#cselMenu [aria-selected="true"]').textContent(), '×4');
+  await shot('24-dropdown');
+  await page.locator('#cselMenu .csel-item', { hasText: '×2' }).first().click();
+  assert.equal(await page.locator('#multSelect').inputValue(), '2', 'the real select took the value');
+  assert.equal(await page.locator('.csel[data-for="multSelect"] .csel-face').textContent(), '×2');
+  assert.equal(await page.locator('#cselMenu').isVisible(), false);
+  // Dynamics, low in the Notes group: opens upward
+  await page.click('#soundTabNotes');
+  await page.evaluate(() => { document.getElementById('inspSound').scrollTop = 99999; });
+  await page.setViewportSize({ width: 1280, height: 640 });                      // a short window: little room under the last dropdown
+  await page.evaluate(() => { document.getElementById('inspSound').scrollTop = 99999; });
+  const face = await page.locator('.csel[data-for="dynSelect"]').boundingBox();
+  await page.click('.csel[data-for="dynSelect"]');
+  const menu = await page.locator('#cselMenu').boundingBox(), side = await page.locator('#cselMenu').getAttribute('data-side');
+  assert.equal(side, 640 - (face.y + face.height) < face.y ? 'up' : 'down', 'it opens toward the side with more room');
+  assert.ok(menu.y >= 0 && menu.y + menu.height <= 640, 'and stays on screen');
+  assert.ok(menu.y + menu.height <= face.y + 1 || menu.y >= face.y + face.height - 1, 'without covering its own button');
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#cselMenu').isVisible(), false);
+  // the keyboard: arrows and Enter
+  await page.focus('#chordSelect').catch(() => {});
+  await page.click('#soundTabTone');
+  await page.focus('#chordSelect');
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.locator('#cselMenu').isVisible(), true);
+  await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#chordSelect').inputValue(), '1');
+  assert.equal(await page.locator('.csel[data-for="chordSelect"] .csel-face').textContent(), 'Open fifth');
+  // a value set by Random shows on the face too
+  await page.click('#randomBtn');
+  const v = await page.evaluate(() => { const s = document.getElementById('chordSelect'); return s.options[s.selectedIndex].textContent; });
+  assert.equal(await page.locator('.csel[data-for="chordSelect"] .csel-face').textContent(), v);
+  // while the film plays (the film strip scrolls by itself) an open menu stays open; scrolling its own panel closes it
+  for (let i = 0; i < 40; i++) { const f = `m${i}`; api.state.plates.push({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` }); api.state.sequences[0].order.push(f); }
+  await page.click('#refreshFilmBtn'); await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length > 40);
+  await page.locator('#filmstrip button').nth(14).click();                         // near the strip's right edge: it has to scroll as it plays
+  await page.click('#playBtn');
+  await page.click('.csel[data-for="characterSelect"]');
+  await page.locator('#cselMenu .csel-item').nth(3).hover();
+  const left0 = await page.evaluate(() => document.getElementById('filmstrip').scrollLeft);
+  await page.waitForTimeout(2500);
+  assert.notEqual(await page.evaluate(() => document.getElementById('filmstrip').scrollLeft), left0, 'the strip did scroll');
+  assert.equal(await page.locator('#cselMenu').isVisible(), true, 'still open after 2.5 s of playing');
+  await page.evaluate(() => { document.getElementById('inspPicture').scrollTop += 40; });
+  await page.evaluate(() => { document.getElementById('cselMenu').hidden || document.getElementById('inspPicture').dispatchEvent(new Event('scroll')); });
+  await page.keyboard.press('Escape');
+  await page.click('#playBtn');
+  // no system dropdown is left in the page (the segmented ones are buttons)
+  const native = await page.evaluate(() => [...document.querySelectorAll('select')].filter(s => !s.classList.contains('seg-src') && !s.parentElement.classList.contains('csel')).map(s => s.id));
+  assert.deepEqual(native, []);
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

@@ -669,11 +669,117 @@
       syncSegs();
     }
     function syncSegs() {
+      syncSelects();
       document.querySelectorAll('.segctl').forEach(box => {
         const sel = document.getElementById(box.dataset.for);
         box.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.value === sel.value)));
       });
     }
+    // ---- Dropdowns in the app's style. The real <select> stays, invisible, on top of its face: it keeps the value (saved, read,
+    // tested), the focus and the keyboard. A click or Enter opens our menu instead of the system's; it opens downward, or upward
+    // when there is more room above. ----
+    function enhanceSelects() {
+      document.querySelectorAll('select:not(.seg-src)').forEach(sel => {
+        if (sel.parentElement && sel.parentElement.classList.contains('csel')) return;
+        const box = document.createElement('span'); box.className = 'csel'; box.dataset.for = sel.id;
+        const face = document.createElement('span'); face.className = 'csel-face'; face.setAttribute('aria-hidden', 'true');
+        sel.before(box); box.append(face, sel);
+        sel.addEventListener('mousedown', e => { e.preventDefault(); sel.focus(); if (menuFor === sel) closeMenu(); else openMenu(sel); });
+        sel.addEventListener('keydown', e => menuKey(e, sel));
+        sel.addEventListener('change', syncSelects);
+      });
+      syncSelects();
+    }
+    function syncSelects() {
+      document.querySelectorAll('.csel').forEach(box => {
+        const sel = box.querySelector('select'), o = sel.options[sel.selectedIndex];
+        const face = box.firstElementChild, t = o ? o.textContent.trim() : '';
+        if (face.textContent !== t) face.textContent = t;
+        box.classList.toggle('disabled', sel.disabled);
+      });
+    }
+    let menuFor = null, menuActive = -1;
+    function cselMenu() {
+      let m = document.getElementById('cselMenu');
+      if (m) return m;
+      m = document.createElement('div'); m.id = 'cselMenu'; m.className = 'csel-menu'; m.setAttribute('role', 'listbox'); m.hidden = true;
+      m.addEventListener('mousedown', e => e.preventDefault());               // the select keeps the focus
+      m.addEventListener('click', e => { const it = e.target.closest('.csel-item'); if (it && !it.classList.contains('off')) pickOption(+it.dataset.i); });
+      m.addEventListener('mousemove', e => { const it = e.target.closest('.csel-item'); if (it && +it.dataset.i !== menuActive) { menuActive = +it.dataset.i; markActive(false); } });
+      document.body.appendChild(m);
+      return m;
+    }
+    function openMenu(sel) {
+      if (sel.disabled) return;
+      const m = cselMenu();
+      m.innerHTML = '';
+      let group = null;
+      [...sel.options].forEach((o, i) => {
+        const g = o.parentElement && o.parentElement.tagName === 'OPTGROUP' ? o.parentElement.label : null;
+        if (g && g !== group) { group = g; const h = document.createElement('div'); h.className = 'csel-group'; h.textContent = g; m.appendChild(h); }
+        const it = document.createElement('div');
+        it.className = 'csel-item' + (o.disabled ? ' off' : ''); it.setAttribute('role', 'option'); it.dataset.i = i; it.textContent = o.textContent.trim();
+        if (i === sel.selectedIndex) it.setAttribute('aria-selected', 'true');
+        m.appendChild(it);
+      });
+      menuFor = sel; menuActive = sel.selectedIndex;
+      m.hidden = false;
+      const r = sel.parentElement.getBoundingClientRect();
+      m.style.minWidth = `${r.width}px`;
+      const below = innerHeight - r.bottom - 10, above = r.top - 10, want = Math.min(m.scrollHeight, 360);
+      const down = below >= want || below >= above;
+      m.style.maxHeight = `${Math.max(120, Math.min(360, down ? below : above))}px`;
+      m.style.left = `${Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8))}px`;
+      if (down) { m.style.top = `${r.bottom + 4}px`; m.style.bottom = ''; } else { m.style.bottom = `${innerHeight - r.top + 4}px`; m.style.top = ''; }
+      m.dataset.side = down ? 'down' : 'up';
+      sel.parentElement.classList.add('open');
+      markActive(true);
+    }
+    function closeMenu() {
+      const m = document.getElementById('cselMenu');
+      if (m) m.hidden = true;
+      if (menuFor && menuFor.parentElement) menuFor.parentElement.classList.remove('open');
+      menuFor = null;
+    }
+    function pickOption(i) {
+      const sel = menuFor;
+      if (!sel) return;
+      closeMenu();
+      if (sel.selectedIndex !== i && sel.options[i] && !sel.options[i].disabled) { sel.selectedIndex = i; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+      syncSelects();
+      sel.focus();
+    }
+    function markActive(scroll) {
+      const m = document.getElementById('cselMenu');
+      m.querySelectorAll('.csel-item').forEach(it => it.classList.toggle('active', +it.dataset.i === menuActive));
+      const a = m.querySelector('.csel-item.active');
+      if (a && scroll) a.scrollIntoView({ block: 'nearest' });
+    }
+    function menuKey(e, sel) {
+      if (menuFor !== sel) {
+        if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(e.key)) { e.preventDefault(); openMenu(sel); }
+        return;
+      }
+      const n = sel.options.length;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        let i = menuActive;
+        for (let k = 0; k < n; k++) { i = (i + (e.key === 'ArrowDown' ? 1 : -1) + n) % n; if (!sel.options[i].disabled) break; }
+        menuActive = i; markActive(true);
+      } else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickOption(menuActive); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeMenu(); }
+      else if (e.key === 'Tab') closeMenu();
+      else if (e.key.length === 1) {                                         // a letter jumps to the next option starting with it
+        e.preventDefault();
+        const k = e.key.toLowerCase(), opts = [...sel.options];
+        for (let s2 = 1; s2 <= n; s2++) { const j = (menuActive + s2) % n; if (!opts[j].disabled && opts[j].textContent.trim().toLowerCase().startsWith(k)) { menuActive = j; markActive(true); break; } }
+      }
+    }
+    document.addEventListener('mousedown', e => { if (menuFor && !(e.target.closest && (e.target.closest('#cselMenu') || e.target === menuFor))) closeMenu(); }, true);
+    window.addEventListener('resize', closeMenu);
+    // only a scroll that moves the dropdown itself closes its menu (the film strip scrolls by itself while playing)
+    document.addEventListener('scroll', e => { if (menuFor && (e.target === document || (e.target.contains && e.target.contains(menuFor)))) closeMenu(); }, true);
+
     // the orange part of a slider, up to its thumb
     function paintRanges() {
       document.querySelectorAll('input[type="range"]').forEach(el => {
@@ -1652,6 +1758,7 @@
         });
         sel.value = cur || (JSON.parse(localStorage.getItem('studioSettings') || '{}').worldSelect || '');
         updateDirectionHint();
+        syncSelects();
       } catch (e) {}
     }
 
@@ -1693,6 +1800,7 @@
       ['trashSelAll', 'trashEmpty', 'resetAi'].forEach(id => { document.getElementById(id).disabled = aiRunning; });
       document.querySelectorAll('#orderSeg button').forEach(b => { b.disabled = aiRunning; });
       document.body.classList.toggle('ai-running', aiRunning);
+      syncSelects();
       document.getElementById('aiLock').hidden = !aiRunning;
       document.getElementById('gridHint').textContent = showTrash ? 'Trashed images stay restorable' : aiRunning ? 'Locked while the AI orders' : 'Drag to reorder';
       updateTrashBar();
@@ -1897,6 +2005,7 @@
 
     restoreSettings();
     buildSegs();
+    enhanceSelects();
     updateFx();
     updateTempo();
     updateRhythm();
