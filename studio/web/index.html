@@ -132,7 +132,7 @@
           <div id="flatBox">
           <div class="control-line">
             <span>Tempo</span>
-            <input type="range" id="bpmSlider" min="60" max="250" value="136" oninput="updateTempo()" />
+            <input type="range" id="bpmInput" min="1" max="250" step="1" value="136" oninput="updateTempo()" title="Beats per minute, 1 to 250" />
             <span id="bpmVal">136 BPM</span>
           </div>
           </div>
@@ -176,6 +176,9 @@
             </select>
             <span id="speedVal">~4f</span>
           </div>
+          <label class="check-line" title="Unchecked: the Multiple only cuts the pictures faster, and the music stays on the beat. Checked: the pump, hits and arpeggio fall on every picture cut too.">
+            <input type="checkbox" id="followCuts" onchange="updateTempo()" /> <span>The Multiple also changes the music</span>
+          </label>
           <div class="rhythm-info" id="rhythmInfo"></div>
           <div class="control-line">
             <span>Invert</span>

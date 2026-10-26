@@ -516,20 +516,25 @@
       }
       return out;
     }
+    // the tempo slider is 1 to 250 BPM; a stored or odd value is kept inside that
+    function bpmValue() { const v = parseFloat(document.getElementById('bpmInput').value); return Number.isFinite(v) ? Math.min(250, Math.max(1, v)) : 120; }
+    function followCuts() { return !!document.getElementById('followCuts').checked; }
     let timelineCache = { key: '', value: null };
     function rhythmFor(nPlates) {
       const invert = document.getElementById('invertSelect').value;
       const paired = invert === 'mono' || invert === 'colour';
       const nCuts = nPlates * (paired ? 2 : 1);
       const mult = parseFloat(document.getElementById('multSelect').value) || 1;
-      const bpm = parseInt(document.getElementById('bpmSlider').value, 10) || 120;
+      const bpm = bpmValue();
+      const follow = followCuts();
       const v = rhythmMode() === 'variable' ? variableParams() : null;
-      const key = `${nCuts}|${mult}|${v ? `${v.start_ms}|${v.end_ms}|${v.ramp}|${v.at}` : `flat|${bpm}`}`;
+      const key = `${nCuts}|${mult}|${v ? `${v.start_ms}|${v.end_ms}|${v.ramp}|${v.at}` : `flat|${bpm}`}|${follow}`;
       if (timelineCache.key !== key) {
         const nBase = Math.max(1, Math.ceil(nCuts / Math.max(0.05, mult) - 1e-9));
         const base = v ? variableStarts(nBase, v.start_ms, v.end_ms, v.ramp, v.at) : Array.from({ length: nBase + 1 }, (_, i) => (i * 1800) / bpm);
         const pic = subdivideStarts(base, mult, nCuts), end = pic[nCuts];
-        const audio = base.filter(f => f < end - 1e-6).concat([end]).map(f => f / 30);       // the music's cuts: the base cuts that fall inside the clip
+        // the music's cuts: the base cuts that fall inside the clip, or (if the user asks) every picture cut
+        const audio = follow ? pic.map(f => f / 30) : base.filter(f => f < end - 1e-6).concat([end]).map(f => f / 30);
         if (audio.length < 2) audio.push(audio[0] + 0.1);                                       // no images: still a valid (empty) clip
         timelineCache = { key, value: { pic, audio, end, landAt: pic[Math.max(0, nCuts - (paired ? 2 : 1))] / 30 } };
       }
@@ -581,6 +586,7 @@
       const r = Math.random();
       const choice = (id, n) => { document.getElementById(id).value = String(Math.floor(Math.random() * n)); };
       choice('hitTypeSelect', 5); choice('hitOnSelect', 4); choice('arpStepsSelect', 4); choice('arpRateSelect', 4); choice('dynSelect', 4);
+      if (Math.random() < 0.5) document.getElementById('dynSelect').value = '0';                   // an arc over the whole clip is a bigger decision than a sound: steady half the time
       if (document.getElementById('hitTypeSelect').value === '0' || Math.random() < 0.25) document.getElementById('hitTypeSelect').value = '0';   // hits and arpeggios come and go
       if (Math.random() < 0.55) document.getElementById('arpRange').value = '0';
       document.getElementById('subWaveSelect').value = r < 0.5 ? '0' : r < 0.75 ? '1' : '2';
@@ -729,7 +735,7 @@
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmSlider', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -765,10 +771,10 @@
     }
     function updateTempo() {
       saveSettings();
-      const bpm = parseInt(document.getElementById('bpmSlider').value, 10);
+      const bpm = bpmValue();
+      document.getElementById('bpmVal').textContent = `${Math.round(bpm)} BPM`;
       const mult = parseFloat(document.getElementById('multSelect').value);
       framesPerCut = Math.max(1, (30 * 60) / (bpm * mult));
-      document.getElementById('bpmVal').textContent = `${bpm} BPM`;
       document.getElementById('speedVal').textContent = rhythmMode() === 'variable' ? '' : `${framesPerCut.toFixed(1)}f`;
       restartLoop();
       musicChanged();
@@ -1044,7 +1050,7 @@
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
-            bpm: parseInt(document.getElementById('bpmSlider').value, 10),
+            bpm: bpmValue(),
             multiple: parseFloat(document.getElementById('multSelect').value),
             invert_mode: document.getElementById('invertSelect').value,
             rhythm: rhythmMode(),

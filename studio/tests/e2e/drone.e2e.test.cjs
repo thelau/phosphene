@@ -1,5 +1,5 @@
 // The live and the offline sound engine (studio/web/src/drone.js) in a real browser: levels, swaps, scheduling, and extreme inputs.
-const { test, assert, register, fresh, page, consoleErrors, skip } = require('./harness.cjs');
+const { test, assert, register, fresh, page, consoleErrors, skip, api } = require('./harness.cjs');
 register();
 
 const BASE = { pulse: 0.65, low: 0.93, bright: 0.3, width: 0.6, space: 0.6, power: 0.6, seed: 7 };
@@ -193,6 +193,59 @@ test('the engine finds no console errors across all of this', { skip }, async ()
     await L.play({ ...BASE, hitType: 2, hit: 0.5, arp: 0.5 }, starts, 0);
     await new Promise(r => setTimeout(r, 500)); L.stop();
   }, BASE);
+  assert.deepEqual(consoleErrors.splice(0), []);
+  await ctx.close();
+});
+
+test('the page stays responsive while playing a big sequence with every sound layer on, and while sliders are dragged', { skip }, async () => {
+  const ctx = await fresh();
+  for (let i = 0; i < 150; i++) {                                                  // 150 images
+    const f = `p${i}`; api.state.plates.push({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` });
+    api.state.sequences[0].order.push(f);
+  }
+  await page.reload();
+  await page.waitForSelector('.card');
+  await page.waitForFunction(() => document.querySelectorAll('.card').length >= 150);
+  await page.click('#tabMusic');
+  await page.selectOption('#musicSelect', 'on');
+  await page.evaluate(() => {
+    const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); e.dispatchEvent(new Event('change')); };
+    for (const [id, v] of [['hitTypeSelect', '3'], ['hitRange', '70'], ['arpRange', '60'], ['arpRateSelect', '3'], ['arpStepsSelect', '3'], ['washRange', '50'], ['ringRange', '40'], ['shimmerRange', '40'], ['echoRange', '50'], ['dynSelect', '3'], ['spaceRange', '80'], ['powerRange', '90'], ['subWaveSelect', '2'], ['padWaveSelect', '3']]) set(id, v);
+  });
+  await page.click('#tabVideo');
+  await page.selectOption('#rhythmSelect', 'variable');
+  await page.evaluate(() => { for (const [id, v] of [['startMsRange', '50'], ['endMsRange', '300'], ['rampRange', '40']]) { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); } });
+  await page.selectOption('#multSelect', '4');
+  await page.selectOption('#invertSelect', 'mono'); await page.selectOption('#zoomSelect', 'out');
+  await page.evaluate(() => {                                                     // measure on the page: long tasks, and how late the frames are
+    window.__perf = { long: [], frames: [] };
+    try { new PerformanceObserver(l => l.getEntries().forEach(e => window.__perf.long.push(e.duration))).observe({ entryTypes: ['longtask'] }); } catch (e) {}
+    let last = performance.now(); const loop = n => { window.__perf.frames.push(n - last); last = n; requestAnimationFrame(loop); }; requestAnimationFrame(loop);
+  });
+  await page.click('#playBtn');
+  await page.waitForFunction(() => document.getElementById('playBtn').textContent.includes('Pause'));
+  await page.waitForTimeout(1500);                                                // settle: the first build and level are allowed to be slower
+  await page.evaluate(() => { window.__perf.long.length = 0; window.__perf.frames.length = 0; });
+  await page.waitForTimeout(3000);                                                // steady playing
+  const steady = await page.evaluate(() => ({ long: [...window.__perf.long], frames: [...window.__perf.frames] }));
+  await page.evaluate(() => { window.__perf.long.length = 0; window.__perf.frames.length = 0; });
+  for (let i = 0; i < 60; i++) {                                                  // drag sliders, flip the multiple, for 3 s
+    await page.evaluate(i => {
+      const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); e.dispatchEvent(new Event('change')); };
+      set('lowRange', String(50 + (i % 40))); set('spaceRange', String(30 + (i % 60))); if (i % 15 === 0) set('multSelect', ['2', '4', '8', '3'][(i / 15) % 4]);
+    }, i);
+    await page.waitForTimeout(50);
+  }
+  const dragging = await page.evaluate(() => ({ long: [...window.__perf.long], frames: [...window.__perf.frames] }));
+  const stats = f => { const s = [...f].sort((a, b) => a - b); return { p95: s[Math.floor(s.length * 0.95)], max: s[s.length - 1], n: s.length }; };
+  const report = (name, m) => `${name}: ${m.long.length} long tasks (max ${Math.round(Math.max(0, ...m.long))} ms), frames p95 ${Math.round(stats(m.frames).p95)} ms max ${Math.round(stats(m.frames).max)} ms of ${m.frames.length}`;
+  console.log(report('steady', steady)); console.log(report('dragging', dragging));
+  for (const [name, m] of [['steady', steady], ['dragging', dragging]]) {
+    assert.ok(m.frames.length > 40, `${name}: frames were drawn`);
+    assert.ok(Math.max(0, ...m.long) < 250, `${name}: no main-thread block over 250 ms (${report(name, m)})`);
+    assert.ok(stats(m.frames).p95 < 60, `${name}: frames keep up (${report(name, m)})`);
+    assert.ok(m.long.length <= (name === 'steady' ? 3 : 12), `${name}: few long tasks (${report(name, m)})`);
+  }
   assert.deepEqual(consoleErrors.splice(0), []);
   await ctx.close();
 });

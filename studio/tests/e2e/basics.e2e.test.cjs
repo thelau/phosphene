@@ -93,8 +93,8 @@ test('player: invert pairs and slow zoom show up on the preview image', { skip }
   await page.fill('#zoomAmt', '5');
   await page.locator('#zoomAmt').dispatchEvent('input');
   assert.equal(await text('#zoomAmtVal'), '5.0%');
-  await page.fill('#bpmSlider', '60');
-  await page.locator('#bpmSlider').dispatchEvent('input');
+  await page.fill('#bpmInput', '60');
+  await page.locator('#bpmInput').dispatchEvent('input');
   await page.selectOption('#multSelect', '2');                       // 2 cuts a second: a cut lasts 500ms
   await page.click('#playBtn');
   const seen = { inverted: false, normal: false, zoomed: false, srcs: new Set() };
@@ -157,7 +157,7 @@ test('the player panel: preview, play / target, then Video and Music tabs with t
   assert.ok(Math.abs(play.y - target.y) < 4, 'Play and Target share a row');
   assert.equal(await text('#targetBtn'), '🎯 Target');
   // Video tab is open: its settings are visible, the music ones are not
-  for (const id of ['#bpmSlider', '#multSelect', '#invertSelect', '#zoomSelect']) assert.ok(await page.locator(id).isVisible(), id);
+  for (const id of ['#bpmInput', '#multSelect', '#invertSelect', '#zoomSelect']) assert.ok(await page.locator(id).isVisible(), id);
   assert.ok(!(await page.locator('#zoomAmt').isVisible()), 'Amount appears only once a zoom is chosen');
   await page.selectOption('#zoomSelect', 'out');
   assert.ok(await page.locator('#zoomAmt').isVisible());
@@ -170,24 +170,28 @@ test('the player panel: preview, play / target, then Video and Music tabs with t
   for (const id of ['#pulseRange', '#lowRange', '#powerRange', '#spaceRange']) assert.ok(await page.locator(id).isVisible(), id);
   for (const id of ['#brightRange', '#widthRange', '#randomBtn']) assert.ok(await page.locator(id).isVisible(), `${id} is there at once`);
   for (const id of ['#brightRange', '#widthRange', '#randomBtn']) assert.ok(await page.locator(id).isVisible(), id);
-  assert.ok(!(await page.locator('#bpmSlider').isVisible()));
+  assert.ok(!(await page.locator('#bpmInput').isVisible()));
   const exp2 = await box('#exportBtn');
   assert.ok(exp2.y > (await box('#echoRange')).y, 'export stays below whichever tab is open');
   await shot('music-tab');
   await page.click('#tabVideo');
-  assert.ok(await page.locator('#bpmSlider').isVisible());
+  assert.ok(await page.locator('#bpmInput').isVisible());
   await ctx.close();
 });
 
 test('variable speed: Flat shows tempo and multiple, Variable shows start, end and curve, and the picture accelerates', { skip }, async () => {
   const ctx = await fresh();
-  assert.ok(await page.locator('#bpmSlider').isVisible() && !(await page.locator('#startMsRange').isVisible()));
+  assert.ok(await page.locator('#bpmInput').isVisible() && !(await page.locator('#startMsRange').isVisible()));
   await page.selectOption('#multSelect', '1');
   await page.selectOption('#rhythmSelect', 'variable');
-  assert.ok(!(await page.locator('#bpmSlider').isVisible()), 'no tempo in variable');
+  assert.ok(!(await page.locator('#bpmInput').isVisible()), 'no tempo in variable');
   assert.ok(await page.locator('#multSelect').isVisible(), 'the multiple stays: it only changes the pictures');
   await page.selectOption('#rhythmSelect', 'flat');
-  assert.equal(await page.locator('#bpmSlider').getAttribute('max'), '250');
+  assert.equal(await page.locator('#bpmInput').getAttribute('max'), '250'); assert.equal(await page.locator('#bpmInput').getAttribute('min'), '1');
+  await page.fill('#bpmInput', '250'); assert.equal(await text('#bpmVal'), '250 BPM');
+  await page.fill('#bpmInput', '1'); assert.equal(await text('#bpmVal'), '1 BPM');
+  await page.fill('#bpmInput', '136');
+  assert.ok(await page.locator('#followCuts').isVisible(), 'the check for the music following every cut');
   await page.selectOption('#rhythmSelect', 'variable');
   for (const id of ['#startMsRange', '#endMsRange', '#rampRange', '#atSelect']) assert.ok(await page.locator(id).isVisible(), id);
   await page.fill('#startMsRange', '100'); await page.fill('#endMsRange', '600'); await page.fill('#rampRange', '2');

@@ -43,11 +43,20 @@
 
   function makeRoom(ctx, seedN, i, roomSeconds) {
     const conv = ctx.createConvolver(); conv.normalize = false;
-    conv.buffer = cached(ctx, `room|${seedN}|${i}|${roomSeconds}`, () => roomBuffer(ctx, mulberry32(seedN + 7919 * (i + 1)), roomSeconds));
+    const data = cachedData(ctx.sampleRate, `room|${seedN}|${i}|${roomSeconds}`, () => roomData(ctx.sampleRate, mulberry32(seedN + 7919 * (i + 1)), roomSeconds));
+    const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0); conv.buffer = b;
     return conv;
   }
 
   // Buffers that take a while to make (seconds of noise, the room) are made once per context and seed, not at every rebuild of the sound.
+  // The sample data of the room and the noise loops, made once per sample rate and shared by every context (the live one, and each short
+  // offline render that measures the level): making them is the slow part, wrapping them in a buffer is a copy.
+  const dataCache = new Map();
+  function cachedData(rate, key, make) {
+    const k = `${rate}|${key}`;
+    if (!dataCache.has(k)) { dataCache.set(k, make()); if (dataCache.size > 24) dataCache.delete(dataCache.keys().next().value); }
+    return dataCache.get(k);
+  }
   const bufferCache = new WeakMap();
   function cached(ctx, key, make) {
     let m = bufferCache.get(ctx); if (!m) bufferCache.set(ctx, m = new Map());
@@ -55,13 +64,14 @@
     return m.get(key);
   }
   function noiseLoop(ctx, seed, name, seconds, shape) {
-    const buf = cached(ctx, `noise|${name}|${seed}|${seconds}`, () => {
+    const data = cachedData(ctx.sampleRate, `noise|${name}|${seed}|${seconds}`, () => {
       const rand = mulberry32((seed * 2654435761 + name.length * 97 + name.charCodeAt(0)) >>> 0);
       const n = Math.floor(seconds * ctx.sampleRate), x = new Float32Array(n);
       for (let i = 0; i < n; i++) x[i] = gauss(rand);
       shape(x, ctx.sampleRate);
-      return bufferOf(ctx, normalise(x));
+      return normalise(x);
     });
+    const buf = cached(ctx, `buf|${name}|${seed}|${seconds}`, () => { const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0); return b; });   // one AudioBuffer per context
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
@@ -69,8 +79,8 @@
   }
 
   // a dark room: decaying noise, low-passed, after a short pre-delay
-  function roomBuffer(ctx, rand, seconds) {
-    const rate = ctx.sampleRate, n = Math.floor(seconds * rate), pre = Math.floor(0.025 * rate);
+  function roomData(rate, rand, seconds) {
+    const n = Math.floor(seconds * rate), pre = Math.floor(0.025 * rate);
     const ir = new Float32Array(n);
     for (let i = 0; i < n; i++) ir[i] = gauss(rand) * Math.exp(-(i / rate) * (6.9 / seconds));
     onePole(ir, 900, rate, 2);
@@ -78,9 +88,7 @@
     for (let i = 0; i < n; i++) ir[i] /= Math.sqrt(e) + 1e-9;                  // unit energy
     const out = new Float32Array(pre + n);
     out.set(ir, pre);
-    const b = ctx.createBuffer(1, out.length, rate);
-    b.getChannelData(0).set(out);
-    return b;
+    return out;
   }
 
   // a short burst of white noise for the knock and noise hits
@@ -170,9 +178,9 @@
     const links = [];                                                      // connections to unplug when this sound is retired (a shared room outlives it)
     const keep = n => { nodes.push(n); return n; };
     const gain = (v, to) => { const g = ctx.createGain(); g.gain.value = v; if (to) g.connect(to); return g; };
-    const osc = (type, freq, to) => {
+    const osc = (type, freq, to, inPhase = false) => {
       const o = keep(ctx.createOscillator()); o.type = type; o.frequency.value = freq;
-      if (offset > 0 && (type === 'sine' || type === 'sawtooth')) o.setPeriodicWave(phasedWave(ctx, type, freq * offset));     // in phase with where the clip is
+      if (inPhase && offset > 0 && type === 'sine') o.setPeriodicWave(phasedWave(ctx, type, freq * offset));     // in phase with where the clip is (only the sub: it is coherent between the old sound and the new one; the rest is not worth a wave each)
       if (to) o.connect(to); return o;
     };
     const lfo = (rate, depth, param) => { const o = osc('sine', rate); const g = gain(depth, param); o.connect(g); return o; };
@@ -215,7 +223,7 @@
       const level = gain(base * 0.9);                                      // a slow tremolo around it
       lfo(0.5, base * 0.1, level.gain);
       for (const [mult, g] of [[1, 1], [2, 0.3]]) {
-        const o = osc(SUB_WAVES[subWave], f0 * mult);
+        const o = osc(SUB_WAVES[subWave], f0 * mult, undefined, true);
         lfo(0.13, f0 * mult * 0.012, o.frequency);
         if (subWave === 2) { const [l1] = lowpass(260, level); const og = gain(g * 0.8, l1); o.connect(og); }   // a square is soft: only its low harmonics
         else { const og = gain(g, level); o.connect(og); }
@@ -312,7 +320,7 @@
     }
 
     // ---- the room: the send skips the sub ----
-    const roomSeconds = Math.round((2.4 + 3.6 * space) * 2) / 2, wet = 0.05 + 0.5 * space;    // the room's length in half-second steps, so it can be reused while a slider moves
+    const roomSeconds = Math.round(2.4 + 3.6 * space), wet = 0.05 + 0.5 * space;    // the room's length in whole-second steps, so it can be reused while a slider moves
     const mix = [gain(1), gain(1)];
     sides.forEach((br, i) => {
       br.connect(mix[i]);
@@ -439,7 +447,7 @@
     starts = cleanStarts(starts);
     const key = levelKey(p, starts);
     if (levelCache.has(key)) return levelCache.get(key);
-    const rate = 22050, secs = Math.min(4, starts[starts.length - 1]);
+    const rate = 22050, secs = Math.min(3, starts[starts.length - 1]);
     const trimmed = starts.filter(s => s < secs); trimmed.push(secs);
     const ctx = new OfflineAudioContext(2, Math.max(1, Math.floor(secs * rate)), rate);
     build(ctx, ctx.destination, p, trimmed, { offset: 0, t0: 0, total: starts[starts.length - 1], landing: false, dynamics: false });
@@ -596,13 +604,14 @@
     // the exact level for the current settings, worked out off the swap path; the running sound eases to it
     _recalibrate() {
       clearTimeout(this.calTimer);
-      this.calTimer = setTimeout(async () => {
+      this.calTimer = setTimeout(() => (window.requestIdleCallback ? window.requestIdleCallback(go, { timeout: 1500 }) : go()), 350);   // when the page has a quiet moment
+      const go = async () => {
         if (!this.playing || !this.inst) return;
         const p = this.params, st = this.starts, g = await level(p, st);
         if (!this.playing || !this.inst || p !== this.params) return;
         this.cal = g;
         this.inst.level.gain.setTargetAtTime(g, this.ctx.currentTime, 0.15);
-      }, 350);
+      };
     }
     stop() {
       this.playing = false;

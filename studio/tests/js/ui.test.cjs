@@ -34,21 +34,20 @@ test('formatModelShort strips provider', () => {
 
 test('updateTempo computes frames per cut and persists', () => {
   const { run, $, store } = load({ routes: baseRoutes() });
-  $('bpmSlider').value = '120'; $('multSelect').value = '2';
+  $('bpmInput').value = '120'; $('multSelect').value = '2';
   run('updateTempo()');
   assert.equal(run('framesPerCut'), 7.5);                      // 1800 / (120*2)
   assert.equal($('speedVal').textContent, '7.5f');
-  assert.equal($('bpmVal').textContent, '120 BPM');
   const saved = JSON.parse(store.studioSettings);
-  assert.equal(saved.bpmSlider, '120'); assert.equal(saved.multSelect, '2');
-  $('bpmSlider').value = '220'; $('multSelect').value = '9';
+  assert.equal(saved.bpmInput, '120'); assert.equal(saved.multSelect, '2');
+  $('bpmInput').value = '220'; $('multSelect').value = '9';
   run('updateTempo()');
   assert.equal(run('framesPerCut'), 1);                        // never below one frame
 });
 
 test('restoreSettings brings back remembered values (and ignores unknown options)', () => {
-  const { run, $ } = load({ routes: baseRoutes(), storage: { studioSettings: JSON.stringify({ bpmSlider: '150', directionInput: 'wet' }) } });
-  assert.equal($('bpmSlider').value, '150');
+  const { run, $ } = load({ routes: baseRoutes(), storage: { studioSettings: JSON.stringify({ bpmInput: '150', directionInput: 'wet' }) } });
+  assert.equal($('bpmInput').value, '150');
   assert.equal($('directionInput').value, 'wet');
 });
 
@@ -419,7 +418,7 @@ test('the preview loop alternates image and inverted image, then moves on', asyn
   h.$('stageImg').style.display = 'block';
   h.$('invertSelect').value = 'mono';
   h.$('zoomSelect').value = 'off';
-  h.$('bpmSlider').value = '200'; h.$('multSelect').value = '3'; h.run('updateTempo()');   // a beat of 9 frames, 3 picture cuts per beat: 100 ms per cut
+  h.$('bpmInput').value = '200'; h.$('multSelect').value = '3'; h.run('updateTempo()');   // a beat of 9 frames, 3 picture cuts per beat: 100 ms per cut
   h.run('isPlaying = true; cutPos = 0');
   const tick = h.timers.intervals[h.timers.intervals.length - 1].fn;
   const seen = [];
@@ -447,7 +446,7 @@ test('export leaves the preview alone and offers a download link', async () => {
   await settle(); await settle();
   h.$('stageImg').src = '/p/a';
   h.$('stageImg').style.display = 'block';
-  h.$('bpmSlider').value = '136'; h.$('multSelect').value = '4'; h.$('invertSelect').value = 'mono'; h.$('zoomSelect').value = 'out'; h.$('zoomAmt').value = '1.2';
+  h.$('bpmInput').value = '136'; h.$('multSelect').value = '4'; h.$('invertSelect').value = 'mono'; h.$('zoomSelect').value = 'out'; h.$('zoomAmt').value = '1.2';
   await h.run('exportVideo()');
   const body = h.calls.find(c => c.url === '/api/export-video').body;
   assert.deepEqual([body.invert_mode, body.zoom_mode, body.zoom_amount, body.bpm], ['mono', 'out', 1.2, 136]);
@@ -619,7 +618,7 @@ async function playerWith(extra = {}) {
   const h = load({ routes: r });
   await settle(); await settle();
   h.$('stageImg').style.display = 'block';
-  h.$('bpmSlider').value = '120'; h.$('multSelect').value = '2'; h.$('zoomSelect').value = 'off';
+  h.$('bpmInput').value = '120'; h.$('multSelect').value = '2'; h.$('zoomSelect').value = 'off';
   h.run('updateTempo()');
   return h;
 }
@@ -640,7 +639,7 @@ test('with the drone on, Play starts it live from the top with the settings and 
   h.$('pitchRange').value = '50'; h.$('movementRange').value = '50'; h.$('echoRange').value = '0'; h.$('chordSelect').value = '0'; h.$('washRange').value = '0'; h.$('ringRange').value = '0'; h.$('shimmerRange').value = '0'; h.$('subWaveSelect').value = '0'; h.$('padWaveSelect').value = '0';
   for (const id of ['hitTypeSelect', 'hitOnSelect', 'arpStepsSelect', 'arpRateSelect', 'dynSelect']) h.$(id).value = '0';
   h.$('hitRange').value = '0'; h.$('arpRange').value = '0';
-  h.$('bpmSlider').value = '200'; h.$('multSelect').value = '3'; h.run('updateTempo()');   // a beat of 9 frames, 3 picture cuts per beat: 100 ms per cut
+  h.$('bpmInput').value = '200'; h.$('multSelect').value = '3'; h.run('updateTempo()');   // a beat of 9 frames, 3 picture cuts per beat: 100 ms per cut
   h.run('togglePlay()');
   await settle(); await settle();
   assert.equal(h.calls.some(c => c.url === '/api/music'), false);           // nothing is rendered on the server
@@ -657,7 +656,7 @@ test('with the drone on, Play starts it live from the top with the settings and 
 test('while the drone plays it is the clock: the picture follows its position', async () => {
   const h = await playerWith();
   h.$('musicSelect').value = 'on'; h.$('invertSelect').value = 'off';
-  h.$('bpmSlider').value = '200'; h.$('multSelect').value = '3'; h.run('updateTempo()');   // a beat of 9 frames, 3 picture cuts per beat: 100 ms per cut
+  h.$('bpmInput').value = '200'; h.$('multSelect').value = '3'; h.run('updateTempo()');   // a beat of 9 frames, 3 picture cuts per beat: 100 ms per cut
   h.run('togglePlay()');
   await settle(); await settle();
   const tick = h.timers.intervals[h.timers.intervals.length - 1].fn;
@@ -672,7 +671,7 @@ test('while the drone plays it is the clock: the picture follows its position', 
 test('changing the tempo or invert while playing swaps the sound live, from where the picture is, with no render', async () => {
   const h = await playerWith();
   h.$('musicSelect').value = 'on';
-  h.$('bpmSlider').value = '200'; h.$('multSelect').value = '3'; h.run('updateTempo()');   // a beat of 9 frames, 3 picture cuts per beat: 100 ms per cut
+  h.$('bpmInput').value = '200'; h.$('multSelect').value = '3'; h.run('updateTempo()');   // a beat of 9 frames, 3 picture cuts per beat: 100 ms per cut
   h.run('togglePlay()');
   await settle(); await settle();
   h.run('cutPos = 4.5');                                                     // 150 ms into the clip (frames)
@@ -768,7 +767,7 @@ test('Variable speed swaps the controls, drives the timeline in frames, the soun
   assert.deepEqual([body.rhythm, body.start_ms, body.end_ms, body.ramp, body.at], ['variable', 100, 600, 2, 'end']);
   h.$('rhythmSelect').value = 'flat'; h.run('updateRhythm()');
   assert.equal(h.$('flatBox').hidden, false); assert.equal(h.$('varBox').hidden, true);
-  h.$('bpmSlider').value = '120'; h.$('multSelect').value = '2'; h.run('updateTempo()');
+  h.$('bpmInput').value = '120'; h.$('multSelect').value = '2'; h.run('updateTempo()');
   assert.equal(JSON.parse(JSON.stringify(h.run('timelineFor(3)'))).join(), '0,7.5,15,22.5');       // flat: 120 BPM x2 = 7.5 frames a cut, in frames
 });
 
@@ -821,7 +820,7 @@ test('the multiple only changes the picture: the music keeps the beat, in Flat a
   r['/api/state'] = { plates: Array.from({ length: 8 }, (_, i) => mkPlate('p' + i)) };
   const h = load({ routes: r });
   await settle(); await settle();
-  h.$('bpmSlider').value = '120'; h.$('multSelect').value = '4'; h.run('updateTempo()');
+  h.$('bpmInput').value = '120'; h.$('multSelect').value = '4'; h.run('updateTempo()');
   const flat4 = JSON.parse(JSON.stringify(h.run('rhythmFor(8)')));
   assert.equal(flat4.pic.length, 9); assert.ok(Math.abs(flat4.pic[1] - 3.75) < 1e-9);                 // 4 picture cuts per 15-frame beat
   assert.equal(flat4.audio.length, 3); assert.ok(Math.abs(flat4.audio[1] - 0.5) < 1e-9);               // the music: a beat every 0.5 s, 2 beats for 8 cuts
@@ -846,7 +845,7 @@ test('rhythmFor is a clean timeline for every tempo, multiple, invert mode and n
     const h = load({ routes: r });
     await settle(); await settle();
     for (const variable of [false, true]) for (const invert of ['off', 'mono', 'colour']) for (const bpm of [60, 136, 250]) for (const mult of ['0.25', '1', '1.3333333', '4', '9']) {
-      h.$('rhythmSelect').value = variable ? 'variable' : 'flat'; h.$('invertSelect').value = invert; h.$('bpmSlider').value = String(bpm); h.$('multSelect').value = mult;
+      h.$('rhythmSelect').value = variable ? 'variable' : 'flat'; h.$('invertSelect').value = invert; h.$('bpmInput').value = String(bpm); h.$('multSelect').value = mult;
       h.$('startMsRange').value = '50'; h.$('endMsRange').value = '1000'; h.$('rampRange').value = '60'; h.$('atSelect').value = variable && bpm === 136 ? 'start' : 'end';
       h.run('updateTempo(); updateRhythm()');
       const n = nImages * (invert === 'off' ? 1 : 2);
@@ -879,9 +878,8 @@ test('extreme slider values keep the labels and the ranges sane', async () => {
   h.$('rampRange').value = '999'; h.$('invertSelect').value = 'off'; h.run('updateRhythm()');
   assert.equal(h.$('rampRange').max, '2');                                    // one image: at least 2 so the slider still has a range
   assert.equal(h.$('rampRange').value, '2');
-  h.$('bpmSlider').value = '250'; h.$('multSelect').value = '9'; h.run('updateTempo()');
+  h.$('bpmInput').value = '250'; h.$('multSelect').value = '9'; h.run('updateTempo()');
   assert.equal(h.run('framesPerCut'), 1);                                     // 1800 / (250 * 9) is below a frame: never below one
-  assert.equal(h.$('bpmVal').textContent, '250 BPM');
 });
 
 test('changing the Multiple while playing asks the sound for an update, from where the picture is, with the same beat grid', async () => {
@@ -890,7 +888,7 @@ test('changing the Multiple while playing asks the sound for an update, from whe
   const h = load({ routes: r });
   await settle(); await settle();
   h.$('stageImg').style.display = 'block';
-  h.$('musicSelect').value = 'on'; h.$('bpmSlider').value = '120'; h.$('multSelect').value = '1'; h.run('updateTempo()');
+  h.$('musicSelect').value = 'on'; h.$('bpmInput').value = '120'; h.$('multSelect').value = '1'; h.run('updateTempo()');
   h.run('togglePlay()');
   await settle(); await settle();
   h.run('cutPos = 30');
@@ -901,4 +899,52 @@ test('changing the Multiple while playing asks the sound for an update, from whe
   assert.ok(Math.abs(u.offset - 1) < 1e-9);                                  // the clip position is kept: 30 frames = 1 s
   const grid = clean(u.starts);
   assert.ok(Math.abs(grid[1] - 0.5) < 1e-9 && Math.abs(grid[2] - 1) < 1e-9);  // beats every 0.5 s at 120 BPM, whatever the multiple
+});
+
+test('the tempo slider is 1 to 250 BPM, and whatever it holds is kept inside that', () => {
+  const { run, $, store } = load({ routes: baseRoutes() });
+  $('multSelect').value = '1';
+  for (const [typed, bpm] of [['0', 1], ['-50', 1], ['250', 250], ['999', 250], ['12.5', 12.5], ['', 120], ['abc', 120], ['  90 ', 90], ['1e2', 100]]) {
+    $('bpmInput').value = typed; run('updateTempo()');
+    assert.equal(run('bpmValue()'), bpm, `value "${typed}"`);
+    assert.equal(run('framesPerCut'), Math.max(1, 1800 / bpm), `value "${typed}"`);
+    assert.equal($('bpmVal').textContent, `${Math.round(bpm)} BPM`);
+    const t = JSON.parse(JSON.stringify(run('rhythmFor(3)')));
+    assert.ok(t.pic.every(Number.isFinite) && t.audio.every(Number.isFinite), `value "${typed}"`);
+  }
+  assert.equal(JSON.parse(store.studioSettings).bpmInput, '1e2');
+});
+
+test('the check "The Multiple also changes the music" puts the music on the picture cuts; unchecked it stays on the beat', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: 8 }, (_, i) => mkPlate('p' + i)) };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('bpmInput').value = '120'; h.$('multSelect').value = '4'; h.run('updateTempo()');
+  const beat = JSON.parse(JSON.stringify(h.run('rhythmFor(8)')));
+  assert.equal(beat.audio.length, 3);                                         // 2 beats for 8 picture cuts
+  h.$('followCuts').checked = true; h.run('updateTempo()');
+  const follow = JSON.parse(JSON.stringify(h.run('rhythmFor(8)')));
+  assert.equal(follow.audio.length, 9);                                       // every picture cut
+  assert.ok(follow.audio.every((v, i) => Math.abs(v - follow.pic[i] / 30) < 1e-9));
+  assert.deepEqual(follow.pic, beat.pic);                                     // the pictures do not change
+  assert.equal(JSON.parse(h.store.studioSettings).followCuts !== undefined, true);
+  h.$('followCuts').checked = false; h.run('updateTempo()');
+  assert.equal(JSON.parse(JSON.stringify(h.run('rhythmFor(8)'))).audio.length, 3);
+});
+
+test('turning "The Multiple also changes the music" on or off while playing swaps the music from where the picture is', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: 12 }, (_, i) => mkPlate('p' + i)) };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('stageImg').style.display = 'block';
+  h.$('musicSelect').value = 'on'; h.$('multSelect').value = '2'; h.run('updateTempo()'); h.run('togglePlay()');
+  await settle(); await settle();
+  h.run('cutPos = 15');
+  const before = h.ctx.__drone.updates.length;
+  h.$('followCuts').checked = true; h.run('updateTempo()');
+  assert.equal(h.ctx.__drone.updates.length, before + 1);
+  assert.ok(Math.abs(h.ctx.__drone.updates[before].offset - 0.5) < 1e-9);
+  assert.equal(h.ctx.__drone.updates[before].starts.length, 13);              // 12 picture cuts + the end
 });

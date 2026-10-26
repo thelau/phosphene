@@ -101,7 +101,7 @@ test('AI order: "best N" cuts the edit and shows what was left out; playback use
   assert.equal(await page.evaluate(() => [...document.getElementById('grid').children].findIndex(e => e.classList.contains('edit-divider'))), 2);
   assert.deepEqual(await seg(), [{ text: '✋ Manual (6)', on: false }, { text: '✨ AI (2 of 6)', on: true }]);
   await shot('18-best-n');
-  await page.fill('#bpmSlider', '220'); await page.locator('#bpmSlider').dispatchEvent('input');
+  await page.fill('#bpmInput', '220'); await page.locator('#bpmInput').dispatchEvent('input');
   await page.selectOption('#multSelect', '9');
   await page.click('#playBtn');
   const seen = new Set();

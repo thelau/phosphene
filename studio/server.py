@@ -1131,7 +1131,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 except (TypeError, ValueError):
                     return default
                 return min(hi, max(lo, v)) if v == v else default
-            bpm = clamped("bpm", 136.0, 30.0, 300.0)
+            bpm = clamped("bpm", 136.0, 1.0, 999.0)
             multiple = clamped("multiple", 1.0, 0.125, 16.0)            # picture cuts per beat: 0.5 = every 2 beats, 4 = 4 cuts/beat
             st = load_state()
             trashed_set = set(st.get("trashed", []))

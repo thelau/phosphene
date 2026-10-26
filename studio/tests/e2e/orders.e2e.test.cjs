@@ -32,7 +32,7 @@ test('orders: switch between Manual and AI without losing either', { skip }, asy
 
 test('player: switching between Manual and AI while playing follows the new order from its first image', { skip }, async () => {
   const ctx = await fresh({ setup: aiSetup() });                                      // Manual: k3,k1,k2   AI: k2,k3,k1
-  await page.fill('#bpmSlider', '60'); await page.locator('#bpmSlider').dispatchEvent('input');
+  await page.fill('#bpmInput', '60'); await page.locator('#bpmInput').dispatchEvent('input');
   await page.selectOption('#multSelect', '1');                                        // one cut per second
   await page.click('#playBtn');
   const src = async () => (await page.locator('#stageImg').getAttribute('src')).split('/').pop().replace('.svg', '');
