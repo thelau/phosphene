@@ -23,6 +23,7 @@ function makeState() {
     calls: [],
     genCount: 0,
     groups: [],
+    edits: [],
   };
 }
 
@@ -73,7 +74,7 @@ function start(state = makeState()) {
     switch (url.pathname) {
       case '/api/state': {
         const visible = new Set(state.plates.filter(p => !p.trashed).map(p => p.filename));
-        return send({ plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, groups: (state.groups || []).map(g => ({ ...g, files: g.files.filter(f => state.plates.some(p => p.filename === f)) })), krea_connected: true, kimi_configured: true, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3', critic_enabled: false, critic_autotrash: false });
+        return send({ plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, groups: (state.groups || []).map(g => ({ ...g, files: g.files.filter(f => state.plates.some(p => p.filename === f)) })), edits: state.edits || [], krea_connected: true, kimi_configured: true, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3', critic_enabled: false, critic_autotrash: false });
       }
       case '/api/worlds':
         return send({ ok: true, worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', n: 7, kept: 3, wildcard: false }, { name: 'Matter & Elements', brief: 'Fluids and fire.', n: 10, kept: 2, wildcard: false }] });
@@ -142,6 +143,18 @@ function start(state = makeState()) {
         for (const q of state.sequences) q.order.push(name);
         state.plates.push({ filename: name, url: `/assets/ai-plates/${name}.svg`, title: body.title, prompt: body.prompt, model: body.model, trashed: false, qa_passed: true, qa_score: 90, qa_issues: [], world: body.world });
         return send({ ok: true, qa_passed: true, trashed: false, filename: name, title: body.title });
+      }
+      case '/api/edits': {                     // the same rules as studio/edits.py
+        const es = state.edits || (state.edits = []);
+        const e = es.find(x => x.id === body.id);
+        const name = String(body.name || '').trim();
+        if (body.action === 'create') { if (!name || es.some(x => x.name.toLowerCase() === name.toLowerCase())) return send({ ok: false, error: name ? `There is already an edit called “${name}”.` : 'An edit needs a name.' }, 400); const ne = { id: `e${es.length + 1}${Date.now() % 1000}`, name, group: body.group || 'all', settings: body.settings || {} }; es.push(ne); return send({ ok: true, edit: ne }); }
+        if (body.action === 'restore') { es.push({ ...body.edit }); return send({ ok: true }); }
+        if (!e) return send({ ok: false, error: 'That edit is gone.' }, 400);
+        if (body.action === 'update') { e.group = body.group || 'all'; e.settings = body.settings || {}; return send({ ok: true }); }
+        if (body.action === 'rename') { if (!name) return send({ ok: false, error: 'An edit needs a name.' }, 400); e.name = name; return send({ ok: true }); }
+        if (body.action === 'delete') { state.edits = es.filter(x => x !== e); return send({ ok: true, edit: e }); }
+        return send({ ok: false, error: 'Unknown action.' }, 400);
       }
       case '/api/groups': {                    // the same rules as studio/groups.py
         const gs = state.groups || (state.groups = []);

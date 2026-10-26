@@ -94,6 +94,9 @@
       plates = data.plates || [];
       sequences = data.sequences || [];
       groups = data.groups || [];
+      editsList = data.edits || [];
+      if (currentEdit && !editsList.some(x => x.id === currentEdit)) setCurrentEdit(null);   // deleted elsewhere
+      renderEditBar();
       if (!groupMembers(currentGroup)) currentGroup = 'all';                // a group that is gone (deleted, emptied by the library)
       activeSeq = data.active_sequence || null;
 
@@ -175,6 +178,126 @@
 
     // ---- groups: All, yours (stored), and automatic ones from each image's look and territory. The grid and the film show the group chosen. ----
     let groups = [];
+    // ---- edits: named ways of cutting this curation (Film only). An edit keeps the group it plays and every Film setting, never images or
+    // an order, so it follows the curation. Stored on the server with the groups (/api/edits). ----
+    let editsList = [], currentEdit = null;
+    try { currentEdit = localStorage.getItem('studioEdit') || null; } catch (e) {}
+    function setCurrentEdit(id) { currentEdit = id; try { if (id) localStorage.setItem('studioEdit', id); else localStorage.removeItem('studioEdit'); } catch (e) {} }
+    const editOf = id => editsList.find(x => x.id === id) || null;
+    function editSnap() { return { group: currentGroup, settings: { ...settingsSnap(), characterSelect: document.getElementById('characterSelect').value } }; }
+    function editDirty() {
+      const e = editOf(currentEdit);
+      if (!e) return false;
+      const now = editSnap();
+      return e.group !== now.group || Object.keys(now.settings).some(k => k in e.settings && String(e.settings[k]) !== String(now.settings[k]));
+    }
+    function renderEditBar() {
+      const e = editOf(currentEdit), name = document.getElementById('editName');
+      if (!name) return;
+      name.textContent = e ? e.name : editsList.length ? 'No snapshot selected' : 'No snapshot yet';
+      name.classList.toggle('untitled', !e);
+      document.getElementById('editDirty').hidden = !editDirty();
+    }
+    // a snapshot names itself, two words that still say something (rename it after): the first from the speed, the second from the group's look
+    const NAME_PACE = {
+      fast: ['Feral', 'Electric', 'Restless', 'Molten', 'Hyper', 'Frantic', 'Jittery', 'Wild', 'Voltage', 'Rapid'],
+      mid: ['Lucid', 'Hollow', 'Neon', 'Static', 'Liquid', 'Lunar', 'Phantom', 'Silent', 'Mercury', 'Spectral'],
+      slow: ['Velvet', 'Drowsy', 'Tidal', 'Hushed', 'Floating', 'Distant', 'Dreaming', 'Slow', 'Sunken', 'Gentle'],
+    };
+    const NAME_LOOK = {
+      warm: ['Ember', 'Copper', 'Saffron', 'Magma', 'Rust', 'Amber'], cold: ['Cobalt', 'Glacier', 'Frost', 'Indigo', 'Tundra', 'Sapphire'],
+      mono: ['Graphite', 'Ash', 'Chalk', 'Silver', 'Smoke', 'Pewter'], dark: ['Eclipse', 'Midnight', 'Abyss', 'Obsidian', 'Umbra', 'Nocturne'],
+      bright: ['Halo', 'Flare', 'Daylight', 'Glare', 'Aurora', 'Solstice'],
+      any: ['Orbit', 'Prism', 'Mirage', 'Signal', 'Lantern', 'Comet', 'Mantra', 'Nebula', 'Pulsar', 'Oracle', 'Monolith', 'Satellite'],
+    };
+    function autoEditName() {
+      const rate = rhythmCutsPerSecond(), look = currentGroup.startsWith('look:') ? currentGroup.slice(5) : 'any';
+      const first = NAME_PACE[rate > 4 ? 'fast' : rate < 1.5 ? 'slow' : 'mid'], second = NAME_LOOK[look] || NAME_LOOK.any;
+      const taken = n => editsList.some(x => x.name.toLowerCase() === n.toLowerCase());
+      for (let k = 0; k < 40; k++) { const n = `${rpick(first)} ${rpick(second)}`; if (!taken(n)) return n; }
+      let n = `${rpick(first)} ${rpick(second)}`;
+      for (let k = 2; taken(n); k++) n = `${n.replace(/ \d+$/, '')} ${k}`;
+      return n;
+    }
+    async function editsCall(payload) {
+      const res = await (await fetch('/api/edits', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
+      if (!res.ok) { setStatus(res.error || 'Could not do that.'); return null; }
+      await loadState();
+      return res;
+    }
+    function openEditMenu(e, form) {
+      if (e && e.stopPropagation) e.stopPropagation();
+      const m = document.getElementById('editMenu');
+      if (!m.hidden && !form) { closeEditMenu(); return; }
+      const cur = editOf(currentEdit);
+      const groupName = key => { const all = groupChips(); const c = all.chips.concat(all.auto).find(x => x.key === key); return c ? c.name : 'All'; };
+      m.innerHTML = (editsList.length ? '' : '<div class="em-empty">No snapshots yet. ＋ Snapshot (⌘S) keeps this film as it is now.</div>')
+        + editsList.map(x => `<button type="button" class="gm-item${x.id === currentEdit ? ' on' : ''}" data-id="${x.id}" onclick="openEdit(this.dataset.id)">${escapeHtml(x.name)}<span class="em-group">${escapeHtml(groupName(x.group))}</span></button>`).join('')
+        + (cur ? '<hr>' + (form === 'rename'
+          ? `<form class="gm-new" onsubmit="event.preventDefault(); renameEdit(this.elements.name.value)"><input name="name" id="editNameInput" type="text" maxlength="40" value="${escapeHtml(cur.name)}" autocomplete="off" /><button type="submit">Rename</button></form>`
+          : `<button type="button" class="gm-item" id="editReplaceBtn" onclick="replaceEdit()"${editDirty() ? '' : ' disabled title="Nothing changed since this snapshot"'}>Replace with the current film…</button>`
+            + `<button type="button" class="gm-item" onclick="openEditMenu(event, 'rename')">Rename…</button>`
+            + `<button type="button" class="gm-item danger-text" onclick="deleteEdit()">Delete</button>`) : '');
+      const anchor = document.getElementById('editBtn').getBoundingClientRect();
+      m.hidden = false;
+      m.style.top = `${anchor.bottom + 6}px`;
+      m.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - m.offsetWidth - 8))}px`;
+      if (form) { const i = document.getElementById('editNameInput'); if (i && i.focus) i.focus(); if (i && i.select) i.select(); }
+    }
+    function closeEditMenu() { const m = document.getElementById('editMenu'); if (m) m.hidden = true; }
+    document.addEventListener('click', e => { if (!(e.target.closest && (e.target.closest('#editMenu') || e.target.closest('#editBtn')))) closeEditMenu(); });
+    // switching: the group and every setting at once, the film carries on; one undo step
+    function applyEdit(state) {
+      applySnap(state.settings);
+      if (groupMembers(state.group)) setGroup(state.group); else setGroup('all');
+      setCurrentEdit(state.id || null);
+      syncSegs(); syncSelects(); saveSettings(); musicChanged(); renderEditBar();
+    }
+    function openEdit(id) {
+      const e = editOf(id);
+      closeEditMenu();
+      if (!e) return;
+      const before = { ...editSnap(), id: currentEdit }, after = { group: e.group, settings: { ...settingsSnap(), ...e.settings }, id };
+      pushStep({ label: `Open “${e.name}”`, undo: () => applyEdit(before), redo: () => applyEdit(after) });
+      applyEdit(after);
+      setStatus(`“${e.name}”`);
+    }
+    // ＋ Snapshot / ⌘S: always a new edit, never over one; named for what it is
+    async function snapshotEdit() {
+      commitSettings();
+      const res = await editsCall({ action: 'create', name: autoEditName(), ...editSnap() });
+      if (!res) return;
+      closeEditMenu();
+      setCurrentEdit(res.edit.id); renderEditBar();
+      const e = res.edit;
+      const step = pushStep({ label: `Snapshot “${e.name}”`, undo: async () => { await editsCall({ action: 'delete', id: e.id }); setCurrentEdit(null); renderEditBar(); }, redo: async () => { await editsCall({ action: 'restore', edit: e }); setCurrentEdit(e.id); renderEditBar(); } });
+      setStatus(`Snapshot “${e.name}”. Rename it from the menu.`, { label: 'Undo', run: () => undoStep(step) });
+    }
+    // replacing a snapshot overwrites it: asked first, and undoable
+    async function replaceEdit() {
+      const e = editOf(currentEdit);
+      closeEditMenu();
+      if (!e || !editDirty()) return;
+      if (!(await askConfirm(`Replace “${e.name}”?`, 'The snapshot takes the film as it is now: its group and every setting. Undo (⌘Z) puts the old one back.', 'Replace'))) return;
+      commitSettings();
+      const before = { group: e.group, settings: e.settings }, after = editSnap();
+      if (!await editsCall({ action: 'update', id: e.id, ...after })) return;
+      pushStep({ label: `Replace “${e.name}”`, undo: () => editsCall({ action: 'update', id: e.id, ...before }).then(renderEditBar), redo: () => editsCall({ action: 'update', id: e.id, ...after }).then(renderEditBar) });
+      renderEditBar();
+      setStatus(`“${e.name}” replaced.`);
+    }
+    async function renameEdit(name) {
+      const e = editOf(currentEdit);
+      if (e && await editsCall({ action: 'rename', id: e.id, name })) { closeEditMenu(); renderEditBar(); }
+    }
+    async function deleteEdit() {
+      const e = editOf(currentEdit);
+      closeEditMenu();
+      if (!e || !await editsCall({ action: 'delete', id: e.id })) return;
+      setCurrentEdit(null); renderEditBar();
+      const step = pushStep({ label: `Delete “${e.name}”`, undo: async () => { await editsCall({ action: 'restore', edit: e }); setCurrentEdit(e.id); renderEditBar(); }, redo: async () => { await editsCall({ action: 'delete', id: e.id }); setCurrentEdit(null); renderEditBar(); } });
+      setStatus(`“${e.name}” deleted.`, { label: 'Undo', run: () => undoStep(step) });
+    }
     let currentGroup = (() => { try { return localStorage.getItem('studioGroup') || 'all'; } catch (e) { return 'all'; } })();
     const LOOKS = [['warm', 'Warm'], ['cold', 'Cold'], ['mono', 'Mono'], ['dark', 'Dark'], ['bright', 'Bright']];
     // the members of a group key ('all', 'g:<id>', 'look:<tag>', 'world:<name>'), or null when there is no such group
@@ -255,7 +378,7 @@
       currentGroup = key;
       try { localStorage.setItem('studioGroup', key); } catch (e) {}
       pickSel = new Set();
-      renderGroups(); renderGrid(); renderFilmstrip();
+      renderGroups(); renderGrid(); renderFilmstrip(); renderEditBar();
       cutPos = 0; clockPos = null; currentIdx = 0;                           // a new film: from its first image
       if (isPlaying && droneLive.playing) droneLive.restart(synthParams(), synthStartsSec());
       musicChanged();
@@ -758,6 +881,7 @@
       if (typingIn(e.target) || document.getElementById('confirmModal').classList.contains('open')) return;
       if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redoLast(); else undoLast(); return; }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A') && mode === 'curate' && !showTrash) { e.preventDefault(); pickAll(); return; }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); if (mode === 'film') { flash('editSaveBtn'); snapshotEdit(); } return; }   // a new snapshot (never the browser's Save Page)
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.repeat && ['Tab', 'f', 'F', 't', 'T', 'r', 'R', 's', 'S'].includes(e.key)) { e.preventDefault(); return; }   // a held key acts once
       if (e.target && e.target.type === 'range' && e.key.startsWith('Arrow')) return;             // a slider with focus keeps its arrows
@@ -978,8 +1102,6 @@
       if (kids[shownIdx]) kids[shownIdx].classList.remove('cur');
       if (kids[i]) kids[i].classList.add('cur');
       shownIdx = i;
-      const p = activePlates()[i];
-      document.getElementById('curTitle').textContent = p ? `${i + 1} · ${p.title}` : '';
       if (mode === 'film') scrollFilmstripTo(i);
     }
     // the strip's buttons have fixed sizes, so where one sits is arithmetic: no layout is forced on every cut
@@ -1856,6 +1978,7 @@
         localStorage.setItem('studioSettings', JSON.stringify(out));
       } catch (e) {}
       settingsChanged();
+      renderEditBar();
     }
 
     // the frames a picture cut lasts, next to the Multiple: one number (Flat) or from start to end (Variable)
@@ -2183,7 +2306,8 @@
             zoom_mode: document.getElementById('zoomSelect').value,
             zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
             trail: (parseFloat(document.getElementById('trailRange').value) || 0) / 100,
-            ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) })   // a group: just its images
+            ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // a group: just its images
+            ...(editOf(currentEdit) ? { edit: editOf(currentEdit).name } : {}),   // the file is named after the edit
           })
         });
         const data = await res.json();
@@ -2304,6 +2428,12 @@ Object.assign(window, {
   setThumbSize,
   refreshLibrary,
   setGroup,
+  openEditMenu,
+  openEdit,
+  snapshotEdit,
+  replaceEdit,
+  renameEdit,
+  deleteEdit,
   openGroupMenu,
   addToGroup,
   newGroup,

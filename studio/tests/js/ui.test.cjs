@@ -1205,7 +1205,6 @@ test('the film strip and Curate clicks put the playhead on an image, and the dro
   assert.equal(h.run('cutPos'), pic[4]);                                           // image 3 starts at cut 5 when every image has its inverted copy
   assert.equal(h.run('currentIdx'), 2);
   assert.equal(h.$('stageImg').src, '/p/c');
-  assert.equal(h.$('curTitle').textContent, '3 · c');
   assert.match(h.$('timecode').innerHTML, /cut 5 \/ 6/);
   h.$('musicSelect').value = 'on'; h.run('updateMusic()');
   h.run('togglePlay()'); await settle();

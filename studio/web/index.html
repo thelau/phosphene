@@ -40,6 +40,7 @@
           <dt><kbd>T</kbd></dt><dd>Logo target</dd>
           <dt><kbd>F</kbd></dt><dd>Full screen</dd>
           <dt><kbd>⌘</kbd> <kbd>Z</kbd></dt><dd>Undo</dd>
+          <dt><kbd>⌘</kbd> <kbd>S</kbd></dt><dd>New snapshot of the film</dd>
           <dt><kbd>⌘</kbd> click</dt><dd>Pick images to group them (Curate)</dd>
           <dt><kbd>⇧</kbd> click</dt><dd>Pick a run of images</dd>
           <dt><kbd>⌘</kbd> <kbd>A</kbd> · <kbd>Esc</kbd></dt><dd>Pick all · clear the picks</dd>
@@ -266,7 +267,6 @@
             <span class="tl-label">Film</span>
             <select id="filmGroup" onchange="setGroup(this.value)" title="Which images the film plays: all, one of your groups, or an automatic one"></select>
             <span class="grow"></span>
-            <span class="tl-cur" id="curTitle"></span>
             <button class="icon-btn refresh-btn" id="refreshFilmBtn" onclick="refreshLibrary(true)" title="Check for new images now: the film and the library refresh together" aria-label="Refresh the film"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
           </div>
           <div class="filmstrip" id="filmstrip" onclick="filmstripClick(event)"></div>
@@ -290,6 +290,14 @@
       </main>
 
       <aside class="inspector" aria-label="Inspector">
+        <div class="edit-bar" aria-label="Edits">
+          <button type="button" class="edit-btn" id="editBtn" onclick="openEditMenu(event)" title="Your snapshots of this film: switch between them, replace, rename" aria-haspopup="menu">
+            <span class="edit-lbl">Snapshot</span><span class="edit-name untitled" id="editName">No snapshot yet</span><i class="edit-dirty" id="editDirty" title="Changed since the snapshot" hidden></i>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+          </button>
+          <button type="button" class="edit-save" id="editSaveBtn" onclick="snapshotEdit()" title="Keep the film as it is now as a new snapshot: its group and every setting (⌘S)">＋ Snapshot</button>
+        </div>
+        <div class="group-menu edit-menu" id="editMenu" role="menu" hidden></div>
         <div class="look-bar" aria-label="Type and Random">
             <div class="type-random" role="group" aria-label="Random, inside a type">
             <label class="look-char"><span class="type-lbl">Type</span>

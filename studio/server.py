@@ -11,6 +11,7 @@ import io
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,7 @@ import cutplan
 import editor
 import gen_log
 import groups
+import edits
 import features
 import sequences
 import diversity
@@ -688,18 +690,23 @@ def export_audio_file() -> Path:
     return EXPORT_DIR / "export-music.wav"
 
 
-def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "off", zoom_mode: str = "off", music: str = "off", variable: tuple | None = None) -> str:
-    """Unique, descriptive name per export so nothing is overwritten: Demo-136bpm-x4-invert-zoomout-20261025-0930.mp4"""
+def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "off", zoom_mode: str = "off", music: str = "off", variable: tuple | None = None, edit: str = "") -> str:
+    """Unique, descriptive name per export so nothing is overwritten: Phosphene-136bpm-x4-invert-zoomout-20261025-093005.mp4,
+    or the edit's name first: Night-strobe-136bpm-x4-20261025-093005.mp4"""
     mult = f"{multiple:.2f}".rstrip("0").rstrip(".")
     fx = ("-invert" if invert_mode in ("mono", "colour") else "") + (f"-zoom{zoom_mode}" if zoom_mode != "off" else "")
     fx += "-music" if music == "synth" else ""
     pace = f"var{int(round(variable[0]))}to{int(round(variable[1]))}ms" if variable else f"{int(round(bpm))}bpm-x{mult}"
-    return f"Demo-{pace}{fx}-{time.strftime('%Y%m%d-%H%M%S', time.localtime(ts))}.mp4"
+    head = re.sub(r"[^A-Za-z0-9]+", "-", edit).strip("-")[:40] or "Phosphene"
+    return f"{head}-{pace}{fx}-{time.strftime('%Y%m%d-%H%M%S', time.localtime(ts))}.mp4"
+
+
+EXPORT_NAME = re.compile(r"(^Demo-|-\d{8}-\d{6}\.mp4$)")   # what the studio wrote (older ones began with Demo-), not files of yours
 
 
 def prune_exports(folder: Path, keep: int = 12) -> None:
     """Keep the newest `keep` exported videos."""
-    files = sorted(folder.glob("Demo-*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+    files = sorted((p for p in folder.glob("*.mp4") if EXPORT_NAME.search(p.name)), key=lambda p: p.stat().st_mtime, reverse=True)
     for old in files[keep:]:
         old.unlink(missing_ok=True)
 
@@ -914,6 +921,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 "critic_autotrash": st.get("critic_autotrash", False),
                 "sequences": sequences.public(st, {p["filename"] for p in plates if not p["trashed"]}),
                 "groups": groups.public(st, {p["filename"] for p in plates}),
+                "edits": edits.public(st),
                 "active_sequence": st.get("active_sequence"),
             })
             return
@@ -1001,6 +1009,15 @@ class StudioHandler(SimpleHTTPRequestHandler):
             with STATE_LOCK:
                 st = load_state()
                 res = groups.act(st, body)
+                if res.get("ok"):
+                    save_state(st)
+            self.send_json(res, 200 if res.get("ok") else 400)
+            return
+
+        if parsed.path == "/api/edits":
+            with STATE_LOCK:
+                st = load_state()
+                res = edits.act(st, body)
                 if res.get("ok"):
                     save_state(st)
             self.send_json(res, 200 if res.get("ok") else 400)
@@ -1247,7 +1264,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         trail = 0.0
                     write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount, starts, trail)
 
-                    out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode, music_mode, variable)
+                    out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode, music_mode, variable, str(body.get("edit") or ""))
                     # cut length follows the tempo, multiple, rhythm and effects chosen in the player; music only when asked for
                     cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp_dir / "f_%04d.jpg")]
                     if music_mode != "off":

@@ -27,9 +27,9 @@ test('Film: look bar, preview, transport, timeline down the middle; the inspecto
   assert.equal(await page.locator('#exportBtn').isVisible(), false, 'no film settings while curating');
   await film();
   const box = async sel => page.locator(sel).first().boundingBox();
-  const [look, stage, play, tl, insp, exp] = await Promise.all(['.look-bar', '.stage', '#playBtn', '.timeline', '.inspector', '#exportBtn'].map(box));
+  const [look, stage, play, tl, insp, exp, editBar] = await Promise.all(['.look-bar', '.stage', '#playBtn', '.timeline', '.inspector', '#exportBtn', '.edit-bar'].map(box));
   assert.ok(stage.y + stage.height <= play.y && play.y + play.height <= tl.y, 'top to bottom: preview, transport, timeline');
-  assert.ok(look.x >= insp.x && Math.abs(look.y - insp.y) < 2, 'Type, Random and Undo head the inspector');
+  assert.ok(editBar.x >= insp.x && editBar.y - insp.y < 16 && look.y >= editBar.y + editBar.height, 'the snapshots head the inspector, then Type, Random and Undo');
   assert.ok(insp.x >= stage.x + stage.width && Math.abs(insp.width - 600) < 2, 'the inspector is on the right, 600 px');
   const [pic, snd] = await Promise.all(['#inspPicture', '#inspSound'].map(box));
   assert.ok(Math.abs(pic.y - snd.y) < 1 && snd.x >= pic.x + pic.width - 1, 'two columns: rhythm and look, then sound');
@@ -372,13 +372,72 @@ test('the pick circle: hidden until hover, a click picks without opening the ima
   await ctx.close();
 });
 
+test('snapshots: ＋ Snapshot keeps the film under a name it picks, switching brings back group and settings, Replace asks first, rename after; Film only', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  await curate();
+  assert.equal(await page.locator('#editBtn').isVisible(), false, 'snapshots are a Film thing');
+  await film();
+  assert.equal(await text('#editName'), 'No snapshot yet');
+  await page.fill('#bpmInput', '120'); await page.locator('#bpmInput').dispatchEvent('input');
+  await page.click('#editSaveBtn');                                                 // no name asked: it names itself, two words
+  await page.waitForFunction(() => /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(document.getElementById('editName').textContent));
+  const first = await text('#editName');
+  // a second one: another group and tempo, with ⌘S
+  await page.selectOption('#filmGroup', 'look:warm');
+  await page.fill('#bpmInput', '150'); await page.locator('#bpmInput').dispatchEvent('input');
+  assert.equal(await page.locator('#editDirty').isVisible(), true, 'changed since the snapshot: a dot');
+  await page.locator('#stage').click();
+  await page.keyboard.press('Meta+s');
+  await page.waitForFunction(n => { const t = document.getElementById('editName').textContent; return t !== n && /^[A-Z][a-z]+ (Ember|Copper|Saffron|Magma|Rust|Amber)$/.test(t); }, first);   // a warm group: a warm word
+  assert.equal(await page.locator('#editDirty').isVisible(), false);
+  // switch back: the group and the tempo come back
+  await page.click('#editBtn');
+  await page.locator('#editMenu .gm-item', { hasText: first }).click();
+  assert.equal(await page.locator('#filmGroup').inputValue(), 'all');
+  assert.equal(await page.locator('#bpmInput').inputValue(), '120');
+  // Replace: only when changed, and asked first
+  await page.click('#editBtn');
+  assert.equal(await page.locator('#editReplaceBtn').isDisabled(), true, 'nothing changed: nothing to replace');
+  await page.click('#editBtn');
+  await page.fill('#bpmInput', '90'); await page.locator('#bpmInput').dispatchEvent('input');
+  await page.click('#editBtn'); await page.click('#editReplaceBtn');
+  assert.equal(await text('#confirmTitle'), `Replace “${first}”?`);
+  await page.click('#confirmModal button:not(#confirmYes)');                         // No: nothing replaced
+  let saved = await page.evaluate(async n => (await (await fetch('/api/state')).json()).edits.find(e => e.name === n), first);
+  assert.equal(saved.settings.bpmInput, '120');
+  await page.click('#editBtn'); await page.click('#editReplaceBtn'); await page.click('#confirmYes');
+  await page.waitForFunction(() => document.getElementById('editDirty').hidden);
+  saved = await page.evaluate(async n => (await (await fetch('/api/state')).json()).edits.find(e => e.name === n), first);
+  assert.equal(saved.settings.bpmInput, '90', 'replaced after Yes');
+  // rename afterwards
+  await page.click('#editBtn');
+  await page.locator('#editMenu .gm-item', { hasText: 'Rename' }).click();
+  await page.fill('#editNameInput', 'Slow all');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.getElementById('editName').textContent === 'Slow all');
+  // the export carries its name
+  let sent = null;
+  page.on('request', r => { if (r.url().endsWith('/api/export-video')) sent = JSON.parse(r.postData()); });
+  await page.click('#exportBtn');
+  await page.waitForFunction(() => document.getElementById('exportDock').dataset.state === 'ready', null, { timeout: 15000 });
+  assert.equal(sent.edit, 'Slow all');
+  await page.click('#editBtn');
+  await shot('28-snapshots');
+  // delete, then undo
+  await page.locator('#editMenu .gm-item', { hasText: 'Delete' }).click();
+  await page.waitForFunction(() => document.getElementById('editName').textContent === 'No snapshot selected');   // another one is still there
+  await page.keyboard.press('Meta+z');
+  await page.waitForFunction(() => document.getElementById('editName').textContent === 'Slow all');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
 test('the film strip: one thumbnail per image in order, click jumps there; no key trashes from the Film', { skip }, async () => {
   const ctx = await fresh();
   await film();
   assert.equal(await page.locator('#filmstrip button').count(), 3);
   await page.locator('#filmstrip button').nth(2).click();
   assert.match(await page.locator('#stageImg').getAttribute('src'), /k3/);
-  assert.match(await text('#curTitle'), /^3 · /);
+  assert.equal(await page.locator('#curTitle').count(), 0, 'no image names over the strip while the film plays');
   assert.equal(await page.locator('#filmstrip button.cur').count(), 1);
   assert.match(await text('#timecode'), /cut 3 \/ 3/);
   await page.keyboard.press('Delete');                                            // Film never trashes: images go to the Trash by hand, in Curate
@@ -824,7 +883,7 @@ test('the Keys panel: ? opens a tidy list under the hint, Esc and a click elsewh
   const ctx = await fresh({ width: 1512, height: 945 });
   await page.keyboard.press('?');
   await page.waitForSelector('#keysPanel:not([hidden])');
-  assert.equal(await page.locator('#keysPanel dt').count(), 12);
+  assert.equal(await page.locator('#keysPanel dt').count(), 13);
   const p = await page.locator('#keysPanel').boundingBox();
   assert.ok(p.x >= 0 && p.x + p.width <= 1512 && p.y + p.height <= 945, 'all of it on screen');
   await shot('22-keys');

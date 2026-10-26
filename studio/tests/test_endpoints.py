@@ -74,7 +74,7 @@ def live(srv, monkeypatch):
 
 
 GET_ENDPOINTS = ["/api/state", "/api/worlds", "/api/stats", "/api/version"]
-POST_ENDPOINTS = ["/api/save-settings", "/api/reorder", "/api/sequence", "/api/trash", "/api/purge", "/api/invent-prompts", "/api/generate-image", "/api/order-ai", "/api/export-video", "/api/export-audio", "/api/groups"]
+POST_ENDPOINTS = ["/api/save-settings", "/api/reorder", "/api/sequence", "/api/trash", "/api/purge", "/api/invent-prompts", "/api/generate-image", "/api/order-ai", "/api/export-video", "/api/export-audio", "/api/groups", "/api/edits"]
 
 
 @pytest.mark.parametrize("path", GET_ENDPOINTS)
@@ -591,6 +591,22 @@ def test_groups_over_http_and_a_group_exports_alone(live, srv):
     assert two == pytest.approx(full * 2 / len(names), abs=0.12), (full, two, len(names))
     assert live("POST", "/api/groups", {"action": "delete", "id": gid})[1]["ok"]
     assert live("GET", "/api/state")[1]["groups"] == []
+
+
+def test_edits_over_http_and_an_edit_names_its_export(live, srv):
+    """Edits: saved with the curation, shown in the state, and an export made from one starts with its name."""
+    _three_plates(live)
+    status, res = live("POST", "/api/edits", {"action": "create", "name": "Night strobe", "group": "look:dark", "settings": {"bpmInput": "140"}})
+    assert status == 200 and res["ok"]
+    eid = res["edit"]["id"]
+    assert live("GET", "/api/state")[1]["edits"] == [{"id": eid, "name": "Night strobe", "group": "look:dark", "settings": {"bpmInput": "140"}}]
+    assert live("POST", "/api/edits", {"action": "create", "name": "night strobe"})[0] == 400
+    assert live("POST", "/api/edits", {"action": "update", "id": eid, "group": "all", "settings": {"bpmInput": "90"}})[1]["ok"]
+    assert live("GET", "/api/state")[1]["edits"][0]["settings"] == {"bpmInput": "90"}
+    status, out = live("POST", "/api/export-video", {"rhythm": "flat", "bpm": 120, "multiple": 2, "edit": "Night strobe"})
+    assert status == 200 and out["filename"].startswith("Night-strobe-120bpm-x2-"), out
+    assert live("POST", "/api/edits", {"action": "delete", "id": eid})[1]["ok"]
+    assert live("GET", "/api/state")[1]["edits"] == []
 
 
 def test_ai_reorder_of_a_group_moves_only_its_images_among_their_own_places(live, srv, monkeypatch):

@@ -186,9 +186,10 @@ def test_bench_runway_prompt_short_input_kept():
 def test_export_filename_is_descriptive_and_unique_per_second(srv):
     import time as _t
     ts = _t.mktime((2026, 10, 25, 9, 30, 5, 0, 0, -1))
-    assert srv.export_filename(136, 4, ts) == "Demo-136bpm-x4-20261025-093005.mp4"
-    assert srv.export_filename(136.4, 1.3333333, ts) == "Demo-136bpm-x1.33-20261025-093005.mp4"
-    assert srv.export_filename(120, 2, ts, "mono", "out") == "Demo-120bpm-x2-invert-zoomout-20261025-093005.mp4"
+    assert srv.export_filename(136, 4, ts) == "Phosphene-136bpm-x4-20261025-093005.mp4"
+    assert srv.export_filename(136.4, 1.3333333, ts) == "Phosphene-136bpm-x1.33-20261025-093005.mp4"
+    assert srv.export_filename(120, 2, ts, "mono", "out") == "Phosphene-120bpm-x2-invert-zoomout-20261025-093005.mp4"
+    assert srv.export_filename(120, 2, ts, edit="Night · fast strobe!") == "Night-fast-strobe-120bpm-x2-20261025-093005.mp4"   # an edit's name first, made safe
     assert srv.export_filename(120, 2, ts, "off", "off").count("-invert") == 0
     assert srv.export_filename(120, 2, ts) != srv.export_filename(120, 2, ts + 1)
 
@@ -199,10 +200,14 @@ def test_prune_exports_keeps_newest_and_ignores_other_files(srv, tmp_path):
         f = tmp_path / f"Demo-{i}.mp4"
         f.write_bytes(b"x")
         os.utime(f, (_t.time() + i, _t.time() + i))
+    for i, name in enumerate(["Phosphene-120bpm-x2-20261027-100000.mp4", "Night-strobe-120bpm-x2-20261027-100001.mp4"]):
+        f = tmp_path / name                                                     # today's names, an edit's name first: the newest
+        f.write_bytes(b"x")
+        os.utime(f, (_t.time() + 10 + i, _t.time() + 10 + i))
     other = tmp_path / "keepme.mp4"
     other.write_bytes(b"x")
-    srv.prune_exports(tmp_path, keep=2)
-    assert sorted(p.name for p in tmp_path.glob("*.mp4")) == ["Demo-3.mp4", "Demo-4.mp4", "keepme.mp4"]
+    srv.prune_exports(tmp_path, keep=3)
+    assert sorted(p.name for p in tmp_path.glob("*.mp4")) == ["Demo-4.mp4", "Night-strobe-120bpm-x2-20261027-100001.mp4", "Phosphene-120bpm-x2-20261027-100000.mp4", "keepme.mp4"]
 
 
 def test_exports_have_no_audio_options_left(srv):
