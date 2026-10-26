@@ -844,7 +844,7 @@ test('rhythmFor is a clean timeline for every tempo, multiple, invert mode and n
     r['/api/state'] = { plates: Array.from({ length: nImages }, (_, i) => mkPlate('p' + i)) };
     const h = load({ routes: r });
     await settle(); await settle();
-    for (const variable of [false, true]) for (const invert of ['off', 'mono', 'colour']) for (const bpm of [60, 136, 250]) for (const mult of ['0.25', '1', '1.3333333', '4', '9']) {
+    for (const variable of [false, true]) for (const invert of ['off', 'mono', 'colour']) for (const bpm of [60, 136, 250, 500]) for (const mult of ['0.25', '1', '1.3333333', '4', '9']) {
       h.$('rhythmSelect').value = variable ? 'variable' : 'flat'; h.$('invertSelect').value = invert; h.$('bpmInput').value = String(bpm); h.$('multSelect').value = mult;
       h.$('startMsRange').value = '50'; h.$('endMsRange').value = '1000'; h.$('rampRange').value = '60'; h.$('atSelect').value = variable && bpm === 136 ? 'start' : 'end';
       h.run('updateTempo(); updateRhythm()');
@@ -878,8 +878,8 @@ test('extreme slider values keep the labels and the ranges sane', async () => {
   h.$('rampRange').value = '999'; h.$('invertSelect').value = 'off'; h.run('updateRhythm()');
   assert.equal(h.$('rampRange').max, '2');                                    // one image: at least 2 so the slider still has a range
   assert.equal(h.$('rampRange').value, '2');
-  h.$('bpmInput').value = '250'; h.$('multSelect').value = '9'; h.run('updateTempo()');
-  assert.equal(h.run('framesPerCut'), 1);                                     // 1800 / (250 * 9) is below a frame: never below one
+  h.$('bpmInput').value = '500'; h.$('multSelect').value = '9'; h.run('updateTempo()');
+  assert.equal(h.run('framesPerCut'), 1);                                     // 1800 / (500 * 9) is below a frame: never below one
 });
 
 test('changing the Multiple while playing asks the sound for an update, from where the picture is, with the same beat grid', async () => {
@@ -901,10 +901,10 @@ test('changing the Multiple while playing asks the sound for an update, from whe
   assert.ok(Math.abs(grid[1] - 0.5) < 1e-9 && Math.abs(grid[2] - 1) < 1e-9);  // beats every 0.5 s at 120 BPM, whatever the multiple
 });
 
-test('the tempo slider is 1 to 250 BPM, and whatever it holds is kept inside that', () => {
+test('the tempo slider is 1 to 500 BPM, and whatever it holds is kept inside that', () => {
   const { run, $, store } = load({ routes: baseRoutes() });
   $('multSelect').value = '1';
-  for (const [typed, bpm] of [['0', 1], ['-50', 1], ['250', 250], ['999', 250], ['12.5', 12.5], ['', 120], ['abc', 120], ['  90 ', 90], ['1e2', 100]]) {
+  for (const [typed, bpm] of [['0', 1], ['-50', 1], ['500', 500], ['999', 500], ['12.5', 12.5], ['', 120], ['abc', 120], ['  90 ', 90], ['1e2', 100]]) {
     $('bpmInput').value = typed; run('updateTempo()');
     assert.equal(run('bpmValue()'), bpm, `value "${typed}"`);
     assert.equal(run('framesPerCut'), Math.max(1, 1800 / bpm), `value "${typed}"`);

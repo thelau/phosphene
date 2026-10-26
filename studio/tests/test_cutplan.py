@@ -265,7 +265,7 @@ def test_variable_speed_with_a_multiple_subdivides_each_base_cut():
 
 # ---------- extremes ----------
 
-BPMS = [30, 60, 120, 136, 250, 300]
+BPMS = [30, 60, 120, 136, 250, 500, 600]
 MULTIPLES = [0.125, 0.25, 0.5, 1, 4 / 3, 2, 3, 4, 9, 16]
 CUTS = [1, 2, 7, 40, 500]
 

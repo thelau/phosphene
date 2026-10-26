@@ -516,8 +516,8 @@
       }
       return out;
     }
-    // the tempo slider is 1 to 250 BPM; a stored or odd value is kept inside that
-    function bpmValue() { const v = parseFloat(document.getElementById('bpmInput').value); return Number.isFinite(v) ? Math.min(250, Math.max(1, v)) : 120; }
+    // the tempo slider is 1 to 500 BPM; a stored or odd value is kept inside that
+    function bpmValue() { const v = parseFloat(document.getElementById('bpmInput').value); return Number.isFinite(v) ? Math.min(500, Math.max(1, v)) : 120; }
     function followCuts() { return !!document.getElementById('followCuts').checked; }
     let timelineCache = { key: '', value: null };
     function rhythmFor(nPlates) {

@@ -187,8 +187,8 @@ test('variable speed: Flat shows tempo and multiple, Variable shows start, end a
   assert.ok(!(await page.locator('#bpmInput').isVisible()), 'no tempo in variable');
   assert.ok(await page.locator('#multSelect').isVisible(), 'the multiple stays: it only changes the pictures');
   await page.selectOption('#rhythmSelect', 'flat');
-  assert.equal(await page.locator('#bpmInput').getAttribute('max'), '250'); assert.equal(await page.locator('#bpmInput').getAttribute('min'), '1');
-  await page.fill('#bpmInput', '250'); assert.equal(await text('#bpmVal'), '250 BPM');
+  assert.equal(await page.locator('#bpmInput').getAttribute('max'), '500'); assert.equal(await page.locator('#bpmInput').getAttribute('min'), '1');
+  await page.fill('#bpmInput', '500'); assert.equal(await text('#bpmVal'), '500 BPM');
   await page.fill('#bpmInput', '1'); assert.equal(await text('#bpmVal'), '1 BPM');
   await page.fill('#bpmInput', '136');
   assert.ok(await page.locator('#followCuts').isVisible(), 'the check for the music following every cut');
