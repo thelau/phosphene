@@ -1,5 +1,5 @@
 // The live and the offline sound engine (studio/web/src/drone.js) in a real browser: levels, swaps, scheduling, and extreme inputs.
-const { test, assert, register, fresh, page, consoleErrors, skip, api } = require('./harness.cjs');
+const { test, assert, register, fresh, page, consoleErrors, skip, api, film, choose } = require('./harness.cjs');
 register();
 
 const BASE = { pulse: 0.65, low: 0.93, bright: 0.3, width: 0.6, space: 0.6, power: 0.6, seed: 7 };
@@ -225,17 +225,16 @@ test('the page stays responsive while playing a big sequence with every sound la
   await page.reload();
   await page.waitForSelector('.card');
   await page.waitForFunction(() => document.querySelectorAll('.card').length >= 150);
-  await page.click('#tabMusic');
-  await page.selectOption('#musicSelect', 'on');
+  await film();
+  await choose('musicSelect', 'on');
   await page.evaluate(() => {
     const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); e.dispatchEvent(new Event('change')); };
     for (const [id, v] of [['hitTypeSelect', '3'], ['hitRange', '70'], ['arpRange', '60'], ['arpRateSelect', '3'], ['arpStepsSelect', '3'], ['washRange', '50'], ['ringRange', '40'], ['shimmerRange', '40'], ['echoRange', '50'], ['dynSelect', '3'], ['spaceRange', '80'], ['powerRange', '90'], ['subWaveSelect', '2'], ['padWaveSelect', '3']]) set(id, v);
   });
-  await page.click('#tabVideo');
-  await page.selectOption('#rhythmSelect', 'variable');
+  await choose('rhythmSelect', 'variable');
   await page.evaluate(() => { for (const [id, v] of [['startMsRange', '50'], ['endMsRange', '300'], ['rampRange', '40']]) { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); } });
   await page.selectOption('#multSelect', '4');
-  await page.selectOption('#invertSelect', 'mono'); await page.selectOption('#zoomSelect', 'out');
+  await choose('invertSelect', 'mono'); await choose('zoomSelect', 'out');
   await page.evaluate(() => {                                                     // measure on the page: long tasks, and how late the frames are
     window.__perf = { long: [], frames: [] };
     try { new PerformanceObserver(l => l.getEntries().forEach(e => window.__perf.long.push(e.duration))).observe({ entryTypes: ['longtask'] }); } catch (e) {}

@@ -87,6 +87,10 @@ const names = async () => page.locator('.card').evaluateAll(els => els.map(e => 
 const seg = async () => page.locator('#orderSeg button').evaluateAll(els => els.map(e => ({ text: e.textContent.trim(), on: e.classList.contains('on') })));
 const enabled = async sel => { await page.waitForFunction(q => !document.querySelector(q).disabled, sel); };      // unlocking follows the status text by a moment
 const clickSeg = async label => { await page.locator('#orderSeg button', { hasText: label }).click(); };
+// the two modes, and the segmented controls that stand in for the Speed / Change at / Invert / Zoom / Source selects
+const film = async () => { await page.click('#modeFilm'); await page.waitForSelector('#viewFilm', { state: 'visible' }); };
+const curate = async () => { await page.click('#modeCurate'); await page.waitForSelector('#viewCurate', { state: 'visible' }); };
+const choose = async (id, value) => { await page.click(`.segctl[data-for="${id}"] button[data-value="${value}"]`); };
 const aiSetup = (summary = 'Hook on k2, lands on k1.') => st => { st.sequences[0].order = ['k3', 'k1', 'k2', 't1', 't2', 't3', 't4']; addAi(st, ['k2', 'k3', 'k1'], { summary }); st.active = 's1'; };
 
-module.exports = { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, skip, api, page, consoleErrors, addAi, makeState };
+module.exports = { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, choose, skip, api, page, consoleErrors, addAi, makeState };

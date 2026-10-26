@@ -457,10 +457,9 @@ test('export leaves the preview alone and offers a download link', async () => {
   assert.equal(link.hidden, false);
   assert.equal(link.href, '/outputs/Demo-136bpm-x4-20261025-093005.mp4');
   assert.equal(link.download, 'Demo-136bpm-x4-20261025-093005.mp4');
-  assert.match(link.textContent, /Download Demo-136bpm/);
+  assert.equal(h.$('exportFile').textContent, 'Demo-136bpm-x4-20261025-093005.mp4');
   assert.match(h.$('toast').textContent, /12 images, 6s/);
-  assert.equal(h.$('exportBtn').disabled, false);
-  assert.equal(h.$('exportBtn').textContent, 'Export MP4');
+  assert.equal(h.$('exportDock').dataset.state, 'ready');                 // "Downloaded", with Export again and Download again
 });
 
 test('export failures show a message and unlock the button', async () => {
@@ -629,7 +628,7 @@ test('with music off, Play never asks for music or creates audio', async () => {
   await settle();
   assert.equal(h.calls.some(c => c.url === '/api/music'), false);
   assert.equal(h.ctx.__audios.length, 0);
-  assert.equal(h.$('playBtn').textContent, '⏸ Pause');
+  assert.equal(h.$('playBtn').textContent, 'Pause');
 });
 
 test('with the drone on, Play starts it live from the top with the settings and where every cut falls', async () => {
@@ -648,7 +647,7 @@ test('with the drone on, Play starts it live from the top with the settings and 
   assert.equal(play.offset, 0);
   assert.equal(play.starts.length, 3);                                      // the music follows the beats (2 of them for 6 picture cuts at 3 per beat) + the end
   assert.ok(Math.abs(play.starts[2] - 0.6) < 1e-9 && Math.abs(play.starts[1] - 0.3) < 1e-9);
-  assert.equal(h.$('playBtn').textContent, '⏸ Pause');
+  assert.equal(h.$('playBtn').textContent, 'Pause');
   h.run('togglePlay()');                                                    // pause stops the sound
   assert.equal(h.ctx.__drone.stops > 0, true);
 });
@@ -709,7 +708,7 @@ test('export renders the same drone in the page, sends it, then asks for the vid
   const urls = h.calls.map(c => c.url);
   assert.ok(urls.indexOf('/api/export-audio') >= 0 && urls.indexOf('/api/export-audio') < urls.indexOf('/api/export-video'));
   assert.equal(h.calls.find(c => c.url === '/api/export-video').body.music, 'synth');
-  assert.equal(h.$('musicState').hidden, true);
+  assert.equal(h.$('exportDock').dataset.state, 'ready');
 });
 
 test('export without music does not render or send any sound', async () => {
@@ -975,24 +974,72 @@ test('Random video: every draw is a valid speed and look inside the slider range
   assert.doesNotThrow(() => h.run('undoRandom()'));                                 // nothing left to undo
 });
 
-test('Random all turns the sound on, rolls both halves, and matches the sound to the speed', async () => {
+test('Random all turns the sound on, rolls inside a character, and the parts agree', async () => {
   const h = await playerWith();
   h.$('musicSelect').value = 'off';
-  const fast = { arp: new Set(), hitOn: new Set() }, slow = { arp: new Set(), hitOn: new Set(), space: [] };
+  const n = id => +h.$(id).value;
+  const seen = new Set();
+  const R = h.run('RANDOM_RANGES');
   for (let i = 0; i < 400; i++) {
-    h.run('randomAll()');
+    seen.add(h.run('randomAll()'));
     assert.equal(h.$('musicSelect').value, 'on');
+    for (const [k, [lo, hi]] of Object.entries(JSON.parse(JSON.stringify(R)))) {
+      const v = n(`${k}Range`);
+      assert.ok(v === 0 || (v >= lo && v <= hi), `${k} ${v} stays inside what keeps it a dark, heavy drone`);
+    }
     const rate = h.run('rhythmCutsPerSecond()');
-    if (rate >= 4) { fast.arp.add(h.$('arpRateSelect').value); fast.hitOn.add(h.$('hitOnSelect').value); assert.ok(+h.$('spaceRange').value <= 50 && +h.$('echoRange').value <= 20); }
-    else if (rate <= 1.5) { slow.arp.add(h.$('arpRateSelect').value); slow.hitOn.add(h.$('hitOnSelect').value); slow.space.push(+h.$('spaceRange').value); }
+    const textures = ['echoRange', 'washRange', 'ringRange', 'shimmerRange'].filter(id => n(id) > 0).length;
+    assert.ok(textures <= 2, 'two textures at most');
+    assert.ok(n('arpRange') === 0 || n('arpRange') >= 20, 'an arpeggio is on properly or off');
+    if (n('dynSelect') === 3) assert.equal(h.$('rhythmSelect').value, 'variable', 'Follows the speed only with a speed that changes');
+    if (n('brightRange') > 45) assert.ok(n('ringRange') <= 20 && n('shimmerRange') <= 20, 'bright plus metal is held back');
+    if (rate > 6) assert.equal(n('echoRange'), 0);
+    if (rate <= 1.5) { assert.ok(n('arpRateSelect') >= 2 && n('hitOnSelect') === 0 && n('spaceRange') >= 40, 'slow cuts: busier notes, every-cut hits, a big room'); }
+    if (rate >= 4) { assert.ok(n('arpRateSelect') <= 1 && n('hitOnSelect') > 0 && n('spaceRange') <= 50 && n('echoRange') <= 20, 'fast cuts: sparse notes and hits, a drier room'); }
   }
-  assert.deepEqual([...fast.arp].sort(), ['0', '1']);                              // fast cuts: slow arpeggio, sparse hits
-  assert.ok(!fast.hitOn.has('0'));
-  assert.deepEqual([...slow.arp].sort(), ['2', '3']);                              // slow cuts: busier arpeggio, every-cut hits, a big room
-  assert.deepEqual([...slow.hitOn], ['0']);
-  assert.ok(slow.space.length > 20 && Math.min(...slow.space) >= 40);
+  assert.deepEqual([...seen].sort(), ['build', 'float', 'landing', 'machine', 'pulse'], 'Any picks every character over time');
   h.run('randomAll()'); h.run('undoRandom()');                                      // one step back covers both halves
   assert.equal(h.$('undoRandomBtn').disabled, true);
+});
+
+test('each character keeps the rhythm and the look inside its own kind of film', async () => {
+  const h = await playerWith();
+  const C = JSON.parse(JSON.stringify(h.run('CHARACTERS')));
+  for (const [key, c] of Object.entries(C)) {
+    h.$('characterSelect').value = key;
+    for (let i = 0; i < 60; i++) {
+      assert.equal(h.run('randomAll()'), key);
+      assert.equal(h.$('rhythmSelect').value, c.rhythm.mode, key);
+      if (c.rhythm.mode === 'flat') { const b = +h.$('bpmInput').value; assert.ok(b >= c.rhythm.bpm[0] && b <= c.rhythm.bpm[1], `${key} tempo ${b}`); }
+      else {
+        const st = +h.$('startMsRange').value, en = +h.$('endMsRange').value;
+        assert.ok(st >= c.rhythm.start[0] - 5 && st <= c.rhythm.start[1] + 5 && en >= c.rhythm.end[0] - 5 && en <= c.rhythm.end[1] + 5, `${key} ${st} → ${en}`);
+        assert.equal(h.$('atSelect').value, c.rhythm.at);
+      }
+      assert.ok(c.rhythm.mult.includes(h.$('multSelect').value), `${key} multiple`);
+      assert.ok(c.look.invert.includes(h.$('invertSelect').value) && c.look.zoom.includes(h.$('zoomSelect').value), `${key} look`);
+      assert.ok(c.sound.chord.includes(h.$('chordSelect').value) && c.sound.hitType.includes(h.$('hitTypeSelect').value), `${key} sound`);
+    }
+  }
+  // choosing a character in the menu rolls at once, and can be undone
+  h.$('characterSelect').value = 'float'; h.run('pickCharacter()');
+  assert.equal(h.$('rhythmSelect').value, 'flat'); assert.ok(+h.$('bpmInput').value <= 80);
+  assert.equal(h.$('undoRandomBtn').disabled, false);
+  h.$('characterSelect').value = 'any'; const bpm = h.$('bpmInput').value; h.run('pickCharacter()');
+  assert.equal(h.$('bpmInput').value, bpm, 'Any does not roll by itself');
+});
+
+test('the sound is matched to the speed: very fast cuts thin the notes, slow cuts fill them', async () => {
+  const h = await playerWith();
+  const n = id => +h.$(id).value;
+  h.$('rhythmSelect').value = 'flat'; h.$('bpmInput').value = '300'; h.$('followCuts').checked = false; h.run('updateTempo(); updateRhythm()');
+  h.$('arpRateSelect').value = '3'; h.$('hitOnSelect').value = '0'; h.$('spaceRange').value = '80'; h.$('echoRange').value = '50';
+  h.run('matchSoundToSpeed(); soundRules()');
+  assert.ok(n('arpRateSelect') <= 1 && n('hitOnSelect') > 0 && n('spaceRange') === 50 && n('echoRange') <= 20);
+  h.$('bpmInput').value = '60'; h.run('updateTempo()');
+  h.$('arpRateSelect').value = '0'; h.$('hitOnSelect').value = '2'; h.$('spaceRange').value = '10';
+  h.run('matchSoundToSpeed()');
+  assert.ok(n('arpRateSelect') >= 2 && n('hitOnSelect') === 0 && n('spaceRange') === 40);
 });
 
 test('Random sound alone leaves the speed and the effects untouched', async () => {
@@ -1000,4 +1047,106 @@ test('Random sound alone leaves the speed and the effects untouched', async () =
   const before = [h.$('rhythmSelect').value, h.$('bpmInput').value, h.$('multSelect').value, h.$('invertSelect').value, h.$('zoomSelect').value];
   for (let i = 0; i < 20; i++) h.run('randomMusic()');
   assert.deepEqual([h.$('rhythmSelect').value, h.$('bpmInput').value, h.$('multSelect').value, h.$('invertSelect').value, h.$('zoomSelect').value], before);
+});
+
+test('Curate and Film: the mode switch is remembered, and Tab / Space work except while typing', async () => {
+  const h = await playerWith();
+  assert.equal(h.ctx.document.body.dataset.mode, 'curate');                        // a first visit opens on the images
+  h.run("setMode('film')");
+  assert.equal(h.ctx.document.body.dataset.mode, 'film');
+  assert.equal(h.$('modeFilm').getAttribute('aria-pressed'), 'true');
+  assert.equal(h.store.studioMode, 'film');
+  let prevented = 0;
+  const key = (k, target = { tagName: 'BODY' }) => h.ctx.onKey({ key: k, target, preventDefault: () => { prevented++; } });
+  key('Tab');
+  assert.equal(h.ctx.document.body.dataset.mode, 'curate');
+  key('Tab', { tagName: 'BUTTON', blur() {} });                                     // a focused button does not keep Tab
+  assert.equal(h.ctx.document.body.dataset.mode, 'film');
+  key('Tab', { tagName: 'INPUT', type: 'text' });                                   // typing: Tab moves between fields
+  key('Tab', { tagName: 'SELECT' });
+  assert.equal(h.ctx.document.body.dataset.mode, 'film');
+  key(' ');
+  assert.equal(h.run('isPlaying'), true);
+  key(' ', { tagName: 'INPUT', type: 'text' });
+  assert.equal(h.run('isPlaying'), true, 'a space typed in a field is a space');
+  key(' ', { tagName: 'INPUT', type: 'range' });
+  assert.equal(h.run('isPlaying'), false, 'a slider with focus does not swallow Space');
+  assert.equal(prevented, 4);
+  h.$('confirmModal').classList.add('open');
+  key('Tab');
+  assert.equal(h.ctx.document.body.dataset.mode, 'film', 'nothing switches under a confirmation');
+  const again = load({ routes: baseRoutes(), storage: { studioMode: 'film' } });
+  assert.equal(again.ctx.document.body.dataset.mode, 'film');
+});
+
+test('the film strip and Curate clicks put the playhead on an image, and the drone follows while playing', async () => {
+  const h = await playerWith();
+  h.$('invertSelect').value = 'mono'; h.run('updateFx()');
+  h.run("jumpToPlate(2)");
+  const pic = h.run('timelineFor(3)');
+  assert.equal(h.run('cutPos'), pic[4]);                                           // image 3 starts at cut 5 when every image has its inverted copy
+  assert.equal(h.run('currentIdx'), 2);
+  assert.equal(h.$('stageImg').src, '/p/c');
+  assert.equal(h.$('curTitle').textContent, '3 · c');
+  assert.match(h.$('timecode').innerHTML, /cut 5 \/ 6/);
+  h.$('musicSelect').value = 'on'; h.run('updateMusic()');
+  h.run('togglePlay()'); await settle();
+  assert.ok(Math.abs(h.ctx.__drone.plays.at(-1).offset - pic[4] / 30) < 1e-9, 'Play carries on from the playhead');
+  h.run("previewPlate('b')");
+  assert.ok(Math.abs(h.ctx.__drone.seeks.at(-1) - pic[2] / 30) < 1e-9, 'the sound jumps with the picture');
+  assert.equal(h.run('jumpToPlate(99), currentIdx'), 2, 'past the end: the last image');
+  h.run('restartPlay()');
+  assert.equal(h.run('cutPos'), 0);
+});
+
+test('trash the image on screen from the film strip, and Undo puts it back where it was', async () => {
+  const r = baseRoutes();
+  let st = [mkPlate('a'), mkPlate('b'), mkPlate('c')];
+  r['/api/state'] = () => ({ plates: st });
+  r['/api/trash'] = body => { st = st.map(p => (p.filename === body.filename ? { ...p, trashed: body.trashed } : p)); if (!body.trashed) { const p = st.find(x => x.filename === body.filename); st = st.filter(x => x !== p).concat([p]); } return { ok: true }; };
+  r['/api/reorder'] = body => { st = body.order.map(f => st.find(p => p.filename === f)).concat(st.filter(p => !body.order.includes(p.filename))); return { ok: true }; };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.run('jumpToPlate(1)');
+  await h.run('trashCurrent()');
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['a', 'c']);
+  assert.match(h.$('toast').textContent, /“b” moved to Trash/);
+  const undo = h.$('toast').options.at(-1);                                         // the toast's action button
+  assert.equal(undo.textContent, 'Undo');
+  undo.onclick(); await settle(); await settle(); await settle();
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['a', 'b', 'c'], 'back in its place, not at the end');
+});
+
+test('the sound button in the transport is the same switch as Source', async () => {
+  const h = await playerWith();
+  assert.equal(h.$('soundLabel').textContent, 'Sound off');
+  assert.equal(h.$('synthBox').hidden, true); assert.equal(h.$('soundOffNote').hidden, false);
+  h.run('toggleSound()');
+  assert.equal(h.$('musicSelect').value, 'on');
+  assert.equal(h.$('soundBtn').getAttribute('aria-pressed'), 'true');
+  assert.equal(h.$('synthBox').hidden, false); assert.equal(h.$('soundOffNote').hidden, true);
+  h.run("showSoundGroup('notes')");
+  assert.equal(h.$('groupNotes').hidden, false); assert.equal(h.$('groupBed').hidden, true);
+  assert.equal(h.$('soundTabNotes').getAttribute('aria-selected'), 'true');
+  h.run("showSoundGroup('nonsense')");
+  assert.equal(h.$('groupBed').hidden, false);
+});
+
+test('the check "The Multiple also changes the music" is remembered (a checkbox saves its state, not its value)', async () => {
+  const h = await playerWith();
+  h.$('followCuts').type = 'checkbox'; h.$('followCuts').checked = true; h.run('updateTempo()');
+  const saved = JSON.parse(h.store.studioSettings);
+  assert.equal(saved.followCuts, true);
+  const again = load({ routes: baseRoutes(), storage: { studioSettings: h.store.studioSettings } });
+  again.$('followCuts').type = 'checkbox';
+  again.run('restoreSettings()');
+  assert.equal(again.$('followCuts').checked, true);
+});
+
+test('the frames readout next to the Multiple: one number for Flat, start → end for Variable', async () => {
+  const h = await playerWith();
+  h.$('bpmInput').value = '120'; h.$('multSelect').value = '2'; h.run('updateTempo()');
+  assert.equal(h.$('speedVal').textContent, '7.5f');
+  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '100'; h.$('endMsRange').value = '600'; h.$('multSelect').value = '1'; h.run('updateTempo(); updateRhythm()');
+  assert.equal(h.$('speedVal').textContent, '3→18f');
 });

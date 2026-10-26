@@ -1,4 +1,4 @@
-const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, skip, api, page, consoleErrors, addAi } = require('./harness.cjs');
+const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, skip, api, page, consoleErrors, addAi } = require('./harness.cjs');
 register();
 
 test('AI order: panel, note, live progress, and the Manual order stays exactly as it was', { skip }, async () => {
@@ -101,6 +101,8 @@ test('AI order: "best N" cuts the edit and shows what was left out; playback use
   assert.equal(await page.evaluate(() => [...document.getElementById('grid').children].findIndex(e => e.classList.contains('edit-divider'))), 2);
   assert.deepEqual(await seg(), [{ text: '✋ Manual (6)', on: false }, { text: '✨ AI (2 of 6)', on: true }]);
   await shot('18-best-n');
+  await film();
+  assert.equal(await page.locator('#filmstrip button').count(), 2, 'the film strip holds only the edit');
   await page.fill('#bpmInput', '220'); await page.locator('#bpmInput').dispatchEvent('input');
   await page.selectOption('#multSelect', '9');
   await page.click('#playBtn');

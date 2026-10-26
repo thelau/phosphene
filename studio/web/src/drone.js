@@ -612,6 +612,12 @@
       this.pending = null; this.holding = 0;
       this._swap(0);
     }
+    // jump to a position in the clip (seconds), keeping the settings: the film strip and the rhythm strip use it
+    seek(offset) {
+      if (!this.playing) return;
+      this.pending = null; this.holding = 0;
+      this._swap(offset);
+    }
     // the exact level for the current settings, worked out off the swap path; the running sound eases to it
     _recalibrate() {
       clearTimeout(this.calTimer);

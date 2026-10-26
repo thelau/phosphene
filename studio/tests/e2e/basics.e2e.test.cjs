@@ -1,32 +1,40 @@
-const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, skip, api, page, consoleErrors, addAi } = require('./harness.cjs');
+const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, choose, skip, api, page, consoleErrors, addAi } = require('./harness.cjs');
 register();
 
-test('page loads without errors and the header is one tidy row', { skip }, async () => {
+test('page loads without errors: Curate first, generation in one tidy row, no status bar while idle', { skip }, async () => {
   const ctx = await fresh();
   assert.deepEqual(consoleErrors, []);
-  assert.equal(await text('#statusText'), 'Ready');
+  assert.equal(await page.evaluate(() => document.body.dataset.mode), 'curate');
+  assert.equal(await page.locator('#statusText').isVisible(), false, 'the status bar only shows while something runs');
   const box = async sel => page.locator(sel).first().boundingBox();
   const [world, dir, count, gen, settings] = await Promise.all(['#worldSelect', '#directionInput', '#batchCountSelect', '#generateBtn', '#settingsBtn'].map(box));
   const header = await box('header');
-  assert.ok(header.height < 75, `header is ${header.height}px tall`);
-  // left to right, no overlaps
-  assert.ok(world.x + world.width <= dir.x + 1 && dir.x + dir.width <= count.x + 1 && count.x + count.width <= gen.x + 1 && gen.x + gen.width <= settings.x + 1);
-  for (const b of [world, dir, count, gen, settings]) assert.ok(Math.abs(b.y + b.height / 2 - (header.y + header.height / 2)) < 12, 'controls share one row');
-  assert.ok(gen.width > 120, 'Generate keeps its size');
+  assert.ok(header.height <= 57, `header is ${header.height}px tall`);
+  assert.ok(world.x + world.width <= dir.x + 1 && dir.x + dir.width <= count.x + 1 && count.x + count.width <= gen.x + 1, 'world, direction, count, Generate: left to right');
+  for (const b of [dir, count, gen]) assert.ok(Math.abs(b.y + b.height / 2 - (world.y + world.height / 2)) < 4, 'one row');
+  assert.ok(settings.y < world.y, 'Settings stays in the header');
   assert.equal(await text('#tabSelection'), 'Selection (3)');
   assert.equal(await text('#tabTrash'), '🗑️ Trash (4)');
+  assert.equal(await text('#selNote'), '3 in the selection');
   await shot('01-loaded');
   await ctx.close();
 });
 
-test('export sits under the player, and trash tabs sit above the gallery', { skip }, async () => {
-  const ctx = await fresh();
-  const exp = await page.locator('#exportBtn').boundingBox();
-  const play = await page.locator('#playBtn').boundingBox();
+test('Film: look bar, preview, transport, timeline down the middle; the inspector on the right with Export pinned at its foot', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });   // the size of the design: a 16-inch MacBook Pro
   const tabs = await page.locator('.gallery-head').boundingBox();
   const firstCard = await page.locator('.card').first().boundingBox();
-  assert.ok(exp.y > play.y, 'Export is below Play');
-  assert.ok(tabs.y + tabs.height <= firstCard.y, 'tabs are above the cards');
+  assert.ok(tabs.y + tabs.height <= firstCard.y, 'Curate: the tabs are above the cards');
+  assert.equal(await page.locator('#exportBtn').isVisible(), false, 'no film settings while curating');
+  await film();
+  const box = async sel => page.locator(sel).first().boundingBox();
+  const [look, stage, play, tl, insp, exp] = await Promise.all(['.look-bar', '.stage', '#playBtn', '.timeline', '.inspector', '#exportBtn'].map(box));
+  assert.ok(look.y + look.height <= stage.y && stage.y + stage.height <= play.y && play.y + play.height <= tl.y, 'top to bottom: look bar, preview, transport, timeline');
+  assert.ok(insp.x >= stage.x + stage.width && Math.abs(insp.width - 344) < 2, 'the inspector is on the right, 344 px');
+  assert.ok(exp.y + exp.height <= 945 && exp.y > insp.y + insp.height - 120, 'Export sits at the foot of the inspector');
+  assert.ok(Math.abs(stage.height - 452) < 2 && Math.abs(stage.width / stage.height - 9 / 16) < 0.01, `a 9:16 preview, ${stage.height}px tall`);
+  assert.equal(await page.locator('.grid-col').isVisible(), false, 'no grid while filming');
+  assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
 
@@ -88,8 +96,10 @@ test('restoring from the trash moves the image back to the selection', { skip },
 
 test('player: invert pairs and slow zoom show up on the preview image', { skip }, async () => {
   const ctx = await fresh();
-  await page.selectOption('#invertSelect', 'mono');
-  await page.selectOption('#zoomSelect', 'out');
+  await film();
+  await choose('invertSelect', 'mono');
+  await choose('zoomSelect', 'out');
+  assert.equal(await page.locator('#invertSelect').inputValue(), 'mono', 'the segmented control drives the select');
   await page.fill('#zoomAmt', '5');
   await page.locator('#zoomAmt').dispatchEvent('input');
   assert.equal(await text('#zoomAmtVal'), '5.0%');
@@ -116,34 +126,43 @@ test('player: invert pairs and slow zoom show up on the preview image', { skip }
   await ctx.close();
 });
 
-test('export: preview is untouched and a download link appears', { skip }, async () => {
+test('export: preview is untouched, the panel shows the work, then Downloaded with Export again and Download again', { skip }, async () => {
   const ctx = await fresh({ delays: { export: 400 } });
-  await page.locator('.card').first().click();
+  await page.locator('.card').nth(1).click();
+  await film();
   const before = await page.locator('#stageImg').getAttribute('src');
+  assert.match(before, /k2/, 'the image clicked in Curate is on the stage');
+  assert.match(await text('#exportMeta'), /^1080 × 1920 · \d+ s · silent$/);
   await page.click('#exportBtn');
-  assert.equal(await text('#exportBtn'), 'Rendering...');
+  await page.waitForSelector('#exportDock[data-state="busy"]');
+  assert.match(await text('#musicState'), /Rendering on the server/);
   const link = page.locator('#downloadLink');
   await link.waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#exportDock').getAttribute('data-state'), 'ready');
   assert.equal(await link.getAttribute('download'), 'Demo-test.mp4');
   assert.equal(await link.getAttribute('href'), '/outputs/Demo-test.mp4');
+  assert.equal(await text('#exportFile'), 'Demo-test.mp4');
   assert.equal(await page.locator('#stageImg').getAttribute('src'), before);
   assert.equal(await page.locator('#stageImg').isVisible(), true);
-  assert.equal(await text('#exportBtn'), 'Export MP4');
   const body = api.state.calls.find(c => c.path === '/api/export-video').body;
   assert.equal('total_seconds' in body, false);
   await shot('09-export');
+  await page.click('#exportAgainBtn');                                            // a second export straight from the ready panel
+  await page.waitForSelector('#exportDock[data-state="ready"]');
+  assert.equal(api.state.calls.filter(c => c.path === '/api/export-video').length, 2);
   await ctx.close();
 });
 
-test('export: the button is always in view (fixed under the controls) and the finished file downloads by itself', { skip }, async () => {
-  const ctx = await fresh({ height: 560 });
-  await page.locator('.card').first().click();
-  const inView = async () => { const b = await page.locator('#exportBtn').boundingBox(); return b && b.y >= 0 && b.y + b.height <= 560; };
-  assert.equal(await inView(), true, 'visible on the Video tab');
-  await page.click('#tabMusic'); await page.selectOption('#musicSelect', 'on');
-  await page.evaluate(() => { document.querySelector('.preview-scroll').scrollTop = 99999; });
-  assert.equal(await inView(), true, 'visible on the Music tab, scrolled to the bottom');
-  await page.evaluate(() => { window.__clicked = []; const c = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () { window.__clicked.push(this.getAttribute('download')); }; });
+test('export: the button is always in view (pinned under the inspector) and the finished file downloads by itself', { skip }, async () => {
+  const ctx = await fresh({ width: 1280, height: 720 });
+  await film();
+  const inView = async () => { const b = await page.locator('#exportBtn').boundingBox(); return b && b.y >= 0 && b.y + b.height <= 720; };
+  assert.equal(await inView(), true, 'visible with the sound off');
+  await choose('musicSelect', 'on');
+  await page.click('#soundTabNotes');
+  await page.evaluate(() => { document.getElementById('inspScroll').scrollTop = 99999; });
+  assert.equal(await inView(), true, 'visible with the longest sound group, scrolled to the bottom');
+  await page.evaluate(() => { window.__clicked = []; HTMLAnchorElement.prototype.click = function () { window.__clicked.push(this.getAttribute('download')); }; });
   await page.click('#exportBtn');
   await page.waitForSelector('#downloadLink:not([hidden])');
   assert.deepEqual(await page.evaluate(() => window.__clicked), ['Demo-test.mp4']);
@@ -151,85 +170,148 @@ test('export: the button is always in view (fixed under the controls) and the fi
   await ctx.close();
 });
 
-test('Random all, Random video and Undo work in the real page and the sound keeps playing', { skip }, async () => {
+test('Random (any character or a chosen one), the card dice and Undo work in the real page and the sound keeps playing', { skip }, async () => {
   const ctx = await fresh();
   const errors = []; page.on('pageerror', e => errors.push(e.message));
-  await page.locator('.card').first().click();
+  await film();
   await page.click('#playBtn');
   for (let i = 0; i < 6; i++) { await page.click('#randomAllBtn'); await page.waitForTimeout(250); }
   assert.equal(await page.locator('#musicSelect').inputValue(), 'on');
+  assert.match(await text('#toast'), /^Random · (Landing|Pulse|Build|Float|Machine)/, 'Any says which character it rolled');
   assert.equal(await page.locator('#undoRandomBtn').isEnabled(), true);
   await page.click('#undoRandomBtn');
   assert.equal(await page.locator('#undoRandomBtn').isEnabled(), false);
-  await page.click('#randomVideoBtn');
-  await page.click('#tabMusic'); await page.click('#randomBtn'); await page.waitForTimeout(300);
+  await page.selectOption('#characterSelect', 'float');                       // choosing a character rolls inside it
+  assert.equal(await page.locator('#rhythmSelect').inputValue(), 'flat');
+  assert.ok(+(await page.locator('#bpmInput').inputValue()) <= 80);
+  assert.equal(await page.locator('.segctl[data-for="rhythmSelect"] button[aria-pressed="true"]').textContent(), 'Flat', 'the segmented controls follow a random');
+  await page.click('#randomRhythmBtn'); await page.click('#randomLookBtn'); await page.click('#randomBtn');
+  await page.waitForTimeout(300);
   assert.deepEqual(errors, []);
-  assert.equal(await page.locator('#exportBtn').isVisible(), true);
+  assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Pause', 'still playing');
   await ctx.close();
 });
 
-test('narrow window: the header wraps without squeezing the Generate button', { skip }, async () => {
-  const ctx = await fresh({ width: 900 });
+test('window size: a 13" laptop (1280 × 720) fits both modes; below 1200 × 640 a message asks for a bigger window', { skip }, async () => {
+  let ctx = await fresh({ width: 1280, height: 720 });
+  assert.equal(await page.locator('#tooSmall').isVisible(), false);
+  const fits = async () => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight);
+  assert.ok(await fits(), 'Curate: no page scroll');
   const gen = await page.locator('#generateBtn').boundingBox();
-  const world = await page.locator('#worldSelect').boundingBox();
-  assert.ok(gen.width > 120);
-  assert.ok(gen.x >= world.x, 'still in the header');
-  assert.ok(gen.x + gen.width <= 900, 'not clipped by the window edge');
-  await shot('10-narrow');
+  assert.ok(gen.x + gen.width <= 1280);
+  await film();
+  assert.ok(await fits(), 'Film: no page scroll');
+  for (const id of ['#playBtn', '#exportBtn', '#randomAllBtn', '#filmstrip', '#bpmInput']) {
+    const b = await page.locator(id).boundingBox();
+    assert.ok(b && b.y >= 0 && b.y + b.height <= 720 && b.x + b.width <= 1280, `${id} in view`);
+  }
+  const stage = await page.locator('.stage').boundingBox();
+  assert.ok(stage.height >= 200, `the preview stays usable: ${stage.height}px`);
+  await shot('10-laptop');
+  await ctx.close();
+  ctx = await fresh({ width: 1100, height: 800 });
+  assert.equal(await page.locator('#tooSmall').isVisible(), true);
+  assert.match(await text('#tooSmall'), /Make the window bigger/);
   await ctx.close();
 });
 
-
-
-test('the player panel: preview, play / target, then Video and Music tabs with their settings, export below', { skip }, async () => {
+test('the inspector: Rhythm, Look and Sound always open; Sound in four groups; Amount waits for a zoom', { skip }, async () => {
   const ctx = await fresh();
-  const box = async sel => page.locator(sel).first().boundingBox();
-  const [title, stage, play, target, tabs, exp] = await Promise.all(['.panel-title', '.stage', '#playBtn', '#targetBtn', '.fx-tabs', '#exportBtn'].map(box));
-  assert.equal((await text('.panel-title')).toLowerCase(), 'preview sequence');
-  assert.ok(title.y < stage.y && stage.y + stage.height <= play.y && play.y + play.height <= tabs.y && tabs.y + tabs.height <= exp.y, 'top to bottom: title, preview, play row, tabs, export');
-  assert.ok(Math.abs(play.y - target.y) < 4, 'Play and Target share a row');
-  assert.equal(await text('#targetBtn'), '🎯 Target');
-  // Video tab is open: its settings are visible, the music ones are not
-  for (const id of ['#bpmInput', '#multSelect', '#invertSelect', '#zoomSelect']) assert.ok(await page.locator(id).isVisible(), id);
-  assert.ok(!(await page.locator('#zoomAmt').isVisible()), 'Amount appears only once a zoom is chosen');
-  await page.selectOption('#zoomSelect', 'out');
-  assert.ok(await page.locator('#zoomAmt').isVisible());
-  await page.selectOption('#zoomSelect', 'off');
-  assert.ok(!(await page.locator('#pulseRange').isVisible()));
-  await page.click('#tabMusic');
-  assert.ok(await page.locator('#musicSelect').isVisible());
-  assert.ok(!(await page.locator('#pulseRange').isVisible()), 'no synth settings while the music is off');
-  await page.selectOption('#musicSelect', 'on');
-  for (const id of ['#pulseRange', '#lowRange', '#powerRange', '#spaceRange']) assert.ok(await page.locator(id).isVisible(), id);
-  for (const id of ['#brightRange', '#widthRange', '#randomBtn']) assert.ok(await page.locator(id).isVisible(), `${id} is there at once`);
-  for (const id of ['#brightRange', '#widthRange', '#randomBtn']) assert.ok(await page.locator(id).isVisible(), id);
-  assert.ok(!(await page.locator('#bpmInput').isVisible()));
-  const exp2 = await box('#exportBtn');
-  assert.ok(exp2.y + exp2.height <= 900, 'export stays in view whichever tab is open');
+  await film();
+  for (const id of ['#bpmInput', '#multSelect', '#followCuts', '#zoomAmt', '#randomRhythmBtn', '#randomLookBtn', '#randomBtn']) assert.ok(await page.locator(id).isVisible(), id);
+  assert.deepEqual(await page.locator('.segctl[data-for="invertSelect"] button').allTextContents(), ['Off', 'Grey', 'Colour']);
+  assert.equal(await page.locator('#zoomAmt').isDisabled(), true, 'Amount is there but off until a zoom is chosen');
+  await choose('zoomSelect', 'out');
+  assert.equal(await page.locator('#zoomAmt').isDisabled(), false);
+  await choose('zoomSelect', 'off');
+  assert.ok(!(await page.locator('#pulseRange').isVisible()), 'no synth settings while the sound is off');
+  assert.ok(await page.locator('#soundOffNote').isVisible());
+  await choose('musicSelect', 'on');
+  assert.equal(await text('#soundLabel'), 'Sound on', 'the transport follows Source');
+  const groups = { Bed: ['#pulseRange', '#lowRange', '#powerRange', '#spaceRange', '#brightRange', '#widthRange'], Tone: ['#pitchRange', '#chordSelect', '#subWaveSelect', '#padWaveSelect', '#movementRange'], Texture: ['#echoRange', '#washRange', '#ringRange', '#shimmerRange'], Notes: ['#hitTypeSelect', '#hitRange', '#hitOnSelect', '#arpRange', '#arpStepsSelect', '#arpRateSelect', '#dynSelect'] };
+  for (const [g, ids] of Object.entries(groups)) {
+    await page.click(`#soundTab${g}`);
+    for (const id of ids) assert.ok(await page.locator(id).isVisible(), `${g}: ${id}`);
+    for (const [other, oids] of Object.entries(groups)) if (other !== g) assert.ok(!(await page.locator(oids[0]).isVisible()), `${g} hides ${other}`);
+  }
+  assert.deepEqual(await page.locator('#chordSelect option').allTextContents(), ['Dark cluster', 'Open fifth', 'Minor', 'Suspended'], 'the real names');
+  await page.click('#soundBtn');
+  assert.equal(await page.locator('#musicSelect').inputValue(), 'off', 'the transport button turns the sound off too');
+  await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
+  assert.equal(await page.evaluate(() => document.body.dataset.mode), 'film', 'the mode is remembered');
   await shot('music-tab');
-  await page.click('#tabVideo');
-  assert.ok(await page.locator('#bpmInput').isVisible());
+  await ctx.close();
+});
+
+test('modes: Tab switches, Space plays (also after clicking a button), switching keeps the playhead and the sound', { skip }, async () => {
+  const ctx = await fresh();
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.body.dataset.mode), 'film');
+  await page.click('#randomLookBtn');                                         // a clicked button must not swallow Space
+  await page.keyboard.press(' ');
+  assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Pause');
+  await page.waitForTimeout(600);
+  const t1 = await text('#timecode');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.body.dataset.mode), 'curate');
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Tab');
+  assert.notEqual(await text('#timecode'), t1, 'it kept playing while in Curate');
+  assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Pause');
+  await page.keyboard.press(' ');
+  assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Play');
+  await page.click('#modeCurate');
+  await page.click('#directionInput');
+  await page.keyboard.press('Tab');                                           // typing: Tab moves to the next field
+  assert.equal(await page.evaluate(() => document.body.dataset.mode), 'curate');
+  await page.keyboard.type('a b');
+  assert.equal(await page.locator('#directionInput').inputValue(), '');      // focus left the field for the count select
+  assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Play', 'typing a space does not play');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
+test('the film strip: one thumbnail per image in order, click jumps there, the image on screen can go to the Trash and come back', { skip }, async () => {
+  const ctx = await fresh();
+  await film();
+  assert.equal(await page.locator('#filmstrip button').count(), 3);
+  await page.locator('#filmstrip button').nth(2).click();
+  assert.match(await page.locator('#stageImg').getAttribute('src'), /k3/);
+  assert.match(await text('#curTitle'), /^3 · /);
+  assert.equal(await page.locator('#filmstrip button.cur').count(), 1);
+  assert.match(await text('#timecode'), /cut 3 \/ 3/);
+  await page.click('#trashCurBtn');
+  await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 2);
+  assert.match(await text('#toast'), /moved to Trash/);
+  assert.equal(await text('#selNote'), '2 in the selection');
+  await page.click('#toast button');
+  await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 3);
+  const order = await page.locator('#filmstrip button').evaluateAll(b => b.map(x => x.title.split(' · ')[0]));
+  assert.deepEqual(order, ['1', '2', '3']);
+  assert.match(await page.locator('#filmstrip button').nth(2).getAttribute('title'), /k3|Plate k3/, 'back in its place');
+  assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
 
 test('variable speed: Flat shows tempo and multiple, Variable shows start, end and curve, and the picture accelerates', { skip }, async () => {
   const ctx = await fresh();
+  await film();
   assert.ok(await page.locator('#bpmInput').isVisible() && !(await page.locator('#startMsRange').isVisible()));
   await page.selectOption('#multSelect', '1');
-  await page.selectOption('#rhythmSelect', 'variable');
+  await choose('rhythmSelect', 'variable');
   assert.ok(!(await page.locator('#bpmInput').isVisible()), 'no tempo in variable');
   assert.ok(await page.locator('#multSelect').isVisible(), 'the multiple stays: it only changes the pictures');
-  await page.selectOption('#rhythmSelect', 'flat');
+  await choose('rhythmSelect', 'flat');
   assert.equal(await page.locator('#bpmInput').getAttribute('max'), '500'); assert.equal(await page.locator('#bpmInput').getAttribute('min'), '1');
   await page.fill('#bpmInput', '500'); assert.equal(await text('#bpmVal'), '500 BPM');
   await page.fill('#bpmInput', '1'); assert.equal(await text('#bpmVal'), '1 BPM');
   await page.fill('#bpmInput', '136');
   assert.ok(await page.locator('#followCuts').isVisible(), 'the check for the music following every cut');
-  await page.selectOption('#rhythmSelect', 'variable');
-  for (const id of ['#startMsRange', '#endMsRange', '#rampRange', '#atSelect']) assert.ok(await page.locator(id).isVisible(), id);
+  await choose('rhythmSelect', 'variable');
+  for (const id of ['#startMsRange', '#endMsRange', '#rampRange', '.segctl[data-for="atSelect"]']) assert.ok(await page.locator(id).isVisible(), id);
   await page.fill('#startMsRange', '100'); await page.fill('#endMsRange', '600'); await page.fill('#rampRange', '2');
   assert.match(await text('#rhythmInfo'), /cuts 100 ms, then 600 ms over the last 2$/);
-  await page.selectOption('#invertSelect', 'mono');
+  await choose('invertSelect', 'mono');
   assert.match(await text('#rhythmInfo'), /^3 images · .* cuts 100 ms, then 600 ms over the last 2$/);
   await page.click('#playBtn');
   await page.waitForFunction(() => document.getElementById('playBtn').textContent.includes('Pause'));
@@ -245,19 +327,19 @@ test('variable speed: Flat shows tempo and multiple, Variable shows start, end a
 
 test('synthesized music: the drone plays live in the page, settings swap it at once, export renders it in the page and sends it', { skip }, async () => {
   const ctx = await fresh();
+  await film();
   assert.match(await text('#rhythmInfo'), /^3 images · \d+ s · cuts \d+ ms$/);
-  await page.click('#tabMusic');
-  assert.deepEqual(await page.locator('#musicSelect option').allTextContents(), ['Off', 'Synthesized']);
-  await page.selectOption('#musicSelect', 'on');
+  assert.deepEqual(await page.locator('.segctl[data-for="musicSelect"] button').allTextContents(), ['Off', 'Synthesized']);
+  await choose('musicSelect', 'on');
   await page.fill('#pulseRange', '80');
-  assert.ok(await page.locator('#musicState').isHidden(), 'no render, no loader');
+  assert.equal(await page.locator('#exportDock').getAttribute('data-state'), 'idle', 'no render, no loader');
   await page.click('#playBtn');
   await page.waitForFunction(() => document.getElementById('playBtn').textContent.includes('Pause'));
   await page.waitForFunction(() => document.getElementById('stageImg').getAttribute('src'));
   assert.equal(api.state.calls.filter(c => c.path === '/api/music').length, 0, 'the server renders nothing for the drone');
   await page.fill('#lowRange', '30');                                        // swapped live while playing
   await page.waitForTimeout(400);
-  assert.ok(await page.locator('#musicState').isHidden());
+  assert.equal(await page.locator('#exportDock').getAttribute('data-state'), 'idle');
   await shot('music-synth');
   await page.click('#playBtn');
   await page.click('#exportBtn');
@@ -359,8 +441,8 @@ test('hits, the arpeggio and the dynamics are heard in the real engine and stay 
 
 test('Random sound: every draw stays a dark, heavy, level drone and a new sound plays live', { skip }, async () => {
   const ctx = await fresh();
-  await page.click('#tabMusic');
-  await page.selectOption('#musicSelect', 'on');
+  await film();
+  await choose('musicSelect', 'on');
   const before = await page.evaluate(() => JSON.stringify([...document.querySelectorAll('#synthBox input[type=range], #chordSelect')].map(e => e.value)));
   await page.click('#randomBtn');
   const after = await page.evaluate(() => JSON.stringify([...document.querySelectorAll('#synthBox input[type=range], #chordSelect')].map(e => e.value)));

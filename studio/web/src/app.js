@@ -11,13 +11,20 @@
     // Bottom status bar = generation progress only ("Ready" otherwise). Everything else is a short toast.
     function idleText() { return 'Ready'; }
     let toastTimer = null;
-    function setStatus(msg) {
+    // a toast can carry one action (e.g. Undo after trashing the image on screen)
+    function setStatus(msg, action) {
       const t = document.getElementById('toast');
       clearTimeout(toastTimer);
       if (!msg) { t.textContent = ''; t.classList.remove('show'); return; }
       t.textContent = msg;
+      if (action) {
+        const b = document.createElement('button');
+        b.textContent = action.label;
+        b.onclick = () => { t.classList.remove('show'); action.run(); };
+        t.appendChild(b);
+      }
       t.classList.add('show');
-      toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
+      toastTimer = setTimeout(() => t.classList.remove('show'), action ? 6000 : 4000);
     }
     function refreshIdle() {
       const el = document.getElementById('statusText');
@@ -109,7 +116,9 @@
 
       renderSequences();
       renderGrid();
+      renderFilmstrip();
       restartLoop();
+      if (!isPlaying) drawFrame();
       lastSig = plateSig(plates);
     }
 
@@ -450,18 +459,131 @@
       draggedFilename = null;
     }
 
+    // clicking an image in Curate puts the film's playhead on it (an image left out of the edit is only shown)
     function previewPlate(filename) {
+      const i = activePlates().findIndex(x => x.filename === filename);
+      if (i >= 0) { jumpToPlate(i); return; }
       const stageImg = document.getElementById('stageImg');
       stageImg.style.display = 'block';
       clearFx();
       const p = plates.find(x => x.filename === filename);
-      if (p) {
-        stageImg.src = p.preview || p.url;
-        if (p.trashed && isPlaying) {
-          isPlaying = false;
-          document.getElementById('playBtn').textContent = '▶ Play';
-        }
-      }
+      if (p) stageImg.src = p.preview || p.url;
+    }
+
+    // ---- the two modes: Curate (the images) and Film (the result); switching keeps everything ----
+    let mode = 'curate';
+    function setMode(m) {
+      mode = m === 'film' ? 'film' : 'curate';
+      document.body.dataset.mode = mode;
+      document.getElementById('modeCurate').setAttribute('aria-pressed', String(mode === 'curate'));
+      document.getElementById('modeFilm').setAttribute('aria-pressed', String(mode === 'film'));
+      try { localStorage.setItem('studioMode', mode); } catch (e) {}
+      if (mode === 'film') scrollFilmstripTo(currentIdx);
+    }
+    // Tab switches the mode and Space plays, except while typing in a field (Tab still moves between fields there)
+    function typingIn(t) {
+      if (!t || !t.tagName) return false;
+      if (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable) return true;
+      return t.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes(t.type);
+    }
+    function onKey(e) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (typingIn(e.target) || document.getElementById('confirmModal').classList.contains('open')) return;
+      if (e.key === 'Tab') { e.preventDefault(); if (e.target && e.target.blur) e.target.blur(); setMode(mode === 'film' ? 'curate' : 'film'); }
+      else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+    }
+    document.addEventListener('keydown', onKey);
+    // a button clicked with the mouse gives its focus back, so Space plays instead of pressing it again
+    document.addEventListener('click', e => { const b = e.target && e.target.closest && e.target.closest('button'); if (b && e.detail > 0) b.blur(); }, true);
+
+    // ---- segmented controls: buttons drawn from a hidden <select>, which stays the source of truth (saved, read, tested) ----
+    function buildSegs() {
+      document.querySelectorAll('select.seg-src').forEach(sel => {
+        const box = document.createElement('div');
+        box.className = 'segctl'; box.setAttribute('role', 'group'); box.dataset.for = sel.id; box.title = sel.title;
+        [...sel.options].forEach(o => {
+          const b = document.createElement('button');
+          b.type = 'button'; b.textContent = o.textContent; b.dataset.value = o.value;
+          b.onclick = () => { if (sel.value === o.value) return; sel.value = o.value; sel.dispatchEvent(new Event('change')); syncSegs(); };
+          box.appendChild(b);
+        });
+        sel.after(box);
+      });
+      syncSegs();
+    }
+    function syncSegs() {
+      document.querySelectorAll('.segctl').forEach(box => {
+        const sel = document.getElementById(box.dataset.for);
+        box.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.value === sel.value)));
+      });
+    }
+    // the orange part of a slider, up to its thumb
+    function paintRanges() {
+      document.querySelectorAll('input[type="range"]').forEach(el => {
+        const lo = parseFloat(el.min) || 0, hi = parseFloat(el.max) || 100;
+        el.style.setProperty('--fill', `${hi > lo ? ((parseFloat(el.value) - lo) / (hi - lo)) * 100 : 0}%`);
+      });
+    }
+    document.addEventListener('input', e => { if (e.target && e.target.type === 'range') paintRanges(); });
+
+    // ---- the film strip: the edit in order; click to jump ----
+    function renderFilmstrip() {
+      const strip = document.getElementById('filmstrip');
+      const active = activePlates();
+      strip.innerHTML = active.map((p, i) => `<button type="button" data-i="${i}" title="${i + 1} · ${escapeHtml(p.title)}" aria-label="Jump to image ${i + 1}" style="background-image:url('${(p.thumb || p.url || '').replace(/'/g, '%27')}')"></button>`).join('');
+      shownIdx = -1;
+      const n = active.length, cut = activeCutOff();
+      document.getElementById('selNote').textContent = n ? `${n} in the ${cut ? 'edit' : 'selection'}` : '';
+      document.getElementById('filmHint').textContent = n ? `${n} images in film order · click to jump` : '';
+    }
+    function filmstripClick(e) {
+      const b = e.target && e.target.closest ? e.target.closest('button[data-i]') : null;
+      if (b) jumpToPlate(parseInt(b.dataset.i, 10));
+    }
+    let shownIdx = -1;
+    function markFilmstrip(i) {
+      if (i === shownIdx) return;
+      const strip = document.getElementById('filmstrip');
+      const kids = strip.children || [];
+      if (kids[shownIdx]) kids[shownIdx].classList.remove('cur');
+      if (kids[i]) kids[i].classList.add('cur');
+      shownIdx = i;
+      const p = activePlates()[i];
+      document.getElementById('curTitle').textContent = p ? `${i + 1} · ${p.title}` : '';
+      if (mode === 'film') scrollFilmstripTo(i);
+    }
+    function scrollFilmstripTo(i) {
+      const strip = document.getElementById('filmstrip');
+      const el = (strip.children || [])[i];
+      if (!el || !strip.clientWidth) return;
+      const x = el.offsetLeft, w = strip.clientWidth;
+      if (x < strip.scrollLeft + 65 || x > strip.scrollLeft + w - 40) strip.scrollLeft = Math.max(0, x - 65 - w / 3);
+    }
+    function jumpToPlate(i) {
+      const active = activePlates();
+      if (!active.length) return;
+      i = Math.max(0, Math.min(active.length - 1, i | 0));
+      const paired = ['mono', 'colour'].includes(document.getElementById('invertSelect').value);
+      cutPos = timelineFor(active.length)[i * (paired ? 2 : 1)];
+      lastTick = performance.now();
+      if (isPlaying && droneLive.playing) droneLive.seek(cutPos / 30);
+      drawFrame();
+    }
+    // the image on screen goes to the Trash; the toast's Undo puts it back where it was
+    async function trashCurrent() {
+      if (blockedByAi()) return;
+      const p = activePlates()[currentIdx];
+      if (!p) return;
+      const order = plates.filter(x => !x.trashed).map(x => x.filename);
+      await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename: p.filename, trashed: true }) });
+      await loadState();
+      setStatus(`“${p.title}” moved to Trash`, { label: 'Undo', run: () => untrash(p.filename, order) });
+    }
+    async function untrash(filename, order) {
+      if (blockedByAi()) return;
+      await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename, trashed: false }) });
+      await fetch('/api/reorder', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ order }) });
+      await loadState();
     }
 
     // ---- what is on screen when (mirrored in studio/cutplan.py; tests keep the two in step) ----
@@ -561,27 +683,85 @@
       };
     }
     function synthStartsSec() { return rhythmFor(activePlates().length).audio; }
+    // the export panel: idle (the button), busy (a bar with what is happening), ready (downloaded, with a link to get it again)
+    function setExportState(state) { document.getElementById('exportDock').dataset.state = state; }
     function setMusicState(kind, text) {
       const el = document.getElementById('musicState');
-      el.hidden = !text;
-      el.textContent = text || '';
-      el.className = `music-state ${kind === 'busy' ? 'working' : kind || ''}`;
+      el.textContent = text || 'Rendering on the server…';
+      el.className = kind === 'err' ? 'err' : '';
     }
     function fmtDuration(sec) { return sec >= 60 ? `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}` : `${Math.round(sec)} s`; }
     function updateMusic() {
       const on = musicOn();
       document.getElementById('synthBox').hidden = !on;
+      document.getElementById('soundOffNote').hidden = on;
+      document.getElementById('soundBtn').setAttribute('aria-pressed', String(on));
+      document.getElementById('soundLabel').textContent = on ? 'Sound on' : 'Sound off';
       for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer', 'hit', 'arp']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
+      syncSegs(); paintRanges();
       saveSettings();
       musicChanged();
     }
+    // the transport's sound button: the same switch as Source
+    function toggleSound() {
+      document.getElementById('musicSelect').value = musicOn() ? 'off' : 'on';
+      updateMusic();
+    }
+    // the four groups of sound settings, one shown at a time
+    const SOUND_GROUPS = ['bed', 'tone', 'texture', 'notes'];
+    function showSoundGroup(g) {
+      if (!SOUND_GROUPS.includes(g)) g = 'bed';
+      for (const k of SOUND_GROUPS) {
+        const id = k[0].toUpperCase() + k.slice(1);
+        document.getElementById(`group${id}`).hidden = k !== g;
+        document.getElementById(`soundTab${id}`).setAttribute('aria-selected', String(k === g));
+      }
+      document.getElementById('soundGroupVal').value = g;
+      saveSettings();
+    }
+
+    // ---- Random ----
     // a random sound within what works: every setting is drawn from a range that stays a dark, heavy drone (the ranges are the taste)
     const RANDOM_RANGES = { pulse: [30, 90], low: [65, 100], power: [30, 90], space: [5, 85], bright: [0, 55], width: [30, 100], pitch: [0, 100], movement: [15, 85], echo: [0, 55], wash: [0, 55], ring: [0, 45], shimmer: [0, 45], hit: [30, 70], arp: [20, 45] };
-    // one step back from the last random (video, sound or both): the values of every persisted control, restored as they were
+    // Characters: kinds of film, modelled on the references, each a set of tighter ranges for the rhythm, the look and the sound (all inside RANDOM_RANGES).
+    // Random rolls inside the chosen one ("Any": a different one each time); the rules below then make the parts agree.
+    const CHARACTERS = {
+      landing: { name: 'Landing',                                          // Ecwora / Soiltone: fast hold, then a slow landing, grey inverted copies
+        rhythm: { mode: 'variable', start: [60, 120], end: [450, 900], ramp: [8, 16], at: 'end', mult: ['1', '1', '2'] },
+        look: { invert: ['mono', 'mono', 'off'], zoom: ['out', 'off'], amount: [0.3, 1.2] },
+        sound: { pulse: [40, 75], low: [75, 100], power: [40, 80], space: [50, 85], bright: [0, 35], width: [50, 100], pitch: [0, 45], movement: [20, 60], echo: [0, 35], wash: [15, 55], ring: [0, 25], shimmer: [0, 25], hit: [30, 60], arp: [0, 35],
+          chord: ['0', '0', '2'], subWave: ['0', '1'], padWave: ['0', '2'], hitType: ['0', '0', '1'], hitOn: ['3', '2'], dyn: ['2', '3'] } },
+      pulse: { name: 'Pulse',                                              // Helione / Moverunion: a steady tempo, cut 2 or 4 to the beat
+        rhythm: { mode: 'flat', bpm: [118, 150], mult: ['2', '4', '4'] },
+        look: { invert: ['off', 'mono'], zoom: ['out', 'out', 'off'], amount: [0.2, 0.8] },
+        sound: { pulse: [65, 90], low: [70, 100], power: [50, 90], space: [5, 35], bright: [10, 45], width: [30, 80], pitch: [20, 70], movement: [30, 70], echo: [0, 20], wash: [0, 25], ring: [0, 20], shimmer: [0, 20], hit: [40, 70], arp: [0, 30],
+          chord: ['0', '1', '3'], subWave: ['0', '1'], padWave: ['0', '1'], hitType: ['2', '2', '1'], hitOn: ['1', '0'], dyn: ['0'] } },
+      build: { name: 'Build',                                              // slow to fast, the notes rising with it
+        rhythm: { mode: 'variable', start: [500, 900], end: [60, 110], ramp: [10, 20], at: 'start', mult: ['1', '2'] },
+        look: { invert: ['off', 'colour', 'mono'], zoom: ['in', 'in', 'off'], amount: [0.4, 1.6] },
+        sound: { pulse: [45, 80], low: [65, 95], power: [45, 85], space: [30, 65], bright: [20, 50], width: [40, 90], pitch: [30, 80], movement: [40, 85], echo: [0, 30], wash: [0, 30], ring: [0, 30], shimmer: [15, 40], hit: [35, 65], arp: [25, 45],
+          chord: ['2', '3', '1'], subWave: ['0', '1', '2'], padWave: ['0', '3'], hitType: ['3', '0', '4'], hitOn: ['3', '2'], dyn: ['1'] } },
+      float: { name: 'Float',                                              // slow and wide: a big room, wash, no hits
+        rhythm: { mode: 'flat', bpm: [50, 80], mult: ['1', '2'] },
+        look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.3, 1.0] },
+        sound: { pulse: [30, 45], low: [65, 90], power: [30, 55], space: [65, 85], bright: [0, 30], width: [70, 100], pitch: [0, 60], movement: [15, 45], echo: [15, 50], wash: [25, 55], ring: [0, 20], shimmer: [0, 30], hit: [30, 50], arp: [20, 35],
+          chord: ['1', '3', '0'], subWave: ['0'], padWave: ['2', '2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'] } },
+      machine: { name: 'Machine',                                          // very fast cuts, metal and a square sub
+        rhythm: { mode: 'flat', bpm: [150, 200], mult: ['4', '6', '8'] },
+        look: { invert: ['colour', 'mono'], zoom: ['off'], amount: [0.2, 0.6] },
+        sound: { pulse: [70, 90], low: [75, 100], power: [60, 90], space: [5, 30], bright: [25, 55], width: [30, 70], pitch: [30, 90], movement: [50, 85], echo: [0, 15], wash: [0, 15], ring: [20, 45], shimmer: [0, 20], hit: [45, 70], arp: [0, 30],
+          chord: ['0', '1'], subWave: ['2', '2', '1'], padWave: ['1', '3'], hitType: ['3', '3', '4'], hitOn: ['3', '1'], dyn: ['0', '3'] } },
+    };
+    const rint = ([lo, hi]) => Math.round(lo + Math.random() * (hi - lo));
+    const rpick = list => list[Math.floor(Math.random() * list.length)];
+    const setv = (id, v) => { document.getElementById(id).value = String(v); };
+    const getn = id => parseFloat(document.getElementById(id).value) || 0;
+    // one step back from the last random (rhythm, look, sound or all): the values of every persisted control, restored as they were
     let randomBefore = null;
+    const NOT_UNDONE = ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'characterSelect'];
     const rememberForUndo = () => {
       randomBefore = {};
-      PERSISTED.filter(id => !['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'fxTabVal'].includes(id)).forEach(id => { const el = document.getElementById(id); if (el) randomBefore[id] = el.type === 'checkbox' ? el.checked : el.value; });
+      PERSISTED.filter(id => !NOT_UNDONE.includes(id)).forEach(id => { const el = document.getElementById(id); if (el) randomBefore[id] = el.type === 'checkbox' ? el.checked : el.value; });
       document.getElementById('undoRandomBtn').disabled = false;
     };
     function undoRandom() {
@@ -590,43 +770,36 @@
       randomBefore = null; document.getElementById('undoRandomBtn').disabled = true;
       updateTempo(); updateRhythm(); updateFx(); updateMusic();
     }
-    // a random speed and look: tempo (or a variable run), Multiple, Invert, Zoom; every draw stays inside what cuts well
-    function randomVideo(quiet) {
-      if (!quiet) rememberForUndo();
-      const set = (id, v) => { document.getElementById(id).value = String(v); };
-      const int = (lo, hi) => Math.round(lo + Math.random() * (hi - lo));
-      const from = list => list[Math.floor(Math.random() * list.length)];
-      if (Math.random() < 0.55) {
-        set('rhythmSelect', 'flat'); set('bpmInput', int(60, 200)); set('multSelect', from(['0.5', '1', '1', '2', '3', '4', '4', '6']));
-      } else {
-        set('rhythmSelect', 'variable');
-        set('startMsRange', int(6, 20) * 10); set('endMsRange', int(30, 90) * 10);
-        if (Math.random() < 0.5) { const s = document.getElementById('startMsRange').value; set('startMsRange', document.getElementById('endMsRange').value); set('endMsRange', s); }   // speeding up or slowing down
-        set('rampRange', int(6, 20)); set('atSelect', Math.random() < 0.7 ? 'end' : 'start'); set('multSelect', from(['1', '1', '2', '3', '4']));
+    function applyRhythm(r) {
+      setv('rhythmSelect', r.mode);
+      if (r.mode === 'flat') setv('bpmInput', rint(r.bpm));
+      else { setv('startMsRange', Math.round(rint(r.start) / 10) * 10); setv('endMsRange', Math.round(rint(r.end) / 10) * 10); setv('rampRange', rint(r.ramp)); setv('atSelect', r.at); }
+      setv('multSelect', rpick(r.mult));
+    }
+    function applyLook(l) { setv('invertSelect', rpick(l.invert)); setv('zoomSelect', rpick(l.zoom)); setv('zoomAmt', (l.amount[0] + Math.random() * (l.amount[1] - l.amount[0])).toFixed(1)); }
+    function refreshVideo(quiet) { updateTempo(); updateRhythm(); updateFx(); if (!quiet) { saveSettings(); musicChanged(); } }
+    // a random rhythm: a tempo (Flat) or a run that speeds up or slows down (Variable), and the Multiple
+    function randomRhythm(quiet) {
+      if (quiet !== true) rememberForUndo();
+      if (Math.random() < 0.55) applyRhythm({ mode: 'flat', bpm: [60, 200], mult: ['0.5', '1', '1', '2', '3', '4', '4', '6'] });
+      else {
+        const slowing = Math.random() < 0.5;
+        applyRhythm({ mode: 'variable', start: slowing ? [60, 200] : [300, 900], end: slowing ? [300, 900] : [60, 200], ramp: [6, 20], at: Math.random() < 0.7 ? 'end' : 'start', mult: ['1', '1', '2', '3', '4'] });
       }
       document.getElementById('followCuts').checked = Math.random() < 0.15;
-      set('invertSelect', from(['off', 'off', 'mono', 'colour'])); set('zoomSelect', from(['off', 'out', 'out', 'in']));
-      set('zoomAmt', (0.2 + Math.random() * 1.6).toFixed(1));
-      updateTempo(); updateRhythm(); updateFx();
-      if (!quiet) { saveSettings(); musicChanged(); }
+      refreshVideo(quiet === true);
     }
-    // video and sound together, the sound matched to the speed: fast cuts get sparse hits and a slow arpeggio in a dry room, slow cuts get room, wash and a busier arpeggio
-    function randomAll() {
-      rememberForUndo();
-      document.getElementById('musicSelect').value = 'on';
-      randomVideo(true);
-      randomMusic(true);
-      const set = (id, v) => { document.getElementById(id).value = String(v); };
-      const rate = rhythmCutsPerSecond();
-      if (rate >= 4) {
-        set('arpRateSelect', Math.floor(Math.random() * 2)); set('hitOnSelect', 1 + Math.floor(Math.random() * 3));
-        set('spaceRange', Math.min(50, +document.getElementById('spaceRange').value)); set('echoRange', Math.min(20, +document.getElementById('echoRange').value));
-      } else if (rate <= 1.5) {
-        set('arpRateSelect', 2 + Math.floor(Math.random() * 2)); set('hitOnSelect', 0);
-        set('spaceRange', Math.max(40, +document.getElementById('spaceRange').value));
-        if (Math.random() < 0.6) set('washRange', Math.max(20, +document.getElementById('washRange').value));
-      }
-      updateMusic();
+    // a random look: invert and zoom
+    function randomLook(quiet) {
+      if (quiet !== true) rememberForUndo();
+      applyLook({ invert: ['off', 'off', 'mono', 'colour'], zoom: ['off', 'out', 'out', 'in'], amount: [0.2, 1.8] });
+      refreshVideo(quiet === true);
+    }
+    // the Video half of Random: rhythm and look
+    function randomVideo(quiet) {
+      if (quiet !== true) rememberForUndo();
+      randomRhythm(true); randomLook(true);
+      if (quiet !== true) { saveSettings(); musicChanged(); }
     }
     // how many cuts a second the music hears (flat: the tempo, or every picture cut when the check is on; variable: the mean of the two ends)
     function rhythmCutsPerSecond() {
@@ -634,31 +807,75 @@
       if (rhythmMode() === 'variable') return (1000 / ((parseFloat(document.getElementById('startMsRange').value) + parseFloat(document.getElementById('endMsRange').value)) / 2)) * follow;
       return (bpmValue() / 60) * follow;
     }
+    // the sound matched to the speed: fast cuts get a slow arpeggio, sparse hits and a drier room; slow cuts get busier notes, every-cut hits and a big room
+    function matchSoundToSpeed() {
+      const rate = rhythmCutsPerSecond();
+      if (rate >= 4) {
+        if (getn('arpRateSelect') > 1) setv('arpRateSelect', Math.floor(Math.random() * 2));
+        if (getn('hitOnSelect') === 0) setv('hitOnSelect', 1 + Math.floor(Math.random() * 3));
+        setv('spaceRange', Math.min(50, getn('spaceRange'))); setv('echoRange', Math.min(20, getn('echoRange')));
+      } else if (rate <= 1.5) {
+        if (getn('arpRateSelect') < 2) setv('arpRateSelect', 2 + Math.floor(Math.random() * 2));
+        setv('hitOnSelect', 0);
+        setv('spaceRange', Math.max(40, getn('spaceRange')));
+      }
+    }
+    // rules so the parts of a sound agree, whatever drew them
+    function soundRules() {
+      const rate = rhythmCutsPerSecond();
+      if (getn('arpRange') < 20) setv('arpRange', 0);                                           // a faint arpeggio is noise: on properly, or off
+      if (rate > 2 && getn('hitTypeSelect') > 0 && getn('hitOnSelect') === 0 && getn('arpRange') > 0 && getn('arpRateSelect') === 3) setv('arpRateSelect', 1);   // hits on every fast cut and 4 notes a cut fight
+      if (getn('dynSelect') === 3 && rhythmMode() !== 'variable') setv('dynSelect', 0);          // a flat speed has nothing to follow
+      if (getn('brightRange') > 45) { setv('ringRange', Math.min(20, getn('ringRange'))); setv('shimmerRange', Math.min(20, getn('shimmerRange'))); }   // bright plus metal is harsh
+      if (rate > 6) setv('echoRange', 0);                                                        // an echo smears very fast cuts
+      const tex = ['echoRange', 'washRange', 'ringRange', 'shimmerRange'].filter(id => getn(id) > 0).sort((a, b) => getn(b) - getn(a));
+      tex.slice(2).forEach(id => setv(id, 0));                                                   // two textures at most
+    }
     function randomMusic(quiet) {
       if (quiet !== true) rememberForUndo();
-      const pick = ([lo, hi]) => Math.round(lo + Math.random() * (hi - lo));
-      for (const [k, range] of Object.entries(RANDOM_RANGES)) document.getElementById(`${k}Range`).value = String(pick(range));
-      for (const k of ['echo', 'wash', 'ring', 'shimmer']) if (Math.random() < 0.5) document.getElementById(`${k}Range`).value = '0';   // flavours, not the rule: often none
+      for (const [k, range] of Object.entries(RANDOM_RANGES)) setv(`${k}Range`, rint(range));
+      for (const k of ['echo', 'wash', 'ring', 'shimmer']) if (Math.random() < 0.5) setv(`${k}Range`, 0);   // flavours, not the rule: often none
       const r = Math.random();
-      const choice = (id, n) => { document.getElementById(id).value = String(Math.floor(Math.random() * n)); };
+      const choice = (id, n) => setv(id, Math.floor(Math.random() * n));
       choice('hitTypeSelect', 5); choice('hitOnSelect', 4); choice('arpStepsSelect', 4); choice('arpRateSelect', 4); choice('dynSelect', 4);
-      if (Math.random() < 0.5) document.getElementById('dynSelect').value = '0';                   // an arc over the whole clip is a bigger decision than a sound: steady half the time
-      if (document.getElementById('hitTypeSelect').value === '0' || Math.random() < 0.25) document.getElementById('hitTypeSelect').value = '0';   // hits and arpeggios come and go
-      if (Math.random() < 0.55) document.getElementById('arpRange').value = '0';
-      document.getElementById('subWaveSelect').value = r < 0.5 ? '0' : r < 0.75 ? '1' : '2';
-      document.getElementById('padWaveSelect').value = String(Math.floor(Math.random() * 4));
-      document.getElementById('chordSelect').value = String(Math.floor(Math.random() * 4));
-      document.getElementById('seedVal').value = String(1 + Math.floor(Math.random() * 99999));
+      if (Math.random() < 0.5) setv('dynSelect', 0);                                             // an arc over the whole clip is a bigger decision than a sound: steady half the time
+      if (getn('hitTypeSelect') === 0 || Math.random() < 0.25) setv('hitTypeSelect', 0);         // hits and arpeggios come and go
+      if (Math.random() < 0.55) setv('arpRange', 0);
+      setv('subWaveSelect', r < 0.5 ? 0 : r < 0.75 ? 1 : 2);
+      choice('padWaveSelect', 4); choice('chordSelect', 4);
+      setv('seedVal', 1 + Math.floor(Math.random() * 99999));
+      soundRules();
       if (quiet !== true) updateMusic();
     }
-    function showFxTab(which) {
-      const music = which === 'music';
-      document.getElementById('paneVideo').hidden = music;
-      document.getElementById('paneMusic').hidden = !music;
-      document.getElementById('tabVideo').classList.toggle('on', !music);
-      document.getElementById('tabMusic').classList.toggle('on', music);
-      document.getElementById('fxTabVal').value = music ? 'music' : 'video';
+    function applySound(c) {
+      for (const k of Object.keys(RANDOM_RANGES)) setv(`${k}Range`, rint(c[k]));
+      for (const k of ['echo', 'wash', 'ring', 'shimmer']) if (c[k][0] === 0 && Math.random() < 0.4) setv(`${k}Range`, 0);
+      setv('chordSelect', rpick(c.chord)); setv('subWaveSelect', rpick(c.subWave)); setv('padWaveSelect', rpick(c.padWave));
+      setv('hitTypeSelect', rpick(c.hitType)); setv('hitOnSelect', rpick(c.hitOn)); setv('dynSelect', rpick(c.dyn));
+      setv('arpStepsSelect', Math.floor(Math.random() * 4)); setv('arpRateSelect', Math.floor(Math.random() * 4));
+      setv('seedVal', 1 + Math.floor(Math.random() * 99999));
+    }
+    // everything at once, inside the character, the sound matched to the speed
+    function randomAll() {
+      rememberForUndo();
+      const chosen = document.getElementById('characterSelect').value;
+      const key = CHARACTERS[chosen] ? chosen : rpick(Object.keys(CHARACTERS));
+      const c = CHARACTERS[key];
+      setv('musicSelect', 'on');
+      applyRhythm(c.rhythm); applyLook(c.look);
+      document.getElementById('followCuts').checked = false;
+      applySound(c.sound);
+      matchSoundToSpeed();
+      soundRules();
+      refreshVideo(true);
+      updateMusic();
+      if (!CHARACTERS[chosen]) setStatus(`Random · ${c.name}`);
+      return key;
+    }
+    // choosing a character rolls inside it at once
+    function pickCharacter() {
       saveSettings();
+      if (CHARACTERS[document.getElementById('characterSelect').value]) randomAll();
     }
     // how many images, how long the result runs, and how long the cuts are
     // the "Change over" slider can take at most every cut of the selection, so its range follows the images (and the invert pairs)
@@ -687,19 +904,20 @@
       const whole = v.ramp >= Math.ceil(cuts / (parseFloat(document.getElementById('multSelect').value) || 1) - 1e-9);
       const pace = rhythmMode() === 'variable' ? (v.start_ms === v.end_ms ? f(lens[0]) : whole ? `${f(lens[0])} → ${f(lens[lens.length - 1])}` : v.at === 'start' ? `${f(lens[0])} → ${f(lens[lens.length - 1])} over the first ${v.ramp}` : `${f(lens[0])}, then ${f(lens[lens.length - 1])} over the last ${v.ramp}`) : hi > lo * 1.05 ? `${f(lo)} – ${f(hi)}` : f(lo);
       info.textContent = `${n} images · ${fmtDuration(sec(starts[cuts]))} · cuts ${pace}`;
+      document.getElementById('exportMeta').textContent = `1080 × 1920 · ${fmtDuration(sec(starts[cuts]))} · ${musicOn() ? 'sound included' : 'silent'}`;
     }
     // ---- while the drone plays it is the player's clock ----
     const droneLive = new window.Drone.Live();
     function stopMusic() {
       droneLive.stop();
-      document.getElementById('playBtn').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+      setPlayLabel();
     }
     let musicPending = false;
-    async function startMusic() {
+    async function startMusic(fromSec = 0) {
       musicPending = true;                                                   // the drone is built live: only its level takes a blink
-      try { await droneLive.play(synthParams(), synthStartsSec(), 0); } catch (e) { setStatus(`Could not play the music: ${e.message}`); }
+      try { await droneLive.play(synthParams(), synthStartsSec(), fromSec); } catch (e) { setStatus(`Could not play the music: ${e.message}`); }
       musicPending = false;
-      cutPos = 0;
+      cutPos = fromSec * 30;
       lastTick = performance.now();
     }
     // tempo, multiple, invert or any music setting changed: the drone swaps in the new sound at once, from where the picture is
@@ -709,7 +927,7 @@
       if (!musicOn()) { droneLive.stop(); return; }
       if (droneLive.playing) {
         droneLive.update(synthParams(), synthStartsSec(), () => cutPos / 30);
-      } else startMusic();
+      } else startMusic(cutPos / 30);
     }
     function zoomScale(mode, amountPct, p) {
       const a = amountPct / 100;
@@ -738,8 +956,10 @@
     function updateFx() {
       saveSettings();
       document.getElementById('zoomAmtVal').textContent = `${parseFloat(document.getElementById('zoomAmt').value).toFixed(1)}%`;
-      document.getElementById('zoomAmt').disabled = document.getElementById('zoomSelect').value === 'off';
-      document.getElementById('zoomAmtRow').hidden = document.getElementById('zoomSelect').value === 'off';
+      const zoomOff = document.getElementById('zoomSelect').value === 'off';
+      document.getElementById('zoomAmt').disabled = zoomOff;
+      document.getElementById('zoomAmtRow').classList.toggle('dim', zoomOff);
+      syncSegs(); paintRanges();
       if (!isPlaying) clearFx();
       musicChanged();   // invert changes the cuts, so the sound must follow
     }
@@ -754,73 +974,105 @@
         const dt = now - lastTick;
         lastTick = now;
         if (!isPlaying) return;
-        const active = activePlates();
-        const stageImg = document.getElementById('stageImg');
-        if (!active.length || stageImg.style.display === 'none') return;
+        if (!activePlates().length || document.getElementById('stageImg').style.display === 'none') return;
         if (musicPending) return;
         if (musicOn() && droneLive.playing && !droneLive.holding) cutPos = droneLive.pos() * 30;           // the drone is the clock (positions are in frames)
         else cutPos += (dt * 30) / 1000;
-        const fx = fxSettings();
-        const tl = timelineFor(active.length);
-        const plan = planAt(cutPos, active.length, fx.invert, tl);
-        currentIdx = plan.plate;
-        const url = active[plan.plate].preview || active[plan.plate].url;
-        if (stageImg.getAttribute('src') !== url) stageImg.src = url;
-        applyFx(plan, fx);
+        drawFrame();
       }, 16);
+    }
+    // the picture at cutPos: the stage image, its effects (while playing), the film strip mark and the time
+    let shownTime = '';
+    function drawFrame() {
+      const active = activePlates();
+      const stageImg = document.getElementById('stageImg');
+      if (!active.length) { markFilmstrip(-1); return; }
+      const fx = fxSettings();
+      const tl = timelineFor(active.length);
+      const plan = planAt(cutPos, active.length, fx.invert, tl);
+      currentIdx = plan.plate;
+      const url = active[plan.plate].preview || active[plan.plate].url;
+      if (stageImg.getAttribute('src') !== url) stageImg.src = url;
+      if (isPlaying) applyFx(plan, fx); else clearFx();
+      markFilmstrip(plan.plate);
+      const total = tl[tl.length - 1], t = ((cutPos % total) + total) % total;
+      const clock = f => { const s = f / 30; return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`; };
+      const txt = `${clock(t)}|${clock(total)}|${plan.cut + 1}|${tl.length - 1}`;
+      if (txt !== shownTime) {
+        shownTime = txt;
+        document.getElementById('timecode').innerHTML = `${clock(t)} <span>/ ${clock(total)} · cut ${plan.cut + 1} / ${tl.length - 1}</span>`;
+      }
     }
 
     // start again from the first image and the start of the sound (with a long slow run, this skips the wait)
     function restartPlay() {
-      if (!isPlaying) { togglePlay(); return; }
+      if (!isPlaying) { cutPos = 0; togglePlay(); return; }
       cutPos = 0; lastTick = performance.now(); currentIdx = 0;
       if (droneLive.playing) droneLive.restart(synthParams(), synthStartsSec());
     }
+    function setPlayLabel() {
+      const b = document.getElementById('playBtn');
+      b.textContent = isPlaying ? 'Pause' : 'Play';
+      b.setAttribute('aria-label', b.textContent);
+      b.classList.toggle('playing', isPlaying);
+    }
+    // play carries on from where the playhead is (Restart goes back to the start)
     function togglePlay() {
       const stageImg = document.getElementById('stageImg');
       stageImg.style.display = 'block';
       isPlaying = !isPlaying;
-      if (isPlaying) { cutPos = 0; lastTick = performance.now(); } else { clearFx(); }
-      document.getElementById('playBtn').textContent = isPlaying ? '⏸ Pause' : '▶ Play';
+      lastTick = performance.now();
+      if (!isPlaying) { clearFx(); drawFrame(); }
+      setPlayLabel();
       if (!isPlaying) stopMusic();
-      else if (musicOn()) startMusic();
+      else if (musicOn()) startMusic(cutPos / 30);
     }
 
     function toggleReticle() {
-      document.getElementById('reticle').classList.toggle('visible');
+      const on = document.getElementById('reticle').classList.toggle('visible');
+      document.getElementById('targetBtn').setAttribute('aria-pressed', String(on));
     }
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'fxTabVal', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'invertSelect', 'zoomSelect', 'zoomAmt', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
         PERSISTED.forEach(id => {
           const el = document.getElementById(id);
-          if (el && saved[id] !== undefined && [...(el.options || [{ value: saved[id] }])].some(o => o.value === saved[id] || el.type === 'range')) {
-            el.value = saved[id];
-          }
+          if (!el || saved[id] === undefined) return;
+          if (el.type === 'checkbox') el.checked = saved[id] === true;
+          else if ([...(el.options || [{ value: saved[id] }])].some(o => o.value === saved[id] || el.type === 'range')) el.value = saved[id];
         });
       } catch (e) {}
     }
     function saveSettings() {
       try {
         const out = {};
-        PERSISTED.forEach(id => { out[id] = document.getElementById(id).value; });
+        PERSISTED.forEach(id => { const el = document.getElementById(id); out[id] = el.type === 'checkbox' ? el.checked : el.value; });
         localStorage.setItem('studioSettings', JSON.stringify(out));
       } catch (e) {}
     }
 
+    // the frames a picture cut lasts, next to the Multiple: one number (Flat) or from start to end (Variable)
+    function showSpeed() {
+      const mult = parseFloat(document.getElementById('multSelect').value) || 1;
+      const f = ms => Math.max(1, (ms * 30) / 1000 / mult);
+      const fmt = x => (x < 10 ? x.toFixed(1).replace(/\.0$/, '') : String(Math.round(x)));
+      const v = variableParams();
+      document.getElementById('speedVal').textContent = rhythmMode() === 'variable' ? `${fmt(f(v.start_ms))}→${fmt(f(v.end_ms))}f` : `${framesPerCut.toFixed(1)}f`;
+    }
     // flat or variable speed: which controls show, and the cuts follow
     function updateRhythm() {
       syncRampRange();
       const variable = rhythmMode() === 'variable';
       document.getElementById('flatBox').hidden = variable;
       document.getElementById('varBox').hidden = !variable;
-      document.getElementById('speedVal').textContent = variable ? '' : `${framesPerCut.toFixed(1)}f`;
+      showSpeed();
       const v = variableParams();
       document.getElementById('startMsVal').textContent = `${v.start_ms} ms`;
       document.getElementById('endMsVal').textContent = `${v.end_ms} ms`;
+      syncSegs(); paintRanges();
       saveSettings();
       restartLoop();
       musicChanged();
@@ -831,7 +1083,8 @@
       document.getElementById('bpmVal').textContent = `${Math.round(bpm)} BPM`;
       const mult = parseFloat(document.getElementById('multSelect').value);
       framesPerCut = Math.max(1, (30 * 60) / (bpm * mult));
-      document.getElementById('speedVal').textContent = rhythmMode() === 'variable' ? '' : `${framesPerCut.toFixed(1)}f`;
+      showSpeed();
+      syncSegs(); paintRanges();
       restartLoop();
       musicChanged();
     }
@@ -1089,10 +1342,11 @@
 
     async function exportVideo() {
       if (blockedByAi()) return;
-      const btn = document.getElementById('exportBtn');
-      btn.disabled = true;
+      if (exporting) return;
       exporting = true;
-      btn.textContent = 'Rendering...';
+      setExportState('busy');
+      setMusicState('busy', 'Rendering on the server…');
+      let ok = false;
       try {
         if (musicOn()) {                                   // the same WebAudio drone as the preview, rendered offline and sent along
           setMusicState('busy', 'Preparing the sound…');
@@ -1100,7 +1354,7 @@
           const up = await fetch('/api/export-audio', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: wav });
           const sent = await up.json();
           if (!sent.ok) throw new Error(sent.error || 'the sound was not accepted');
-          setMusicState('', '');
+          setMusicState('busy', 'Rendering on the server…');
         }
         const res = await fetch('/api/export-video', {
           method: 'POST',
@@ -1121,29 +1375,31 @@
           const link = document.getElementById('downloadLink');
           link.href = data.video_url;
           link.setAttribute('download', data.filename || 'Demo.mp4');
-          link.textContent = `⬇ Download ${data.filename || 'MP4'}`;
           link.hidden = false;
+          document.getElementById('exportFile').textContent = data.filename || 'MP4';
           link.click();                                                  // the file saves itself; the link stays as a way to get it again
+          ok = true;
           setStatus(`Export ready, downloading: ${data.images} images, ${data.seconds}s.`);
         } else {
           setStatus(`Export failed: ${data.error || 'unknown error'}`);
         }
       } catch (e) {
-        setMusicState('', '');
         setStatus(`Export failed: ${e.message}`);
       } finally {
         exporting = false;
-        btn.disabled = false;
-        btn.textContent = 'Export MP4';
+        setExportState(ok ? 'ready' : 'idle');
       }
     }
 
     restoreSettings();
+    buildSegs();
     updateFx();
     updateTempo();
     updateRhythm();
     updateMusic();
-    showFxTab(document.getElementById('fxTabVal').value);
+    showSoundGroup(document.getElementById('soundGroupVal').value);
+    setPlayLabel();
+    try { setMode(localStorage.getItem('studioMode') || 'curate'); } catch (e) { setMode('curate'); }
     ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'].forEach(id => document.getElementById(id).addEventListener('change', saveSettings));
     document.getElementById('worldSelect').addEventListener('change', () => { document.getElementById('directionInput').value = ''; saveSettings(); updateDirectionHint(); });
     loadWorlds();
@@ -1215,7 +1471,14 @@ Object.assign(window, {
   randomVideo,
   randomAll,
   undoRandom,
-  showFxTab,
+  showSoundGroup,
+  toggleSound,
+  setMode,
+  randomRhythm,
+  randomLook,
+  pickCharacter,
+  filmstripClick,
+  trashCurrent,
   togglePromptOverlay,
   toggleReticle,
   toggleSettings,

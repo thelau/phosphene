@@ -3,37 +3,37 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Match-Cut Studio</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%230b0b0d%27/%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%276%27 fill=%27none%27 stroke=%27%23ec540c%27 stroke-width=%273%27/%3E%3C/svg%3E" />
+  <title>Demo Studio</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%23121110%27/%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%276%27 fill=%27none%27 stroke=%27%23ec540c%27 stroke-width=%273%27/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/src/style.css" />
-
 </head>
-<body>
+<body data-mode="curate">
   <div id="loader"><div class="spin"></div><div class="msg" id="loaderMsg">Loading library…</div></div>
 
-  <header>
-    <div class="header-left">
-      <select id="worldSelect" title="Which territory to generate in">
-        <option value="">🎲 Mix it up</option>
-        <option value="__custom__">✍️ Custom territory…</option>
-        <option value="__wildcard__">✨ New territory (Kimi decides)</option>
-      </select>
-      <input id="directionInput" type="text" maxlength="300" placeholder="Direction (optional): e.g. apparel, wet, warm" style="width:230px">
-      <select id="batchCountSelect" title="Number of images per batch">
-        <option value="2">2 images</option>
-        <option value="4" selected>4 images</option>
-        <option value="6">6 images</option>
-        <option value="8">8 images</option>
-        <option value="12">12 images</option>
-        <option value="16">16 images</option>
-        <option value="20">20 images</option>
-      </select>
-      <button class="primary" id="generateBtn" onclick="generateImages()">Generate Images</button>
+  <div class="too-small" id="tooSmall" role="alert">
+    <div>
+      <b>Make the window bigger</b>
+      <p>The studio needs at least 1200 × 640 to show the film and its settings side by side. A 13" laptop with the browser maximised is enough.</p>
     </div>
+  </div>
 
-    <div class="header-right">
-      <button onclick="toggleSettings()" id="settingsBtn" title="Settings">⚙️</button>
+  <header class="topbar">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#EC540C" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="3"></circle><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(-30 12 12)"></ellipse></svg>
+      <span>Demo Studio</span>
     </div>
+    <nav class="modes" aria-label="Mode">
+      <div class="mode-seg">
+        <button id="modeCurate" onclick="setMode('curate')" aria-pressed="true">Curate</button>
+        <button id="modeFilm" onclick="setMode('film')" aria-pressed="false">Film</button>
+      </div>
+      <span class="kbd-hint"><kbd>Tab</kbd> switch · <kbd>Space</kbd> play</span>
+    </nav>
+    <div class="grow"></div>
+    <span class="sel-note" id="selNote"></span>
+    <button class="icon-btn" onclick="toggleSettings()" id="settingsBtn" title="Settings: models, Kimi key, scorecard" aria-label="Settings">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
+    </button>
 
     <div class="settings-popover" id="settingsPopover">
       <div class="setting-row">
@@ -81,14 +81,14 @@
 
       <div class="setting-row">
         <div class="setting-label"><span>AI critic (Kimi)</span></div>
-        <label style="font-size:12px;display:block;margin:4px 0"><input type="checkbox" id="criticOn" onchange="saveCritic()" /> Score new images (shown on each card)</label>
-        <label style="font-size:12px;display:block;margin:4px 0"><input type="checkbox" id="criticTrash" onchange="saveCritic()" /> Auto-trash weak ones (reason shown in Trash)</label>
-        <div style="font-size:10px;opacity:.6">Off by default: on a test it didn't yet match your keep/trash choices.</div>
+        <label class="check-line"><input type="checkbox" id="criticOn" onchange="saveCritic()" /> Score new images (shown on each card)</label>
+        <label class="check-line"><input type="checkbox" id="criticTrash" onchange="saveCritic()" /> Auto-trash weak ones (reason shown in Trash)</label>
+        <div class="setting-note">Off by default: on a test it didn't yet match your keep/trash choices.</div>
       </div>
 
       <div class="setting-row">
         <div class="setting-label"><span>Model scorecard (kept / trashed / logo-QA fail)</span></div>
-        <div id="modelStats" style="font-size:11px;line-height:1.6;opacity:.85;"></div>
+        <div id="modelStats" class="setting-note"></div>
       </div>
 
       <div class="setting-row">
@@ -97,333 +97,365 @@
     </div>
   </header>
 
-  <div class="workspace">
-    <div class="preview-col">
-     <div class="preview-scroll">
-      <div class="panel-title">Preview sequence</div>
-      <div class="stage">
-        <img id="stageImg" alt="" />
-        <div class="reticle" id="reticle">
-          <div class="reticle-circle"></div>
-        </div>
+  <div class="views">
+    <!-- ============ CURATE: the images ============ -->
+    <section class="view" id="viewCurate" aria-label="Curate">
+      <div class="gen-row">
+        <select id="worldSelect" title="Which territory to generate in">
+          <option value="">🎲 Mix it up</option>
+          <option value="__custom__">✍️ Custom territory…</option>
+          <option value="__wildcard__">✨ New territory (Kimi decides)</option>
+        </select>
+        <input id="directionInput" type="text" maxlength="300" placeholder="Direction (optional): e.g. apparel, wet, warm" />
+        <select id="batchCountSelect" title="Number of images per batch">
+          <option value="2">2 images</option>
+          <option value="4" selected>4 images</option>
+          <option value="6">6 images</option>
+          <option value="8">8 images</option>
+          <option value="12">12 images</option>
+          <option value="16">16 images</option>
+          <option value="20">20 images</option>
+        </select>
+        <button class="primary" id="generateBtn" onclick="generateImages()">Generate</button>
       </div>
 
-      <div class="controls">
-        <div class="control-line">
-          <button onclick="togglePlay()" id="playBtn" style="flex:1">▶ Play</button>
-          <button onclick="restartPlay()" id="restartBtn" title="Start again from the first image (and the start of the sound)">⟲ Restart</button>
-          <button onclick="toggleReticle()" id="targetBtn" title="Show where the logo must sit: dead-center, 18% of the width">🎯 Target</button>
+      <div class="gallery-col">
+        <div class="gallery-head">
+          <div class="seg">
+            <button id="tabSelection" onclick="setTrashView(false)">Selection (<span id="selCount">0</span>)</button>
+            <button id="tabTrash" onclick="setTrashView(true)">🗑️ Trash (<span id="trashCount">0</span>)</button>
+          </div>
+          <div class="order-tools" id="seqBox">
+            <button class="reset-ai" id="resetAi" onclick="resetAi()" title="Undo your drags and go back to the order the AI made" hidden>↺ Back to the AI's order</button>
+            <div class="seg" id="orderSeg" role="tablist" title="Switch between your own order and the AI's order. Nothing is lost when you switch."></div>
+            <button id="aiBtn" onclick="toggleAiPanel(event)" title="Let the AI order your selection. Your own order is never touched.">✨ Order with AI…</button>
+            <div class="ai-panel" id="aiPanel" hidden onclick="event.stopPropagation()">
+              <h4>Order with AI</h4>
+              <label>Use
+                <select id="aiLength">
+                  <option value="">All images</option>
+                  <option value="12">Best 12</option>
+                  <option value="24">Best 24</option>
+                  <option value="36">Best 36</option>
+                  <option value="48">Best 48</option>
+                </select>
+              </label>
+              <label>Note (optional)
+                <input id="aiDirection" type="text" maxlength="300" placeholder="e.g. open on the cap, end on the container" />
+              </label>
+              <div class="ai-foot">
+                <button onclick="toggleAiPanel()">Cancel</button>
+                <button class="primary" id="aiGo" onclick="startAiOrder()">Order</button>
+              </div>
+            </div>
+          </div>
+          <div class="trash-bar" id="trashBar" hidden>
+            <span id="trashSelCount">0 selected</span>
+            <button id="trashSelAll" onclick="selectAllTrash()">Select all</button>
+            <button id="trashDelSel" class="danger" onclick="deleteSelected()">Delete selected…</button>
+            <button id="trashEmpty" class="danger" onclick="emptyTrash()">Empty trash…</button>
+          </div>
         </div>
+        <div class="ai-note" id="aiNote" hidden><b>✨ The AI's note</b><span id="seqSummary"></span><button id="makeManual" onclick="makeManual()" title="Copy this order over your Manual order">Use as my Manual order…</button></div>
+        <div class="grid-col" id="grid"></div>
+      </div>
+    </section>
 
-        <div class="control-line">
-          <button onclick="randomAll()" id="randomAllBtn" style="flex:1" title="Rolls the speed, the effects and the sound together, and matches the sound to the speed">🎲 Random all</button>
-          <button onclick="undoRandom()" id="undoRandomBtn" title="Go back to the settings from before the last random" disabled>↶ Undo</button>
-        </div>
-
-        <div class="seg fx-tabs" role="tablist">
-          <button id="tabVideo" class="on" onclick="showFxTab('video')">Video</button>
-          <button id="tabMusic" onclick="showFxTab('music')">Music</button>
-        </div>
-        <input type="hidden" id="fxTabVal" value="video" />
-        <input type="hidden" id="seedVal" value="7" />
-
-        <div class="tabpane" id="paneVideo">
-          <button onclick="randomVideo()" id="randomVideoBtn" title="Picks a new speed and effects: tempo or a variable run, Multiple, Invert, Zoom">🎲 Random video</button>
-          <div class="control-line">
-            <span>Speed</span>
-            <select id="rhythmSelect" onchange="updateRhythm()" style="flex:1" title="Flat: every cut the same length, set by a tempo. Variable: the cuts speed up or slow down from an entry length to an exit length.">
-              <option value="flat">Flat · tempo</option>
-              <option value="variable">Variable · accelerate / decelerate</option>
+    <!-- ============ FILM: the result ============ -->
+    <section class="view" id="viewFilm" aria-label="Film">
+      <main class="film-main">
+        <div class="look-bar">
+          <label class="look-char">Character
+            <select id="characterSelect" onchange="pickCharacter()" title="A character keeps Random inside one kind of film, modelled on the references. Any picks one at random each time.">
+              <option value="any">Any</option>
+              <option value="landing">Landing</option>
+              <option value="pulse">Pulse</option>
+              <option value="build">Build</option>
+              <option value="float">Float</option>
+              <option value="machine">Machine</option>
             </select>
-          </div>
-          <div id="flatBox">
-          <div class="control-line">
-            <span>Tempo</span>
-            <input type="range" id="bpmInput" min="1" max="500" step="1" value="136" oninput="updateTempo()" title="Beats per minute, 1 to 500" />
-            <span id="bpmVal">136 BPM</span>
-          </div>
-          </div>
-          <div id="varBox" hidden>
-            <div class="control-line">
-              <span>Start</span>
-              <input type="range" id="startMsRange" min="50" max="1000" step="10" value="100" oninput="updateRhythm()" title="How long the first cut is" />
-              <span id="startMsVal">100 ms</span>
-            </div>
-            <div class="control-line">
-              <span>End</span>
-              <input type="range" id="endMsRange" min="50" max="1000" step="10" value="600" oninput="updateRhythm()" title="How long the last cut is" />
-              <span id="endMsVal">600 ms</span>
-            </div>
-            <div class="control-line">
-              <span>Change over</span>
-              <input type="range" id="rampRange" min="2" max="60" step="1" value="12" oninput="updateRhythm()" title="How many cuts the change takes. The references hold one speed, then ease into the other over their last 12 or so cuts." />
-              <span id="rampVal">12 cuts</span>
-            </div>
-            <div class="control-line">
-              <span>Change at</span>
-              <select id="atSelect" onchange="updateRhythm()" style="flex:1" title="End: hold the start speed, then change over the last cuts (a landing, as in Ecwora and Soiltone). Start: change over the first cuts, then hold the end speed.">
-                <option value="end" selected>The end · a landing</option>
-                <option value="start">The start · a build-up</option>
-              </select>
-            </div>
-          </div>
-          <div class="control-line">
-            <span>Multiple</span>
-            <select id="multSelect" onchange="updateTempo()" style="flex:1" title="How many picture cuts per beat (or per cut of the variable run). It only changes the pictures: the music stays on the beat.">
-              <option value="0.25">×¼ (1 cut / 4 beats)</option>
-              <option value="0.5">×½ (1 cut / 2 beats)</option>
-              <option value="1">×1 (1 cut / beat)</option>
-              <option value="1.3333333">×1⅓ (1 cut / ¾ beat)</option>
-              <option value="2">×2 (2 cuts / beat)</option>
-              <option value="3">×3 (triplets, 3 cuts / beat)</option>
-              <option value="4" selected>×4 (4 cuts / beat)</option>
-              <option value="6">×6 (6 cuts / beat)</option>
-              <option value="8">×8 (8 cuts / beat)</option>
-              <option value="9">×9 (9 cuts / beat)</option>
-            </select>
-            <span id="speedVal">~4f</span>
-          </div>
-          <label class="check-line" title="Unchecked: the Multiple only cuts the pictures faster, and the music stays on the beat. Checked: the pump, hits and arpeggio fall on every picture cut too.">
-            <input type="checkbox" id="followCuts" onchange="updateTempo()" /> <span>The Multiple also changes the music</span>
           </label>
+          <button onclick="randomAll()" id="randomAllBtn" class="look-random" title="Rolls the rhythm, the look and the sound together, inside the character, and matches the sound to the speed">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg>
+            Random
+          </button>
+          <button onclick="undoRandom()" id="undoRandomBtn" class="icon-btn" title="Go back to the settings from before the last random" aria-label="Undo random" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 0 1 0 12h-3"></path></svg>
+          </button>
+        </div>
+
+        <div class="stage-wrap" id="stageHome">
+          <div class="stage" id="stage">
+            <img id="stageImg" alt="" />
+            <div class="reticle" id="reticle">
+              <i class="ret-v"></i><i class="ret-h"></i>
+              <div class="reticle-circle"></div>
+              <span class="ret-label">logo · centre · 18%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="transport">
+          <button onclick="togglePlay()" id="playBtn" class="play-btn" aria-label="Play">Play</button>
+          <button onclick="restartPlay()" id="restartBtn" class="icon-btn" title="Start again from the first image (and the start of the sound)" aria-label="Restart">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6"></path><path d="M4 4v4h4"></path></svg>
+          </button>
+          <button onclick="toggleReticle()" id="targetBtn" class="icon-btn" title="Show where the logo must sit: dead-center, 18% of the width" aria-label="Show logo target" aria-pressed="false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 1v4M12 19v4M1 12h4M19 12h4"></path></svg>
+          </button>
+          <span class="timecode" id="timecode">0:00.0 <span>/ 0:00.0 · cut 1 / 0</span></span>
+          <button onclick="toggleSound()" id="soundBtn" class="sound-btn" title="Turn the synthesized sound on or off" aria-pressed="false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"></path><path d="M16.5 9a4 4 0 0 1 0 6"></path></svg>
+            <span id="soundLabel">Sound off</span>
+          </button>
+        </div>
+
+        <section class="timeline" aria-label="Timeline">
+          <div class="tl-head">
+            <span class="tl-label">Film</span>
+            <span class="tl-hint" id="filmHint">click an image to jump there</span>
+            <span class="grow"></span>
+            <span class="tl-cur" id="curTitle"></span>
+            <button onclick="trashCurrent()" id="trashCurBtn" class="small-btn" title="Move the image on screen to the Trash">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path></svg>
+              Trash
+            </button>
+          </div>
+          <div class="filmstrip" id="filmstrip" onclick="filmstripClick(event)"></div>
           <div class="rhythm-info" id="rhythmInfo"></div>
-          <div class="control-line">
-            <span>Invert</span>
-            <select id="invertSelect" onchange="updateFx()" style="flex:1" title="Soiltone-style: every image is followed by an inverted copy of itself (same hold)">
-              <option value="off">Off</option>
-              <option value="mono">Image → inverted, grey</option>
-              <option value="colour">Image → inverted, colour</option>
-            </select>
-          </div>
-          <div class="control-line">
-            <span>Zoom</span>
-            <select id="zoomSelect" onchange="updateFx()" style="flex:1" title="Moverunion-style: a slow zoom inside every cut">
-              <option value="off">Off</option>
-              <option value="out">Slow zoom out</option>
-              <option value="in">Slow zoom in</option>
-            </select>
-          </div>
-          <div class="control-line" id="zoomAmtRow" hidden>
-            <span>Amount</span>
-            <input type="range" id="zoomAmt" min="0.2" max="6" step="0.1" value="0.6" oninput="updateFx()" />
-            <span id="zoomAmtVal">0.6%</span>
-          </div>
-        </div>
+        </section>
+      </main>
 
-        <div class="tabpane" id="paneMusic" hidden>
-          <div class="control-line">
-            <span>Source</span>
-            <select id="musicSelect" onchange="updateMusic()" style="flex:1" title="Synthesized: a dark drone that follows the cuts, in the preview and the export.">
-              <option value="off">Off</option>
-              <option value="on">Synthesized</option>
-            </select>
-          </div>
+      <aside class="inspector" aria-label="Inspector">
+        <div class="insp-scroll" id="inspScroll">
+          <input type="hidden" id="seedVal" value="7" />
 
-          <div class="tabpane" id="synthBox" hidden>
-            <div class="control-line">
-              <button id="randomBtn" onclick="randomMusic()" style="flex:1" title="Picks a new sound within what works: tuning, chord, movement, echo, room, weight">🎲 Random sound</button>
+          <!-- Rhythm -->
+          <section class="card-sec" aria-label="Rhythm">
+            <div class="sec-head"><h2>Rhythm</h2>
+              <button onclick="randomRhythm()" id="randomRhythmBtn" class="dice" title="A new rhythm: tempo or a variable run, and the Multiple" aria-label="Random rhythm"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg></button>
             </div>
-            <div class="control-line">
-              <span>Pulse</span>
-              <input type="range" id="pulseRange" min="0" max="100" value="50" oninput="updateMusic()" title="How much the music breathes with every cut" />
-              <span id="pulseVal">50</span>
-            </div>
-            <div class="control-line">
-              <span>Low end</span>
-              <input type="range" id="lowRange" min="0" max="100" value="70" oninput="updateMusic()" title="How much sub-bass" />
-              <span id="lowVal">70</span>
-            </div>
-            <div class="control-line">
-              <span>Power</span>
-              <input type="range" id="powerRange" min="0" max="100" value="60" oninput="updateMusic()" title="Thicker and heavier: a stack of detuned voices and saturation" />
-              <span id="powerVal">60</span>
-            </div>
-            <div class="control-line">
-              <span>Space</span>
-              <input type="range" id="spaceRange" min="0" max="100" value="60" oninput="updateMusic()" title="The size of the room: reverb length and amount" />
-              <span id="spaceVal">60</span>
-            </div>
-            <div class="control-line">
-              <span>Bright</span>
-              <input type="range" id="brightRange" min="0" max="100" value="30" oninput="updateMusic()" title="How far the tone opens up above the bass" />
-              <span id="brightVal">30</span>
-            </div>
-            <div class="control-line">
-              <span>Width</span>
-              <input type="range" id="widthRange" min="0" max="100" value="60" oninput="updateMusic()" title="Stereo spread" />
-              <span id="widthVal">60</span>
-            </div>
-            <div class="control-line">
-              <span>Pitch</span>
-              <input type="range" id="pitchRange" min="0" max="100" value="50" oninput="updateMusic()" title="The root of the drone, 38 to 71 Hz" />
-              <span id="pitchVal">50</span>
-            </div>
-            <div class="control-line">
-              <span>Chord</span>
-              <select id="chordSelect" onchange="updateMusic()" style="flex:1" title="The tonal layer above the sub">
-                <option value="0">Dark cluster</option>
-                <option value="1">Open fifth</option>
-                <option value="2">Minor</option>
-                <option value="3">Suspended</option>
+            <div class="row"><span class="lbl">Speed</span>
+              <select id="rhythmSelect" class="seg-src" onchange="updateRhythm()" title="Flat: every cut the same length, set by a tempo. Variable: the cuts speed up or slow down from a start length to an end length.">
+                <option value="flat">Flat</option>
+                <option value="variable">Variable</option>
               </select>
             </div>
-            <div class="control-line">
-              <span>Sub</span>
-              <select id="subWaveSelect" onchange="updateMusic()" style="flex:1" title="The wave of the deep bass">
-                <option value="0">Sine · clean</option>
-                <option value="1">Triangle · a little rounder edge</option>
-                <option value="2">Square · hollow, heavy</option>
+            <div id="flatBox">
+              <label class="row"><span class="lbl">Tempo</span>
+                <input type="range" id="bpmInput" min="1" max="500" step="1" value="136" oninput="updateTempo()" title="Beats per minute, 1 to 500" />
+                <span class="val" id="bpmVal">136 BPM</span>
+              </label>
+            </div>
+            <div id="varBox" hidden>
+              <label class="row"><span class="lbl">Start</span>
+                <input type="range" id="startMsRange" min="50" max="1000" step="10" value="100" oninput="updateRhythm()" title="How long the first cut is" />
+                <span class="val" id="startMsVal">100 ms</span>
+              </label>
+              <label class="row"><span class="lbl">End</span>
+                <input type="range" id="endMsRange" min="50" max="1000" step="10" value="600" oninput="updateRhythm()" title="How long the last cut is" />
+                <span class="val" id="endMsVal">600 ms</span>
+              </label>
+              <label class="row"><span class="lbl">Change over</span>
+                <input type="range" id="rampRange" min="2" max="60" step="1" value="12" oninput="updateRhythm()" title="How many cuts the change takes. The references hold one speed, then ease into the other over their last 12 or so cuts." />
+                <span class="val" id="rampVal">12 cuts</span>
+              </label>
+              <div class="row"><span class="lbl">Change at</span>
+                <select id="atSelect" class="seg-src" onchange="updateRhythm()" title="End: hold the start speed, then change over the last cuts (a landing, as in Ecwora and Soiltone). Start: change over the first cuts, then hold the end speed.">
+                  <option value="end" selected>End · landing</option>
+                  <option value="start">Start · build-up</option>
+                </select>
+              </div>
+            </div>
+            <label class="row"><span class="lbl">Multiple</span>
+              <select id="multSelect" onchange="updateTempo()" title="How many picture cuts per beat (or per cut of the variable run). It only changes the pictures: the music stays on the beat.">
+                <option value="0.25">×¼ (1 cut / 4 beats)</option>
+                <option value="0.5">×½ (1 cut / 2 beats)</option>
+                <option value="1">×1 (1 cut / beat)</option>
+                <option value="1.3333333">×1⅓ (1 cut / ¾ beat)</option>
+                <option value="2">×2 (2 cuts / beat)</option>
+                <option value="3">×3 (triplets)</option>
+                <option value="4" selected>×4 (4 cuts / beat)</option>
+                <option value="6">×6 (6 cuts / beat)</option>
+                <option value="8">×8 (8 cuts / beat)</option>
+                <option value="9">×9 (9 cuts / beat)</option>
               </select>
-            </div>
-            <div class="control-line">
-              <span>Pad</span>
-              <select id="padWaveSelect" onchange="updateMusic()" style="flex:1" title="The wave of the layer above the sub">
-                <option value="0">Saw · bright, thick</option>
-                <option value="1">Square · hollow</option>
-                <option value="2">Triangle · soft</option>
-                <option value="3">Pulse · nasal, reedy</option>
-              </select>
-            </div>
-            <div class="control-line">
-              <span>Movement</span>
-              <input type="range" id="movementRange" min="0" max="100" value="50" oninput="updateMusic()" title="How fast the layers drift and breathe" />
-              <span id="movementVal">50</span>
-            </div>
-            <div class="control-line">
-              <span>Echo</span>
-              <input type="range" id="echoRange" min="0" max="100" value="0" oninput="updateMusic()" title="A dark echo, timed to the cuts" />
-              <span id="echoVal">0</span>
-            </div>
-            <div class="control-line">
-              <span>Wash</span>
-              <input type="range" id="washRange" min="0" max="100" value="0" oninput="updateMusic()" title="A slow wash of noise, drifting" />
-              <span id="washVal">0</span>
-            </div>
-            <div class="control-line">
-              <span>Ring</span>
-              <input type="range" id="ringRange" min="0" max="100" value="0" oninput="updateMusic()" title="A metallic ring: bell-like partials" />
-              <span id="ringVal">0</span>
-            </div>
-            <div class="control-line">
-              <span>Shimmer</span>
-              <input type="range" id="shimmerRange" min="0" max="100" value="0" oninput="updateMusic()" title="High partials trembling and beating between the sides" />
-              <span id="shimmerVal">0</span>
-            </div>
-            <div class="subhead">Hits</div>
-            <div class="control-line">
-              <span>Hit</span>
-              <select id="hitTypeSelect" onchange="updateMusic()" style="flex:1" title="A percussive impact on the cuts">
-                <option value="0">None</option>
-                <option value="1">Thud · a sub drop</option>
-                <option value="2">Knock · short and dull</option>
-                <option value="3">Metal · a ringing strike</option>
-                <option value="4">Noise · a dark burst</option>
-              </select>
-            </div>
-            <div class="control-line">
-              <span>Impact</span>
-              <input type="range" id="hitRange" min="0" max="100" value="60" oninput="updateMusic()" title="How hard the hits land" />
-              <span id="hitVal">60</span>
-            </div>
-            <div class="control-line">
-              <span>Hit on</span>
-              <select id="hitOnSelect" onchange="updateMusic()" style="flex:1" title="Which cuts get a hit">
-                <option value="0">Every cut</option>
-                <option value="1">Every 2nd cut</option>
-                <option value="2">Every 4th cut</option>
-                <option value="3">Accents · an uneven pattern</option>
-              </select>
-            </div>
-            <div class="subhead">Arpeggio</div>
-            <div class="control-line">
-              <span>Arp</span>
-              <input type="range" id="arpRange" min="0" max="100" value="0" oninput="updateMusic()" title="A short pattern of plucked notes that repeats, in the chord's notes" />
-              <span id="arpVal">0</span>
-            </div>
-            <div class="control-line">
-              <span>Pattern</span>
-              <select id="arpStepsSelect" onchange="updateMusic()" style="flex:1" title="How many notes before the pattern repeats">
-                <option value="0">4 notes</option>
-                <option value="1">6 notes</option>
-                <option value="2" selected>8 notes</option>
-                <option value="3">16 notes</option>
-              </select>
-            </div>
-            <div class="control-line">
-              <span>Speed</span>
-              <select id="arpRateSelect" onchange="updateMusic()" style="flex:1" title="Notes per cut: it speeds up and slows down with the cuts">
-                <option value="0">1 note per 2 cuts</option>
-                <option value="1">1 note per cut</option>
-                <option value="2" selected>2 notes per cut</option>
-                <option value="3">4 notes per cut</option>
-              </select>
-            </div>
-            <div class="subhead">Dynamics</div>
-            <div class="control-line">
-              <span>Dynamics</span>
-              <select id="dynSelect" onchange="updateMusic()" style="flex:1" title="Off: steady. Rise / Fall: the notes climb or sink over the whole clip. Follows the speed: higher and brighter while the cuts are fast (with Variable speed).">
-                <option value="0">Off · steady</option>
-                <option value="1">Rise · notes climb and sharpen</option>
-                <option value="2">Fall · notes sink and soften</option>
-                <option value="3">Follows the speed · fast = higher</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-      </div>
-     </div>
-     <div class="export-dock">
-        <div class="music-state" id="musicState" hidden></div>
-        <button class="primary" onclick="exportVideo()" id="exportBtn" style="width:100%">Export MP4</button>
-        <a id="downloadLink" class="dl" hidden download></a>
-     </div>
-    </div>
-
-    <div class="gallery-col">
-      <div class="gallery-head">
-        <div class="seg">
-          <button id="tabSelection" onclick="setTrashView(false)">Selection (<span id="selCount">0</span>)</button>
-          <button id="tabTrash" onclick="setTrashView(true)">🗑️ Trash (<span id="trashCount">0</span>)</button>
-        </div>
-        <div class="order-tools" id="seqBox">
-          <button class="reset-ai" id="resetAi" onclick="resetAi()" title="Undo your drags and go back to the order the AI made" hidden>↺ Back to the AI's order</button>
-          <div class="seg" id="orderSeg" role="tablist" title="Switch between your own order and the AI's order. Nothing is lost when you switch."></div>
-          <button id="aiBtn" onclick="toggleAiPanel(event)" title="Let the AI order your selection. Your own order is never touched.">✨ Order with AI…</button>
-          <div class="ai-panel" id="aiPanel" hidden onclick="event.stopPropagation()">
-            <h4>Order with AI</h4>
-            <label>Use
-              <select id="aiLength">
-                <option value="">All images</option>
-                <option value="12">Best 12</option>
-                <option value="24">Best 24</option>
-                <option value="36">Best 36</option>
-                <option value="48">Best 48</option>
-              </select>
+              <span class="val" id="speedVal"></span>
             </label>
-            <label>Note (optional)
-              <input id="aiDirection" type="text" maxlength="300" placeholder="e.g. open on the cap, end on the container" />
+            <label class="check-line indent" title="Unchecked: the Multiple only cuts the pictures faster, and the music stays on the beat. Checked: the pump, hits and arpeggio fall on every picture cut too.">
+              <input type="checkbox" id="followCuts" onchange="updateTempo()" /> <span>The Multiple also changes the music</span>
             </label>
-            <div class="ai-foot">
-              <button onclick="toggleAiPanel()">Cancel</button>
-              <button class="primary" id="aiGo" onclick="startAiOrder()">Order</button>
+          </section>
+
+          <!-- Look -->
+          <section class="card-sec" aria-label="Look">
+            <div class="sec-head"><h2>Look</h2>
+              <button onclick="randomLook()" id="randomLookBtn" class="dice" title="A new look: invert and zoom" aria-label="Random look"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg></button>
             </div>
+            <div class="row"><span class="lbl">Invert</span>
+              <select id="invertSelect" class="seg-src" onchange="updateFx()" title="Soiltone-style: every image is followed by an inverted copy of itself (same hold)">
+                <option value="off">Off</option>
+                <option value="mono">Grey</option>
+                <option value="colour">Colour</option>
+              </select>
+            </div>
+            <div class="row"><span class="lbl">Zoom</span>
+              <select id="zoomSelect" class="seg-src" onchange="updateFx()" title="Moverunion-style: a slow zoom inside every cut">
+                <option value="off">Off</option>
+                <option value="out">Out</option>
+                <option value="in">In</option>
+              </select>
+            </div>
+            <label class="row" id="zoomAmtRow"><span class="lbl">Amount</span>
+              <input type="range" id="zoomAmt" min="0.2" max="6" step="0.1" value="0.6" oninput="updateFx()" title="How far the zoom travels inside a cut" />
+              <span class="val" id="zoomAmtVal">0.6%</span>
+            </label>
+          </section>
+
+          <!-- Sound -->
+          <section class="card-sec" aria-label="Sound">
+            <div class="sec-head"><h2>Sound</h2>
+              <button id="randomBtn" onclick="randomMusic()" class="dice" title="A new sound within what works: tuning, chord, movement, echo, room, weight" aria-label="Random sound"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg></button>
+            </div>
+            <div class="row"><span class="lbl">Source</span>
+              <select id="musicSelect" class="seg-src" onchange="updateMusic()" title="Synthesized: a dark drone that follows the cuts, in the preview and the export.">
+                <option value="off">Off</option>
+                <option value="on">Synthesized</option>
+              </select>
+            </div>
+            <div id="synthBox" hidden>
+              <div class="sound-tabs" role="tablist" aria-label="Sound groups">
+                <button role="tab" id="soundTabBed" data-group="bed" onclick="showSoundGroup('bed')">Bed <span>6</span></button>
+                <button role="tab" id="soundTabTone" data-group="tone" onclick="showSoundGroup('tone')">Tone <span>5</span></button>
+                <button role="tab" id="soundTabTexture" data-group="texture" onclick="showSoundGroup('texture')">Texture <span>4</span></button>
+                <button role="tab" id="soundTabNotes" data-group="notes" onclick="showSoundGroup('notes')">Notes <span>7</span></button>
+              </div>
+              <input type="hidden" id="soundGroupVal" value="bed" />
+
+              <div class="sgroup" id="groupBed" data-group="bed">
+                <label class="row"><span class="lbl">Pulse</span><input type="range" id="pulseRange" min="0" max="100" value="50" oninput="updateMusic()" title="How much the music breathes with every cut" /><span class="val" id="pulseVal">50</span></label>
+                <label class="row"><span class="lbl">Low end</span><input type="range" id="lowRange" min="0" max="100" value="70" oninput="updateMusic()" title="How much sub-bass" /><span class="val" id="lowVal">70</span></label>
+                <label class="row"><span class="lbl">Power</span><input type="range" id="powerRange" min="0" max="100" value="60" oninput="updateMusic()" title="Thicker and heavier: a stack of detuned voices and saturation" /><span class="val" id="powerVal">60</span></label>
+                <label class="row"><span class="lbl">Space</span><input type="range" id="spaceRange" min="0" max="100" value="60" oninput="updateMusic()" title="The size of the room: reverb length and amount" /><span class="val" id="spaceVal">60</span></label>
+                <label class="row"><span class="lbl">Bright</span><input type="range" id="brightRange" min="0" max="100" value="30" oninput="updateMusic()" title="How far the tone opens up above the bass" /><span class="val" id="brightVal">30</span></label>
+                <label class="row"><span class="lbl">Width</span><input type="range" id="widthRange" min="0" max="100" value="60" oninput="updateMusic()" title="Stereo spread" /><span class="val" id="widthVal">60</span></label>
+              </div>
+
+              <div class="sgroup" id="groupTone" data-group="tone" hidden>
+                <label class="row"><span class="lbl">Pitch</span><input type="range" id="pitchRange" min="0" max="100" value="50" oninput="updateMusic()" title="The root of the drone, 38 to 71 Hz" /><span class="val" id="pitchVal">50</span></label>
+                <label class="row"><span class="lbl">Chord</span>
+                  <select id="chordSelect" onchange="updateMusic()" title="The tonal layer above the sub">
+                    <option value="0">Dark cluster</option>
+                    <option value="1">Open fifth</option>
+                    <option value="2">Minor</option>
+                    <option value="3">Suspended</option>
+                  </select>
+                </label>
+                <label class="row"><span class="lbl">Sub wave</span>
+                  <select id="subWaveSelect" onchange="updateMusic()" title="The wave of the deep bass">
+                    <option value="0">Sine · clean</option>
+                    <option value="1">Triangle · rounder</option>
+                    <option value="2">Square · hollow, heavy</option>
+                  </select>
+                </label>
+                <label class="row"><span class="lbl">Pad wave</span>
+                  <select id="padWaveSelect" onchange="updateMusic()" title="The wave of the layer above the sub">
+                    <option value="0">Saw · bright, thick</option>
+                    <option value="1">Square · hollow</option>
+                    <option value="2">Triangle · soft</option>
+                    <option value="3">Pulse · nasal, reedy</option>
+                  </select>
+                </label>
+                <label class="row"><span class="lbl">Movement</span><input type="range" id="movementRange" min="0" max="100" value="50" oninput="updateMusic()" title="How fast the layers drift and breathe" /><span class="val" id="movementVal">50</span></label>
+              </div>
+
+              <div class="sgroup" id="groupTexture" data-group="texture" hidden>
+                <label class="row"><span class="lbl">Echo</span><input type="range" id="echoRange" min="0" max="100" value="0" oninput="updateMusic()" title="A dark echo, timed to the cuts" /><span class="val" id="echoVal">0</span></label>
+                <label class="row"><span class="lbl">Wash</span><input type="range" id="washRange" min="0" max="100" value="0" oninput="updateMusic()" title="A slow wash of noise, drifting" /><span class="val" id="washVal">0</span></label>
+                <label class="row"><span class="lbl">Ring</span><input type="range" id="ringRange" min="0" max="100" value="0" oninput="updateMusic()" title="A metallic ring: bell-like partials" /><span class="val" id="ringVal">0</span></label>
+                <label class="row"><span class="lbl">Shimmer</span><input type="range" id="shimmerRange" min="0" max="100" value="0" oninput="updateMusic()" title="High partials trembling and beating between the sides" /><span class="val" id="shimmerVal">0</span></label>
+              </div>
+
+              <div class="sgroup" id="groupNotes" data-group="notes" hidden>
+                <div class="subhead">Hits</div>
+                <label class="row"><span class="lbl">Type</span>
+                  <select id="hitTypeSelect" onchange="updateMusic()" title="A percussive impact on the cuts">
+                    <option value="0">None</option>
+                    <option value="1">Thud · a sub drop</option>
+                    <option value="2">Knock · short, dull</option>
+                    <option value="3">Metal · ringing</option>
+                    <option value="4">Noise · dark burst</option>
+                  </select>
+                </label>
+                <label class="row"><span class="lbl">Impact</span><input type="range" id="hitRange" min="0" max="100" value="60" oninput="updateMusic()" title="How hard the hits land" /><span class="val" id="hitVal">60</span></label>
+                <label class="row"><span class="lbl">On</span>
+                  <select id="hitOnSelect" onchange="updateMusic()" title="Which cuts get a hit">
+                    <option value="0">Every cut</option>
+                    <option value="1">Every 2nd cut</option>
+                    <option value="2">Every 4th cut</option>
+                    <option value="3">Accents · uneven</option>
+                  </select>
+                </label>
+                <div class="subhead">Arpeggio</div>
+                <label class="row"><span class="lbl">Amount</span><input type="range" id="arpRange" min="0" max="100" value="0" oninput="updateMusic()" title="A short pattern of plucked notes that repeats, in the chord's notes" /><span class="val" id="arpVal">0</span></label>
+                <label class="row"><span class="lbl">Pattern</span>
+                  <select id="arpStepsSelect" onchange="updateMusic()" title="How many notes before the pattern repeats">
+                    <option value="0">4 notes</option>
+                    <option value="1">6 notes</option>
+                    <option value="2" selected>8 notes</option>
+                    <option value="3">16 notes</option>
+                  </select>
+                </label>
+                <label class="row"><span class="lbl">Speed</span>
+                  <select id="arpRateSelect" onchange="updateMusic()" title="Notes per cut: it speeds up and slows down with the cuts">
+                    <option value="0">1 note per 2 cuts</option>
+                    <option value="1">1 note per cut</option>
+                    <option value="2" selected>2 notes per cut</option>
+                    <option value="3">4 notes per cut</option>
+                  </select>
+                </label>
+                <div class="subhead">Dynamics</div>
+                <label class="row"><span class="lbl">Dynamics</span>
+                  <select id="dynSelect" onchange="updateMusic()" title="Off: steady. Rise / Fall: the notes climb or sink over the whole clip. Follows the speed: higher and brighter while the cuts are fast (with Variable speed).">
+                    <option value="0">Off · steady</option>
+                    <option value="1">Rise · climb, sharpen</option>
+                    <option value="2">Fall · sink, soften</option>
+                    <option value="3">Follows the speed</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <p class="sound-off-note" id="soundOffNote">The film is silent. Choose Synthesized to add the drone.</p>
+          </section>
+        </div>
+
+        <div class="export-dock" id="exportDock" data-state="idle">
+          <div class="exp-idle">
+            <button class="primary export-btn" onclick="exportVideo()" id="exportBtn">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"></path><path d="M7 10l5 5 5-5"></path><path d="M5 20h14"></path></svg>
+              <span id="exportLabel">Export MP4</span>
+            </button>
+            <span class="exp-meta" id="exportMeta"></span>
+          </div>
+          <div class="exp-busy">
+            <div class="exp-bar"><i></i><span id="musicState">Rendering on the server…</span></div>
+            <span class="exp-meta">The file downloads by itself when it is ready</span>
+          </div>
+          <div class="exp-ready">
+            <div class="exp-done">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#EC540C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>
+              <span>Downloaded</span>
+              <button onclick="exportVideo()" id="exportAgainBtn" class="small-btn">Export again</button>
+            </div>
+            <span class="exp-meta"><span id="exportFile"></span> · <a id="downloadLink" hidden download>Download again</a></span>
           </div>
         </div>
-        <div class="trash-bar" id="trashBar" hidden>
-          <span id="trashSelCount">0 selected</span>
-          <button id="trashSelAll" onclick="selectAllTrash()">Select all</button>
-          <button id="trashDelSel" class="danger" onclick="deleteSelected()">Delete selected…</button>
-          <button id="trashEmpty" class="danger" onclick="emptyTrash()">Empty trash…</button>
-        </div>
-      </div>
-      <div class="ai-note" id="aiNote" hidden><b>✨ The AI's note</b><span id="seqSummary"></span><button id="makeManual" onclick="makeManual()" title="Copy this order over your Manual order">Use as my Manual order…</button></div>
-      <div class="grid-col" id="grid"></div>
-    </div>
+      </aside>
+    </section>
   </div>
 
   <div class="status-text" id="statusText" data-idle="1">Ready</div>
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" role="status"></div>
 
   <div class="busy-bg" id="busy" hidden>
     <div class="busy"><div class="spin"></div><div id="busyMsg">Working…</div></div>

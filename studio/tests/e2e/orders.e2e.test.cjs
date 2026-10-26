@@ -1,4 +1,4 @@
-const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, skip, api, page, consoleErrors, addAi } = require('./harness.cjs');
+const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, skip, api, page, consoleErrors, addAi } = require('./harness.cjs');
 register();
 
 test('orders: one Manual order, and the AI button, are all there is', { skip }, async () => {
@@ -20,7 +20,7 @@ test('orders: switch between Manual and AI without losing either', { skip }, asy
   assert.deepEqual(await names(), ['k2', 'k3', 'k1']);
   assert.equal(await text('#seqSummary'), 'Hook on k2, lands on k1.');
   assert.equal(await page.locator('#aiNote').isVisible(), true);
-  assert.match(await text('#aiNote'), /The AI's note/);
+  assert.match(await text('#aiNote'), /The AI's note/i);
   assert.deepEqual((await seg()).map(x => x.on), [false, true]);
   await shot('12-orders-ai');
   await clickSeg('Manual');
@@ -32,12 +32,14 @@ test('orders: switch between Manual and AI without losing either', { skip }, asy
 
 test('player: switching between Manual and AI while playing follows the new order from its first image', { skip }, async () => {
   const ctx = await fresh({ setup: aiSetup() });                                      // Manual: k3,k1,k2   AI: k2,k3,k1
+  await film();
   await page.fill('#bpmInput', '60'); await page.locator('#bpmInput').dispatchEvent('input');
   await page.selectOption('#multSelect', '1');                                        // one cut per second
   await page.click('#playBtn');
   const src = async () => (await page.locator('#stageImg').getAttribute('src')).split('/').pop().replace('.svg', '');
   await page.waitForFunction(() => document.getElementById('stageImg').getAttribute('src'));
   assert.equal(await src(), 'k3');                                                    // starts on Manual's first
+  await curate();                                                                     // the orders live in Curate; the film keeps playing
   await clickSeg('AI');
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k2');
   await page.waitForFunction(() => document.getElementById('stageImg').getAttribute('src').includes('k2'), null, { timeout: 3000 });
@@ -48,7 +50,8 @@ test('player: switching between Manual and AI while playing follows the new orde
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
   await page.waitForFunction(() => document.getElementById('stageImg').getAttribute('src').includes('k3'));
   assert.equal(await src(), 'k3');                                                    // back to Manual's first
-  await page.click('#playBtn');
+  await page.keyboard.press(' ');                                                     // Space pauses from Curate too
+  assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Play');
   await ctx.close();
 });
 
