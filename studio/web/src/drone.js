@@ -150,13 +150,20 @@
   const ARP_STEPS = [4, 6, 8, 16];
   // Arpeggio moods. One instrument for all of them, the first arpeggio's patch (two detuned saws into a resonant low-pass that snaps shut on
   // each note: the modular sound), played differently, as a player turns the same patch: the notes (scale over the tonic, two octaves above
-  // the root; register lo..hi times the tonic), the shape (Dark falls, Mellow arches, Tender sighs in falling pairs), how far the filter opens and shuts (`open`, `close`), its resonance (`q`) and how long a note rings (`sustain`).
+  // the root; register lo..hi times the tonic), the shape (Dark falls; Phase: two voices loop the same notes, one a note longer, so they drift
+  // apart and back (Reich, Barbieri), one on each side; Tender sighs in falling pairs; Sweep keeps a short walk while the filter opens and
+  // shuts over ~7 s, resonant (Barbieri's Ecstatic Computation); Ratchet repeats some steps 2-4 times inside the step; Mutate changes one
+  // note each round (a Turing Machine); Accumulate plays 2 notes, then 3, ... up to the whole pattern, and starts over (an additive process)), how far the filter opens and shuts (`open`, `close`), its resonance (`q`) and how long a note rings (`sustain`).
   // Two voices take turns, so a note rings on under the next. Pluck keeps its own path (chord tones, a random walk).
   const ARP_MOODS = [
     { name: 'Pluck' },
     { name: 'Dark', scale: [0, 1, 3, 5, 7, 8], lo: 0.5, hi: 1.6, open: 1100, close: 240, q: 3, sustain: 1.6, gain: 1.0, voices: 1, shape: 'fall' },
-    { name: 'Mellow', scale: [0, 3, 5, 7, 10], lo: 0.75, hi: 2.2, open: 1200, close: 380, q: 1.5, sustain: 2.2, gain: 0.8, voices: 2, shape: 'arch' },
+    { name: 'Phase', scale: [0, 3, 7, 10], lo: 1, hi: 2.6, open: 1500, close: 380, q: 2.5, sustain: 1.2, gain: 0.7, voices: 2, shape: 'phase' },
     { name: 'Tender', scale: [0, 2, 3, 7, 10], lo: 1, hi: 3, open: 1600, close: 420, q: 2.5, sustain: 2.2, gain: 1.0, voices: 2, shape: 'sigh' },
+    { name: 'Sweep', scale: [0, 3, 7, 10], lo: 1, hi: 2.2, open: 1600, close: 300, q: 6, sustain: 1.4, gain: 0.9, voices: 2, shape: 'walk', sweep: 7 },
+    { name: 'Ratchet', scale: [0, 3, 5, 7, 10], lo: 0.75, hi: 2.2, open: 1900, close: 400, q: 2.5, sustain: 0.7, gain: 0.9, voices: 1, shape: 'walk', ratchet: true },
+    { name: 'Mutate', scale: [0, 2, 3, 7, 10], lo: 0.75, hi: 2.6, open: 1700, close: 400, q: 2.5, sustain: 1.2, gain: 1.0, voices: 2, shape: 'walk', mutate: true },
+    { name: 'Accumulate', scale: [0, 3, 5, 7, 10], lo: 0.75, hi: 2.6, open: 1700, close: 400, q: 2.5, sustain: 1.2, gain: 1.0, voices: 2, shape: 'walk', accumulate: true },
   ];
   const MOOD_DETUNE = 0.004, MOOD_ATTACK = 0.0015;                   // the first arpeggio's: two saws a hair apart, a pluck
   const moodNotes = (m, tonic) => {                                    // every note of the mood's scale inside its register, low to high
@@ -164,18 +171,18 @@
     for (let o = -2; o <= 3; o++) for (const st of m.scale) { const f = tonic * Math.pow(2, (st + 12 * o) / 12); if (f >= tonic * m.lo && f <= tonic * m.hi) out.push(f); }
     return out.sort((a, b) => a - b);
   };
+  const phaseLoop = a => [...a.slice(0, a.length >> 1), a[a.length >> 1], ...a.slice(a.length >> 1)];   // Phase's second loop: the same notes, one repeated, a step longer
   function moodPattern(shape, n, steps, rand) {                        // indices into the notes, `steps` long
     const top = n - 1, out = [];
-    let c = shape === 'fall' ? top : shape === 'sigh' ? Math.max(1, Math.round(top * 0.75)) : shape === 'arch' ? Math.floor(top * 0.25) : Math.floor(rand() * n);
+    let c = shape === 'fall' ? top : shape === 'sigh' ? Math.max(1, Math.round(top * 0.75)) : Math.floor(rand() * n);
     for (let k = 0; k < steps; k++) {
       if (shape === 'fall') {                                          // down by a step, now and then two; from the top again at the bottom
         out.push(c); c -= rand() < 0.3 ? 2 : 1; if (c < 0) c = top - Math.floor(rand() * 2);
-      } else if (shape === 'arch') {                                   // up, then back down
-        const h = Math.max(1, Math.ceil(steps / 2));
-        out.push(Math.min(top, c + (k < h ? k : 2 * h - k - 1)));
       } else if (shape === 'sigh') {                                   // falling pairs: a note and the one under it, each pair a step lower
         out.push(Math.max(0, c - Math.floor(k / 2) - (k % 2)));
-      } else out.push((c + k) % n);
+      } else {                                                         // walk (and Phase): a step or two each way
+        out.push(c); c = Math.max(0, Math.min(top, c + [-2, -1, 1, 2][Math.floor(rand() * 4)]));
+      }
     }
     return out;
   }
@@ -448,14 +455,25 @@
     // ---- arpeggio: a short pattern of plucked notes that repeats, stepping with the cuts. One voice (two detuned saws), its pitch automated ----
     if (arpAmt > 0.01 && arpMood.scale) {
       const notes = moodNotes(arpMood, f0 * 4), m = arpMood;
-      const pattern = moodPattern(m.shape, notes.length, arpSteps, rand).map(i => notes[i]);
-      const out = [gain(0.6 * m.gain, sides[0]), gain(0.6 * m.gain, sides[1])];
-      const voices = Array.from({ length: m.voices }, () => {             // fixed voices, taking turns: no node per note
+      const phase = m.shape === 'phase';
+      const loopA = phase ? Math.max(4, Math.min(8, arpSteps)) : arpSteps;
+      const pattern = moodPattern(m.shape, notes.length, loopA, rand).map(i => notes[i]);
+      const patternB = phase ? phaseLoop(pattern) : null;
+      const voices = Array.from({ length: m.voices }, (_, vi) => {          // fixed voices: no node per note
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = m.q; lp.frequency.value = m.open;
-        const env = gain(0); lp.connect(env); env.connect(out[0]); env.connect(out[1]);
+        const env = gain(0); lp.connect(env);
+        const pan = phase ? (vi ? [0.15, 1] : [1, 0.15]) : [1, 1];            // Phase: one loop leans left, the other right
+        env.connect(gain(0.6 * m.gain * pan[0], sides[0])); env.connect(gain(0.6 * m.gain * pan[1], sides[1]));
         const oscs = [-MOOD_DETUNE, MOOD_DETUNE].map(det => { const o = osc('sawtooth', 200); o.connect(lp); return [o, det]; });
         return { lp, env, oscs };
       });
+      const L = pattern.length, mrand = mulberry32(seedN + 977);
+      const ratchets = m.ratchet ? pattern.map(() => { const x = mrand(); return x < 0.6 ? 1 : x < 0.85 ? 2 : x < 0.95 ? 3 : 4; }) : null;   // fixed per step: a rhythm, not noise
+      const accPos = [];                                                  // Accumulate: 2 notes, then 3, ... then the whole pattern, over again
+      if (m.accumulate) for (let k = Math.min(2, L); k <= L; k++) for (let j = 0; j < k; j++) accPos.push(j);
+      let mutCycle = 0; const mutated = pattern.slice();                 // Mutate: the pattern as it stands this round; one note changes per round
+      const mutateTo = cycle => { while (mutCycle < cycle) { mutated[Math.floor(mrand() * L)] = notes[Math.floor(mrand() * notes.length)]; mutCycle++; } };
+      const noteAt = st => m.accumulate ? pattern[accPos[st % accPos.length]] : m.mutate ? (mutateTo(Math.floor(st / L)), mutated[st % L]) : pattern[st % L];
       const per = ARP_PER_CUT[arpRate];
       const stepsIn = n => (per < 1 ? Math.ceil(n / 2) : n * per);
       let step = stepsIn(cursor);
@@ -463,14 +481,19 @@
         const len = starts[i + 1] - starts[i];
         const n = per < 1 ? (i % 2 === 0 ? 1 : 0) : per;
         for (let k = 0; k < n; k++, step++) {
-          const t = tc + (per < 1 ? 0 : (len * k) / n);
-          const s = arc(starts[i] + (per < 1 ? 0 : (len * k) / n));
+          const t = tc + (per < 1 ? 0 : (len * k) / n), at0 = starts[i] + (per < 1 ? 0 : (len * k) / n);
+          const s = arc(at0);
           const stepLen = per < 1 ? len * 2 : len / n;
-          const decay = Math.min(1.6, Math.max(0.08, stepLen * 0.9 * m.sustain)) * (1.5 - s), f = pattern[step % arpSteps] * lift(s, 1.2);
-          const v = voices[step % voices.length];
-          for (const [o, det] of v.oscs) o.frequency.setValueAtTime(f * (1 + det), t);
-          v.lp.frequency.setValueAtTime(m.open * lift(s, 0.8), t); v.lp.frequency.setTargetAtTime(m.close * lift(s, 1.2), t + 0.003, decay / 3);
-          strike(v.env, t, 2.2 * arpAmt, decay);
+          const reps = ratchets ? ratchets[step % L] : 1, hitLen = stepLen / reps;
+          const decay = Math.min(1.6, Math.max(0.05, hitLen * 0.9 * m.sustain)) * (1.5 - s), f = noteAt(step) * lift(s, 1.2);
+          const sw = m.sweep ? 0.15 + 0.85 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / m.sweep)) : 1;   // Sweep: how far the filter opens now
+          const play = (v, fq, tt) => {
+            for (const [o, det] of v.oscs) o.frequency.setValueAtTime(fq * (1 + det), tt);
+            v.lp.frequency.setValueAtTime(Math.max(m.close * 1.2, m.open * sw) * lift(s, 0.8), tt); v.lp.frequency.setTargetAtTime(m.close * lift(s, 1.2), tt + 0.003, decay / 3);
+            strike(v.env, tt, 2.2 * arpAmt, decay);
+          };
+          if (phase) { play(voices[0], f, t); play(voices[1], patternB[step % patternB.length] * lift(s, 1.2), t); }   // both on every step, each round its own loop
+          else for (let r = 0; r < reps; r++) play(voices[(step + r) % voices.length], f, t + r * hitLen);
         }
       });
     } else if (arpAmt > 0.01) {
@@ -744,5 +767,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, rootHz };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, phaseLoop, rootHz };
 })();

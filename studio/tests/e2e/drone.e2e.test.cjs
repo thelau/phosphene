@@ -280,7 +280,7 @@ test('Choir and Industrial over the drone: the same level, still sub-heavy, each
 test('arpeggio moods: one instrument (Pluck\'s patch) played differently; each renders level and dark, and Dark sits low (measured, not heard)', { skip }, async () => {
   const ctx = await fresh();
   const arp = { arp: 0.45, arpRate: 1, arpSteps: 2, chord: 1 };
-  const rows = await spectra([0, 1, 2, 3].map(m => ({ ...arp, arpMood: m })));
+  const rows = await spectra([0, 1, 2, 3, 4, 5, 6, 7].map(m => ({ ...arp, arpMood: m })));
   console.log('moods: ' + JSON.stringify(rows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, +(+v).toFixed(4)])))));
   for (const [i, m] of rows.entries()) {
     assert.ok(!m.bad && Math.abs(m.rms - 0.17) < 0.01 && m.peak <= 0.97, `mood ${i}: level ${m.rms.toFixed(3)}, peak ${m.peak.toFixed(2)}`);
@@ -293,6 +293,20 @@ test('arpeggio moods: one instrument (Pluck\'s patch) played differently; each r
   await ctx.close();
 });
 
+test('Phase: the second loop is the same notes, a note longer, so the two only meet again after A × (A + 1) steps', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(() => {
+    const a = [1, 2, 3, 4, 5], b = window.Drone.phaseLoop(a);
+    const pairs = new Set(); let again = 0;
+    for (let k = 1; k <= 60 && !again; k++) if (k % a.length === 0 && k % b.length === 0) again = k;
+    for (let k = 0; k < 30; k++) pairs.add(`${a[k % a.length]}-${b[k % b.length]}`);
+    return { b, again, pairs: pairs.size, same: [...b].sort().join() === [...a, a[2]].sort().join() };
+  });
+  assert.equal(r.b.length, 6); assert.ok(r.same, `the same notes: ${r.b}`);
+  assert.equal(r.again, 30, 'in step again after 5 × 6 steps');
+  assert.ok(r.pairs >= 12, `on the way, many different intervals between the two: ${r.pairs}`);
+  await ctx.close();
+});
 test('the engine finds no console errors across all of this', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(async (BASE) => {

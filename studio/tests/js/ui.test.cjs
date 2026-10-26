@@ -1145,14 +1145,14 @@ test('the logo target: one switch for the Film preview and every Curate card (T 
 test('arpeggio moods: Random draws them all (Pluck often), a type keeps to its own, soft moods unhurried', async () => {
   const h = await playerWith();
   const n = id => +h.$(id).value;
-  const seen = [0, 0, 0, 0];
+  const seen = [0, 0, 0, 0, 0, 0, 0, 0];
   const rules = why => {
-    if ([2, 3].includes(n('arpMoodSelect')) && h.run('rhythmCutsPerSecond()') > 2.5) assert.ok(n('arpRateSelect') <= 1, `${why}: a soft mood on fast cuts plays a note a cut at most`);
-    if (n('choirRange') > 0) assert.ok(![0, 1].includes(n('arpMoodSelect')), `${why}: under the choir, a soft mood`);
+    if ([2, 3, 5].includes(n('arpMoodSelect')) && h.run('rhythmCutsPerSecond()') > 2.5) assert.ok(n('arpRateSelect') <= 1, `${why}: Phase, Tender and Ratchet on fast cuts play a note a cut at most`);
+    if (n('choirRange') > 0) assert.ok(![0, 1, 5].includes(n('arpMoodSelect')), `${why}: under the choir, no Pluck, Dark or Ratchet`);
   };
-  for (let i = 0; i < 500; i++) { h.run('randomMusic()'); seen[n('arpMoodSelect')]++; rules('Random sound'); }
-  assert.ok(seen.every(c => c > 30), `every mood comes up: ${seen}`);
-  assert.ok(seen[0] > 0.18 * 500, `Pluck, the first arpeggio, often (the choir trades Pluck and Dark for the soft moods): ${seen}`);
+  for (let i = 0; i < 800; i++) { h.run('randomMusic()'); seen[n('arpMoodSelect')]++; rules('Random sound'); }
+  assert.ok(seen.every(c => c > 25), `every mood comes up: ${seen}`);
+  assert.ok(seen[0] > 0.18 * 800, `Pluck, the first arpeggio, often (the choir trades Pluck and Dark for the soft moods): ${seen}`);
   const types = JSON.parse(JSON.stringify(h.run('CHARACTERS')));
   for (const [key, c] of Object.entries(types)) {
     h.$('characterSelect').value = key;
