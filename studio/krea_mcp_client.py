@@ -250,7 +250,19 @@ def job_state(res: dict) -> dict:
                 break
     job = structured.get("job") if isinstance(structured.get("job"), dict) else structured
     err = job.get("error") if isinstance(job.get("error"), dict) else {}
-    return {"status": (job.get("status") or "").lower() or None, "code": err.get("code"), "message": err.get("message") or (job.get("error") if isinstance(job.get("error"), str) else None),
+    status = job.get("status")
+    code = err.get("code")
+    message = err.get("message") or (job.get("message") if isinstance(job.get("message"), str) else None) or (job.get("error") if isinstance(job.get("error"), str) else None)
+    if isinstance(status, (int, float)) and not isinstance(status, bool):
+        # a number is an HTTP-like status (an error reply), not a job state: 4xx/5xx is a failure with its own code
+        if status >= 400:
+            code = code or {401: "unauthorized", 402: "insufficient_credits", 403: "forbidden"}.get(int(status), f"http_{int(status)}")
+            status = "failed"
+            message = message or f"Krea answered {int(job.get('status'))}: {str(structured)[:200]}"
+        else:
+            status = None
+    status = status.lower() if isinstance(status, str) else None
+    return {"status": status or None, "code": code, "message": message,
             "job_id": structured.get("job_id") or job.get("job_id")}
 
 

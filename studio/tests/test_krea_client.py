@@ -374,3 +374,25 @@ def test_which_codes_are_worth_retrying(code, retryable):
     with pytest.raises(k.KreaError) as e:
         k.raise_if_failed(res, "m")
     assert e.value.retryable is retryable
+
+
+USAGE_LIMIT = {"error": "Generation request failed for google/nano-banana-2.1", "status": 402, "category": "image", "model": "google/nano-banana-2.1",
+               "response": {"message": "MEMBER_USAGE_LIMIT_REACHED"}, "resetsAt": "2026-11-01T00:00:00.000Z",
+               "message": "Your workspace admin set a monthly limit of 600000 compute units for you. You used 602849. It resets on 2026-11-01."}
+
+
+def test_a_numeric_status_is_an_error_reply_not_a_job_state(monkeypatch):
+    st = k.job_state(reply(USAGE_LIMIT))                       # this used to crash: 'int' object has no attribute 'lower'
+    assert (st["status"], st["code"]) == ("failed", "insufficient_credits") and "monthly limit" in st["message"] and "resets on 2026-11-01" in st["message"]
+    assert k.job_state(reply({"status": 429, "message": "slow down"}))["code"] == "http_429"
+    assert k.job_state(reply({"status": 200}))["status"] is None
+
+
+def test_hitting_the_usage_limit_stops_at_once_with_the_reason(monkeypatch):
+    monkeypatch.setattr(k, "init_mcp_session", lambda: "S")
+    monkeypatch.setattr(k, "get_or_upload_guide_url", lambda *a, **kw: GUIDE)
+    monkeypatch.setattr(k.time, "sleep", lambda s: pytest.fail("no polling after a refusal"))
+    monkeypatch.setattr(k, "call_krea_mcp_tool", lambda name, args, sid=None, timeout=0: reply(USAGE_LIMIT))
+    with pytest.raises(k.KreaError) as e:
+        k.generate_plate_via_krea_mcp("p")
+    assert e.value.code == "insufficient_credits" and e.value.retryable is False and "monthly limit" in str(e.value)
