@@ -226,6 +226,20 @@ test('no room seed boosts the lows: with a big room the sub still carries the so
   await ctx.close();
 });
 
+test('review #5: "Follows the speed" on a flat speed changes nothing, even when the clip ends inside a cut', { skip }, async () => {
+  const ctx = await fresh();
+  const d = await page.evaluate(async BASE => {
+    const starts = [0, 0.5, 1, 1.5, 2, 2.25];                                       // flat 0.5 s cuts, the last one cut short by the end of the clip
+    const p = { ...BASE, chord: 2, hitType: 1, hit: 0.6, hitOn: 0, arp: 0.4, arpSteps: 2, arpRate: 1 };
+    const a = await window.Drone.renderExport({ ...p, dynamics: 0 }, starts), b = await window.Drone.renderExport({ ...p, dynamics: 3 }, starts);
+    let diff = 0, tot = 0;
+    for (let i = 0; i < Math.floor(a.left.length * 0.85); i++) { diff += (a.left[i] - b.left[i]) ** 2; tot += a.left[i] ** 2; }
+    return Math.sqrt(diff / tot);
+  }, BASE);
+  assert.ok(d < 0.02, `with nothing to follow it sounds the same as Off (difference ${d.toFixed(3)})`);
+  await ctx.close();
+});
+
 test('the engine finds no console errors across all of this', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(async (BASE) => {

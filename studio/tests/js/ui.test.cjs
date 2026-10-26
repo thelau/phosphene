@@ -462,8 +462,13 @@ test('export leaves the preview alone and offers a download link', async () => {
   assert.equal(h.$('exportDock').dataset.state, 'ready');                 // "Downloaded", with Export again and Download again
 });
 
-test('export failures show a message and unlock the button', async () => {
+test('export failures show a message and unlock the button; with no images there is nothing to export', async () => {
+  const r0 = baseRoutes();
+  const h0 = load({ routes: r0 }); await settle(); await settle();
+  assert.equal(h0.$('exportBtn').disabled, true, 'no images: Export is off');
+  assert.equal(h0.$('trashCurBtn').disabled, true);
   const r = baseRoutes();
+  r['/api/state'] = { plates: [mkPlate('a')] };
   r['/api/export-video'] = { ok: false, error: 'No active plates' };
   const h = load({ routes: r });
   await settle(); await settle();
@@ -471,6 +476,7 @@ test('export failures show a message and unlock the button', async () => {
   assert.match(h.$('toast').textContent, /Export failed: No active plates/);
   assert.equal(h.$('exportBtn').disabled, false);
   const r2 = baseRoutes();
+  r2['/api/state'] = { plates: [mkPlate('a')] };
   r2['/api/export-video'] = async () => { throw new Error('socket hang up'); };
   const h2 = load({ routes: r2 });
   await settle(); await settle();
@@ -1387,4 +1393,111 @@ test('Export says how long it will take once it has seen one: the median of the 
   assert.equal(JSON.parse(h.store.studioExportRates).length, 4);
   h.run("localStorage.setItem('studioExportRates', 'nonsense')"); h.run('drawInfo()');
   assert.doesNotMatch(h.$('exportMeta').textContent, /to make/, 'a broken memory is ignored');
+});
+
+test('menu labels in the page are what they should be (a bulk edit once renamed the batch sizes)', () => {
+  const html = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'web', 'index.html'), 'utf8');
+  const opts = id => { const m = html.match(new RegExp(`<select id="${id}"[\\s\\S]*?</select>`)); return [...m[0].matchAll(/<option value="([^"]*)"[^>]*>([^<]*)</g)].map(x => `${x[1]}=${x[2]}`); };
+  assert.deepEqual(opts('batchCountSelect'), ['2=2 images', '4=4 images', '6=6 images', '8=8 images', '12=12 images', '16=16 images', '20=20 images']);
+  assert.deepEqual(opts('multSelect'), ['0.25=×¼', '0.5=×½', '1=×1', '1.3333333=×1⅓', '2=×2', '3=×3', '4=×4', '6=×6', '8=×8', '9=×9']);
+  assert.deepEqual(opts('atSelect'), ['end=Landing', 'start=Build-up']);
+});
+
+// ---- bugs found by the code review of the redesign (each test reproduces the reported steps) ----
+
+test('review #1: Change over keeps its value across a reload and when the cut count dips (it was reset to 2 before the images loaded)', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: 30 }, (_, i) => mkPlate('p' + i)) };
+  const saved = JSON.stringify({ rhythmSelect: 'variable', rampRange: '20', multSelect: '1' });
+  const h = load({ routes: r, storage: { studioSettings: saved } });
+  await settle(); await settle();
+  assert.equal(h.$('rampRange').value, '20');
+  assert.equal(JSON.parse(h.store.studioSettings).rampRange, '20', 'and it is saved as 20');
+  h.$('multSelect').value = '6'; h.run('updateTempo()');                            // 5 cuts of the run: the slider shows 5
+  assert.equal(h.$('rampRange').value, '5');
+  assert.equal(JSON.parse(h.store.studioSettings).rampRange, '20', 'but remembers 20');
+  h.$('multSelect').value = '1'; h.run('updateTempo()');
+  assert.equal(h.$('rampRange').value, '20', 'and goes back to it');
+  h.$('rampRange').value = '9'; h.run('updateRhythm()');                            // a new value by hand is the new request
+  h.$('multSelect').value = '6'; h.run('updateTempo()'); h.$('multSelect').value = '1'; h.run('updateTempo()');
+  assert.equal(h.$('rampRange').value, '9');
+});
+
+test('review #2: trashing (or undoing a trash) while playing updates the sound to the new length', async () => {
+  const r = baseRoutes();
+  let st = [mkPlate('a'), mkPlate('b'), mkPlate('c')];
+  r['/api/state'] = () => ({ plates: st });
+  r['/api/trash'] = body => { st = st.map(p => (p.filename === body.filename ? { ...p, trashed: body.trashed } : p)); return { ok: true }; };
+  r['/api/reorder'] = () => ({ ok: true });
+  const h = load({ routes: r }); await settle(); await settle();
+  h.$('stageImg').style.display = 'block';
+  h.$('musicSelect').value = 'on'; h.run('updateMusic()'); h.run('togglePlay()'); await settle();
+  const u = h.ctx.__drone.updates.length;
+  await h.run('trashCurrent()');
+  assert.equal(h.ctx.__drone.updates.length, u + 1, 'the drone was told');
+  assert.equal(h.ctx.__drone.updates.at(-1).starts.length, h.run('synthStartsSec().length'));
+});
+
+test('review #3: Trash acts on the image on screen, even one shown from below the "left out" divider', async () => {
+  const r = baseRoutes();
+  let st = Array.from({ length: 6 }, (_, i) => mkPlate('p' + i));
+  r['/api/state'] = () => ({ plates: st, sequences: [{ id: 's1', kind: 'ai', count: 6, cut_off: 3 }], active_sequence: 's1' });
+  r['/api/trash'] = body => { st = st.map(p => (p.filename === body.filename ? { ...p, trashed: body.trashed } : p)); return { ok: true }; };
+  const h = load({ routes: r }); await settle(); await settle();
+  h.run("previewPlate('p5')");                                                      // left out of the edit: shown, not in the film
+  assert.equal(h.$('stageImg').src, '/p/p5');
+  await h.run('trashCurrent()');
+  const sent = h.calls.filter(c => c.url === '/api/trash').map(c => c.body.filename);
+  assert.deepEqual(sent, ['p5'], 'the one on screen, not p0');
+});
+
+test('review #4: Undo of a trash puts the image back into the order shown now, and only if it is still the same order', async () => {
+  const r = baseRoutes();
+  let st = [mkPlate('a'), mkPlate('b'), mkPlate('c'), mkPlate('d')];
+  let seqs = [{ id: 'm', kind: 'manual', count: 4 }, { id: 'ai', kind: 'ai', count: 4 }], active = 'm';
+  r['/api/state'] = () => ({ plates: st, sequences: seqs, active_sequence: active });
+  r['/api/trash'] = body => { const p = st.find(x => x.filename === body.filename); st = st.filter(x => x !== p).concat([{ ...p, trashed: body.trashed }]); return { ok: true }; };
+  r['/api/reorder'] = body => { st = body.order.map(f => st.find(p => p.filename === f)).concat(st.filter(p => !body.order.includes(p.filename))); return { ok: true }; };
+  r['/api/sequence'] = body => { active = body.id; return { ok: true }; };
+  const h = load({ routes: r }); await settle(); await settle();
+  h.run("jumpToPlate(1)");                                                          // b
+  await h.run('trashCurrent()');
+  st = [st[2], st[0], st[1], st[3]];                                               // a drag after the trash: d, a, c (+ b in the trash)
+  await h.run('loadState()');
+  h.ctx.onKey({ key: 'z', metaKey: true, target: { tagName: 'BODY' }, preventDefault() {} });
+  await settle(); await settle(); await settle(); await settle();
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['d', 'b', 'a', 'c'], 'b goes back to place 2 of the order as it is now; the drag is kept');
+  // trash in Manual, switch to the AI order, undo: the AI order is not rewritten
+  h.run('jumpToPlate(0)');
+  await h.run('trashCurrent()');
+  await h.run("switchSequence('ai')");
+  const reorders = h.calls.filter(c => c.url === '/api/reorder').length;
+  h.ctx.onKey({ key: 'z', metaKey: true, target: { tagName: 'BODY' }, preventDefault() {} });
+  await settle(); await settle(); await settle();
+  assert.equal(h.calls.filter(c => c.url === '/api/reorder').length, reorders, 'no reorder of another order');
+  assert.equal(h.run('plates.filter(p => p.trashed).length'), 0, 'but the image is back');
+});
+
+test('review #6: an image that fails to load is asked for once, and never holds the film', async () => {
+  const h = await playerWith();
+  let made = 0;
+  h.ctx.Image = class { constructor() { made++; } set src(u) { this._s = u; } get src() { return this._s; } decode() { return Promise.reject(new Error('404')); } };
+  h.$('bpmInput').value = '60'; h.$('multSelect').value = '1'; h.run('updateTempo()');
+  h.run('aheadFrom = -1; jumpToPlate(0)'); await settle();
+  const after = made;
+  h.run('isPlaying = true');
+  for (let i = 0; i < 50; i++) h.run('cutPos = 30.5; drawFrame()');
+  assert.equal(made, after, 'no new request on every tick');
+  assert.equal(h.$('stageImg').src, '/p/b', 'not held forever: it moves on');
+  h.run('isPlaying = false');
+});
+
+test('held keys act once; a slider with focus keeps its arrows', async () => {
+  const h = await playerWith();
+  h.run("setMode('film')");
+  h.ctx.onKey({ key: 'Tab', repeat: true, target: { tagName: 'BODY' }, preventDefault() {} });
+  assert.equal(h.ctx.document.body.dataset.mode, 'film', 'a held Tab does not flicker the modes');
+  const before = h.run('currentIdx');
+  h.ctx.onKey({ key: 'ArrowRight', target: { tagName: 'INPUT', type: 'range' }, preventDefault() {} });
+  assert.equal(h.run('currentIdx'), before);
 });

@@ -15,7 +15,6 @@ test('page loads without errors: Curate first, generation in one tidy row, no st
   assert.ok(settings.y < world.y, 'Settings stays in the header');
   assert.equal(await text('#tabSelection'), 'Selection (3)');
   assert.equal(await text('#tabTrash'), '🗑️ Trash (4)');
-  assert.equal(await text('#selNote'), '3 in the selection');
   await shot('01-loaded');
   await ctx.close();
 });
@@ -296,7 +295,7 @@ test('the film strip: one thumbnail per image in order, click jumps there, the i
   await page.click('#trashCurBtn');
   await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 2);
   assert.match(await text('#toast'), /moved to Trash/);
-  assert.equal(await text('#selNote'), '2 in the selection');
+  assert.equal(await text('#tabSelection'), 'Selection (2)');
   await page.click('#toast button');
   await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 3);
   const order = await page.locator('#filmstrip button').evaluateAll(b => b.map(x => x.title.split(' · ')[0]));
@@ -695,6 +694,28 @@ test('dragging the inner point of a landing with the mouse sets Change over; the
   assert.equal(await page.evaluate(() => document.getElementById('rsPlayhead').style.left), head, 'letting go did not jump the playhead');
   assert.equal(await page.locator('#rsH1.inner').count(), 0, 'the End point at the very end does not drag');
   await shot('21-drag-point');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
+test('edge states: an empty library says what to do, the Trash has no film preview, a running job never covers the rhythm strip', { skip }, async () => {
+  let ctx = await fresh({ width: 1280, height: 720, delays: { invent: 1500 } });
+  await page.click('#tabTrash'); await page.waitForSelector('#tabTrash.on');
+  assert.equal(await page.locator('#miniPlayer').isVisible(), false, 'no film preview over the Trash');
+  assert.equal(await page.locator('.card-num:visible').count(), 0, 'no order numbers in the Trash');
+  await page.click('#tabSelection'); await page.waitForSelector('#tabSelection.on');
+  assert.equal(await page.locator('#miniPlayer').isVisible(), true);
+  await page.click('#generateBtn');                                                // a job: the status bar appears
+  await page.waitForSelector('#statusText:not([data-idle="1"])');
+  await film();
+  const strip = await page.locator('.rs-readout').boundingBox(), bar = await page.locator('#statusText').boundingBox();
+  assert.ok(strip.y + strip.height <= bar.y + 1, `the strip stays above the status bar (${strip.y + strip.height} vs ${bar.y})`);
+  await page.waitForFunction(() => /Done/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  await ctx.close();
+  ctx = await fresh({ empty: true, setup: st => { st.plates.length = 0; st.sequences[0].order.length = 0; } });
+  assert.match(await text('#gridEmpty'), /No images yet/);
+  await film();
+  assert.equal(await page.locator('#exportBtn').isDisabled(), true, 'nothing to export');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });

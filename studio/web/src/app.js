@@ -84,9 +84,13 @@
       return modelStr.includes('/') ? modelStr.split('/')[1] : modelStr;
     }
 
+    let stateCalls = 0;
     async function loadState() {
+      const call = ++stateCalls;
       const res = await fetch('/api/state');
       const data = await res.json();
+      if (call !== stateCalls) return;                                       // a newer request is on its way: an older answer must not win
+      const lengthBefore = activePlates().length;
       plates = data.plates || [];
       sequences = data.sequences || [];
       activeSeq = data.active_sequence || null;
@@ -117,9 +121,11 @@
       renderSequences();
       renderGrid();
       renderFilmstrip();
+      applyLocks();                                                          // nothing to export or trash when there are no images
       restartLoop();
       if (!isPlaying) drawFrame();
       if (data.state_sig) serverSig = data.state_sig;
+      if (isPlaying && activePlates().length !== lengthBefore) musicChanged();   // trash, undo, a new image: the film is longer or shorter, the sound follows
     }
 
     // Refresh: the library and the film together (the two refresh buttons call the same thing, so they always agree).
@@ -132,14 +138,13 @@
       refreshing = true;
       ['refreshBtn', 'refreshFilmBtn'].forEach(id => document.getElementById(id).classList.add('spinning'));
       try {
-        const known = new Set(plates.map(p => p.filename)), n = activePlates().length;
+        const known = new Set(plates.map(p => p.filename));
         const grid = document.getElementById('grid'), top = grid.scrollTop;
         await loadState();
         grid.scrollTop = top;
         const added = plates.filter(p => !known.has(p.filename) && !p.trashed).length;
         if (added && !prog.timer) setStatus(`+${added} new image${added === 1 ? '' : 's'}`);
         else if (manual) setStatus('Up to date.');
-        if (isPlaying && activePlates().length !== n) musicChanged();                // the film got longer or shorter: the sound follows
       } catch (e) {
         if (manual) setStatus('Could not reach the server. Is it running?');
       } finally {
@@ -184,6 +189,7 @@
 
     async function startAiOrder() {
       if (generating) { setStatus('Wait for image generation to finish before ordering with AI.'); return; }
+      if (exporting) { setStatus('Wait for the export to finish before ordering with AI.'); return; }
       if (aiRunning) return;
       if (!ensureKimiReady()) return;
       const shown = plates.filter(p => !p.trashed).length;
@@ -374,6 +380,9 @@
       });
       if (!showTrash) pendingCards().forEach((html, i) => items.push([`pending:${i}`, html]));
       patchChildren(grid, items);
+      const empty = document.getElementById('gridEmpty');
+      empty.hidden = items.length > 0;
+      empty.textContent = showTrash ? 'The Trash is empty.' : 'No images yet. Choose a territory and press Generate.';
       if (grid.querySelectorAll) grid.querySelectorAll('.card[data-filename]').forEach((el, i) => {   // the place in the order lives outside the markup, so a reorder only moves cards
         const num = el.querySelector('.card-num'), txt = String(i + 1).padStart(2, '0');
         if (num && num.textContent !== txt) num.textContent = txt;
@@ -544,7 +553,7 @@
       stageImg.style.display = 'block';
       clearFx();
       const p = plates.find(x => x.filename === filename);
-      if (p) stageImg.src = p.preview || p.url;
+      if (p) { stageImg.src = p.preview || p.url; shownFile = p.filename; }
     }
 
     // ---- the two modes: Curate (the images) and Film (the result); switching keeps everything ----
@@ -570,6 +579,8 @@
       if (typingIn(e.target) || document.getElementById('confirmModal').classList.contains('open')) return;
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undoLast(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.repeat && ['Tab', 'Delete', 'Backspace', 'f', 'F'].includes(e.key)) { e.preventDefault(); return; }   // a held key acts once
+      if (e.target && e.target.type === 'range' && e.key.startsWith('Arrow')) return;             // a slider with focus keeps its arrows
       if (e.key === 'Tab') { e.preventDefault(); if (e.target && e.target.blur) e.target.blur(); setMode(mode === 'film' ? 'curate' : 'film'); }
       else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
       else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); stepImage(e.key === 'ArrowRight' ? 1 : -1); }
@@ -585,11 +596,12 @@
     function toggleFullscreen() {
       const stage = document.getElementById('stage');
       if (document.fullscreenElement) { document.exitFullscreen && document.exitFullscreen(); return; }
+      if (mode === 'curate' && !miniOpen) return;                          // the stage is hidden: nothing to show
       if (stage.requestFullscreen) stage.requestFullscreen().catch(() => {});
     }
     // the last thing that can be undone: a Random (the Undo button) or a trash (the toast's Undo)
     let undoLastFn = null;
-    function undoLast() { const f = undoLastFn; undoLastFn = null; if (f) f(); }
+    function undoLast() { if (blockedByAi()) return; const f = undoLastFn; undoLastFn = null; if (f) f(); }
     document.addEventListener('keydown', onKey);
     // a button clicked with the mouse gives its focus back, so Space plays instead of pressing it again
     document.addEventListener('click', e => { const b = e.target && e.target.closest && e.target.closest('button'); if (b && e.detail > 0) b.blur(); }, true);
@@ -631,7 +643,6 @@
       strip.innerHTML = active.map((p, i) => `<button type="button" data-i="${i}" title="${i + 1} · ${escapeHtml(p.title)}" aria-label="Jump to image ${i + 1}" style="background-image:url('${(p.thumb || p.url || '').replace(/'/g, '%27')}')"></button>`).join('');
       shownIdx = -1;
       const n = active.length, cut = activeCutOff();
-      document.getElementById('selNote').textContent = n ? `${n} in the ${cut ? 'edit' : 'selection'}` : '';
       document.getElementById('filmHint').textContent = n ? `${n} images in film order · click to jump` : '';
     }
     function filmstripClick(e) {
@@ -669,20 +680,33 @@
     }
     // the image on screen goes to the Trash; the toast's Undo puts it back where it was
     async function trashCurrent() {
-      if (blockedByAi()) return;
-      const p = activePlates()[currentIdx];
+      if (blockedByAi() || trashing) return;
+      const p = plates.find(x => x.filename === shownFile && !x.trashed) || activePlates()[currentIdx];
       if (!p) return;
-      const order = plates.filter(x => !x.trashed).map(x => x.filename);
-      await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename: p.filename, trashed: true }) });
-      await loadState();
-      undoLastFn = () => untrash(p.filename, order);
-      setStatus(`“${p.title}” moved to Trash`, { label: 'Undo', run: () => { undoLastFn = null; untrash(p.filename, order); } });
+      trashing = true;
+      try {
+        const where = { seq: activeSeq, index: plates.filter(x => !x.trashed).findIndex(x => x.filename === p.filename) };
+        await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename: p.filename, trashed: true }) });
+        await loadState();
+        offerUndoTrash(p, where);
+      } finally { trashing = false; }
     }
-    async function untrash(filename, order) {
+    let trashing = false;
+    function offerUndoTrash(p, where) {
+      undoLastFn = () => untrash(p.filename, where);
+      setStatus(`“${p.title}” moved to Trash`, { label: 'Undo', run: () => { undoLastFn = null; untrash(p.filename, where); } });
+    }
+    // back from the Trash, at the place it had in the order it was trashed from (if that order is still the one shown; else at the end, as a restore does)
+    async function untrash(filename, where) {
       if (blockedByAi()) return;
       await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename, trashed: false }) });
-      await fetch('/api/reorder', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ order }) });
       await loadState();
+      if (where && where.seq === activeSeq && where.index >= 0) {
+        const order = plates.filter(x => !x.trashed && x.filename !== filename).map(x => x.filename);
+        order.splice(Math.min(where.index, order.length), 0, filename);
+        await fetch('/api/reorder', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ order }) });
+        await loadState();
+      }
     }
 
     // ---- what is on screen when (mirrored in studio/cutplan.py; tests keep the two in step) ----
@@ -749,7 +773,7 @@
       const bpm = bpmValue();
       const follow = followCuts();
       const v = rhythmMode() === 'variable' ? variableParams() : null;
-      const key = `${nCuts}|${mult}|${v ? `${v.start_ms}|${v.end_ms}|${v.ramp}|${v.at}` : `flat|${bpm}`}|${follow}`;
+      const key = `${nCuts}|${paired}|${mult}|${v ? `${v.start_ms}|${v.end_ms}|${v.ramp}|${v.at}` : `flat|${bpm}`}|${follow}`;
       if (timelineCache.key !== key) {
         const nBase = Math.max(1, Math.ceil(nCuts / Math.max(0.05, mult) - 1e-9));
         const base = v ? variableStarts(nBase, v.start_ms, v.end_ms, v.ramp, v.at) : Array.from({ length: nBase + 1 }, (_, i) => (i * 1800) / bpm);
@@ -989,13 +1013,21 @@
 
     // how many images, how long the result runs, and how long the cuts are
     // the "Change over" slider can take at most every cut of the selection, so its range follows the images (and the invert pairs)
+    // The slider shows at most the cuts there are, but remembers what was asked for: with more cuts again (a Multiple undone, the images
+    // loaded after a reload) it goes back to it. A value it did not write itself (a hand, Random, Undo, a drag) is the new request.
+    let rampWanted = null, rampShown = null;
     function syncRampRange() {
       const invert = document.getElementById('invertSelect').value;
       const mult = parseFloat(document.getElementById('multSelect').value) || 1;
       const nCuts = Math.max(1, Math.ceil((activePlates().length * (invert === 'mono' || invert === 'colour' ? 2 : 1)) / Math.max(0.05, mult) - 1e-9));    // base cuts: what the change runs over
       const el = document.getElementById('rampRange');
-      el.max = String(Math.max(2, nCuts));
-      if ((parseInt(el.value, 10) || 0) > Math.max(2, nCuts)) el.value = el.max;
+      const v = parseInt(el.value, 10) || 12;
+      if (rampWanted === null || v !== rampShown) rampWanted = v;
+      if (plates.length) {                                                   // before the library has loaded there is nothing to clamp to
+        el.max = String(Math.max(2, nCuts));
+        rampShown = Math.max(2, Math.min(rampWanted, Math.max(2, nCuts)));
+        el.value = String(rampShown);
+      }
       const ramp = parseInt(el.value, 10) || 12;
       document.getElementById('rampVal').textContent = ramp >= nCuts && nCuts > 2 ? `all ${nCuts}` : `${ramp} cuts`;
     }
@@ -1120,13 +1152,13 @@
       const nBase = Math.max(1, Math.ceil(nCuts / Math.max(0.05, mult) - 1e-9));
       const v = variableParams(), target = Math.max(0, Math.min(1, u));
       let best = null, bestD = Infinity;
-      for (let k = 2; k <= Math.max(2, nBase); k++) {
+      for (let k = 2; k <= Math.max(2, Math.min(nBase, 200)); k++) {              // the change never takes more than 200 cuts
         const base = variableStarts(nBase, v.start_ms, v.end_ms, k, v.at), total = subdivideStarts(base, mult, nCuts)[nCuts];
         const at = v.at === 'end' ? base[Math.max(0, nBase - k)] : base[Math.min(nBase, k)];
         const d = Math.abs(Math.min(at, total) / total - target);
         if (d < bestD - 1e-9) { bestD = d; best = k; }
       }
-      return Math.max(2, Math.min(nBase, best));
+      return v.ramp > 200 && best === 200 ? v.ramp : Math.max(2, Math.min(nBase, best));
     }
     let draggingPoint = false, dragEndedAt = 0;
     function pointDown(e) {
@@ -1243,16 +1275,18 @@
     const ready = new Map();                                                // url -> Image, decoded (most recent last)
     const loading = new Map();                                              // url -> Image, decoding
     let lateFrames = 0;
+    let shownFile = null;                                                    // the image actually on the stage (Trash and Delete act on it)
     function preload(url) {
-      if (!url || ready.has(url) || loading.has(url) || typeof Image !== 'function') return;
+      if (!url || ready.has(url) || loading.has(url) || failed.has(url) || typeof Image !== 'function') return;
       const im = new Image();
       im.decoding = 'async';
       im.src = url;
       loading.set(url, im);
-      const done = () => { loading.delete(url); ready.set(url, im); while (ready.size > 80) ready.delete(ready.keys().next().value); };
-      (im.decode ? im.decode() : Promise.resolve()).then(done, () => loading.delete(url));
+      const done = () => { loading.delete(url); ready.set(url, im); while (ready.size > 48) ready.delete(ready.keys().next().value); };   // ~2 MB each once decoded: about the look-ahead, no more
+      (im.decode ? im.decode() : Promise.resolve()).then(done, () => { loading.delete(url); failed.add(url); });
     }
-    function isReady(url) { return typeof Image !== 'function' || ready.has(url); }
+    const failed = new Set();                                               // an image that would not load is not asked for again (and not waited for)
+    function isReady(url) { return typeof Image !== 'function' || ready.has(url) || failed.has(url); }
     // the next images in film order, as many as the next 2 seconds hold (at least 8, at most 40)
     function preloadAhead(fromPlate) {
       const active = activePlates();
@@ -1277,7 +1311,7 @@
       if (plan.plate !== aheadFrom) { aheadFrom = plan.plate; preloadAhead(plan.plate); }
       let held = false;
       if (stageImg.getAttribute('src') !== url) {
-        if (!isPlaying || isReady(url)) stageImg.src = url;                   // paused or jumping: show it whatever it takes
+        if (!isPlaying || isReady(url)) { stageImg.src = url; shownFile = active[plan.plate].filename; }   // paused or jumping: show it whatever it takes
         else { held = true; lateFrames++; preload(url); }                  // playing: hold the last frame until this one can paint
       }
       if (!isPlaying) clearFx(); else if (!held) applyFx(plan, fx);        // a held frame keeps its own look
@@ -1342,6 +1376,7 @@
       try {
         const out = {};
         PERSISTED.forEach(id => { const el = document.getElementById(id); out[id] = el.type === 'checkbox' ? el.checked : el.value; });
+        if (rampWanted !== null) out.rampRange = String(rampWanted);          // what was asked for, not what fits today
         localStorage.setItem('studioSettings', JSON.stringify(out));
       } catch (e) {}
     }
@@ -1390,7 +1425,7 @@
     async function setTrash(e, filename, trashed) {
       if (blockedByAi(e)) return;
       e.stopPropagation();
-      const order = plates.filter(x => !x.trashed).map(x => x.filename);
+      const where = { seq: activeSeq, index: plates.filter(x => !x.trashed).findIndex(x => x.filename === filename) };
       await fetch('/api/trash', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -1398,11 +1433,9 @@
       });
       await loadState();
       const p = plates.find(x => x.filename === filename);
-      if (trashed && p) {
-        undoLastFn = () => untrash(filename, order);
-        setStatus(`“${p.title}” moved to Trash`, { label: 'Undo', run: () => { undoLastFn = null; untrash(filename, order); } });
-      }
+      if (trashed && p) offerUndoTrash(p, where);
     }
+
 
     function ensureKimiReady() {
       const typedKey = document.getElementById('kimiKeyInput').value.trim();
@@ -1470,7 +1503,7 @@
       el.innerHTML = `<div class="prog">
         <span class="prog-world">${escapeHtml(prog.world || 'New batch')}</span>${bar}${count}
         <span class="prog-note">${escapeHtml(prog.summary || prog.note)}</span>
-        ${prog.timer ? `<span class="prog-time">${fmtElapsed(Date.now() - prog.t0)}${running ? ` · ${running} rendering` : ''}</span>` : ''}
+        ${prog.timer ? `<span class="prog-time">${fmtElapsed(Date.now() - prog.t0)}${running ? ` · ${running} ${prog.world === 'AI order' ? 'working' : 'rendering'}` : ''}</span>` : ''}
       </div>`;
     }
     function progStart(count) {
@@ -1489,7 +1522,8 @@
       const lockGen = generating || aiRunning;
       ['worldSelect', 'directionInput', 'batchCountSelect', 'modelSelect', 'generateBtn'].forEach(id => { document.getElementById(id).disabled = lockGen; });
       document.getElementById('aiBtn').disabled = lockGen;
-      document.getElementById('exportBtn').disabled = aiRunning;
+      document.getElementById('exportBtn').disabled = aiRunning || !activePlates().length;
+      document.getElementById('trashCurBtn').disabled = aiRunning || !activePlates().length;
       ['trashSelAll', 'trashEmpty', 'resetAi'].forEach(id => { document.getElementById(id).disabled = aiRunning; });
       document.querySelectorAll('#orderSeg button').forEach(b => { b.disabled = aiRunning; });
       document.body.classList.toggle('ai-running', aiRunning);

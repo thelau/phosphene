@@ -30,7 +30,6 @@
       <span class="kbd-hint" title="Tab: Curate / Film · Space: play / pause · ← →: one image back / forward · Delete: trash the image on screen (Film) · F: full screen · Cmd+Z: undo"><kbd>Tab</kbd> switch · <kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> step · <kbd>F</kbd> full screen</span>
     </nav>
     <div class="grow"></div>
-    <span class="sel-note" id="selNote"></span>
     <button class="icon-btn" onclick="toggleSettings()" id="settingsBtn" title="Settings: models, Kimi key, scorecard" aria-label="Settings">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
     </button>
@@ -108,10 +107,10 @@
         </select>
         <input id="directionInput" type="text" maxlength="300" placeholder="Direction (optional): e.g. apparel, wet, warm" />
         <select id="batchCountSelect" title="Number of images per batch">
-          <option value="2">×2</option>
-          <option value="4" selected>×4</option>
-          <option value="6">×6</option>
-          <option value="8">×8</option>
+          <option value="2">2 images</option>
+          <option value="4" selected>4 images</option>
+          <option value="6">6 images</option>
+          <option value="8">8 images</option>
           <option value="12">12 images</option>
           <option value="16">16 images</option>
           <option value="20">20 images</option>
@@ -171,8 +170,9 @@
           <b>Ordering with AI</b>
           <span>The selection is locked until it finishes: no trashing, dragging or generating.</span>
         </div>
-        <div class="ai-note" id="aiNote" hidden><b>✨ The AI's note</b><span id="seqSummary"></span><button id="makeManual" onclick="makeManual()" title="Copy this order over your Manual order">Use as my Manual order…</button></div>
+        <div class="ai-note" id="aiNote" hidden><b>✨ The AI's note</b><span id="seqSummary" onclick="this.classList.toggle('open')" title="Click to read it all"></span><button id="makeManual" onclick="makeManual()" title="Copy this order over your Manual order">Use as my Manual order…</button></div>
         <div class="grid-col" id="grid" data-size="M"></div>
+        <p class="grid-empty" id="gridEmpty" hidden></p>
       </div>
 
       <aside class="mini" id="miniPlayer" aria-label="Film preview">
@@ -324,11 +324,11 @@
                 <option value="0.5">×½</option>
                 <option value="1">×1</option>
                 <option value="1.3333333">×1⅓</option>
-                <option value="2">×2 (2 cuts / beat)</option>
+                <option value="2">×2</option>
                 <option value="3">×3</option>
-                <option value="4" selected>×4 (4 cuts / beat)</option>
-                <option value="6">×6 (6 cuts / beat)</option>
-                <option value="8">×8 (8 cuts / beat)</option>
+                <option value="4" selected>×4</option>
+                <option value="6">×6</option>
+                <option value="8">×8</option>
                 <option value="9">×9</option>
               </select>
               <span class="val" id="speedVal"></span>

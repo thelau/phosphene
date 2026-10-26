@@ -84,7 +84,7 @@ async function fresh(opts = {}) {
   env.page.on('pageerror', e => consoleErrors.push(String(e)));
   await env.page.goto(`http://localhost:${env.port}/`);
   await env.page.waitForSelector('#loader', { state: 'detached' });
-  await env.page.waitForSelector('.card');
+  if (!opts.empty) await env.page.waitForSelector('.card');
   return ctx;
 }
 

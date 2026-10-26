@@ -202,12 +202,13 @@
     const arc = (() => {
       if (!dynamics) return () => 0.5;
       const lens = starts.slice(1).map((v, i) => v - starts[i]);
-      const lo = Math.min(...lens), hi = Math.max(...lens);
+      const whole = lens.length > 2 ? lens.slice(0, -1) : lens;               // the last cut can be a stub (the clip ends inside it): it is not a speed
+      const lo = Math.min(...whole), hi = Math.max(...whole);
       return t => {
         const u = Math.min(1, Math.max(0, t / total));
         if (dynamics === 1) return u;
         if (dynamics === 2) return 1 - u;
-        return hi > lo * 1.05 ? Math.log(hi / lens[Math.min(lens.length - 1, cutAtTime(starts, t))]) / Math.log(hi / lo) : 0.5;
+        return hi > lo * 1.05 ? Math.min(1, Math.max(0, Math.log(hi / lens[Math.min(lens.length - 1, cutAtTime(starts, t))]) / Math.log(hi / lo))) : 0.5;
       };
     })();
     const lift = (s, span) => Math.pow(2, (s - 0.5) * span);               // a pitch factor: span 1.2 = +-7 semitones at the extremes
