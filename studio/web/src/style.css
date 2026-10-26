@@ -289,6 +289,9 @@
     .ai-running .card { opacity: .55; cursor: default; }
     .ai-running .card-actions { opacity: .3; pointer-events: none; }
     .grid-hint { font-size: 12px; color: var(--faint); white-space: nowrap; }
+    .refresh-btn { width: 34px; height: 34px; }
+    .tl-head .refresh-btn { width: 28px; height: 28px; border-color: var(--line-3); border-radius: 6px; }
+    .refresh-btn.spinning svg { animation: spin .8s linear infinite; }
     .size-seg { display: inline-flex; padding: 2px; background: var(--field); border: 1px solid var(--line-2); border-radius: 8px; }
     .size-seg button { transition: none; width: 34px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); }
     .size-seg button[aria-pressed="true"] { background: var(--text); color: #1A1A1A; }

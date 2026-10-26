@@ -587,3 +587,22 @@ test('Curate: thumbnail sizes, trash from the grid with Undo, restore picked ima
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('refresh: the Curate and Film buttons pick up new images at once, and the film follows', { skip }, async () => {
+  const ctx = await fresh();
+  api.state.plates.push({ ...api.state.plates[0], filename: 'k9', title: 'Plate k9', url: '/assets/ai-plates/k9.svg' });
+  api.state.sequences[0].order.push('k9');
+  await page.click('#refreshBtn');
+  await page.waitForSelector('.card[data-filename="k9"]');
+  assert.match(await text('#toast'), /\+1 new image/);
+  await film();
+  assert.equal(await page.locator('#filmstrip button').count(), 4, 'the film has it too');
+  api.state.plates.push({ ...api.state.plates[0], filename: 'k10', title: 'Plate k10', url: '/assets/ai-plates/k10.svg' });
+  api.state.sequences[0].order.push('k10');
+  await page.click('#refreshFilmBtn');
+  await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 5);
+  await curate();
+  assert.equal(await page.locator('.card[data-filename="k10"]').count(), 1, 'and the library, from the Film button');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

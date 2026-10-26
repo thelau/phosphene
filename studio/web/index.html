@@ -158,6 +158,7 @@
           </div>
           <span class="grow"></span>
           <span class="grid-hint" id="gridHint">Drag to reorder</span>
+          <button class="icon-btn refresh-btn" id="refreshBtn" onclick="refreshLibrary(true)" title="Check for new images now (the page also checks by itself every so often). Film refreshes with it." aria-label="Refresh the library"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
           <div class="size-seg" role="group" aria-label="Thumbnail size">
             <button id="thumbS" onclick="setThumbSize('S')" aria-label="Small thumbnails" title="Small thumbnails"><i style="width:8px;height:12px"></i></button>
             <button id="thumbM" onclick="setThumbSize('M')" aria-label="Medium thumbnails" title="Medium thumbnails"><i style="width:10px;height:15px"></i></button>
@@ -227,6 +228,7 @@
             <span class="tl-hint" id="filmHint">click an image to jump there</span>
             <span class="grow"></span>
             <span class="tl-cur" id="curTitle"></span>
+            <button class="icon-btn refresh-btn" id="refreshFilmBtn" onclick="refreshLibrary(true)" title="Check for new images now: the film and the library refresh together" aria-label="Refresh the film"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
             <button onclick="trashCurrent()" id="trashCurBtn" class="small-btn" title="Move the image on screen to the Trash">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path></svg>
               Trash

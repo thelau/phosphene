@@ -553,3 +553,19 @@ def test_export_with_one_plate_and_the_fastest_possible_rhythm(live, srv):
     live("POST", "/api/generate-image", {"title": "Solo", "prompt": "p", "model": "m"})
     status, res = live("POST", "/api/export-video", {"bpm": 300, "multiple": 16, "invert_mode": "mono"})
     assert status == 200 and _streams(srv.OUTPUTS_DIR / res["filename"])[0] == ["video"]
+
+
+def test_version_carries_a_cheap_library_fingerprint_that_moves_when_the_library_changes(live):
+    """The page polls /api/version and only downloads /api/state when "state" changes."""
+    import time
+    sig0 = live("GET", "/api/version")[1]["state"]
+    assert sig0 == live("GET", "/api/version")[1]["state"], "nothing changed: the same fingerprint"
+    time.sleep(0.01)
+    status, res = live("POST", "/api/generate-image", {"title": "x", "prompt": "p", "guide": "dark", "model": "google/nano-banana-pro"})
+    assert res["ok"]
+    sig1 = live("GET", "/api/version")[1]["state"]
+    assert sig1 != sig0, "a new plate moves it"
+    assert sig1 == live("GET", "/api/version")[1]["state"]
+    time.sleep(0.01)
+    assert live("POST", "/api/trash", {"filename": res["filename"], "trashed": True})[1]["ok"]
+    assert live("GET", "/api/version")[1]["state"] != sig1, "trashing writes the curation file: the fingerprint moves"

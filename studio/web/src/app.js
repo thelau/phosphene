@@ -119,29 +119,39 @@
       renderFilmstrip();
       restartLoop();
       if (!isPlaying) drawFrame();
-      lastSig = plateSig(plates);
+      if (data.state_sig) serverSig = data.state_sig;
     }
 
-    // Auto-refresh: pick up new/trashed plates without a manual reload.
-    let lastSig = null;
-    const plateSig = list => list.map(p => `${p.filename}|${p.trashed ? 1 : 0}`).join(',');
-
-    async function pollState() {
-      if (document.hidden || draggedFilename || document.querySelector('.prompt-overlay.open')) return;
+    // Refresh: the library and the film together (the two refresh buttons call the same thing, so they always agree).
+    // By itself the page only asks the server for a cheap fingerprint (/api/version, every 1.5 s) and fetches the library when it moved,
+    // at most every 15 s; the buttons fetch at once.
+    let serverSig = null, lastAutoRefresh = 0, refreshing = false;
+    async function refreshLibrary(manual) {
+      if (refreshing) return;
+      if (!manual && (document.hidden || draggedFilename || document.querySelector('.prompt-overlay.open'))) return;
+      refreshing = true;
+      ['refreshBtn', 'refreshFilmBtn'].forEach(id => document.getElementById(id).classList.add('spinning'));
       try {
-        const data = await (await fetch('/api/state')).json();
-        const next = data.plates || [];
-        const sig = plateSig(next);
-        if (lastSig === null) { lastSig = sig; return; }
-        if (sig === lastSig) return;
-        const known = new Set(plates.map(p => p.filename));
-        const added = next.filter(p => !known.has(p.filename) && !p.trashed).length;
-        const grid = document.getElementById('grid');
-        const top = grid.scrollTop;
+        const known = new Set(plates.map(p => p.filename)), n = activePlates().length;
+        const grid = document.getElementById('grid'), top = grid.scrollTop;
         await loadState();
         grid.scrollTop = top;
+        const added = plates.filter(p => !known.has(p.filename) && !p.trashed).length;
         if (added && !prog.timer) setStatus(`+${added} new image${added === 1 ? '' : 's'}`);
-      } catch (e) {}
+        else if (manual) setStatus('Up to date.');
+        if (isPlaying && activePlates().length !== n) musicChanged();                // the film got longer or shorter: the sound follows
+      } catch (e) {
+        if (manual) setStatus('Could not reach the server. Is it running?');
+      } finally {
+        refreshing = false;
+        ['refreshBtn', 'refreshFilmBtn'].forEach(id => document.getElementById(id).classList.remove('spinning'));
+      }
+    }
+    function libraryMoved(sig) {
+      if (!sig || serverSig === null || sig === serverSig || generating || aiRunning) return;     // a running job refreshes as it goes
+      if (Date.now() - lastAutoRefresh < 15000) return;
+      lastAutoRefresh = Date.now();
+      refreshLibrary(false);
     }
 
     // the images in the edit: the shown ones, cut at the active order's cut_off when the AI picked "best N"
@@ -1574,7 +1584,6 @@
       l.classList.add('done');
       setTimeout(() => l.remove(), 400);
     })();
-    setInterval(pollState, 5000);
 
     // Live reload: the server's boot id changes on restart, html changes when index.html is edited.
     (() => {
@@ -1588,6 +1597,7 @@
             else location.reload();
           }
           if (seen === null || !isBusy()) seen = sig;   // while busy keep the old signature so the reload still happens afterwards
+          libraryMoved(v.state);
         } catch (e) {}  // server restarting: try again next tick
       }, 1500);
     })();
@@ -1635,6 +1645,7 @@ Object.assign(window, {
   filmstripClick,
   rhythmStripClick,
   setThumbSize,
+  refreshLibrary,
   toggleMini,
   restoreSelected,
   trashCurrent,

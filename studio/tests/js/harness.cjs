@@ -35,6 +35,8 @@ function load({ routes = {}, storage = {} } = {}) {
     getElementById: id => (els[id] ||= Object.assign(new El(id), id === 'statusText' ? { dataset: { idle: '1' }, textContent: 'Ready' } : {})),
     createElement: () => new El('new'),
     querySelectorAll: () => [],
+    querySelector: () => null,
+    hidden: false,
     addEventListener() {},
     body: new El('body'),
     documentElement: new El('html'),

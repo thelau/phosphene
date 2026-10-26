@@ -1236,3 +1236,47 @@ test('paused, the timecode follows a tempo change at once (the length of the fil
   h.$('bpmInput').value = '120'; h.run('updateTempo()');
   assert.match(h.$('timecode').innerHTML, /\/ 0:01\.5 · cut 1 \/ 3/);
 });
+
+test('refresh: the buttons fetch at once and say what changed; by itself the page fetches only when the fingerprint moved, at most every 15 s', async () => {
+  const r = baseRoutes();
+  let st = { plates: [mkPlate('a'), mkPlate('b')], state_sig: 's1' };
+  r['/api/state'] = () => st;
+  const h = load({ routes: r });
+  await settle(); await settle();
+  const fetches = () => h.calls.filter(c => c.url === '/api/state').length;
+  await h.run('refreshLibrary(true)');
+  assert.match(h.$('toast').textContent, /Up to date/);
+  st = { plates: [mkPlate('a'), mkPlate('b'), mkPlate('c')], state_sig: 's2' };
+  await h.run('refreshLibrary(true)');
+  assert.match(h.$('toast').textContent, /\+1 new image/);
+  assert.equal(h.run('activePlates().length'), 3);
+  assert.equal(h.$('refreshBtn').classList.contains('spinning'), false); assert.equal(h.$('refreshFilmBtn').classList.contains('spinning'), false);
+  let n = fetches();
+  h.run("libraryMoved('s2')"); await settle();
+  assert.equal(fetches(), n, 'the same fingerprint: nothing to fetch');
+  h.run('lastAutoRefresh = 0'); h.run("libraryMoved('s3')"); await settle(); await settle();
+  assert.equal(fetches(), n + 1, 'it moved: one fetch');
+  n = fetches();
+  h.run("libraryMoved('s4')"); await settle();
+  assert.equal(fetches(), n, 'not again within 15 s');
+  h.run('lastAutoRefresh = 0; generating = true'); h.run("libraryMoved('s5')"); await settle();
+  assert.equal(fetches(), n, 'a running batch refreshes as it goes: no extra fetch');
+  h.run('generating = false');
+});
+
+test('refresh while playing: a longer or shorter film updates the sound, the same film leaves it alone', async () => {
+  const r = baseRoutes();
+  let st = { plates: [mkPlate('a'), mkPlate('b')], state_sig: 's1' };
+  r['/api/state'] = () => st;
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('stageImg').style.display = 'block';
+  h.$('musicSelect').value = 'on'; h.run('updateMusic()'); h.run('togglePlay()'); await settle();
+  const u = h.ctx.__drone.updates.length;
+  await h.run('refreshLibrary(true)');
+  assert.equal(h.ctx.__drone.updates.length, u);
+  st = { plates: [mkPlate('a'), mkPlate('b'), mkPlate('c')], state_sig: 's2' };
+  await h.run('refreshLibrary(true)');
+  assert.equal(h.ctx.__drone.updates.length, u + 1);
+  assert.equal(h.ctx.__drone.updates.at(-1).starts.length, h.run('synthStartsSec().length'));
+});

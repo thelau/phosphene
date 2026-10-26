@@ -141,6 +141,18 @@ STATE_LOCK = threading.RLock()
 BOOT_ID = str(time.time())
 
 
+def state_signature() -> str:
+    """A cheap fingerprint of the library: it changes when the curation file is written or a plate is added or removed.
+    The page polls it instead of downloading the whole state, and only fetches /api/state when it moves."""
+    parts = []
+    for p in (CURATION_FILE, PLATES_DIR):
+        try:
+            parts.append(str(p.stat().st_mtime_ns))
+        except OSError:
+            parts.append("0")
+    return ":".join(parts)
+
+
 def load_state() -> dict:
     st = _load_state_raw()
     st["kimi_api_key"] = _read_secret_key() or st.get("kimi_api_key", "") or os.environ.get("KIMI_API_KEY", os.environ.get("MOONSHOT_API_KEY", ""))
@@ -779,7 +791,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 html_mtime = (WEB_DIST / "index.html").stat().st_mtime
             except OSError:
                 html_mtime = 0
-            self.send_json({"boot": BOOT_ID, "html": html_mtime})
+            self.send_json({"boot": BOOT_ID, "html": html_mtime, "state": state_signature()})
             return
 
         if parsed.path == "/api/log":
@@ -811,6 +823,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/api/state":
+            sig = state_signature()          # taken first: a change made while this is built shows up at the next poll
             st = load_state()
             trashed_set = set(st.get("trashed", []))
             titles = st.get("titles", {})
@@ -845,6 +858,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
             kimi_key = st.get("kimi_api_key", "")
             self.send_json({
+                "state_sig": sig,
                 "plates": plates,
                 "krea_connected": bool(auth.get("connected") and not auth.get("expired")),
                 "kimi_configured": bool(kimi_key),
