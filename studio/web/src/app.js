@@ -1243,7 +1243,7 @@
       const paired = ['mono', 'colour'].includes(document.getElementById('invertSelect').value);
       return {
         pulse: unit('pulseRange'), low: unit('lowRange'), bright: unit('brightRange'), width: unit('widthRange'), space: unit('spaceRange'), power: unit('powerRange'),
-        pitch: unit('pitchRange'), chord: parseInt(document.getElementById('chordSelect').value, 10) || 0, prog: parseInt(document.getElementById('progSelect').value, 10) || 0, bass: unit('bassRange'), bassPattern: parseInt(document.getElementById('bassPatternSelect').value, 10) || 0, bassRate: parseInt(document.getElementById('bassRateSelect').value, 10) || 0, arrange: parseInt(document.getElementById('arrangeSelect').value, 10) || 0, progEvery: parseInt(document.getElementById('progEverySelect').value, 10) || 0, movement: unit('movementRange'), echo: unit('echoRange'),
+        pitch: unit('pitchRange'), chord: parseInt(document.getElementById('chordSelect').value, 10) || 0, prog: parseInt(document.getElementById('progSelect').value, 10) || 0, bass: unit('bassRange'), bassPattern: parseInt(document.getElementById('bassPatternSelect').value, 10) || 0, bassRate: parseInt(document.getElementById('bassRateSelect').value, 10) || 0, arrange: parseInt(document.getElementById('arrangeSelect').value, 10) || 0, style: parseInt(document.getElementById('styleSelect').value, 10) || 0, drumPattern: parseInt(document.getElementById('drumPatternSelect').value, 10) || 0, kick: unit('kickRange'), hats: unit('hatsRange'), clap: unit('clapRange'), perc: unit('percRange'), swing: unit('swingRange'), progEvery: parseInt(document.getElementById('progEverySelect').value, 10) || 0, movement: unit('movementRange'), echo: unit('echoRange'),
         wash: unit('washRange'), ring: unit('ringRange'), shimmer: unit('shimmerRange'), choir: unit('choirRange'), industrial: unit('industrialRange'),
         hitType: parseInt(document.getElementById('hitTypeSelect').value, 10) || 0, hit: unit('hitRange'), hitOn: parseInt(document.getElementById('hitOnSelect').value, 10) || 0,
         arp: unit('arpRange'), arpMood: parseInt(document.getElementById('arpMoodSelect').value, 10) || 0, arpSteps: parseInt(document.getElementById('arpStepsSelect').value, 10) || 0, arpRate: parseInt(document.getElementById('arpRateSelect').value, 10) || 0,
@@ -1265,9 +1265,10 @@
     function updateMusic() {
       const on = musicOn();
       document.getElementById('synthBox').hidden = !on;
+      if (document.getElementById('soundTabDrums').hidden === !!getn('styleSelect')) showSoundGroup(document.getElementById('soundGroupVal').value);   // a style came or went (Undo, a snapshot)
       if (on) warmSound();
       document.getElementById('soundOffNote').hidden = on;
-      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer', 'choir', 'industrial', 'hit', 'arp', 'bass']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
+      for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer', 'choir', 'industrial', 'hit', 'arp', 'bass', 'kick', 'hats', 'clap', 'perc', 'swing']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
       syncSegs(); paintRanges();
       saveSettings();
       musicChanged();
@@ -1282,9 +1283,11 @@
     }
     // the four groups of sound settings, one shown at a time: the same switch as Source
     // the four groups of sound settings, one shown at a time
-    const SOUND_GROUPS = ['bed', 'tone', 'texture', 'notes'];
+    const SOUND_GROUPS = ['bed', 'tone', 'texture', 'notes', 'drums'];
     function showSoundGroup(g) {
-      if (!SOUND_GROUPS.includes(g)) g = 'bed';
+      const styled = +document.getElementById('styleSelect').value > 0;
+      document.getElementById('soundTabDrums').hidden = !styled;           // drums only with a style
+      if (!SOUND_GROUPS.includes(g) || (g === 'drums' && !styled)) g = 'bed';
       for (const k of SOUND_GROUPS) {
         const id = k[0].toUpperCase() + k.slice(1);
         document.getElementById(`group${id}`).hidden = k !== g;
@@ -1494,8 +1497,9 @@
         if (getn('industrialRange') > 0) { setv('hitTypeSelect', 0); setv('ringRange', Math.min(20, getn('ringRange'))); }   // its bursts are the hits
       }
       if (getn('arrangeSelect') === 3 && rhythmMode() !== 'variable') setv('arrangeSelect', 1);   // a flat speed has nothing to follow
+      if (getn('styleSelect')) setv('hitTypeSelect', 0);                                         // with drums, no hits on the cuts as well
       if (getn('arrangeSelect')) {                                                                 // an arrangement needs at least two layers to move
-        const layers = () => [getn('arpRange'), getn('bassRange'), getn('hitTypeSelect')].filter(Boolean).length;
+        const layers = () => [getn('arpRange'), getn('bassRange'), getn('hitTypeSelect'), getn('styleSelect') ? getn('kickRange') + getn('hatsRange') : 0].filter(Boolean).length;
         if (layers() < 2 && !getn('bassRange')) setv('bassRange', rint([35, 55]));
         if (layers() < 2 && !getn('arpRange')) setv('arpRange', getn('choirRange') ? rint([20, 30]) : rint([25, 40]));   // softly under the choir
       }
@@ -1519,7 +1523,7 @@
       if (roll < (slow ? 0.3 : 0.1)) setv('choirRange', rint(RANDOM_RANGES.choir));                  // voices want room: mostly on slower cuts
       else if (roll < (slow ? 0.35 : 0.3)) setv('industrialRange', rint(RANDOM_RANGES.industrial));  // metal wants speed
       setv('arpMoodSelect', Math.random() < 0.3 ? 0 : 1 + Math.floor(Math.random() * 5));          // the first arpeggio (Pluck) most often, then the moods alike
-      rollChanges(); rollShape(null);
+      rollChanges(); rollShape(null); rollDrums();
       setv('seedVal', 1 + Math.floor(Math.random() * 99999));
       soundRules();
       if (quiet !== true) { updateMusic(); commitSettings('Random sound'); }
@@ -1531,12 +1535,31 @@
       const want = rhythmCutsPerSecond() * (1 + 3 * Math.random()), every = [2, 4, 8, 16];
       setv('progEverySelect', every.reduce((b, n, i) => (Math.abs(n - want) < Math.abs(every[b] - want) ? i : b), 0));
     }
+    // Style: Drone or a drum style. Picking a style gives it drums and its bassline if there are none yet; Random keeps the style.
+    const STYLE_BASS = [0, 4, 5, 2, 6];                                      // each style's bassline pattern (Rolling, 808, Fifths, Sparse)
+    const STYLE_SWING = [[0, 0], [0, 12], [0, 10], [10, 35], [10, 30]];
+    function pickStyle() {
+      rememberForUndo();
+      const st = getn('styleSelect');
+      if (st && !(getn('kickRange') + getn('hatsRange') + getn('clapRange') + getn('percRange'))) rollDrums();
+      showSoundGroup(st ? 'drums' : document.getElementById('soundGroupVal').value);
+      updateMusic(); commitSettings('Style');
+    }
+    function rollDrums() {
+      const st = getn('styleSelect');
+      if (!st) return;
+      setv('drumPatternSelect', Math.floor(Math.random() * 3));
+      setv('kickRange', rint([60, 85])); setv('hatsRange', rint([35, 65])); setv('clapRange', rint([30, 65]));
+      setv('percRange', Math.random() < 0.5 ? rint([20, 45]) : 0); setv('swingRange', rint(STYLE_SWING[st]));
+      if (Math.random() < 0.75) { setv('bassRange', rint([35, 60])); setv('bassPatternSelect', Math.random() < 0.6 ? STYLE_BASS[st] : Math.floor(Math.random() * 7)); }
+      setv('pulseRange', rint([40, 80]));                                    // the sidechain
+    }
     // the bassline and the arrangement: a type says how likely a bassline is and which arrangements suit it; Any draws them freely
     function rollShape(c) {
       const sh = c ? c.shape : { bass: 0.5, arrange: ['0', '1', '1', '2', '2', '3'] };
       const rate = rhythmCutsPerSecond();
       setv('bassRange', Math.random() < sh.bass ? rint([35, 65]) : 0);
-      setv('bassPatternSelect', Math.floor(Math.random() * 4));
+      setv('bassPatternSelect', Math.floor(Math.random() * 4));                                  // the cut patterns; a style's own come with its drums
       setv('bassRateSelect', rate > 4 ? 0 : rate > 2 ? Math.floor(Math.random() * 2) : 1 + Math.floor(Math.random() * 2));   // fast cuts: a note a cut
       setv('arrangeSelect', rpick(sh.arrange));
     }
@@ -1548,7 +1571,7 @@
       setv('chordSelect', rpick(c.chord)); setv('subWaveSelect', rpick(c.subWave)); setv('padWaveSelect', rpick(c.padWave));
       setv('hitTypeSelect', rpick(c.hitType)); setv('hitOnSelect', rpick(c.hitOn)); setv('dynSelect', rpick(c.dyn));
       setv('arpStepsSelect', Math.floor(Math.random() * 4)); setv('arpRateSelect', Math.floor(Math.random() * 4));
-      rollChanges(); rollShape(c);
+      rollChanges(); rollShape(c); rollDrums();
       setv('seedVal', 1 + Math.floor(Math.random() * 99999));
     }
     // everything at once, inside the character, the sound matched to the speed
@@ -1985,7 +2008,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'styleSelect', 'drumPatternSelect', 'kickRange', 'hatsRange', 'clapRange', 'percRange', 'swingRange', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -2458,6 +2481,7 @@ Object.assign(window, {
   openEditMenu,
   openEdit,
   snapshotEdit,
+  pickStyle,
   replaceEdit,
   renameEdit,
   deleteEdit,

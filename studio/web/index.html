@@ -432,16 +432,26 @@
               </select>
             </div>
             <div id="synthBox" hidden>
+              <label class="row"><span class="lbl">Style</span>
+                <select id="styleSelect" onchange="pickStyle()" title="Drone: the dark bed measured on the references. The others add a drum loop on the cuts, with the kick pumping the bed (from the playlist: melodic techno, electro, broken / IDM, downtempo).">
+                  <option value="0">Drone · the bed alone</option>
+                  <option value="1">Melodic techno</option>
+                  <option value="2">Electro · 808</option>
+                  <option value="3">Broken · IDM</option>
+                  <option value="4">Downtempo · half-time</option>
+                </select>
+              </label>
               <div class="sound-tabs" role="tablist" aria-label="Sound groups">
                 <button role="tab" id="soundTabBed" data-group="bed" onclick="showSoundGroup('bed')">Bed <span>6</span></button>
                 <button role="tab" id="soundTabTone" data-group="tone" onclick="showSoundGroup('tone')">Tone <span>7</span></button>
                 <button role="tab" id="soundTabTexture" data-group="texture" onclick="showSoundGroup('texture')">Texture <span>6</span></button>
                 <button role="tab" id="soundTabNotes" data-group="notes" onclick="showSoundGroup('notes')">Notes <span>12</span></button>
+                <button role="tab" id="soundTabDrums" data-group="drums" onclick="showSoundGroup('drums')" hidden>Drums <span>6</span></button>
               </div>
               <input type="hidden" id="soundGroupVal" value="bed" />
 
               <div class="sgroup" id="groupBed" data-group="bed">
-                <label class="row"><span class="lbl">Pulse</span><input type="range" id="pulseRange" min="0" max="100" value="50" oninput="updateMusic()" title="How much the music breathes with every cut" /><span class="val" id="pulseVal">50</span></label>
+                <label class="row"><span class="lbl">Pulse</span><input type="range" id="pulseRange" min="0" max="100" value="50" oninput="updateMusic()" title="How much the music breathes: with every cut (Drone), under the kick (a style)" /><span class="val" id="pulseVal">50</span></label>
                 <label class="row"><span class="lbl">Low end</span><input type="range" id="lowRange" min="0" max="100" value="70" oninput="updateMusic()" title="How much sub-bass" /><span class="val" id="lowVal">70</span></label>
                 <label class="row"><span class="lbl">Power</span><input type="range" id="powerRange" min="0" max="100" value="60" oninput="updateMusic()" title="Thicker and heavier: a stack of detuned voices and saturation" /><span class="val" id="powerVal">60</span></label>
                 <label class="row"><span class="lbl">Space</span><input type="range" id="spaceRange" min="0" max="100" value="60" oninput="updateMusic()" title="The size of the room: reverb length and amount" /><span class="val" id="spaceVal">60</span></label>
@@ -503,6 +513,21 @@
                 <label class="row"><span class="lbl">Industrial</span><input type="range" id="industrialRange" min="0" max="100" value="0" oninput="updateMusic()" title="Metal: a burst of noise on every other cut, a harder edge" /><span class="val" id="industrialVal">0</span></label>
               </div>
 
+              <div class="sgroup" id="groupDrums" data-group="drums" hidden>
+                <label class="row"><span class="lbl">Loop</span>
+                  <select id="drumPatternSelect" onchange="updateMusic()" title="The style's three loops: 16 steps a bar, a beat every few cuts so the tempo stays musical; every fourth bar ends in a short fill">
+                    <option value="0">Loop 1 · straight</option>
+                    <option value="1">Loop 2 · busier</option>
+                    <option value="2">Loop 3 · syncopated</option>
+                  </select>
+                </label>
+                <label class="row"><span class="lbl">Kick</span><input type="range" id="kickRange" min="0" max="100" value="0" oninput="updateMusic()" title="Tuned to the root; it pumps the bed (Pulse sets how much)" /><span class="val" id="kickVal">0</span></label>
+                <label class="row"><span class="lbl">Hats</span><input type="range" id="hatsRange" min="0" max="100" value="0" oninput="updateMusic()" title="Closed and open hats" /><span class="val" id="hatsVal">0</span></label>
+                <label class="row"><span class="lbl">Clap</span><input type="range" id="clapRange" min="0" max="100" value="0" oninput="updateMusic()" title="On the backbeat, in the room" /><span class="val" id="clapVal">0</span></label>
+                <label class="row"><span class="lbl">Perc</span><input type="range" id="percRange" min="0" max="100" value="0" oninput="updateMusic()" title="A rim, off the beat" /><span class="val" id="percVal">0</span></label>
+                <label class="row"><span class="lbl">Swing</span><input type="range" id="swingRange" min="0" max="100" value="0" oninput="updateMusic()" title="Pushes the off-steps late" /><span class="val" id="swingVal">0</span></label>
+              </div>
+
               <div class="sgroup" id="groupNotes" data-group="notes" hidden>
                 <div class="subhead">Hits</div>
                 <label class="row"><span class="lbl">Type</span>
@@ -559,6 +584,9 @@
                     <option value="1">Octave · up and down</option>
                     <option value="2">Fifths · root, fifth, octave</option>
                     <option value="3">Gallop · a rest, then two</option>
+                    <option value="4">Rolling · offbeat 16ths</option>
+                    <option value="5">808 · long, gliding</option>
+                    <option value="6">Sparse · long notes</option>
                   </select>
                 </label>
                 <label class="row"><span class="lbl">Speed</span>
