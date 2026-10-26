@@ -580,7 +580,8 @@ test('Curate: thumbnail sizes, trash from the grid with Undo, restore picked ima
   await page.click('#miniPlayBtn');
   await page.waitForTimeout(400);
   assert.equal(await page.locator('#miniPlayBtn').getAttribute('aria-label'), 'Pause');
-  assert.match(await text('#miniCount'), /^\d \/ 5$/);
+  assert.match(await text('#miniCount'), /^\d\/5$/);
+  assert.equal(await page.locator('#miniCount').evaluate(e => { e.textContent = '1333/1333'; return e.offsetHeight < 16; }), true, 'one line, even with a big library');
   await page.click('#miniHide');
   assert.equal(await page.locator('#miniPlayer').isVisible(), false);
   assert.equal(await page.locator('#miniPill').isVisible(), true);
@@ -823,5 +824,17 @@ test('dropdowns in the app style: open below or above depending on room, pick wi
   const native = await page.evaluate(() => [...document.querySelectorAll('select')].filter(s => !s.classList.contains('seg-src') && !s.parentElement.classList.contains('csel')).map(s => s.id));
   assert.deepEqual(native, []);
   assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
+test('the tempo lock is a small lock next to the tempo: on, Random keeps the tempo', { skip }, async () => {
+  const ctx = await fresh();
+  await film();
+  await page.fill('#bpmInput', '97'); await page.locator('#bpmInput').dispatchEvent('input');
+  await page.click('.lock');
+  assert.equal(await page.locator('#bpmLock').isChecked(), true);
+  for (let i = 0; i < 5; i++) await page.keyboard.press('r');
+  assert.equal(await page.locator('#bpmInput').inputValue(), '97');
+  assert.equal(await text('#bpmVal'), '97 BPM');
   await ctx.close();
 });

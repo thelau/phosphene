@@ -255,6 +255,14 @@
     .row > select { width: 100%; }
     .row.dim { color: var(--off); }
     #flatBox[hidden], #varBox[hidden], .sgroup[hidden], #synthBox[hidden] { display: none; }
+    .row.with-lock { grid-template-columns: 88px minmax(0, 1fr) 54px 24px; }
+    .lock { position: relative; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--faint); cursor: pointer; }
+    .lock:hover { color: var(--text-2); background: var(--field); }
+    .lock input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+    .lock .lk-shut, .lock:has(input:checked) .lk-open { display: none; }
+    .lock:has(input:checked) .lk-shut { display: block; }
+    .lock:has(input:checked) { color: var(--orange); }
+    .lock:has(input:focus-visible) { outline: 2px solid var(--orange); outline-offset: 1px; }
     .check-line { display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 13px; color: var(--text-2); cursor: pointer; user-select: none; }
     .check-line input { accent-color: var(--orange); width: 16px; height: 16px; margin: 0; flex: none; }
     .check-line.indent { padding-left: 98px; }
@@ -369,7 +377,7 @@
     .play-btn.small { width: 32px; height: 32px; }
     .play-btn.small::before { width: 13px; height: 13px; }
     .icon-btn.small { width: 32px; height: 32px; color: var(--text); border-color: var(--line-3); }
-    .mini-count { flex: 1; font-family: var(--mono); font-size: 10px; color: var(--muted); }
+    .mini-count { flex: 1; min-width: 0; text-align: center; font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; letter-spacing: -.02em; }
     .mini-pill { position: absolute; right: 28px; bottom: 24px; height: 38px; padding: 0 14px; display: flex; align-items: center; gap: 8px; border-radius: 19px; border: 1px solid var(--line-3); background: var(--raised); color: var(--text); font-size: 13px; box-shadow: 0 12px 32px rgba(0,0,0,.5); z-index: 20; }
     .mini-pill[hidden] { display: none; }
     body[data-mode="curate"] .toast { right: 196px; }

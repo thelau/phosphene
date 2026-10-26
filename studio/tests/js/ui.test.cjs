@@ -1613,3 +1613,24 @@ test('R never shows a stray image: every frame drawn during a Random is from the
   Object.defineProperty(v.$('stageImg'), 'src', { get: () => src, set: u => { src = u; shown.push(u); } });
   for (let i = 0; i < 20; i++) { shown.length = 0; v.run('jumpToPlate(9); randomAll()'); assert.deepEqual(shown.slice(1), shown.length > 1 ? Array(shown.length - 1).fill('/p/p0') : [], `only the first image after the jump: ${shown}`); }
 });
+
+test('the tempo lock: Random (any type, the R key, Random rhythm) keeps the tempo and a Flat speed; the Multiple still rolls; it is remembered', async () => {
+  const h = await playerWith();
+  h.$('bpmLock').type = 'checkbox'; h.$('bpmLock').checked = true;
+  h.$('bpmInput').value = '97'; h.run('updateTempo()');
+  const mults = new Set();
+  for (const k of ['any', ...Object.keys(JSON.parse(JSON.stringify(h.run('CHARACTERS'))))]) {
+    h.$('characterSelect').value = k;
+    for (let i = 0; i < 15; i++) {
+      h.run('randomAll()'); h.run('randomRhythm()');
+      assert.equal(h.$('bpmInput').value, '97', `${k}: the tempo stays`);
+      assert.equal(h.$('rhythmSelect').value, 'flat', `${k}: and the speed stays Flat`);
+      mults.add(h.$('multSelect').value);
+    }
+  }
+  assert.ok(mults.size > 2, 'the Multiple still changes');
+  assert.equal(JSON.parse(h.store.studioSettings).bpmLock, true, 'remembered');
+  h.$('bpmLock').checked = false;
+  const seen = new Set(); for (let i = 0; i < 30; i++) { h.$('characterSelect').value = 'any'; h.run('randomAll()'); seen.add(h.$('bpmInput').value + h.$('rhythmSelect').value); }
+  assert.ok(seen.size > 5, 'unlocked: Random changes it again');
+});

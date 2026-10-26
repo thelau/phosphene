@@ -317,10 +317,15 @@
               </select>
             </div>
             <div id="flatBox">
-              <label class="row"><span class="lbl">Tempo</span>
+              <div class="row with-lock"><label for="bpmInput" class="lbl">Tempo</label>
                 <input type="range" id="bpmInput" min="1" max="500" step="1" value="136" oninput="updateTempo()" title="Beats per minute, 1 to 500" />
                 <span class="val" id="bpmVal">136 BPM</span>
-              </label>
+                <label class="lock" title="Lock the tempo: Random keeps it (and stays on a Flat speed)">
+                  <input type="checkbox" id="bpmLock" onchange="saveSettings()" aria-label="Lock the tempo" />
+                  <svg class="lk-open" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 7.5-2"></path></svg>
+                  <svg class="lk-shut" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+                </label>
+              </div>
             </div>
             <div id="varBox" hidden>
               <label class="row"><span class="lbl">Start</span>
