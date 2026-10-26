@@ -653,3 +653,21 @@ test('playing 150 images at one frame a cut, the stage never paints an image tha
   assert.ok(r.lateFrames < r.frames * 0.15, `it keeps up: ${r.lateFrames} held frames`);   // without decoding ahead, 176 of 184 frames painted an image that was not ready
   await ctx.close();
 });
+
+test('keys in the page: arrows step, F fills the screen with the preview and F leaves, Delete trashes and Cmd+Z brings it back', { skip }, async () => {
+  const ctx = await fresh();
+  await film();
+  await page.keyboard.press('ArrowRight');
+  assert.match(await page.locator('#stageImg').getAttribute('src'), /k2/);
+  await page.keyboard.press('f');
+  await page.waitForFunction(() => document.fullscreenElement && document.fullscreenElement.id === 'stage');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('stageImg')).objectFit), 'contain', 'the whole frame, not cropped');
+  await page.keyboard.press('f');
+  await page.waitForFunction(() => !document.fullscreenElement);
+  await page.keyboard.press('Delete');
+  await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 2);
+  await page.keyboard.press('Meta+z');
+  await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 3);
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

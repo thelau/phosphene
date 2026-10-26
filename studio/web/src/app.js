@@ -565,12 +565,31 @@
       if (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable) return true;
       return t.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes(t.type);
     }
+    // Keys (none while typing in a field): Tab mode · Space play · ← → one image · Delete trash the image on screen (Film) · F full screen · Cmd/Ctrl+Z undo
     function onKey(e) {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (typingIn(e.target) || document.getElementById('confirmModal').classList.contains('open')) return;
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undoLast(); return; }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'Tab') { e.preventDefault(); if (e.target && e.target.blur) e.target.blur(); setMode(mode === 'film' ? 'curate' : 'film'); }
       else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); stepImage(e.key === 'ArrowRight' ? 1 : -1); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && mode === 'film') { e.preventDefault(); trashCurrent(); }
+      else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); }
     }
+    // one image back or forward (wraps), playing or not
+    function stepImage(d) {
+      const n = activePlates().length;
+      if (n) jumpToPlate((currentIdx + d + n) % n);
+    }
+    // the preview fills the screen; F or Esc leaves
+    function toggleFullscreen() {
+      const stage = document.getElementById('stage');
+      if (document.fullscreenElement) { document.exitFullscreen && document.exitFullscreen(); return; }
+      if (stage.requestFullscreen) stage.requestFullscreen().catch(() => {});
+    }
+    // the last thing that can be undone: a Random (the Undo button) or a trash (the toast's Undo)
+    let undoLastFn = null;
+    function undoLast() { const f = undoLastFn; undoLastFn = null; if (f) f(); }
     document.addEventListener('keydown', onKey);
     // a button clicked with the mouse gives its focus back, so Space plays instead of pressing it again
     document.addEventListener('click', e => { const b = e.target && e.target.closest && e.target.closest('button'); if (b && e.detail > 0) b.blur(); }, true);
@@ -656,7 +675,8 @@
       const order = plates.filter(x => !x.trashed).map(x => x.filename);
       await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename: p.filename, trashed: true }) });
       await loadState();
-      setStatus(`“${p.title}” moved to Trash`, { label: 'Undo', run: () => untrash(p.filename, order) });
+      undoLastFn = () => untrash(p.filename, order);
+      setStatus(`“${p.title}” moved to Trash`, { label: 'Undo', run: () => { undoLastFn = null; untrash(p.filename, order); } });
     }
     async function untrash(filename, order) {
       if (blockedByAi()) return;
@@ -851,6 +871,7 @@
       randomBefore = {};
       PERSISTED.filter(id => !NOT_UNDONE.includes(id)).forEach(id => { const el = document.getElementById(id); if (el) randomBefore[id] = el.type === 'checkbox' ? el.checked : el.value; });
       document.getElementById('undoRandomBtn').disabled = false;
+      undoLastFn = undoRandom;
     };
     function undoRandom() {
       if (!randomBefore) return;
@@ -1319,7 +1340,10 @@
       });
       await loadState();
       const p = plates.find(x => x.filename === filename);
-      if (trashed && p) setStatus(`“${p.title}” moved to Trash`, { label: 'Undo', run: () => untrash(filename, order) });
+      if (trashed && p) {
+        undoLastFn = () => untrash(filename, order);
+        setStatus(`“${p.title}” moved to Trash`, { label: 'Undo', run: () => { undoLastFn = null; untrash(filename, order); } });
+      }
     }
 
     function ensureKimiReady() {
@@ -1701,6 +1725,7 @@ Object.assign(window, {
   rhythmStripClick,
   setThumbSize,
   refreshLibrary,
+  toggleFullscreen,
   stageStats: () => ({ lateFrames, ready: ready.size }),
   toggleMini,
   restoreSelected,

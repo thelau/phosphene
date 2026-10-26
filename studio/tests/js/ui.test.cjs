@@ -1298,3 +1298,33 @@ test('playing, the stage only switches to an image that is decoded; it decodes t
   assert.equal(h.$('stageImg').src, '/p/b', 'and switches as soon as it can paint');
   h.run('isPlaying = false');
 });
+
+test('keys: ← → step one image (wrapping), Delete trashes the image on screen in Film only, Cmd+Z undoes the last Random or trash', async () => {
+  const r = baseRoutes();
+  let st = [mkPlate('a'), mkPlate('b'), mkPlate('c')];
+  r['/api/state'] = () => ({ plates: st });
+  r['/api/trash'] = body => { st = st.map(p => (p.filename === body.filename ? { ...p, trashed: body.trashed } : p)); return { ok: true }; };
+  r['/api/reorder'] = () => ({ ok: true });
+  const h = load({ routes: r });
+  await settle(); await settle();
+  const key = (k, extra = {}) => h.ctx.onKey({ key: k, target: { tagName: 'BODY' }, preventDefault() {}, ...extra });
+  key('ArrowRight'); assert.equal(h.run('currentIdx'), 1);
+  key('ArrowRight'); key('ArrowRight'); assert.equal(h.run('currentIdx'), 0, 'wraps to the first');
+  key('ArrowLeft'); assert.equal(h.run('currentIdx'), 2);
+  h.ctx.onKey({ key: 'ArrowLeft', target: { tagName: 'INPUT', type: 'text' }, preventDefault() {} });
+  assert.equal(h.run('currentIdx'), 2, 'in a text field the arrows move the caret');
+  key('Delete'); await settle();
+  assert.equal(h.calls.filter(c => c.url === '/api/trash').length, 0, 'in Curate Delete does nothing');
+  h.run("setMode('film')");
+  key('Backspace'); await settle(); await settle();
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['a', 'b']);
+  key('z', { metaKey: true }); await settle(); await settle(); await settle();
+  assert.deepEqual(h.run('activePlates().map(p => p.filename).sort()'), ['a', 'b', 'c'], 'Cmd+Z brought it back');
+  const snap = () => ['rhythmSelect', 'bpmInput', 'startMsRange', 'multSelect', 'invertSelect', 'zoomSelect', 'pulseRange', 'chordSelect', 'seedVal', 'musicSelect'].map(id => h.$(id).value).join('|');
+  const before = snap();
+  h.run('randomAll()');
+  assert.notEqual(snap(), before);
+  key('z', { ctrlKey: true });
+  assert.equal(snap(), before, 'Ctrl+Z undoes a Random');
+  key('z', { metaKey: true });                                                     // nothing left: harmless
+});

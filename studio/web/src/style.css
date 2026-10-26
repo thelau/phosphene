@@ -132,6 +132,9 @@
     .reticle .ret-v { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(236, 84, 12, .55); }
     .reticle .ret-h { position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: rgba(236, 84, 12, .55); }
     .reticle-circle { position: absolute; left: 50%; top: 50%; width: 18%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; border: 1.5px dashed var(--orange); }
+    .stage:fullscreen { background: #000; border-radius: 0; box-shadow: none; }       /* the whole frame, letterboxed */
+    .stage:fullscreen img { object-fit: contain; }
+    .stage:fullscreen .reticle { display: none; }
     .ret-label { position: absolute; left: 8px; bottom: 8px; font-family: var(--mono); font-size: 10px; color: var(--text); background: rgba(26, 26, 26, .8); padding: 2px 6px; border-radius: 4px; }
 
     .transport { flex: none; display: flex; align-items: center; justify-content: center; gap: 8px; height: 40px; }
