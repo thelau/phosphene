@@ -820,6 +820,21 @@ test('dropdowns in the app style: open below or above depending on room, pick wi
   await page.evaluate(() => { document.getElementById('cselMenu').hidden || document.getElementById('inspPicture').dispatchEvent(new Event('scroll')); });
   await page.keyboard.press('Escape');
   await page.click('#playBtn');
+  // after a pick, by mouse or keyboard, the keys work again (the dropdown let go of the focus)
+  await page.click('.csel[data-for="multSelect"]');
+  await page.locator('#cselMenu .csel-item', { hasText: '×3' }).first().click();
+  await page.keyboard.press(' ');
+  assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Pause', 'Space plays right after a pick');
+  await page.keyboard.press(' ');
+  await page.click('.csel[data-for="characterSelect"]');
+  await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+  assert.equal(await page.locator('#characterSelect').inputValue(), 'landing');
+  const seed = await page.locator('#seedVal').inputValue();
+  await page.keyboard.press('s');
+  assert.notEqual(await page.locator('#seedVal').inputValue(), seed, 'S works right after a keyboard pick');
+  await page.click('.csel[data-for="multSelect"]'); await page.keyboard.press('Escape');
+  await page.keyboard.press('t');
+  assert.equal(await page.locator('#reticle').evaluate(e => e.classList.contains('visible')), true, 'and after Esc');
   // no system dropdown is left in the page (the segmented ones are buttons)
   const native = await page.evaluate(() => [...document.querySelectorAll('select')].filter(s => !s.classList.contains('seg-src') && !s.parentElement.classList.contains('csel')).map(s => s.id));
   assert.deepEqual(native, []);
@@ -836,5 +851,28 @@ test('the tempo lock is a small lock next to the tempo: on, Random keeps the tem
   for (let i = 0; i < 5; i++) await page.keyboard.press('r');
   assert.equal(await page.locator('#bpmInput').inputValue(), '97');
   assert.equal(await text('#bpmVal'), '97 BPM');
+  await ctx.close();
+});
+
+test('the info panel on a card: less at small sizes, the text scrolls, Copy copies even a prompt with quotes', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945, setup: st => { st.plates[0].prompt = 'A "mirror" logo, 50mm, the brand\'s mark at the center ' + 'and more words '.repeat(40); } });
+  await page.evaluate(() => { window.__copied = []; navigator.clipboard.writeText = async t => { window.__copied.push(t); }; });
+  const open = async () => { await page.locator('.card[data-filename="k1"]').hover(); await page.locator('.card[data-filename="k1"] .info-btn').click({ force: true }); };
+  const seen = async () => page.evaluate(() => { const o = document.querySelector('.card[data-filename="k1"] .prompt-overlay'); const v = sel => { const e = o.querySelector(sel); return !!e && getComputedStyle(e).display !== 'none'; }; return { world: v('.po-world'), idea: v('.po-idea'), prompt: v('.po-prompt'), scrolls: o.querySelector('.prompt-overlay-text').scrollHeight > o.querySelector('.prompt-overlay-text').clientHeight, copyIn: (() => { const c = o.querySelector('.po-copy').getBoundingClientRect(), b = o.getBoundingClientRect(); return c.bottom <= b.bottom + 1 && c.right <= b.right + 1; })() }; });
+  for (const [size, want] of [['S', { world: false, idea: false }], ['M', { world: true, idea: false }], ['L', { world: true, idea: true }]]) {
+    await page.click(`#thumb${size}`);
+    await open();
+    const s = await seen();
+    assert.equal(s.prompt, true, size); assert.equal(s.world, want.world, `${size} territory`); assert.equal(s.idea, want.idea, `${size} idea`);
+    assert.equal(s.copyIn, true, `${size}: Copy inside the card`);
+    if (size === 'S') { assert.equal(s.scrolls, true, 'a long prompt scrolls inside'); await shot('25-info-small'); }
+    assert.equal(await page.locator('.card[data-filename="k1"] .card-num').isVisible(), false, 'the number steps back');
+    await page.locator('.card[data-filename="k1"] .po-copy').click();
+    await page.locator('.card[data-filename="k1"] .prompt-overlay').click({ position: { x: 20, y: 20 } });   // closes it
+  }
+  const copied = await page.evaluate(() => window.__copied);
+  assert.equal(copied.length, 3);
+  assert.match(copied[0], /^A "mirror" logo, 50mm, the brand's mark/);
+  assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });

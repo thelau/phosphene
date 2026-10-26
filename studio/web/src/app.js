@@ -441,11 +441,8 @@
               }
             </div>
             <div class="prompt-overlay" id="overlay-${CSS.escape(p.filename)}" onclick="togglePromptOverlay(event, '${p.filename}')">
-              <div class="prompt-overlay-text">${p.world ? `<b>${escapeHtml(p.world)}</b><br>` : ''}${p.idea ? `<i>${escapeHtml(p.idea)}</i><br><br>` : ''}${escapeHtml(p.prompt || p.title)}${p.critic ? `<br><br>AI critic ${p.critic.mean}: ${escapeHtml(p.critic.reason)}` : ''}</div>
-              <div class="prompt-overlay-meta">
-                <span>Model: <strong>${escapeHtml(p.model || 'google/nano-banana-2')}</strong></span>
-                <button style="padding:2px 7px;font-size:10px;" onclick="copyPromptText(event, ${JSON.stringify(p.prompt || p.title)})">Copy</button>
-              </div>
+              <div class="prompt-overlay-text">${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${p.critic ? `<span class="po-critic">AI critic ${p.critic.mean}: ${escapeHtml(p.critic.reason)}</span>` : ''}</div>
+              <div class="prompt-overlay-meta"><button class="po-copy" onclick="copyPromptText(event, '${p.filename}')">Copy prompt</button></div>
             </div>
           </div>
           <div class="card-title" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</div>
@@ -503,13 +500,18 @@
     function togglePromptOverlay(e, filename) {
       e.stopPropagation();
       const el = document.getElementById(`overlay-${CSS.escape(filename)}`);
-      if (el) el.classList.toggle('open');
+      if (!el) return;
+      const open = el.classList.toggle('open');
+      const card = el.closest ? el.closest('.card') : null;
+      if (card) card.classList.toggle('info-open', open);                   // the number and the buttons step back while it is open
     }
 
-    function copyPromptText(e, text) {
+    // the prompt is looked up by file name: written into the onclick attribute, its own quotes broke the handler
+    function copyPromptText(e, filename) {
       e.stopPropagation();
-      navigator.clipboard.writeText(text || '');
-      setStatus('Prompt copied to clipboard.');
+      const p = plates.find(x => x.filename === filename);
+      const text = p ? p.prompt || p.title || '' : String(filename || '');
+      Promise.resolve(navigator.clipboard && navigator.clipboard.writeText(text)).then(() => setStatus('Prompt copied.'), () => setStatus('Could not copy: the browser refused the clipboard.'));
     }
 
     /* Drag and drop reordering */
@@ -735,11 +737,14 @@
       sel.parentElement.classList.add('open');
       markActive(true);
     }
+    // closing the menu also lets go of the dropdown's focus: the keys (Space, R, S…) work again straight after a pick
     function closeMenu() {
       const m = document.getElementById('cselMenu');
       if (m) m.hidden = true;
-      if (menuFor && menuFor.parentElement) menuFor.parentElement.classList.remove('open');
+      const sel = menuFor;
       menuFor = null;
+      if (sel && sel.parentElement) sel.parentElement.classList.remove('open');
+      if (sel && sel.blur) sel.blur();
     }
     function pickOption(i) {
       const sel = menuFor;
@@ -747,7 +752,6 @@
       closeMenu();
       if (sel.selectedIndex !== i && sel.options[i] && !sel.options[i].disabled) { sel.selectedIndex = i; sel.dispatchEvent(new Event('change', { bubbles: true })); }
       syncSelects();
-      sel.focus();
     }
     function markActive(scroll) {
       const m = document.getElementById('cselMenu');

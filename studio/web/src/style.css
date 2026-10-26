@@ -332,10 +332,20 @@
     .action-btn.trash-btn:hover { background: var(--red); }
     .action-btn.info-btn:hover { background: var(--orange); color: #1A1A1A; }
     .action-btn.restore-btn { flex: 1; background: rgba(254, 255, 231, .92); color: #1A1A1A; }
-    .prompt-overlay { position: absolute; inset: 0; background: rgba(14, 13, 12, .94); padding: 30px 12px 12px; display: none; flex-direction: column; justify-content: space-between; z-index: 7; color: var(--text-2); font-size: 11px; line-height: 1.45; overflow-y: auto; cursor: default; }
+    /* the info panel on a card: what it shows depends on the thumbnail size; the text scrolls, Copy stays */
+    .prompt-overlay { position: absolute; inset: 0; background: #161514; padding: 12px 12px 10px; display: none; flex-direction: column; gap: 8px; z-index: 7; color: var(--text-2); font-size: 12px; line-height: 1.45; cursor: default; }
     .prompt-overlay.open { display: flex; }
-    .prompt-overlay-text { overflow-y: auto; word-break: break-word; user-select: text; }
-    .prompt-overlay-meta { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, .12); font-size: 10px; color: var(--faint); display: flex; justify-content: space-between; align-items: center; }
+    .prompt-overlay-text { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; word-break: break-word; user-select: text; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+    .po-world { color: var(--text); font-weight: 700; }
+    .po-idea { color: var(--muted); }
+    .po-critic { color: var(--faint); font-size: 11px; }
+    .prompt-overlay-meta { flex: none; display: flex; justify-content: flex-end; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, .1); }
+    .po-copy { height: 26px; padding: 0 10px; font-size: 11px; border-radius: 6px; }
+    .card.info-open .card-num, .card.info-open .card-actions, .card.info-open .card-new { display: none; }
+    .grid-col[data-size="S"] .po-world, .grid-col[data-size="S"] .po-idea, .grid-col[data-size="S"] .po-critic, .grid-col[data-size="M"] .po-idea, .grid-col[data-size="M"] .po-critic { display: none; }
+    .grid-col[data-size="S"] .prompt-overlay { padding: 8px 8px 6px; font-size: 10.5px; line-height: 1.4; }
+    .grid-col[data-size="S"] .po-copy { width: 100%; padding: 0; }
+    .grid-col[data-size="S"] .card-actions .drag-handle, .grid-col[data-size="S"] .card-actions .grow { display: none; }
     .card-title { font-size: 12px; line-height: 1.3; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .card-meta { display: flex; gap: 4px; flex-wrap: wrap; margin-top: -2px; }
     .grid-col[data-size="S"] .card-meta { display: none; }

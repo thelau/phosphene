@@ -20,7 +20,7 @@ test('orders: switch between Manual and AI without losing either', { skip }, asy
   assert.deepEqual(await names(), ['k2', 'k3', 'k1']);
   assert.equal(await text('#seqSummary'), 'Hook on k2, lands on k1.');
   assert.equal(await page.locator('#aiNote').isVisible(), true);
-  assert.match(await text('#aiNote'), /The AI's note/i);
+  assert.match(await text('#aiNote'), /AI order notes/i);
   assert.deepEqual((await seg()).map(x => x.on), [false, true]);
   await shot('12-orders-ai');
   await clickSeg('Manual');
