@@ -293,7 +293,9 @@
     async function deleteEdit() {
       const e = editOf(currentEdit);
       closeEditMenu();
-      if (!e || !await editsCall({ action: 'delete', id: e.id })) return;
+      if (!e) return;
+      if (!(await askConfirm(`Delete “${e.name}”?`, 'The snapshot goes; the film on screen and your images stay as they are. Undo (⌘Z) brings it back.', 'Delete'))) return;
+      if (!await editsCall({ action: 'delete', id: e.id })) return;
       setCurrentEdit(null); renderEditBar();
       const step = pushStep({ label: `Delete “${e.name}”`, undo: async () => { await editsCall({ action: 'restore', edit: e }); setCurrentEdit(e.id); renderEditBar(); }, redo: async () => { await editsCall({ action: 'delete', id: e.id }); setCurrentEdit(null); renderEditBar(); } });
       setStatus(`“${e.name}” deleted.`, { label: 'Undo', run: () => undoStep(step) });

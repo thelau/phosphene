@@ -425,6 +425,12 @@ test('snapshots: ＋ Snapshot keeps the film under a name it picks, switching br
   await shot('28-snapshots');
   // delete, then undo
   await page.locator('#editMenu .gm-item', { hasText: 'Delete' }).click();
+  assert.equal(await text('#confirmTitle'), 'Delete “Slow all”?', 'asked first');
+  await page.click('#confirmModal button:not(#confirmYes)');
+  assert.equal(await text('#editName'), 'Slow all', 'Cancel keeps it');
+  await page.click('#editBtn');
+  await page.locator('#editMenu .gm-item', { hasText: 'Delete' }).click();
+  await page.click('#confirmYes');
   await page.waitForFunction(() => document.getElementById('editName').textContent === 'No snapshot selected');   // another one is still there
   await page.keyboard.press('Meta+z');
   await page.waitForFunction(() => document.getElementById('editName').textContent === 'Slow all');
