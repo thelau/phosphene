@@ -10,7 +10,8 @@ const TAP = () => {
     const orig = AudioNode.prototype.connect; let ctx = null; const blocks = [];
     AudioNode.prototype.connect = function (dst, ...a) { if (ctx && dst === ctx.destination && window.__sp) orig.call(this, window.__sp); return orig.call(this, dst, ...a); };
     return {
-      attach(c) { ctx = c; const sp = c.createScriptProcessor(1024, 2, 2); window.__sp = sp; sp.onaudioprocess = e => { const d = e.inputBuffer.getChannelData(0); let s = 0, pk = 0; for (const v of d) { if (!Number.isFinite(v)) pk = Infinity; s += v * v; pk = Math.max(pk, Math.abs(v)); } blocks.push([Math.sqrt(s / d.length), pk]); }; sp.connect(c.destination); },
+      attach(c, master) { ctx = c; const sp = c.createScriptProcessor(1024, 2, 2); window.__sp = sp; if (master) orig.call(master, sp);   // the live sound reaches the speakers through its master (the mute)
+        sp.onaudioprocess = e => { const d = e.inputBuffer.getChannelData(0); let s = 0, pk = 0; for (const v of d) { if (!Number.isFinite(v)) pk = Infinity; s += v * v; pk = Math.max(pk, Math.abs(v)); } blocks.push([Math.sqrt(s / d.length), pk]); }; sp.connect(c.destination); },
       mark() { return blocks.length; },
       since(n) { const seg = blocks.slice(n); const ms = seg.reduce((x, b) => x + b[0] ** 2, 0) / Math.max(1, seg.length); return { rms: Math.sqrt(ms), peak: Math.max(0, ...seg.map(b => b[1])), n: seg.length }; }
     };
@@ -23,7 +24,7 @@ test('swapping the live sound does not make it louder or add spikes (the level s
   const r = await page.evaluate(async ({ BASE, TAP }) => {
     new Function(`(${TAP})()`)();
     const sleep = ms => new Promise(r => setTimeout(r, ms));
-    const L = new window.Drone.Live(); window.__tap.attach(L._context());
+    const L = new window.Drone.Live(); window.__tap.attach(L._context(), L.master);
     const starts = Array.from({ length: 200 }, (_, i) => i / 3);
     const measure = async (switching) => {
       await L.play(BASE, starts, 0);

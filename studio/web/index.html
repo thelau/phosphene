@@ -108,10 +108,10 @@
         </select>
         <input id="directionInput" type="text" maxlength="300" placeholder="Direction (optional): e.g. apparel, wet, warm" />
         <select id="batchCountSelect" title="Number of images per batch">
-          <option value="2">2 images</option>
-          <option value="4" selected>4 images</option>
-          <option value="6">6 images</option>
-          <option value="8">8 images</option>
+          <option value="2">×2</option>
+          <option value="4" selected>×4</option>
+          <option value="6">×6</option>
+          <option value="8">×8</option>
           <option value="12">12 images</option>
           <option value="16">16 images</option>
           <option value="20">20 images</option>
@@ -199,26 +199,6 @@
     <!-- ============ FILM: the result ============ -->
     <section class="view" id="viewFilm" aria-label="Film">
       <main class="film-main">
-        <div class="look-bar">
-          <label class="look-char">Character
-            <select id="characterSelect" onchange="pickCharacter()" title="A character keeps Random inside one kind of film, modelled on the references. Any picks one at random each time.">
-              <option value="any">Any</option>
-              <option value="landing">Landing</option>
-              <option value="pulse">Pulse</option>
-              <option value="build">Build</option>
-              <option value="float">Float</option>
-              <option value="machine">Machine</option>
-            </select>
-          </label>
-          <button onclick="randomAll()" id="randomAllBtn" class="look-random" title="Rolls the rhythm, the look and the sound together, inside the character, and matches the sound to the speed">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg>
-            Random
-          </button>
-          <button onclick="undoRandom()" id="undoRandomBtn" class="icon-btn" title="Go back to the settings from before the last random" aria-label="Undo random" disabled>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 0 1 0 12h-3"></path></svg>
-          </button>
-        </div>
-
         <div class="stage-wrap" id="stageHome">
           <div class="stage" id="stage">
             <img id="stageImg" alt="" />
@@ -239,9 +219,9 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 1v4M12 19v4M1 12h4M19 12h4"></path></svg>
           </button>
           <span class="timecode" id="timecode">0:00.0 <span>/ 0:00.0 · cut 1 / 0</span></span>
-          <button onclick="toggleSound()" id="soundBtn" class="sound-btn" title="Turn the synthesized sound on or off" aria-pressed="false">
+          <button onclick="toggleSound()" id="soundBtn" class="sound-btn" title="Mute the preview (the export keeps its sound)" aria-pressed="false">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"></path><path d="M16.5 9a4 4 0 0 1 0 6"></path></svg>
-            <span id="soundLabel">Sound off</span>
+            <span id="soundLabel">No sound</span>
           </button>
         </div>
 
@@ -277,13 +257,36 @@
       </main>
 
       <aside class="inspector" aria-label="Inspector">
+        <div class="look-bar" aria-label="Type and Random">
+            <label class="look-char">Type
+              <select id="characterSelect" onchange="pickCharacter()" title="What Random may make. Any: anything that works. A type: only that kind of film, modelled on the references. Choosing one rolls at once.">
+                <option value="any">Any</option>
+                <option value="landing">Landing · fast, then slows</option>
+                <option value="build">Build · slow, then fast</option>
+                <option value="drift">Drift · slow and changing</option>
+                <option value="pulse">Pulse · on the beat</option>
+                <option value="breath">Breath · calm, notes</option>
+                <option value="strobe">Strobe · colour flashes</option>
+                <option value="float">Float · slow and wide</option>
+                <option value="machine">Machine · very fast</option>
+              </select>
+            </label>
+            <button onclick="randomAll()" id="randomAllBtn" class="look-random" title="Rhythm, look and sound again, inside the type (Any: anything), the sound matched to the speed">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg>
+              Random
+            </button>
+            <button onclick="undoRandom()" id="undoRandomBtn" class="icon-btn" title="Go back to the settings from before the last random" aria-label="Undo random" disabled>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 0 1 0 12h-3"></path></svg>
+            </button>
+          </div>
+
         <div class="insp-scroll" id="inspScroll">
           <input type="hidden" id="seedVal" value="7" />
 
+          <div class="insp-col" id="inspPicture">
           <!-- Rhythm -->
           <section class="card-sec" aria-label="Rhythm">
             <div class="sec-head"><h2>Rhythm</h2>
-              <button onclick="randomRhythm()" id="randomRhythmBtn" class="dice" title="A new rhythm: tempo or a variable run, and the Multiple" aria-label="Random rhythm"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg></button>
             </div>
             <div class="row"><span class="lbl">Speed</span>
               <select id="rhythmSelect" class="seg-src" onchange="updateRhythm()" title="Flat: every cut the same length, set by a tempo. Variable: the cuts speed up or slow down from a start length to an end length.">
@@ -312,23 +315,23 @@
               </label>
               <div class="row"><span class="lbl">Change at</span>
                 <select id="atSelect" class="seg-src" onchange="updateRhythm()" title="End: hold the start speed, then change over the last cuts (a landing, as in Ecwora and Soiltone). Start: change over the first cuts, then hold the end speed.">
-                  <option value="end" selected>End · landing</option>
-                  <option value="start">Start · build-up</option>
+                  <option value="end" selected>Landing</option>
+                  <option value="start">Build-up</option>
                 </select>
               </div>
             </div>
             <label class="row"><span class="lbl">Multiple</span>
               <select id="multSelect" onchange="updateTempo()" title="How many picture cuts per beat (or per cut of the variable run). It only changes the pictures: the music stays on the beat.">
-                <option value="0.25">×¼ (1 cut / 4 beats)</option>
-                <option value="0.5">×½ (1 cut / 2 beats)</option>
-                <option value="1">×1 (1 cut / beat)</option>
-                <option value="1.3333333">×1⅓ (1 cut / ¾ beat)</option>
+                <option value="0.25">×¼</option>
+                <option value="0.5">×½</option>
+                <option value="1">×1</option>
+                <option value="1.3333333">×1⅓</option>
                 <option value="2">×2 (2 cuts / beat)</option>
-                <option value="3">×3 (triplets)</option>
+                <option value="3">×3</option>
                 <option value="4" selected>×4 (4 cuts / beat)</option>
                 <option value="6">×6 (6 cuts / beat)</option>
                 <option value="8">×8 (8 cuts / beat)</option>
-                <option value="9">×9 (9 cuts / beat)</option>
+                <option value="9">×9</option>
               </select>
               <span class="val" id="speedVal"></span>
             </label>
@@ -340,7 +343,6 @@
           <!-- Look -->
           <section class="card-sec" aria-label="Look">
             <div class="sec-head"><h2>Look</h2>
-              <button onclick="randomLook()" id="randomLookBtn" class="dice" title="A new look: invert and zoom" aria-label="Random look"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg></button>
             </div>
             <div class="row"><span class="lbl">Invert</span>
               <select id="invertSelect" class="seg-src" onchange="updateFx()" title="Soiltone-style: every image is followed by an inverted copy of itself (same hold)">
@@ -362,10 +364,14 @@
             </label>
           </section>
 
+          </div>
+          <div class="insp-col" id="inspSound">
           <!-- Sound -->
           <section class="card-sec" aria-label="Sound">
             <div class="sec-head"><h2>Sound</h2>
-              <button id="randomBtn" onclick="randomMusic()" class="dice" title="A new sound within what works: tuning, chord, movement, echo, room, weight" aria-label="Random sound"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg></button>
+              <button id="randomBtn" onclick="randomMusic()" class="small-btn" title="A new sound for the same cut: tuning, chord, layers, notes, room">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg>
+                Random sound</button>
             </div>
             <div class="row"><span class="lbl">Source</span>
               <select id="musicSelect" class="seg-src" onchange="updateMusic()" title="Synthesized: a dark drone that follows the cuts, in the preview and the export.">
@@ -477,6 +483,7 @@
             </div>
             <p class="sound-off-note" id="soundOffNote">The film is silent. Choose Synthesized to add the drone.</p>
           </section>
+          </div>
         </div>
 
         <div class="export-dock" id="exportDock" data-state="idle">

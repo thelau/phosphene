@@ -740,17 +740,25 @@
       const on = musicOn();
       document.getElementById('synthBox').hidden = !on;
       document.getElementById('soundOffNote').hidden = on;
-      document.getElementById('soundBtn').setAttribute('aria-pressed', String(on));
-      document.getElementById('soundLabel').textContent = on ? 'Sound on' : 'Sound off';
+      showSoundButton();
       for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer', 'hit', 'arp']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
       syncSegs(); paintRanges();
       saveSettings();
       musicChanged();
     }
     // the transport's sound button: the same switch as Source
+    // the transport's speaker: mutes what you hear, nothing else (Source and the export stay as they are)
     function toggleSound() {
-      document.getElementById('musicSelect').value = musicOn() ? 'off' : 'on';
-      updateMusic();
+      if (!musicOn()) return;
+      droneLive.setMuted(!droneLive.muted);
+      showSoundButton();
+    }
+    function showSoundButton() {
+      const on = musicOn(), b = document.getElementById('soundBtn');
+      b.disabled = !on;
+      b.setAttribute('aria-pressed', String(on && !droneLive.muted));
+      document.getElementById('soundLabel').textContent = !on ? 'No sound' : droneLive.muted ? 'Muted' : 'Sound on';
+      b.title = !on ? 'The film is silent: choose Synthesized under Sound' : droneLive.muted ? 'Hear the sound again (the export is not affected)' : 'Mute the preview (the export keeps its sound)';
     }
     // the four groups of sound settings, one shown at a time
     const SOUND_GROUPS = ['bed', 'tone', 'texture', 'notes'];
@@ -773,29 +781,44 @@
     const CHARACTERS = {
       landing: { name: 'Landing',                                          // Ecwora / Soiltone: fast hold, then a slow landing, grey inverted copies
         rhythm: { mode: 'variable', start: [60, 120], end: [450, 900], ramp: [8, 16], at: 'end', mult: ['1', '1', '2'] },
-        look: { invert: ['mono', 'mono', 'off'], zoom: ['out', 'off'], amount: [0.3, 1.2] },
+        look: { invert: ['mono', 'mono', 'off'], zoom: ['out', 'out', 'in', 'off'], amount: [0.4, 2] },
         sound: { pulse: [40, 75], low: [75, 100], power: [40, 80], space: [50, 85], bright: [0, 35], width: [50, 100], pitch: [0, 45], movement: [20, 60], echo: [0, 35], wash: [15, 55], ring: [0, 25], shimmer: [0, 25], hit: [30, 60], arp: [0, 35],
           chord: ['0', '0', '2'], subWave: ['0', '1'], padWave: ['0', '2'], hitType: ['0', '0', '1'], hitOn: ['3', '2'], dyn: ['2', '3'] } },
       pulse: { name: 'Pulse',                                              // Helione / Moverunion: a steady tempo, cut 2 or 4 to the beat
-        rhythm: { mode: 'flat', bpm: [118, 150], mult: ['2', '4', '4'] },
-        look: { invert: ['off', 'mono'], zoom: ['out', 'out', 'off'], amount: [0.2, 0.8] },
+        rhythm: { mode: 'flat', bpm: [118, 150], mult: ['1', '2', '2', '4'] },
+        look: { invert: ['off', 'mono'], zoom: ['out', 'out', 'in', 'off'], amount: [0.4, 2] },
         sound: { pulse: [65, 90], low: [70, 100], power: [50, 90], space: [5, 35], bright: [10, 45], width: [30, 80], pitch: [20, 70], movement: [30, 70], echo: [0, 20], wash: [0, 25], ring: [0, 20], shimmer: [0, 20], hit: [40, 70], arp: [0, 30],
           chord: ['0', '1', '3'], subWave: ['0', '1'], padWave: ['0', '1'], hitType: ['2', '2', '1'], hitOn: ['1', '0'], dyn: ['0'] } },
       build: { name: 'Build',                                              // slow to fast, the notes rising with it
         rhythm: { mode: 'variable', start: [500, 900], end: [60, 110], ramp: [10, 20], at: 'start', mult: ['1', '2'] },
-        look: { invert: ['off', 'colour', 'mono'], zoom: ['in', 'in', 'off'], amount: [0.4, 1.6] },
+        look: { invert: ['off', 'colour', 'mono'], zoom: ['in', 'in', 'out', 'off'], amount: [0.6, 3] },
         sound: { pulse: [45, 80], low: [65, 95], power: [45, 85], space: [30, 65], bright: [20, 50], width: [40, 90], pitch: [30, 80], movement: [40, 85], echo: [0, 30], wash: [0, 30], ring: [0, 30], shimmer: [15, 40], hit: [35, 65], arp: [25, 45],
           chord: ['2', '3', '1'], subWave: ['0', '1', '2'], padWave: ['0', '3'], hitType: ['3', '0', '4'], hitOn: ['3', '2'], dyn: ['1'] } },
       float: { name: 'Float',                                              // slow and wide: a big room, wash, no hits
         rhythm: { mode: 'flat', bpm: [50, 80], mult: ['1', '2'] },
-        look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.3, 1.0] },
+        look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.5, 2.5] },
         sound: { pulse: [30, 45], low: [65, 90], power: [30, 55], space: [65, 85], bright: [0, 30], width: [70, 100], pitch: [0, 60], movement: [15, 45], echo: [15, 50], wash: [25, 55], ring: [0, 20], shimmer: [0, 30], hit: [30, 50], arp: [20, 35],
           chord: ['1', '3', '0'], subWave: ['0'], padWave: ['2', '2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'] } },
       machine: { name: 'Machine',                                          // very fast cuts, metal and a square sub
-        rhythm: { mode: 'flat', bpm: [150, 200], mult: ['4', '6', '8'] },
-        look: { invert: ['colour', 'mono'], zoom: ['off'], amount: [0.2, 0.6] },
+        rhythm: { mode: 'flat', bpm: [150, 200], mult: ['2', '3', '4', '4'] },
+        look: { invert: ['colour', 'mono'], zoom: ['off', 'in', 'out'], amount: [0.3, 1.2] },
         sound: { pulse: [70, 90], low: [75, 100], power: [60, 90], space: [5, 30], bright: [25, 55], width: [30, 70], pitch: [30, 90], movement: [50, 85], echo: [0, 15], wash: [0, 15], ring: [20, 45], shimmer: [0, 20], hit: [45, 70], arp: [0, 30],
           chord: ['0', '1'], subWave: ['2', '2', '1'], padWave: ['1', '3'], hitType: ['3', '3', '4'], hitOn: ['3', '1'], dyn: ['0', '3'] } },
+      drift: { name: 'Drift',                                              // unhurried and changing slowly, no hits: a long breath of images
+        rhythm: { mode: 'variable', start: [250, 450], end: [500, 900], ramp: [10, 20], at: ['end', 'start'], mult: ['1', '1', '2'] },
+        look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.8, 3] },
+        sound: { pulse: [30, 50], low: [70, 95], power: [30, 60], space: [55, 85], bright: [0, 30], width: [60, 100], pitch: [0, 50], movement: [15, 40], echo: [10, 45], wash: [20, 55], ring: [0, 15], shimmer: [10, 35], hit: [30, 45], arp: [0, 30],
+          chord: ['1', '3', '2'], subWave: ['0'], padWave: ['2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'] } },
+      strobe: { name: 'Strobe',                                            // colour-inverted flashes on a mid tempo, dark bursts on the accents
+        rhythm: { mode: 'flat', bpm: [100, 140], mult: ['2', '3', '4'] },
+        look: { invert: ['colour', 'colour', 'mono'], zoom: ['in', 'off'], amount: [0.5, 2] },
+        sound: { pulse: [70, 90], low: [70, 100], power: [55, 90], space: [5, 35], bright: [20, 50], width: [30, 70], pitch: [20, 70], movement: [40, 80], echo: [0, 15], wash: [0, 20], ring: [0, 30], shimmer: [0, 25], hit: [45, 70], arp: [0, 30],
+          chord: ['0', '2'], subWave: ['0', '1'], padWave: ['1', '3'], hitType: ['4', '2'], hitOn: ['3', '1'], dyn: ['0'] } },
+      breath: { name: 'Breath',                                            // a calm pulse, a slow zoom, an arpeggio carrying it
+        rhythm: { mode: 'flat', bpm: [70, 100], mult: ['1', '2'] },
+        look: { invert: ['off', 'mono'], zoom: ['out', 'out', 'in'], amount: [0.8, 3] },
+        sound: { pulse: [40, 70], low: [70, 95], power: [35, 65], space: [40, 75], bright: [10, 40], width: [50, 90], pitch: [10, 60], movement: [20, 55], echo: [0, 35], wash: [0, 40], ring: [0, 20], shimmer: [0, 30], hit: [30, 55], arp: [25, 45],
+          chord: ['2', '3', '1'], subWave: ['0', '1'], padWave: ['2', '0'], hitType: ['0', '1'], hitOn: ['2', '3'], dyn: ['0', '1'] } },
     };
     const rint = ([lo, hi]) => Math.round(lo + Math.random() * (hi - lo));
     const rpick = list => list[Math.floor(Math.random() * list.length)];
@@ -803,7 +826,7 @@
     const getn = id => parseFloat(document.getElementById(id).value) || 0;
     // one step back from the last random (rhythm, look, sound or all): the values of every persisted control, restored as they were
     let randomBefore = null;
-    const NOT_UNDONE = ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'characterSelect'];
+    const NOT_UNDONE = ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect'];
     const rememberForUndo = () => {
       randomBefore = {};
       PERSISTED.filter(id => !NOT_UNDONE.includes(id)).forEach(id => { const el = document.getElementById(id); if (el) randomBefore[id] = el.type === 'checkbox' ? el.checked : el.value; });
@@ -818,7 +841,7 @@
     function applyRhythm(r) {
       setv('rhythmSelect', r.mode);
       if (r.mode === 'flat') setv('bpmInput', rint(r.bpm));
-      else { setv('startMsRange', Math.round(rint(r.start) / 10) * 10); setv('endMsRange', Math.round(rint(r.end) / 10) * 10); setv('rampRange', rint(r.ramp)); setv('atSelect', r.at); }
+      else { setv('startMsRange', Math.round(rint(r.start) / 10) * 10); setv('endMsRange', Math.round(rint(r.end) / 10) * 10); setv('rampRange', rint(r.ramp)); setv('atSelect', Array.isArray(r.at) ? rpick(r.at) : r.at); }
       setv('multSelect', rpick(r.mult));
     }
     function applyLook(l) { setv('invertSelect', rpick(l.invert)); setv('zoomSelect', rpick(l.zoom)); setv('zoomAmt', (l.amount[0] + Math.random() * (l.amount[1] - l.amount[0])).toFixed(1)); }
@@ -826,10 +849,10 @@
     // a random rhythm: a tempo (Flat) or a run that speeds up or slows down (Variable), and the Multiple
     function randomRhythm(quiet) {
       if (quiet !== true) rememberForUndo();
-      if (Math.random() < 0.55) applyRhythm({ mode: 'flat', bpm: [60, 200], mult: ['0.5', '1', '1', '2', '3', '4', '4', '6'] });
+      if (Math.random() < 0.55) applyRhythm({ mode: 'flat', bpm: [60, 200], mult: ['0.5', '1', '1', '2', '2', '3', '4'] });
       else {
         const slowing = Math.random() < 0.5;
-        applyRhythm({ mode: 'variable', start: slowing ? [60, 200] : [300, 900], end: slowing ? [300, 900] : [60, 200], ramp: [6, 20], at: Math.random() < 0.7 ? 'end' : 'start', mult: ['1', '1', '2', '3', '4'] });
+        applyRhythm({ mode: 'variable', start: slowing ? [60, 200] : [300, 900], end: slowing ? [300, 900] : [60, 200], ramp: [6, 20], at: Math.random() < 0.7 ? 'end' : 'start', mult: ['1', '1', '2', '2', '3'] });
       }
       document.getElementById('followCuts').checked = Math.random() < 0.15;
       refreshVideo(quiet === true);
@@ -837,7 +860,7 @@
     // a random look: invert and zoom
     function randomLook(quiet) {
       if (quiet !== true) rememberForUndo();
-      applyLook({ invert: ['off', 'off', 'mono', 'colour'], zoom: ['off', 'out', 'out', 'in'], amount: [0.2, 1.8] });
+      applyLook({ invert: ['off', 'off', 'mono', 'colour'], zoom: ['off', 'out', 'out', 'in'], amount: [0.3, 3] });
       refreshVideo(quiet === true);
     }
     // the Video half of Random: rhythm and look
@@ -905,27 +928,24 @@
       setv('seedVal', 1 + Math.floor(Math.random() * 99999));
     }
     // everything at once, inside the character, the sound matched to the speed
-    function randomAll() {
+    // Type: what Random may make. Any: anything inside the safe ranges. A type (Landing, Pulse, ...): only that kind of film.
+    // Random rolls everything again inside the type; choosing a type rolls at once.
+    function rollCharacter(key) {
       rememberForUndo();
-      const chosen = document.getElementById('characterSelect').value;
-      const key = CHARACTERS[chosen] ? chosen : rpick(Object.keys(CHARACTERS));
       const c = CHARACTERS[key];
       setv('musicSelect', 'on');
-      applyRhythm(c.rhythm); applyLook(c.look);
-      document.getElementById('followCuts').checked = false;
-      applySound(c.sound);
+      if (c) { applyRhythm(c.rhythm); applyLook(c.look); applySound(c.sound); }
+      else { randomRhythm(true); randomLook(true); randomMusic(true); }
+      document.getElementById('followCuts').checked = Math.random() < 0.2;               // now and then the music takes every picture cut
       matchSoundToSpeed();
       soundRules();
       refreshVideo(true);
       updateMusic();
-      if (!CHARACTERS[chosen]) setStatus(`Random · ${c.name}`);
-      return key;
+      return c ? key : 'any';
     }
-    // choosing a character rolls inside it at once
-    function pickCharacter() {
-      saveSettings();
-      if (CHARACTERS[document.getElementById('characterSelect').value]) randomAll();
-    }
+    function randomAll() { return rollCharacter(document.getElementById('characterSelect').value); }
+    function pickCharacter() { saveSettings(); randomAll(); }
+
     // how many images, how long the result runs, and how long the cuts are
     // the "Change over" slider can take at most every cut of the selection, so its range follows the images (and the invert pairs)
     function syncRampRange() {

@@ -29,10 +29,17 @@ test('Film: look bar, preview, transport, timeline down the middle; the inspecto
   await film();
   const box = async sel => page.locator(sel).first().boundingBox();
   const [look, stage, play, tl, insp, exp] = await Promise.all(['.look-bar', '.stage', '#playBtn', '.timeline', '.inspector', '#exportBtn'].map(box));
-  assert.ok(look.y + look.height <= stage.y && stage.y + stage.height <= play.y && play.y + play.height <= tl.y, 'top to bottom: look bar, preview, transport, timeline');
-  assert.ok(insp.x >= stage.x + stage.width && Math.abs(insp.width - 344) < 2, 'the inspector is on the right, 344 px');
+  assert.ok(stage.y + stage.height <= play.y && play.y + play.height <= tl.y, 'top to bottom: preview, transport, timeline');
+  assert.ok(look.x >= insp.x && Math.abs(look.y - insp.y) < 2, 'Type, Random and Undo head the inspector');
+  assert.ok(insp.x >= stage.x + stage.width && Math.abs(insp.width - 600) < 2, 'the inspector is on the right, 600 px');
+  const [pic, snd] = await Promise.all(['#inspPicture', '#inspSound'].map(box));
+  assert.ok(Math.abs(pic.y - snd.y) < 1 && snd.x >= pic.x + pic.width - 1, 'two columns: rhythm and look, then sound');
+  const soundTop = (await box('#musicSelect + .segctl')).y;
+  await choose('rhythmSelect', 'variable');
+  assert.equal((await box('#musicSelect + .segctl')).y, soundTop, 'Variable adds controls on the left; the sound does not move');
+  await choose('rhythmSelect', 'flat');
   assert.ok(exp.y + exp.height <= 945 && exp.y > insp.y + insp.height - 120, 'Export sits at the foot of the inspector');
-  assert.ok(Math.abs(stage.height - 452) < 2 && Math.abs(stage.width / stage.height - 9 / 16) < 0.01, `a 9:16 preview, ${stage.height}px tall`);
+  assert.ok(stage.height >= 452 && Math.abs(stage.width / stage.height - 9 / 16) < 0.01, `a 9:16 preview, ${stage.height}px tall`);
   assert.equal(await page.locator('.grid-col').isVisible(), false, 'no grid while filming');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
@@ -160,7 +167,7 @@ test('export: the button is always in view (pinned under the inspector) and the 
   assert.equal(await inView(), true, 'visible with the sound off');
   await choose('musicSelect', 'on');
   await page.click('#soundTabNotes');
-  await page.evaluate(() => { document.getElementById('inspScroll').scrollTop = 99999; });
+  await page.evaluate(() => { document.getElementById('inspSound').scrollTop = 99999; });
   assert.equal(await inView(), true, 'visible with the longest sound group, scrolled to the bottom');
   await page.evaluate(() => { window.__clicked = []; HTMLAnchorElement.prototype.click = function () { window.__clicked.push(this.getAttribute('download')); }; });
   await page.click('#exportBtn');
@@ -177,7 +184,7 @@ test('Random (any character or a chosen one), the card dice and Undo work in the
   await page.click('#playBtn');
   for (let i = 0; i < 6; i++) { await page.click('#randomAllBtn'); await page.waitForTimeout(250); }
   assert.equal(await page.locator('#musicSelect').inputValue(), 'on');
-  assert.match(await text('#toast'), /^Random · (Landing|Pulse|Build|Float|Machine)/, 'Any says which character it rolled');
+  assert.equal(await page.locator('#characterSelect').inputValue(), 'any', 'Random does not change the type');
   assert.equal(await page.locator('#undoRandomBtn').isEnabled(), true);
   await page.click('#undoRandomBtn');
   assert.equal(await page.locator('#undoRandomBtn').isEnabled(), false);
@@ -185,7 +192,8 @@ test('Random (any character or a chosen one), the card dice and Undo work in the
   assert.equal(await page.locator('#rhythmSelect').inputValue(), 'flat');
   assert.ok(+(await page.locator('#bpmInput').inputValue()) <= 80);
   assert.equal(await page.locator('.segctl[data-for="rhythmSelect"] button[aria-pressed="true"]').textContent(), 'Flat', 'the segmented controls follow a random');
-  await page.click('#randomRhythmBtn'); await page.click('#randomLookBtn'); await page.click('#randomBtn');
+  for (let i = 0; i < 4; i++) { await page.click('#randomAllBtn'); assert.ok(+(await page.locator('#bpmInput').inputValue()) <= 80, 'Random stays inside Float'); }
+  await page.click('#randomBtn');
   await page.waitForTimeout(300);
   assert.deepEqual(errors, []);
   assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Pause', 'still playing');
@@ -207,6 +215,9 @@ test('window size: a 13" laptop (1280 × 720) fits both modes; below 1200 × 640
   }
   const stage = await page.locator('.stage').boundingBox();
   assert.ok(stage.height >= 200, `the preview stays usable: ${stage.height}px`);
+  await choose('musicSelect', 'on'); await choose('rhythmSelect', 'variable');
+  const cut = await page.evaluate(() => [...document.querySelectorAll('.segctl button, .row > .lbl, .sound-tabs button, #multSelect')].filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.textContent.trim()));
+  assert.deepEqual(cut, [], 'no label is cut off on a 13" screen');
   await shot('10-laptop');
   await ctx.close();
   ctx = await fresh({ width: 1100, height: 800 });
@@ -218,7 +229,9 @@ test('window size: a 13" laptop (1280 × 720) fits both modes; below 1200 × 640
 test('the inspector: Rhythm, Look and Sound always open; Sound in four groups; Amount waits for a zoom', { skip }, async () => {
   const ctx = await fresh();
   await film();
-  for (const id of ['#bpmInput', '#multSelect', '#followCuts', '#zoomAmt', '#randomRhythmBtn', '#randomLookBtn', '#randomBtn']) assert.ok(await page.locator(id).isVisible(), id);
+  for (const id of ['#bpmInput', '#multSelect', '#followCuts', '#zoomAmt', '#randomBtn']) assert.ok(await page.locator(id).isVisible(), id);
+  assert.equal(await page.locator('#randomRhythmBtn, #randomLookBtn').count(), 0, 'one Random for the film, one for the sound: no dice that repeat them');
+  assert.equal(await text('#randomBtn'), 'Random sound');
   assert.deepEqual(await page.locator('.segctl[data-for="invertSelect"] button').allTextContents(), ['Off', 'Grey', 'Colour']);
   assert.equal(await page.locator('#zoomAmt').isDisabled(), true, 'Amount is there but off until a zoom is chosen');
   await choose('zoomSelect', 'out');
@@ -236,7 +249,11 @@ test('the inspector: Rhythm, Look and Sound always open; Sound in four groups; A
   }
   assert.deepEqual(await page.locator('#chordSelect option').allTextContents(), ['Dark cluster', 'Open fifth', 'Minor', 'Suspended'], 'the real names');
   await page.click('#soundBtn');
-  assert.equal(await page.locator('#musicSelect').inputValue(), 'off', 'the transport button turns the sound off too');
+  assert.equal(await text('#soundLabel'), 'Muted');
+  assert.equal(await page.locator('#musicSelect').inputValue(), 'on', 'the speaker only mutes the preview: Source stays');
+  assert.ok(await page.locator('#pulseRange').isVisible() || await page.locator('#hitTypeSelect').isVisible(), 'the sound settings stay');
+  await page.click('#soundBtn');
+  assert.equal(await text('#soundLabel'), 'Sound on');
   await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
   assert.equal(await page.evaluate(() => document.body.dataset.mode), 'film', 'the mode is remembered');
   await shot('music-tab');
@@ -249,7 +266,7 @@ test('modes: Tab switches, Space plays (also after clicking a button), switching
   assert.equal(await page.evaluate(() => document.body.dataset.mode), 'film');
   await page.fill('#bpmInput', '20'); await page.locator('#bpmInput').dispatchEvent('input');
   await page.selectOption('#multSelect', '1');                                 // 3 s a cut: the clock cannot loop back to the same reading
-  await page.click('#randomLookBtn');                                         // a clicked button must not swallow Space
+  await page.click('#targetBtn');                                             // a clicked button must not swallow Space
   await page.keyboard.press(' ');
   assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Pause');
   await page.waitForTimeout(600);

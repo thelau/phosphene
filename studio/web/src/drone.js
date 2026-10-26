@@ -514,11 +514,14 @@
   // Cheap by design: notes and hits are scheduled a short way ahead (not for the whole clip), settings changes are coalesced into one swap
   // every ~120 ms however fast a slider moves, and the exact loudness is worked out in the background (the old level carries on meanwhile).
   class Live {
-    constructor() { this.ctx = null; this.inst = null; this.params = null; this.starts = null; this.t0 = 0; this.total = 0; this.timer = null; this.playing = false; this.holding = 0; this.cal = 1; this.pending = null; this.swapAt = 0; this.calTimer = null; this.ticker = null; this.rooms = new Map(); this.buildMs = 20; }
+    constructor() { this.ctx = null; this.inst = null; this.params = null; this.starts = null; this.t0 = 0; this.total = 0; this.timer = null; this.playing = false; this.holding = 0; this.cal = 1; this.pending = null; this.swapAt = 0; this.calTimer = null; this.ticker = null; this.rooms = new Map(); this.buildMs = 20; this.muted = false; this.master = null; }
     get playingNow() { return this.playing; }
     pos() { return this.playing && !this.holding ? (((this.ctx.currentTime - this.t0) % this.total) + this.total) % this.total : 0; }
     _context() {
-      if (!this.ctx) { const C = window.AudioContext || window.webkitAudioContext; this.ctx = new C({ latencyHint: 'interactive' }); }
+      if (!this.ctx) {
+        const C = window.AudioContext || window.webkitAudioContext; this.ctx = new C({ latencyHint: 'interactive' });
+        this.master = this.ctx.createGain(); this.master.gain.value = this.muted ? 0 : 1; this.master.connect(this.ctx.destination);   // the preview's mute; the export never passes here
+      }
       return this.ctx;
     }
     // Builds a new sound and schedules it to begin a moment from now (the time the build takes plus a margin), so that everything in it, its
@@ -535,7 +538,7 @@
       for (let i = 0; i < n; i++) c[i] = Math.tanh(1.1 * 2 * ((i / (n - 1)) * 2 - 1)) / th / 2;
       glue.curve = c;
       const pre = ctx.createGain(); pre.gain.value = 0.5;                  // the shaper sees -2..2
-      level.connect(pre); pre.connect(glue); glue.connect(out); out.connect(ctx.destination);
+      level.connect(pre); pre.connect(glue); glue.connect(out); out.connect(this.master);
       const room = (i, seedN, seconds) => {                                 // one room per setting, kept between swaps: its tail carries on through them
         const key = `${seedN}|${i}|${seconds}`;
         if (!this.rooms.has(key)) { this.rooms.set(key, makeRoom(ctx, seedN, i, seconds)); if (this.rooms.size > 8) this.rooms.delete(this.rooms.keys().next().value); }
@@ -614,6 +617,11 @@
       if (params && starts) { starts = cleanStarts(starts); this.params = params; this.starts = starts; this.total = starts[starts.length - 1]; }
       this.pending = null; this.holding = 0;
       this._swap(0);
+    }
+    // silence the preview (it keeps playing and keeps time: the picture does not notice); a short ramp, no click
+    setMuted(on) {
+      this.muted = !!on;
+      if (this.master) this.master.gain.setTargetAtTime(this.muted ? 0 : 1, this.ctx.currentTime, 0.02);
     }
     // jump to a position in the clip (seconds), keeping the settings: the film strip and the rhythm strip use it
     seek(offset) {
