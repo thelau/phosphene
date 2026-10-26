@@ -127,7 +127,8 @@ test('AI order: redoing replaces the AI order and always asks first', { skip }, 
   assert.match(await text('#confirmTitle'), /Replace the current AI order\?/);
   assert.doesNotMatch(await text('#confirmBody'), /drops the changes/);
   await page.click('#confirmModal .confirm-foot button >> text=Cancel');
-  await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));
+  api.state.sequences.find(q => q.kind === 'ai').order = ['k1', 'k2', 'k3'];          // an AI order edited before it became read-only
+  await page.click('#refreshBtn');
   await page.waitForSelector('#resetAi:not([hidden])');
   await page.click('#aiBtn');
   await page.click('#aiGo');

@@ -13,7 +13,7 @@ test('orders: one Manual order, and the AI button, are all there is', { skip }, 
 test('orders: switch between Manual and AI without losing either', { skip }, async () => {
   const ctx = await fresh({ setup: aiSetup() });
   assert.deepEqual(await seg(), [{ text: '✋ Manual (3)', on: true }, { text: '✨ AI (3)', on: false }]);
-  assert.equal(await text('#aiBtn'), '↻ Redo with AI…');
+  assert.equal(await text('#aiBtn'), '↻ Re-order');
   assert.deepEqual(await names(), ['k3', 'k1', 'k2']);
   await clickSeg('AI');
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k2');
@@ -55,22 +55,35 @@ test('player: switching between Manual and AI while playing follows the new orde
   await ctx.close();
 });
 
-test('orders: dragging edits the order you are looking at; the AI one can be reset; the other order is untouched', { skip }, async () => {
-  const ctx = await fresh({ setup: aiSetup('x') });
+test('orders: the AI order is read-only; dragging there offers to make it your Manual order, and the drag then works in Manual', { skip }, async () => {
+  const ctx = await fresh({ setup: aiSetup('x') });                                   // Manual: k3,k1,k2   AI: k2,k3,k1
   await clickSeg('AI');
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k2');
-  assert.equal(await page.locator('#resetAi').isHidden(), true);
-  await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));          // k1 onto k2
-  await page.waitForSelector('#resetAi:not([hidden])');
-  const edited = await names();
-  assert.notDeepEqual(edited, ['k2', 'k3', 'k1']);
-  assert.equal((await seg()).length, 2);                                              // still just Manual and AI: no copy was made
-  await clickSeg('Manual');
-  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
-  assert.deepEqual(await names(), ['k3', 'k1', 'k2']);                               // Manual untouched
+  assert.equal(await text('#gridHint'), 'The AI order is read-only');
+  await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));
+  await page.waitForSelector('#confirmModal.open');
+  assert.match(await text('#confirmTitle'), /The AI order is read-only/);
+  assert.equal(await text('#confirmYes'), 'Use as my Manual order');
+  await page.click('#confirmModal .confirm-foot button >> text=Cancel');
+  assert.deepEqual(await names(), ['k2', 'k3', 'k1'], 'cancelled: nothing moved');
+  assert.equal(api.state.calls.filter(c => c.path === '/api/reorder').length, 0);
+  await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));
+  await page.click('#confirmYes');
+  await page.waitForFunction(() => document.querySelector('#orderSeg button.on').textContent.includes('Manual'));
+  assert.deepEqual(await names(), ['k2', 'k3', 'k1'], 'Manual is now a copy of the AI order');
+  await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));             // and here the drag works
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k1');
   await clickSeg('AI');
-  await page.waitForFunction(first => document.querySelector('.card').dataset.filename === first, edited[0]);
-  assert.deepEqual(await names(), edited);                                            // the edit was kept
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k2');
+  assert.deepEqual(await names(), ['k2', 'k3', 'k1'], 'the AI order is as the AI made it');
+  assert.equal(await page.locator('#resetAi').isHidden(), true);
+  await ctx.close();
+});
+
+test('orders: an AI order edited before it became read-only can still go back to what the AI made', { skip }, async () => {
+  const ctx = await fresh({ setup: st => { aiSetup('x')(st); st.sequences.find(q => q.kind === 'ai').order = ['k1', 'k2', 'k3']; } });
+  await clickSeg('AI');
+  await page.waitForSelector('#resetAi:not([hidden])');
   await shot('13-ai-edited');
   await page.click('#resetAi');
   await page.waitForFunction(() => document.getElementById('resetAi').hidden);
@@ -115,11 +128,10 @@ test('orders: the order tools sit right after the Selection / Trash tabs, the tr
 });
 
 test('AI order can replace the Manual order, after a confirmation; the AI order stays', { skip }, async () => {
-  const ctx = await fresh({ setup: aiSetup('x') });                                   // Manual: k3,k1,k2   AI: k2,k3,k1
+  const ctx = await fresh({ setup: st => { aiSetup('x')(st); st.sequences.find(q => q.kind === 'ai').order = ['k1', 'k2', 'k3']; } });   // an AI order edited before it became read-only
   assert.equal(await page.locator('#aiNote').isHidden(), true);                       // the button lives in the AI view only
   await clickSeg('AI');
-  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k2');
-  await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));            // edit the AI order first
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k1');
   await page.waitForSelector('#resetAi:not([hidden])');
   const edited = await names();
   await shot('21-use-as-manual');

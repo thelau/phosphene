@@ -256,7 +256,10 @@
       document.getElementById('aiNote').hidden = !(cur && cur.kind === 'ai') || showTrash;
       document.getElementById('makeManual').disabled = aiRunning;
       document.getElementById('resetAi').hidden = !(cur && cur.kind === 'ai' && cur.edited);
-      document.getElementById('aiBtn').textContent = ai ? '↻ Redo with AI…' : '✨ Order with AI…';
+      const aiBtn = document.getElementById('aiBtn');
+      aiBtn.textContent = ai ? '↻ Re-order' : '✨ Order with AI…';
+      aiBtn.title = ai ? 'Ask the AI for a new order (replaces this AI order; your Manual order is never touched)' : 'Let the AI order your selection. Your Manual order is never touched.';
+      aiBtn.classList.toggle('attached', !!ai);
       document.getElementById('seqBox').hidden = showTrash;
     }
     async function seqCall(payload) {
@@ -394,7 +397,8 @@
         if (num && num.textContent !== txt) num.textContent = txt;
         el.classList.toggle('out', !!(cutOff && i >= cutOff));
       });
-      document.getElementById('gridHint').textContent = showTrash ? 'Trashed images stay restorable' : aiRunning ? 'Locked while the AI orders' : 'Drag to reorder';
+      document.getElementById('gridHint').textContent = gridHintText();
+      document.getElementById('grid').classList.toggle('read-only', aiOrderShown());
       syncSelection();
     }
     // Only what changed is touched: a card whose markup is the same keeps its element (its image stays decoded, an open info panel stays open);
@@ -454,6 +458,7 @@
           </div>
         </div>`;
     }
+    function gridHintText() { return showTrash ? 'Trashed images stay restorable' : aiRunning ? 'Locked while the AI orders' : aiOrderShown() ? 'The AI order is read-only' : 'Drag to reorder'; }
     // the images still being made, at the end of the selection while a batch runs
     function pendingCards() {
       if (!generating || prog.stage !== 'render') return [];
@@ -515,8 +520,18 @@
     }
 
     /* Drag and drop reordering */
+    // the AI's order is read-only: to rearrange it, it becomes your Manual order first (a copy), and you drag there
+    function aiOrderShown() { const cur = sequences.find(q => q.id === activeSeq); return !showTrash && !!cur && cur.kind === 'ai'; }
+    async function offerManualCopy() {
+      if (!(await askConfirm('The AI order is read-only', "To rearrange the images, make this order your Manual order: a copy you can drag freely. It replaces your current Manual order; the AI order stays as the AI made it.", 'Use as my Manual order'))) return;
+      if (!(await seqCall({ action: 'make_manual' }))) return;
+      const manual = sequences.find(q => q.kind === 'manual');
+      if (manual) await switchSequence(manual.id);
+      setStatus('Your Manual order is now a copy of the AI order. Drag away.');
+    }
     function onDragStart(e, filename) {
       if (aiRunning) { e.preventDefault(); return; }
+      if (aiOrderShown()) { e.preventDefault(); offerManualCopy(); return; }
       draggedFilename = filename;
       e.currentTarget.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
@@ -532,7 +547,7 @@
     async function onDrop(e, targetFilename) {
       e.preventDefault();
       e.currentTarget.classList.remove('drag-over');
-      if (aiRunning || !draggedFilename || draggedFilename === targetFilename) return;
+      if (aiRunning || aiOrderShown() || !draggedFilename || draggedFilename === targetFilename) return;
 
       const dragged = draggedFilename;
       const target = targetFilename;
@@ -1808,7 +1823,7 @@
       document.body.classList.toggle('ai-running', aiRunning);
       syncSelects();
       document.getElementById('aiLock').hidden = !aiRunning;
-      document.getElementById('gridHint').textContent = showTrash ? 'Trashed images stay restorable' : aiRunning ? 'Locked while the AI orders' : 'Drag to reorder';
+      document.getElementById('gridHint').textContent = gridHintText();
       updateTrashBar();
     }
     function setGenerating(on) { generating = on; applyLocks(); }
