@@ -1122,7 +1122,7 @@
         pitch: unit('pitchRange'), chord: parseInt(document.getElementById('chordSelect').value, 10) || 0, movement: unit('movementRange'), echo: unit('echoRange'),
         wash: unit('washRange'), ring: unit('ringRange'), shimmer: unit('shimmerRange'), choir: unit('choirRange'), industrial: unit('industrialRange'),
         hitType: parseInt(document.getElementById('hitTypeSelect').value, 10) || 0, hit: unit('hitRange'), hitOn: parseInt(document.getElementById('hitOnSelect').value, 10) || 0,
-        arp: unit('arpRange'), arpSteps: parseInt(document.getElementById('arpStepsSelect').value, 10) || 0, arpRate: parseInt(document.getElementById('arpRateSelect').value, 10) || 0,
+        arp: unit('arpRange'), arpMood: parseInt(document.getElementById('arpMoodSelect').value, 10) || 0, arpSteps: parseInt(document.getElementById('arpStepsSelect').value, 10) || 0, arpRate: parseInt(document.getElementById('arpRateSelect').value, 10) || 0,
         dynamics: parseInt(document.getElementById('dynSelect').value, 10) || 0,
         subWave: parseInt(document.getElementById('subWaveSelect').value, 10) || 0, padWave: parseInt(document.getElementById('padWaveSelect').value, 10) || 0,
         seed: parseInt(document.getElementById('seedVal').value, 10) || 7, paired,
@@ -1181,42 +1181,42 @@
         rhythm: { mode: 'variable', start: [60, 120], end: [450, 900], ramp: [8, 16], at: 'end', mult: ['1', '1', '2'] },
         look: { invert: ['mono', 'mono', 'off'], zoom: ['out', 'out', 'in', 'off'], amount: [0.4, 2] },
         sound: { pulse: [40, 75], low: [75, 100], power: [40, 80], space: [50, 85], bright: [0, 35], width: [50, 100], pitch: [0, 45], movement: [20, 60], echo: [0, 35], wash: [15, 55], ring: [0, 25], shimmer: [0, 25], hit: [30, 60], arp: [0, 35],
-          chord: ['0', '0', '2'], subWave: ['0', '1'], padWave: ['0', '2'], hitType: ['0', '0', '1'], hitOn: ['3', '2'], dyn: ['2', '3'], layer: { choir: [25, 50] } } },
+          chord: ['0', '0', '2'], subWave: ['0', '1'], padWave: ['0', '2'], hitType: ['0', '0', '1'], hitOn: ['3', '2'], dyn: ['2', '3'], mood: ['3', '2', '1', '0'], layer: { choir: [25, 50], odds: 0.3 } } },
       pulse: { name: 'Pulse',                                              // Helione / Moverunion: a steady tempo, cut 2 or 4 to the beat
         rhythm: { mode: 'flat', bpm: [118, 150], mult: ['1', '2', '2', '4'] },
         look: { invert: ['off', 'mono'], zoom: ['out', 'out', 'in', 'off'], amount: [0.4, 2] },
         sound: { pulse: [65, 90], low: [70, 100], power: [50, 90], space: [5, 35], bright: [10, 45], width: [30, 80], pitch: [20, 70], movement: [30, 70], echo: [0, 20], wash: [0, 25], ring: [0, 20], shimmer: [0, 20], hit: [40, 70], arp: [0, 30],
-          chord: ['0', '1', '3'], subWave: ['0', '1'], padWave: ['0', '1'], hitType: ['2', '2', '1'], hitOn: ['1', '0'], dyn: ['0'], layer: { industrial: [20, 45] } } },
+          chord: ['0', '1', '3'], subWave: ['0', '1'], padWave: ['0', '1'], hitType: ['2', '2', '1'], hitOn: ['1', '0'], dyn: ['0'], mood: ['0', '0', '1'], layer: { industrial: [20, 45], odds: 0.25 } } },
       build: { name: 'Build',                                              // slow to fast, the notes rising with it
         rhythm: { mode: 'variable', start: [500, 900], end: [60, 110], ramp: [10, 20], at: 'start', mult: ['1', '2'] },
         look: { invert: ['off', 'colour', 'mono'], zoom: ['in', 'in', 'out', 'off'], amount: [0.6, 3] },
         sound: { pulse: [45, 80], low: [65, 95], power: [45, 85], space: [30, 65], bright: [20, 50], width: [40, 90], pitch: [30, 80], movement: [40, 85], echo: [0, 30], wash: [0, 30], ring: [0, 30], shimmer: [15, 40], hit: [35, 65], arp: [25, 45],
-          chord: ['2', '3', '1'], subWave: ['0', '1', '2'], padWave: ['0', '3'], hitType: ['3', '0', '4'], hitOn: ['3', '2'], dyn: ['1'], layer: { choir: [25, 45] } } },
+          chord: ['2', '3', '1'], subWave: ['0', '1', '2'], padWave: ['0', '3'], hitType: ['3', '0', '4'], hitOn: ['3', '2'], dyn: ['1'], mood: ['4', '0', '3'], layer: { choir: [25, 45], odds: 0.3 } } },
       float: { name: 'Float',                                              // slow and wide: a big room, wash, no hits
         rhythm: { mode: 'flat', bpm: [50, 80], mult: ['1', '2'] },
         look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.5, 2.5], trail: [10, 30] },
         sound: { pulse: [30, 45], low: [65, 90], power: [30, 55], space: [65, 85], bright: [0, 30], width: [70, 100], pitch: [0, 60], movement: [15, 45], echo: [15, 50], wash: [25, 55], ring: [0, 20], shimmer: [0, 30], hit: [30, 50], arp: [20, 35],
-          chord: ['1', '3', '0'], subWave: ['0'], padWave: ['2', '2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'], layer: { choir: [30, 55] } } },
+          chord: ['1', '3', '0'], subWave: ['0'], padWave: ['2', '2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'], mood: ['2', '4', '3'], layer: { choir: [30, 55], odds: 0.5 } } },
       machine: { name: 'Machine',                                          // very fast cuts, metal and a square sub
         rhythm: { mode: 'flat', bpm: [150, 200], mult: ['2', '3', '4', '4'] },
         look: { invert: ['colour', 'mono'], zoom: ['off', 'in', 'out'], amount: [0.3, 1.2] },
         sound: { pulse: [70, 90], low: [75, 100], power: [60, 90], space: [5, 30], bright: [25, 55], width: [30, 70], pitch: [30, 90], movement: [50, 85], echo: [0, 15], wash: [0, 15], ring: [20, 45], shimmer: [0, 20], hit: [45, 70], arp: [0, 30],
-          chord: ['0', '1'], subWave: ['2', '2', '1'], padWave: ['1', '3'], hitType: ['3', '3', '4'], hitOn: ['3', '1'], dyn: ['0', '3'], layer: { industrial: [25, 50] } } },
+          chord: ['0', '1'], subWave: ['2', '2', '1'], padWave: ['1', '3'], hitType: ['3', '3', '4'], hitOn: ['3', '1'], dyn: ['0', '3'], mood: ['0', '1'], layer: { industrial: [25, 50], odds: 0.4 } } },
       drift: { name: 'Drift',                                              // unhurried and changing slowly, no hits: a long breath of images
         rhythm: { mode: 'variable', start: [250, 450], end: [500, 900], ramp: [10, 20], at: ['end', 'start'], mult: ['1', '1', '2'] },
         look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.8, 3], trail: [15, 35] },
         sound: { pulse: [30, 50], low: [70, 95], power: [30, 60], space: [55, 85], bright: [0, 30], width: [60, 100], pitch: [0, 50], movement: [15, 40], echo: [10, 45], wash: [20, 55], ring: [0, 15], shimmer: [10, 35], hit: [30, 45], arp: [0, 30],
-          chord: ['1', '3', '2'], subWave: ['0'], padWave: ['2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'], layer: { choir: [25, 50] } } },
+          chord: ['1', '3', '2'], subWave: ['0'], padWave: ['2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'], mood: ['3', '2', '4'], layer: { choir: [25, 50], odds: 0.5 } } },
       strobe: { name: 'Strobe',                                            // colour-inverted flashes on a mid tempo, dark bursts on the accents
         rhythm: { mode: 'flat', bpm: [100, 140], mult: ['2', '3', '4'] },
         look: { invert: ['colour', 'colour', 'mono'], zoom: ['in', 'off'], amount: [0.5, 2] },
         sound: { pulse: [70, 90], low: [70, 100], power: [55, 90], space: [5, 35], bright: [20, 50], width: [30, 70], pitch: [20, 70], movement: [40, 80], echo: [0, 15], wash: [0, 20], ring: [0, 30], shimmer: [0, 25], hit: [45, 70], arp: [0, 30],
-          chord: ['0', '2'], subWave: ['0', '1'], padWave: ['1', '3'], hitType: ['4', '2'], hitOn: ['3', '1'], dyn: ['0'], layer: { industrial: [20, 40] } } },
+          chord: ['0', '2'], subWave: ['0', '1'], padWave: ['1', '3'], hitType: ['4', '2'], hitOn: ['3', '1'], dyn: ['0'], mood: ['0', '1'], layer: { industrial: [20, 40], odds: 0.25 } } },
       breath: { name: 'Breath',                                            // a calm pulse, a slow zoom, an arpeggio carrying it
         rhythm: { mode: 'flat', bpm: [70, 100], mult: ['1', '2'] },
         look: { invert: ['off', 'mono'], zoom: ['out', 'out', 'in'], amount: [0.8, 3] },
         sound: { pulse: [40, 70], low: [70, 95], power: [35, 65], space: [40, 75], bright: [10, 40], width: [50, 90], pitch: [10, 60], movement: [20, 55], echo: [0, 35], wash: [0, 40], ring: [0, 20], shimmer: [0, 30], hit: [30, 55], arp: [25, 45],
-          chord: ['2', '3', '1'], subWave: ['0', '1'], padWave: ['2', '0'], hitType: ['0', '1'], hitOn: ['2', '3'], dyn: ['0', '1'], layer: { choir: [25, 45] } } },
+          chord: ['2', '3', '1'], subWave: ['0', '1'], padWave: ['2', '0'], hitType: ['0', '1'], hitOn: ['2', '3'], dyn: ['0', '1'], mood: ['2', '3', '4'], layer: { choir: [25, 45], odds: 0.5 } } },
     };
     const rint = ([lo, hi]) => Math.round(lo + Math.random() * (hi - lo));
     const rpick = list => list[Math.floor(Math.random() * list.length)];
@@ -1360,11 +1360,18 @@
       const tex = ['echoRange', 'washRange', 'ringRange', 'shimmerRange'].filter(id => getn(id) > 0).sort((a, b) => getn(b) - getn(a));
       tex.slice(2).forEach(id => setv(id, 0));                                                   // two textures at most
       if (getn('choirRange') > 0 && getn('industrialRange') > 0) setv('industrialRange', 0);    // one layer at a time
+      if (rate > 5) setv('choirRange', 0);                                                       // voices over a strobe are a cacophony
       if (getn('choirRange') > 0 || getn('industrialRange') > 0) {                              // a layer needs room: one texture, and no clutter on the cuts
         tex.slice(1).forEach(id => setv(id, 0));
-        if (getn('choirRange') > 0) { setv('arpRange', Math.min(30, getn('arpRange'))); if (getn('arpRange') < 20) setv('arpRange', 0); }   // voices and a busy arpeggio fight
+        if (getn('choirRange') > 0) {                                                            // voices and a busy arpeggio fight: a soft mood, a few notes
+          setv('arpRange', Math.min(30, getn('arpRange'))); if (getn('arpRange') < 20) setv('arpRange', 0);
+          if (getn('arpMoodSelect') === 0 || getn('arpMoodSelect') === 1) setv('arpMoodSelect', Math.random() < 0.5 ? 2 : 3);
+        }
         if (getn('industrialRange') > 0) { setv('hitTypeSelect', 0); setv('ringRange', Math.min(20, getn('ringRange'))); }   // its bursts are the hits
       }
+      // the arpeggio's mood agrees with the bed: a major mood over a minor chord clashes, soft moods want time between notes
+      if (getn('arpMoodSelect') === 4 && [0, 2].includes(getn('chordSelect'))) setv('chordSelect', Math.random() < 0.5 ? 1 : 3);
+      if ([2, 3].includes(getn('arpMoodSelect')) && rate > 2.5) setv('arpRateSelect', Math.min(1, getn('arpRateSelect')));
     }
     function randomMusic(quiet) {
       if (quiet !== true) rememberForUndo();
@@ -1379,14 +1386,18 @@
       setv('subWaveSelect', r < 0.5 ? 0 : r < 0.75 ? 1 : 2);
       choice('padWaveSelect', 4); choice('chordSelect', 4);
       setv('choirRange', 0); setv('industrialRange', 0);
-      if (Math.random() < 0.25) { const k = Math.random() < 0.5 ? 'choir' : 'industrial'; setv(`${k}Range`, rint(RANDOM_RANGES[k])); }   // a layer now and then, never both: the drone is the sound
+      const slow = rhythmCutsPerSecond() <= 3, roll = Math.random();                                   // a layer now and then, never both: the drone is the sound
+      if (roll < (slow ? 0.3 : 0.1)) setv('choirRange', rint(RANDOM_RANGES.choir));                  // voices want room: mostly on slower cuts
+      else if (roll < (slow ? 0.35 : 0.3)) setv('industrialRange', rint(RANDOM_RANGES.industrial));  // metal wants speed
+      setv('arpMoodSelect', Math.random() < 0.3 ? 0 : 1 + Math.floor(Math.random() * 4));          // the first arpeggio (Pluck) most often, then the moods alike
       setv('seedVal', 1 + Math.floor(Math.random() * 99999));
       soundRules();
       if (quiet !== true) { updateMusic(); commitSettings('Random sound'); }
     }
     function applySound(c) {
       for (const k of Object.keys(RANDOM_RANGES)) if (!LAYERS.includes(k)) setv(`${k}Range`, rint(c[k]));
-      for (const k of LAYERS) setv(`${k}Range`, c.layer[k] && Math.random() < 0.3 ? rint(c.layer[k]) : 0);   // the type's layer, now and then
+      for (const k of LAYERS) setv(`${k}Range`, c.layer[k] && Math.random() < c.layer.odds ? rint(c.layer[k]) : 0);   // the type's layer, now and then (more often in the slow, open types)
+      setv('arpMoodSelect', rpick(c.mood));
       for (const k of ['echo', 'wash', 'ring', 'shimmer']) if (c[k][0] === 0 && Math.random() < 0.4) setv(`${k}Range`, 0);
       setv('chordSelect', rpick(c.chord)); setv('subWaveSelect', rpick(c.subWave)); setv('padWaveSelect', rpick(c.padWave));
       setv('hitTypeSelect', rpick(c.hitType)); setv('hitOnSelect', rpick(c.hitOn)); setv('dynSelect', rpick(c.dyn));
@@ -1827,7 +1838,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');

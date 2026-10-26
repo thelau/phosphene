@@ -428,7 +428,7 @@
                 <button role="tab" id="soundTabBed" data-group="bed" onclick="showSoundGroup('bed')">Bed <span>6</span></button>
                 <button role="tab" id="soundTabTone" data-group="tone" onclick="showSoundGroup('tone')">Tone <span>5</span></button>
                 <button role="tab" id="soundTabTexture" data-group="texture" onclick="showSoundGroup('texture')">Texture <span>6</span></button>
-                <button role="tab" id="soundTabNotes" data-group="notes" onclick="showSoundGroup('notes')">Notes <span>7</span></button>
+                <button role="tab" id="soundTabNotes" data-group="notes" onclick="showSoundGroup('notes')">Notes <span>8</span></button>
               </div>
               <input type="hidden" id="soundGroupVal" value="bed" />
 
@@ -500,6 +500,15 @@
                 </label>
                 <div class="subhead">Arpeggio</div>
                 <label class="row"><span class="lbl">Amount</span><input type="range" id="arpRange" min="0" max="100" value="0" oninput="updateMusic()" title="A short pattern of plucked notes that repeats, in the chord's notes" /><span class="val" id="arpVal">0</span></label>
+                <label class="row"><span class="lbl">Mood</span>
+                  <select id="arpMoodSelect" onchange="updateMusic()" title="The feeling of the notes: their scale, register, sound and shape">
+                    <option value="0">Pluck · bright, restless</option>
+                    <option value="1">Dark · low, falling</option>
+                    <option value="2">Mellow · soft, rounded</option>
+                    <option value="3">Tender · sighing, minor</option>
+                    <option value="4">Beautiful · open, rising</option>
+                  </select>
+                </label>
                 <label class="row"><span class="lbl">Pattern</span>
                   <select id="arpStepsSelect" onchange="updateMusic()" title="How many notes before the pattern repeats">
                     <option value="0">4 notes</option>

@@ -648,7 +648,7 @@ test('with the drone on, Play starts it live from the top with the settings and 
   await settle(); await settle();
   assert.equal(h.calls.some(c => c.url === '/api/music'), false);           // nothing is rendered on the server
   const play = h.ctx.__drone.plays[0];
-  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, choir: 0, industrial: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
+  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, power: 0.55, pitch: 0.5, chord: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, choir: 0, industrial: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpMood: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
   assert.equal(play.offset, 0);
   assert.equal(play.starts.length, 3);                                      // the music follows the beats (2 of them for 6 picture cuts at 3 per beat) + the end
   assert.ok(Math.abs(play.starts[2] - 0.6) < 1e-9 && Math.abs(play.starts[1] - 0.3) < 1e-9);
@@ -1098,9 +1098,19 @@ test('Choir and Industrial: layers over the drone that Random adds now and then,
     }
     seen[c ? 'choir' : m ? 'industrial' : 'none']++;
   };
-  for (let i = 0; i < 600; i++) { h.run('randomMusic()'); check('Random sound'); }
-  assert.ok(seen.choir > 20 && seen.industrial > 20, `both come up: ${JSON.stringify(seen)}`);
-  assert.ok(seen.none > 0.65 * 600, `the plain drone most of the time: ${JSON.stringify(seen)}`);
+  const tempo = bpm => { h.$('rhythmSelect').value = 'flat'; h.$('bpmInput').value = String(bpm); h.$('bpmLock').checked = true; };
+  tempo(60);                                                                       // slow cuts: room for voices
+  for (let i = 0; i < 600; i++) { h.run('randomMusic()'); check('Random sound, slow'); }
+  const slow = { ...seen };
+  assert.ok(slow.choir > 3 * slow.industrial && slow.industrial > 0, `slow cuts: mostly the choir: ${JSON.stringify(slow)}`);
+  assert.ok(slow.none > 0.55 * 600, `the plain drone most of the time: ${JSON.stringify(slow)}`);
+  for (const k in seen) seen[k] = 0;
+  tempo(240);                                                                      // fast cuts: metal, the choir rarely
+  for (let i = 0; i < 600; i++) { h.run('randomMusic()'); check('Random sound, fast'); }
+  assert.ok(seen.industrial > seen.choir && seen.choir > 0, `fast cuts: mostly metal: ${JSON.stringify(seen)}`);
+  tempo(420);
+  for (let i = 0; i < 200; i++) { h.run('randomMusic()'); assert.equal(+h.$('choirRange').value, 0, 'no voices over a strobe'); }
+  h.$('bpmLock').checked = false;
   const types = JSON.parse(JSON.stringify(h.run('CHARACTERS')));
   for (const [key, c] of Object.entries(types)) {
     h.$('characterSelect').value = key;
@@ -1130,6 +1140,32 @@ test('the logo target: one switch for the Film preview and every Curate card (T 
   await settle();
   assert.equal(again.ctx.document.body.classList.contains('target-on'), true, 'on again after a reload');
   assert.equal(again.$('gridTargetBtn').getAttribute('aria-pressed'), 'true');
+});
+
+test('arpeggio moods: Random draws them all (Pluck often), a type keeps to its own, and the bed agrees (no major over minor, soft moods unhurried)', async () => {
+  const h = await playerWith();
+  const n = id => +h.$(id).value;
+  const seen = [0, 0, 0, 0, 0];
+  const rules = why => {
+    if (n('arpMoodSelect') === 4) assert.ok([1, 3].includes(n('chordSelect')), `${why}: Beautiful over an open fifth or a suspended chord, not ${n('chordSelect')}`);
+    if ([2, 3].includes(n('arpMoodSelect')) && h.run('rhythmCutsPerSecond()') > 2.5) assert.ok(n('arpRateSelect') <= 1, `${why}: a soft mood on fast cuts plays a note a cut at most`);
+    if (n('choirRange') > 0) assert.ok(![0, 1].includes(n('arpMoodSelect')), `${why}: under the choir, a soft mood`);
+  };
+  for (let i = 0; i < 500; i++) { h.run('randomMusic()'); seen[n('arpMoodSelect')]++; rules('Random sound'); }
+  assert.ok(seen.every(c => c > 30), `every mood comes up: ${seen}`);
+  assert.ok(seen[0] > 0.18 * 500, `Pluck, the first arpeggio, often (the choir trades Pluck and Dark for the soft moods): ${seen}`);
+  const types = JSON.parse(JSON.stringify(h.run('CHARACTERS')));
+  for (const [key, c] of Object.entries(types)) {
+    h.$('characterSelect').value = key;
+    for (let i = 0; i < 30; i++) {
+      h.run('randomAll()'); rules(key);
+      if (!n('choirRange')) assert.ok(c.sound.mood.includes(h.$('arpMoodSelect').value), `${key}: mood ${h.$('arpMoodSelect').value}`);
+    }
+  }
+  h.$('arpMoodSelect').value = '3'; h.run('updateMusic()');
+  assert.equal(h.run('synthParams()').arpMood, 3);
+  h.run('saveSettings()');
+  assert.equal(JSON.parse(h.store.studioSettings).arpMoodSelect, '3', 'remembered');
 });
 
 test('Curate and Film: the mode switch is remembered, and Tab / Space work except while typing', async () => {
