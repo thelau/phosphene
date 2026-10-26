@@ -574,19 +574,39 @@
       if (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable) return true;
       return t.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes(t.type);
     }
-    // Keys (none while typing in a field): Tab mode · Space play · ← → one image · Delete trash the image on screen (Film) · F full screen · Cmd/Ctrl+Z undo
+    // Keys (none while typing in a field): Tab mode · Space play · ← → one image · 0 / Home back to the start · Delete trash the image on screen (Film)
+    // · F full screen · T the logo target · R Random (video and sound) · S Random sound · Cmd/Ctrl+Z undo
     function onKey(e) {
       if (typingIn(e.target) || document.getElementById('confirmModal').classList.contains('open')) return;
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undoLast(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.repeat && ['Tab', 'Delete', 'Backspace', 'f', 'F'].includes(e.key)) { e.preventDefault(); return; }   // a held key acts once
+      if (e.repeat && ['Tab', 'Delete', 'Backspace', 'f', 'F', 't', 'T', 'r', 'R', 's', 'S'].includes(e.key)) { e.preventDefault(); return; }   // a held key acts once
       if (e.target && e.target.type === 'range' && e.key.startsWith('Arrow')) return;             // a slider with focus keeps its arrows
       if (e.key === 'Tab') { e.preventDefault(); if (e.target && e.target.blur) e.target.blur(); setMode(mode === 'film' ? 'curate' : 'film'); }
       else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
       else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); stepImage(e.key === 'ArrowRight' ? 1 : -1); }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && mode === 'film') { e.preventDefault(); trashCurrent(); }
       else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); }
+      else if (e.key === '0' || e.key === 'Home') { e.preventDefault(); toStart(); }
+      else if (e.key === '?') { e.preventDefault(); toggleKeys(); }
+      else if (e.key === 'Escape') document.getElementById('keysPanel').hidden = true;
+      else if (e.key === 't' || e.key === 'T') { e.preventDefault(); toggleReticle(); }
+      else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); randomAll(); }
+      else if (e.key === 's' || e.key === 'S') { e.preventDefault(); if (!musicOn()) { setv('musicSelect', 'on'); } randomMusic(); }
     }
+    // back to the first image and the start of the sound; playing or not, it keeps playing or stays paused
+    function toStart() {
+      cutPos = 0; lastTick = performance.now();
+      if (isPlaying && droneLive.playing) droneLive.restart(synthParams(), synthStartsSec());
+      drawFrame();
+    }
+    // the list of keys: ? or the hint in the header; Esc or a click elsewhere closes it
+    function toggleKeys(e) {
+      if (e && e.stopPropagation) e.stopPropagation();
+      const p = document.getElementById('keysPanel');
+      p.hidden = !p.hidden;
+    }
+    document.addEventListener('click', () => { document.getElementById('keysPanel').hidden = true; });
     // one image back or forward (wraps), playing or not
     function stepImage(d) {
       const n = activePlates().length;
@@ -1821,6 +1841,7 @@ Object.assign(window, {
   setThumbSize,
   refreshLibrary,
   toggleFullscreen,
+  toggleKeys,
   stageStats: () => ({ lateFrames, ready: ready.size }),
   toggleMini,
   restoreSelected,

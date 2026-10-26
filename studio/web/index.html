@@ -27,7 +27,23 @@
         <button id="modeCurate" onclick="setMode('curate')" aria-pressed="true">Curate</button>
         <button id="modeFilm" onclick="setMode('film')" aria-pressed="false">Film</button>
       </div>
-      <span class="kbd-hint" title="Tab: Curate / Film · Space: play / pause · ← →: one image back / forward · Delete: trash the image on screen (Film) · F: full screen · Cmd+Z: undo"><kbd>Tab</kbd> switch · <kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> step · <kbd>F</kbd> full screen</span>
+      <button class="kbd-hint" id="keysBtn" onclick="toggleKeys(event)" title="All the keys (?)"><kbd>Tab</kbd> switch · <kbd>Space</kbd> play · <kbd>R</kbd> random · <kbd>?</kbd> keys</button>
+      <div class="keys-panel" id="keysPanel" hidden onclick="event.stopPropagation()" role="dialog" aria-label="Keys">
+        <h4>Keys</h4>
+        <dl>
+          <dt><kbd>Space</kbd></dt><dd>Play / pause</dd>
+          <dt><kbd>0</kbd> <kbd>Home</kbd></dt><dd>Back to the start</dd>
+          <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>One image back / forward</dd>
+          <dt><kbd>Tab</kbd></dt><dd>Curate / Film</dd>
+          <dt><kbd>R</kbd></dt><dd>Random: video and sound</dd>
+          <dt><kbd>S</kbd></dt><dd>Random sound</dd>
+          <dt><kbd>T</kbd></dt><dd>Logo target</dd>
+          <dt><kbd>F</kbd></dt><dd>Full screen</dd>
+          <dt><kbd>Delete</kbd></dt><dd>Trash the image on screen (Film)</dd>
+          <dt><kbd>⌘</kbd> <kbd>Z</kbd></dt><dd>Undo</dd>
+        </dl>
+        <p>Keys do nothing while you type in a field.</p>
+      </div>
     </nav>
     <div class="grow"></div>
     <button class="icon-btn" onclick="toggleSettings()" id="settingsBtn" title="Settings: models, Kimi key, scorecard" aria-label="Settings">
@@ -213,10 +229,10 @@
 
         <div class="transport">
           <button onclick="togglePlay()" id="playBtn" class="play-btn" aria-label="Play">Play</button>
-          <button onclick="restartPlay()" id="restartBtn" class="icon-btn" title="Start again from the first image (and the start of the sound)" aria-label="Restart">
+          <button onclick="restartPlay()" id="restartBtn" class="icon-btn" title="Back to the start (0)" aria-label="Back to the start">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6"></path><path d="M4 4v4h4"></path></svg>
           </button>
-          <button onclick="toggleReticle()" id="targetBtn" class="icon-btn" title="Show where the logo must sit: dead-center, 18% of the width" aria-label="Show logo target" aria-pressed="false">
+          <button onclick="toggleReticle()" id="targetBtn" class="icon-btn" title="Show where the logo must sit: dead-center, 18% of the width (T)" aria-label="Show logo target" aria-pressed="false">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 1v4M12 19v4M1 12h4M19 12h4"></path></svg>
           </button>
           <span class="timecode" id="timecode">0:00.0 <span>/ 0:00.0 · cut 1 / 0</span></span>
@@ -269,7 +285,7 @@
                 <option value="machine">Machine · very fast</option>
               </select>
             </label>
-            <button onclick="randomAll()" id="randomAllBtn" class="look-random" title="Rhythm, look and sound again, inside the type (Any: anything), the sound matched to the speed">
+            <button onclick="randomAll()" id="randomAllBtn" class="look-random" title="Rhythm, look and sound again, inside the type (Any: anything), the sound matched to the speed (R)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg>
               Random
             </button>
@@ -367,7 +383,7 @@
           <!-- Sound -->
           <section class="card-sec" aria-label="Sound">
             <div class="sec-head"><h2>Sound</h2>
-              <button id="randomBtn" onclick="randomMusic()" class="small-btn" title="A new sound for the same cut: tuning, chord, layers, notes, room">
+              <button id="randomBtn" onclick="randomMusic()" class="small-btn" title="A new sound for the same cut: tuning, chord, layers, notes, room (S)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg>
                 Random sound</button>
             </div>

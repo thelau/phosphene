@@ -719,3 +719,20 @@ test('edge states: an empty library says what to do, the Trash has no film previ
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('the Keys panel: ? opens a tidy list under the hint, Esc and a click elsewhere close it', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  await page.keyboard.press('?');
+  await page.waitForSelector('#keysPanel:not([hidden])');
+  assert.equal(await page.locator('#keysPanel dt').count(), 10);
+  const p = await page.locator('#keysPanel').boundingBox();
+  assert.ok(p.x >= 0 && p.x + p.width <= 1512 && p.y + p.height <= 945, 'all of it on screen');
+  await shot('22-keys');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#keysPanel').isVisible(), false);
+  await page.click('#keysBtn');
+  assert.equal(await page.locator('#keysPanel').isVisible(), true);
+  await page.mouse.click(700, 600);
+  assert.equal(await page.locator('#keysPanel').isVisible(), false);
+  await ctx.close();
+});

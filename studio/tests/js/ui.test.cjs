@@ -1501,3 +1501,35 @@ test('held keys act once; a slider with focus keeps its arrows', async () => {
   h.ctx.onKey({ key: 'ArrowRight', target: { tagName: 'INPUT', type: 'range' }, preventDefault() {} });
   assert.equal(h.run('currentIdx'), before);
 });
+
+test('keys: 0 / Home back to the start (playing stays playing), T the target, R Random, S Random sound (turns the sound on)', async () => {
+  const h = await playerWith();
+  const key = k => h.ctx.onKey({ key: k, target: { tagName: 'BODY' }, preventDefault() {} });
+  h.run('jumpToPlate(2)');
+  key('0'); assert.equal(h.run('cutPos'), 0); assert.equal(h.run('currentIdx'), 0); assert.equal(h.run('isPlaying'), false, 'paused stays paused');
+  h.$('musicSelect').value = 'on'; h.run('updateMusic()'); h.run('togglePlay()'); await settle();
+  h.run('jumpToPlate(2)'); const restarts = h.ctx.__drone.restarts || 0;
+  key('Home'); assert.equal(h.run('cutPos'), 0); assert.equal(h.run('isPlaying'), true);
+  assert.equal(h.ctx.__drone.restarts, restarts + 1, 'the sound starts again too');
+  h.run('togglePlay()');
+  key('t'); assert.equal(h.$('reticle').classList.contains('visible'), true);
+  key('T'); assert.equal(h.$('reticle').classList.contains('visible'), false);
+  const snap = () => ['rhythmSelect', 'bpmInput', 'invertSelect', 'zoomSelect', 'seedVal'].map(id => h.$(id).value).join();
+  let a = snap(); key('r'); assert.notEqual(snap(), a, 'R rolls everything');
+  h.$('musicSelect').value = 'off'; h.run('updateMusic()');
+  a = ['rhythmSelect', 'bpmInput', 'invertSelect'].map(id => h.$(id).value).join(); const seed = h.$('seedVal').value;
+  key('s');
+  assert.equal(h.$('musicSelect').value, 'on', 'S turns the sound on');
+  assert.notEqual(h.$('seedVal').value, seed);
+  assert.equal(['rhythmSelect', 'bpmInput', 'invertSelect'].map(id => h.$(id).value).join(), a, 'and leaves the video alone');
+  h.ctx.onKey({ key: 'r', target: { tagName: 'INPUT', type: 'text' }, preventDefault() {} });   // typing an r is typing
+});
+
+test('the Keys panel opens with ? or the hint, and Esc closes it', async () => {
+  const h = await playerWith();
+  const key = k => h.ctx.onKey({ key: k, target: { tagName: 'BODY' }, preventDefault() {} });
+  h.$('keysPanel').hidden = true;
+  key('?'); assert.equal(h.$('keysPanel').hidden, false);
+  key('Escape'); assert.equal(h.$('keysPanel').hidden, true);
+  h.run('toggleKeys()'); assert.equal(h.$('keysPanel').hidden, false);
+});
