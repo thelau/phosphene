@@ -577,7 +577,65 @@
     }
     // a random sound within what works: every setting is drawn from a range that stays a dark, heavy drone (the ranges are the taste)
     const RANDOM_RANGES = { pulse: [30, 90], low: [65, 100], power: [30, 90], space: [5, 85], bright: [0, 55], width: [30, 100], pitch: [0, 100], movement: [15, 85], echo: [0, 55], wash: [0, 55], ring: [0, 45], shimmer: [0, 45], hit: [30, 70], arp: [20, 45] };
-    function randomMusic() {
+    // one step back from the last random (video, sound or both): the values of every persisted control, restored as they were
+    let randomBefore = null;
+    const rememberForUndo = () => {
+      randomBefore = {};
+      PERSISTED.filter(id => !['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'fxTabVal'].includes(id)).forEach(id => { const el = document.getElementById(id); if (el) randomBefore[id] = el.type === 'checkbox' ? el.checked : el.value; });
+      document.getElementById('undoRandomBtn').disabled = false;
+    };
+    function undoRandom() {
+      if (!randomBefore) return;
+      for (const [id, v] of Object.entries(randomBefore)) { const el = document.getElementById(id); if (el) { if (el.type === 'checkbox') el.checked = v; else el.value = v; } }
+      randomBefore = null; document.getElementById('undoRandomBtn').disabled = true;
+      updateTempo(); updateRhythm(); updateFx(); updateMusic();
+    }
+    // a random speed and look: tempo (or a variable run), Multiple, Invert, Zoom; every draw stays inside what cuts well
+    function randomVideo(quiet) {
+      if (!quiet) rememberForUndo();
+      const set = (id, v) => { document.getElementById(id).value = String(v); };
+      const int = (lo, hi) => Math.round(lo + Math.random() * (hi - lo));
+      const from = list => list[Math.floor(Math.random() * list.length)];
+      if (Math.random() < 0.55) {
+        set('rhythmSelect', 'flat'); set('bpmInput', int(60, 200)); set('multSelect', from(['0.5', '1', '1', '2', '3', '4', '4', '6']));
+      } else {
+        set('rhythmSelect', 'variable');
+        set('startMsRange', int(6, 20) * 10); set('endMsRange', int(30, 90) * 10);
+        if (Math.random() < 0.5) { const s = document.getElementById('startMsRange').value; set('startMsRange', document.getElementById('endMsRange').value); set('endMsRange', s); }   // speeding up or slowing down
+        set('rampRange', int(6, 20)); set('atSelect', Math.random() < 0.7 ? 'end' : 'start'); set('multSelect', from(['1', '1', '2', '3', '4']));
+      }
+      document.getElementById('followCuts').checked = Math.random() < 0.15;
+      set('invertSelect', from(['off', 'off', 'mono', 'colour'])); set('zoomSelect', from(['off', 'out', 'out', 'in']));
+      set('zoomAmt', (0.2 + Math.random() * 1.6).toFixed(1));
+      updateTempo(); updateRhythm(); updateFx();
+      if (!quiet) { saveSettings(); musicChanged(); }
+    }
+    // video and sound together, the sound matched to the speed: fast cuts get sparse hits and a slow arpeggio in a dry room, slow cuts get room, wash and a busier arpeggio
+    function randomAll() {
+      rememberForUndo();
+      document.getElementById('musicSelect').value = 'on';
+      randomVideo(true);
+      randomMusic(true);
+      const set = (id, v) => { document.getElementById(id).value = String(v); };
+      const rate = rhythmCutsPerSecond();
+      if (rate >= 4) {
+        set('arpRateSelect', Math.floor(Math.random() * 2)); set('hitOnSelect', 1 + Math.floor(Math.random() * 3));
+        set('spaceRange', Math.min(50, +document.getElementById('spaceRange').value)); set('echoRange', Math.min(20, +document.getElementById('echoRange').value));
+      } else if (rate <= 1.5) {
+        set('arpRateSelect', 2 + Math.floor(Math.random() * 2)); set('hitOnSelect', 0);
+        set('spaceRange', Math.max(40, +document.getElementById('spaceRange').value));
+        if (Math.random() < 0.6) set('washRange', Math.max(20, +document.getElementById('washRange').value));
+      }
+      updateMusic();
+    }
+    // how many cuts a second the music hears (flat: the tempo, or every picture cut when the check is on; variable: the mean of the two ends)
+    function rhythmCutsPerSecond() {
+      const follow = document.getElementById('followCuts').checked ? (parseFloat(document.getElementById('multSelect').value) || 1) : 1;
+      if (rhythmMode() === 'variable') return (1000 / ((parseFloat(document.getElementById('startMsRange').value) + parseFloat(document.getElementById('endMsRange').value)) / 2)) * follow;
+      return (bpmValue() / 60) * follow;
+    }
+    function randomMusic(quiet) {
+      if (quiet !== true) rememberForUndo();
       const pick = ([lo, hi]) => Math.round(lo + Math.random() * (hi - lo));
       for (const [k, range] of Object.entries(RANDOM_RANGES)) document.getElementById(`${k}Range`).value = String(pick(range));
       for (const k of ['echo', 'wash', 'ring', 'shimmer']) if (Math.random() < 0.5) document.getElementById(`${k}Range`).value = '0';   // flavours, not the rule: often none
@@ -591,7 +649,7 @@
       document.getElementById('padWaveSelect').value = String(Math.floor(Math.random() * 4));
       document.getElementById('chordSelect').value = String(Math.floor(Math.random() * 4));
       document.getElementById('seedVal').value = String(1 + Math.floor(Math.random() * 99999));
-      updateMusic();
+      if (quiet !== true) updateMusic();
     }
     function showFxTab(which) {
       const music = which === 'music';
@@ -1154,6 +1212,9 @@ Object.assign(window, {
   togglePlay,
   updateMusic,
   randomMusic,
+  randomVideo,
+  randomAll,
+  undoRandom,
   showFxTab,
   togglePromptOverlay,
   toggleReticle,

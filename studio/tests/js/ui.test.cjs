@@ -947,3 +947,57 @@ test('turning "The Multiple also changes the music" on or off while playing swap
   assert.ok(Math.abs(h.ctx.__drone.updates[before].offset - 0.5) < 1e-9);
   assert.equal(h.ctx.__drone.updates[before].starts.length, 13);              // 12 picture cuts + the end
 });
+
+test('Random video: every draw is a valid speed and look inside the slider ranges, and Undo brings the old settings back', async () => {
+  const h = await playerWith();
+  h.$('bpmInput').value = '77'; h.$('rhythmSelect').value = 'flat'; h.$('invertSelect').value = 'colour'; h.run('updateTempo(); updateRhythm()');
+  const seen = { flat: 0, variable: 0 };
+  for (let i = 0; i < 300; i++) {
+    h.run('randomVideo()');
+    const mode = h.$('rhythmSelect').value; seen[mode]++;
+    if (mode === 'flat') { const b = +h.$('bpmInput').value; assert.ok(b >= 60 && b <= 200, `tempo ${b}`); }
+    else {
+      const s = +h.$('startMsRange').value, e = +h.$('endMsRange').value, r = +h.$('rampRange').value;
+      assert.ok(s >= 60 && s <= 900 && e >= 60 && e <= 900 && r >= 2 && r <= 20, `variable ${s} ${e} ${r}`);
+      assert.ok(['end', 'start'].includes(h.$('atSelect').value));
+    }
+    assert.ok(['off', 'mono', 'colour'].includes(h.$('invertSelect').value) && ['off', 'out', 'in'].includes(h.$('zoomSelect').value));
+    const z = +h.$('zoomAmt').value; assert.ok(z >= 0.2 && z <= 1.8, `zoom ${z}`);
+    assert.ok(Number.isFinite(h.run('framesPerCut')) && h.run('framesPerCut') >= 1);
+  }
+  assert.ok(seen.flat > 60 && seen.variable > 60, `both speeds come up (${JSON.stringify(seen)})`);
+  h.$('bpmInput').value = '77'; h.$('rhythmSelect').value = 'flat'; h.$('invertSelect').value = 'colour'; h.$('multSelect').value = '2';
+  h.run('randomVideo()');
+  assert.equal(h.$('undoRandomBtn').disabled, false);
+  h.run('undoRandom()');
+  assert.deepEqual([h.$('bpmInput').value, h.$('rhythmSelect').value, h.$('invertSelect').value, h.$('multSelect').value], ['77', 'flat', 'colour', '2']);
+  assert.equal(h.$('undoRandomBtn').disabled, true);
+  assert.doesNotThrow(() => h.run('undoRandom()'));                                 // nothing left to undo
+});
+
+test('Random all turns the sound on, rolls both halves, and matches the sound to the speed', async () => {
+  const h = await playerWith();
+  h.$('musicSelect').value = 'off';
+  const fast = { arp: new Set(), hitOn: new Set() }, slow = { arp: new Set(), hitOn: new Set(), space: [] };
+  for (let i = 0; i < 400; i++) {
+    h.run('randomAll()');
+    assert.equal(h.$('musicSelect').value, 'on');
+    const rate = h.run('rhythmCutsPerSecond()');
+    if (rate >= 4) { fast.arp.add(h.$('arpRateSelect').value); fast.hitOn.add(h.$('hitOnSelect').value); assert.ok(+h.$('spaceRange').value <= 50 && +h.$('echoRange').value <= 20); }
+    else if (rate <= 1.5) { slow.arp.add(h.$('arpRateSelect').value); slow.hitOn.add(h.$('hitOnSelect').value); slow.space.push(+h.$('spaceRange').value); }
+  }
+  assert.deepEqual([...fast.arp].sort(), ['0', '1']);                              // fast cuts: slow arpeggio, sparse hits
+  assert.ok(!fast.hitOn.has('0'));
+  assert.deepEqual([...slow.arp].sort(), ['2', '3']);                              // slow cuts: busier arpeggio, every-cut hits, a big room
+  assert.deepEqual([...slow.hitOn], ['0']);
+  assert.ok(slow.space.length > 20 && Math.min(...slow.space) >= 40);
+  h.run('randomAll()'); h.run('undoRandom()');                                      // one step back covers both halves
+  assert.equal(h.$('undoRandomBtn').disabled, true);
+});
+
+test('Random sound alone leaves the speed and the effects untouched', async () => {
+  const h = await playerWith();
+  const before = [h.$('rhythmSelect').value, h.$('bpmInput').value, h.$('multSelect').value, h.$('invertSelect').value, h.$('zoomSelect').value];
+  for (let i = 0; i < 20; i++) h.run('randomMusic()');
+  assert.deepEqual([h.$('rhythmSelect').value, h.$('bpmInput').value, h.$('multSelect').value, h.$('invertSelect').value, h.$('zoomSelect').value], before);
+});

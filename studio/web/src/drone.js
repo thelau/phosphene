@@ -194,6 +194,20 @@
       for (let i = 0; i < n; i++) c[i] = fn(from + (span * i) / (n - 1));
       param.setValueCurveAtTime(c, at(from), span);
     };
+    // dynamics: an arc over the notes, not the volume. 0 = low, soft, long; 1 = high, bright, short; 0.5 = as written (what Off plays).
+    // Rise climbs over the whole clip, Fall sinks over it, Follows the speed is high while the cuts are fast (a flat speed has nothing to follow).
+    const arc = (() => {
+      if (!dynamics) return () => 0.5;
+      const lens = starts.slice(1).map((v, i) => v - starts[i]);
+      const lo = Math.min(...lens), hi = Math.max(...lens);
+      return t => {
+        const u = Math.min(1, Math.max(0, t / total));
+        if (dynamics === 1) return u;
+        if (dynamics === 2) return 1 - u;
+        return hi > lo * 1.05 ? Math.log(hi / lens[Math.min(lens.length - 1, cutAtTime(starts, t))]) / Math.log(hi / lo) : 0.5;
+      };
+    })();
+    const lift = (s, span) => Math.pow(2, (s - 0.5) * span);               // a pitch factor: span 1.2 = +-7 semitones at the extremes
     const landed = t => smooth((t - land) / 1.2);                           // 0 -> 1 over the last hold
     // Everything that happens at a cut is scheduled just ahead of the sound (advance), not for the whole clip at once: a long, fast clip
     // would otherwise put thousands of events and nodes in the graph before the first note plays.
@@ -275,6 +289,7 @@
       // tonal cluster
       ratios.forEach((r, i) => {
         const o = osc('sine', f0 * r * det * (1 + 0.002 * side));
+        if (dynamics) sampled(o.frequency, t => f0 * r * det * (1 + 0.002 * side) * lift(arc(t), 0.7));     // the cluster follows the arc by a few semitones
         const g = gain(lfoGains[i] * 0.75 * (0.34 + 0.2 * bright), body);
         lfo(lfoRates[i], lfoGains[i] * 0.25 * (0.34 + 0.2 * bright), g.gain);
         o.connect(g);
@@ -351,27 +366,27 @@
     const voiceNoise = (secs, filterType, fc, q, to) => {
       const n = ctx.createBufferSource(); n.buffer = knockNoise(ctx, secs); n.loop = true; keep(n);
       const f = ctx.createBiquadFilter(); f.type = filterType; f.frequency.value = fc; f.Q.value = q;
-      const g = gain(0, to); n.connect(f); f.connect(g); return g;
+      const g = gain(0, to); n.connect(f); f.connect(g); g.__filter = f; return g;
     };
     if (hitType > 0 && hitAmt > 0.01) {
       const a = hitAmt;
       let fire;
       if (hitType === 1) {                                                // thud: a sub that drops onto the root
         const [o, g] = voiceOsc('sine', hitBus);
-        fire = t => { o.frequency.setValueAtTime(f0 * 3.2, t); o.frequency.setTargetAtTime(f0, t, 0.035); strike(g, t, 1.1 * a, 0.32); };
+        fire = (t, s, k) => { o.frequency.setValueAtTime(f0 * 3.2 * lift(s, 1.2), t); o.frequency.setTargetAtTime(f0 * lift(s, 0.6), t, 0.035); strike(g, t, 1.1 * a, 0.32 * k); };
       } else if (hitType === 2) {                                         // knock: a short low tone and a dull click
         const [o, g] = voiceOsc('triangle', hitBus), click = voiceNoise(0.5, 'lowpass', 700, 0.7, hitBus);
-        fire = t => { o.frequency.setValueAtTime(f0 * 5, t); o.frequency.setTargetAtTime(f0 * 2.2, t, 0.02); strike(g, t, 0.75 * a, 0.14); strike(click, t, 0.5 * a, 0.04); };
+        fire = (t, s, k) => { o.frequency.setValueAtTime(f0 * 5 * lift(s, 1.2), t); o.frequency.setTargetAtTime(f0 * 2.2 * lift(s, 1.2), t, 0.02); strike(g, t, 0.75 * a, 0.14 * k); strike(click, t, 0.5 * a, 0.04 * k); };
       } else if (hitType === 3) {                                         // metal: inharmonic partials ringing out
-        const parts = [[1, 1, 0.42], [2.76, 0.6, 0.26], [5.4, 0.35, 0.16]].map(([r, g0, d]) => { const [o, g] = voiceOsc('sine', hitBus); o.frequency.value = f0 * 5 * r; return [g, 0.4 * g0, d]; });
-        fire = t => { for (const [g, peak, d] of parts) strike(g, t, peak * a, d); };
+        const parts = [[1, 1, 0.42], [2.76, 0.6, 0.26], [5.4, 0.35, 0.16]].map(([r, g0, d]) => { const [o, g] = voiceOsc('sine', hitBus); o.frequency.value = f0 * 5 * r; return [o, g, 0.4 * g0, d, f0 * 5 * r]; });
+        fire = (t, s, k) => { for (const [o, g, peak, d, f] of parts) { if (dynamics) o.frequency.setValueAtTime(f * lift(s, 1.2), t); strike(g, t, peak * a, d * k); } };
       } else {                                                            // noise burst: a dark, short snare
-        const g = voiceNoise(1, 'bandpass', 420, 0.8, hitBus);
-        fire = t => strike(g, t, 1.3 * a, 0.16);
+        const g = voiceNoise(1, 'bandpass', 420, 0.8, hitBus), f = g.__filter;
+        fire = (t, s, k) => { f.frequency.setValueAtTime(420 * lift(s, 1.4), t); strike(g, t, 1.3 * a, 0.16 * k); };
       }
       perCut.push((i, t) => {
         const on = hitOn === 0 ? true : hitOn === 1 ? i % 2 === 0 : hitOn === 2 ? i % 4 === 0 : accents[i % 8];
-        if (on) fire(t);
+        if (on) { const s = arc(starts[i]); fire(t, s, 1.5 - s); }
       });
     }
 
@@ -398,9 +413,10 @@
         const n = per < 1 ? (i % 2 === 0 ? 1 : 0) : per;
         for (let k = 0; k < n; k++, step++) {
           const t = tc + (per < 1 ? 0 : (len * k) / n);
-          const stepLen = per < 1 ? len * 2 : len / n, decay = Math.min(0.5, Math.max(0.05, stepLen * 0.9)), f = pattern[step % arpSteps];
+          const s = arc(starts[i] + (per < 1 ? 0 : (len * k) / n));
+          const stepLen = per < 1 ? len * 2 : len / n, decay = Math.min(0.5, Math.max(0.05, stepLen * 0.9)) * (1.5 - s), f = pattern[step % arpSteps] * lift(s, 1.2);
           for (const [o, det] of voices) o.frequency.setValueAtTime(f * (1 + det), t);
-          lp.frequency.setValueAtTime(1900, t); lp.frequency.setTargetAtTime(420, t + 0.003, decay / 3);
+          lp.frequency.setValueAtTime(1900 * lift(s, 0.8), t); lp.frequency.setTargetAtTime(420 * lift(s, 1.2), t + 0.003, decay / 3);
           strike(env, t, 2.2 * arpAmt, decay);
         }
       });
@@ -411,19 +427,7 @@
     const merger = ctx.createChannelMerger(2);
     const cross = (a, b, ch) => { const g1 = gain((1 + w) / 2); const g2 = gain((1 - w) / 2); mix[a].connect(g1); mix[b].connect(g2); g1.connect(merger, 0, ch); g2.connect(merger, 0, ch); };
     cross(0, 1, 0); cross(1, 0, 1);
-    // dynamics: the whole sound swells, fades, or follows how fast the cuts are (faster = louder)
-    const dyn = ctx.createGain();
-    if (dynamics) {
-      const lens = starts.slice(1).map((v, i) => v - starts[i]);
-      const lo = Math.min(...lens), hi = Math.max(...lens);
-      const lenAt = t => lens[Math.min(lens.length - 1, cutAtTime(starts, t))];
-      sampled(dyn.gain, t => {
-        const u = Math.min(1, t / total);
-        if (dynamics === 1) return 0.3 + 0.7 * Math.pow(u, 1.4);                                   // build up
-        if (dynamics === 2) return 1 - 0.7 * Math.pow(u, 1.2);                                     // fade out
-        return hi > lo * 1.05 ? 0.35 + 0.65 * (Math.log(hi / lenAt(t)) / Math.log(hi / lo)) : 1;   // follow the speed
-      });
-    }
+    const dyn = ctx.createGain();                                           // the volume is never touched by Dynamics: it shapes the notes (see arc)
     merger.connect(dyn);
     if (opts.tap === 'sub') subBus.connect(dest); else if (opts.tap === 'dry') { mix[0].connect(dest); } else dyn.connect(dest);
 

@@ -151,6 +151,23 @@ test('export: the button is always in view (fixed under the controls) and the fi
   await ctx.close();
 });
 
+test('Random all, Random video and Undo work in the real page and the sound keeps playing', { skip }, async () => {
+  const ctx = await fresh();
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.locator('.card').first().click();
+  await page.click('#playBtn');
+  for (let i = 0; i < 6; i++) { await page.click('#randomAllBtn'); await page.waitForTimeout(250); }
+  assert.equal(await page.locator('#musicSelect').inputValue(), 'on');
+  assert.equal(await page.locator('#undoRandomBtn').isEnabled(), true);
+  await page.click('#undoRandomBtn');
+  assert.equal(await page.locator('#undoRandomBtn').isEnabled(), false);
+  await page.click('#randomVideoBtn');
+  await page.click('#tabMusic'); await page.click('#randomBtn'); await page.waitForTimeout(300);
+  assert.deepEqual(errors, []);
+  assert.equal(await page.locator('#exportBtn').isVisible(), true);
+  await ctx.close();
+});
+
 test('narrow window: the header wraps without squeezing the Generate button', { skip }, async () => {
   const ctx = await fresh({ width: 900 });
   const gen = await page.locator('#generateBtn').boundingBox();
@@ -306,7 +323,8 @@ test('hits, the arpeggio and the dynamics are heard in the real engine and stay 
       const e = x => { let t = 0; for (const v of x) t += v * v; return t; };
       const l250 = lp(lp(mono, 120), 120), l1k = lp(lp(mono, 900), 900), l2k = lp(lp(mono, 2000), 2000);
       const total = e(mono);
-      return { rms: Math.sqrt(s / (2 * n)), crest: mx / Math.sqrt(s / (2 * n)), first: half(0, n >> 1), second: half(n >> 1, n), mid: (e(l1k) - e(l250)) / total, high: (total - e(l2k)) / total, peak: mx };
+      const l500 = lp(lp(mono, 500), 500), up = (a, b) => { let t = 0, u = 0; for (let i = a; i < b; i++) { t += mono[i] ** 2; u += (mono[i] - l500[i]) ** 2; } return u / t; };   // share of the energy above ~500 Hz
+      return { up1: up(0, n >> 1), up2: up(n >> 1, n), rms: Math.sqrt(s / (2 * n)), crest: mx / Math.sqrt(s / (2 * n)), first: half(0, n >> 1), second: half(n >> 1, n), mid: (e(l1k) - e(l250)) / total, high: (total - e(l2k)) / total, peak: mx };
     };
     const base = { pulse: 0.65, low: 0.93, bright: 0.3, width: 0.6, space: 0.06, power: 0.6, seed: 7 };
     const starts = Array.from({ length: 41 }, (_, i) => i * 0.2);
@@ -316,11 +334,12 @@ test('hits, the arpeggio and the dynamics are heard in the real engine and stay 
     for (const t of [1, 2, 3, 4]) await go('hit' + t, { hitType: t, hit: 0.8, hitOn: 0 });
     await go('accents', { hitType: 1, hit: 0.8, hitOn: 3 });
     await go('arp', { arp: 0.6, arpSteps: 2, arpRate: 2 });
-    await go('build', { dynamics: 1 });
-    await go('fade', { dynamics: 2 });
+    const notes = { arp: 0.6, arpSteps: 2, arpRate: 2, hitType: 2, hit: 0.5, hitOn: 0 };
+    await go('build', { ...notes, dynamics: 1 });
+    await go('fade', { ...notes, dynamics: 2 });
     const variable = [0]; for (let i = 0; i < 40; i++) variable.push(variable[i] + (i < 28 ? 0.1 : 0.1 * Math.pow(7, (i - 27) / 12)));
-    await go('follow', { dynamics: 3 }, variable);
-    await go('followFlat', { dynamics: 3 });
+    await go('follow', { ...notes, dynamics: 3 }, variable);
+    await go('followFlat', { ...notes, dynamics: 3 });
     return out;
   });
   for (const [name, m] of Object.entries(rows)) {
@@ -329,10 +348,12 @@ test('hits, the arpeggio and the dynamics are heard in the real engine and stay 
   }
   for (const t of [1, 2, 3, 4]) assert.ok(rows['hit' + t].crest > rows.plain.crest + 0.1, `hit type ${t} adds transients (${rows['hit' + t].crest} vs ${rows.plain.crest})`);
   assert.ok(rows.arp.mid > rows.plain.mid * 1.1, `the arpeggio adds notes in the mids (${rows.arp.mid} vs ${rows.plain.mid})`);
-  assert.ok(rows.build.second > rows.build.first * 1.4, 'build up: louder at the end');
-  assert.ok(rows.fade.first > rows.fade.second * 1.4, 'fade out: softer at the end');
-  assert.ok(rows.follow.first > rows.follow.second * 1.2, 'follows the speed: loud while the cuts are fast, softer as they slow');
-  assert.ok(Math.abs(rows.followFlat.first - rows.followFlat.second) < rows.followFlat.rms * 0.2, 'a flat speed has nothing to follow');
+  // dynamics shape the notes, never the volume: the level stays flat, the brightness moves
+  for (const k of ['build', 'fade', 'follow', 'followFlat']) assert.ok(Math.abs(rows[k].first - rows[k].second) < rows[k].rms * 0.25, `${k}: the volume stays level (${rows[k].first} vs ${rows[k].second})`);
+  assert.ok(rows.build.up2 > rows.build.up1 * 1.05, `rise: the notes are brighter at the end (${rows.build.up1} -> ${rows.build.up2})`);
+  assert.ok(rows.fade.up1 > rows.fade.up2 * 1.05, `fall: the notes are brighter at the start (${rows.fade.up1} -> ${rows.fade.up2})`);
+  assert.ok(rows.follow.up1 > rows.follow.up2 * 1.03, `follows the speed: brighter while the cuts are fast (${rows.follow.up1} -> ${rows.follow.up2})`);
+  assert.ok(Math.abs(rows.followFlat.up1 - rows.followFlat.up2) < rows.followFlat.up1 * 0.25, 'a flat speed has nothing to follow');
   await ctx.close();
 });
 

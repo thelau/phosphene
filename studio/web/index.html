@@ -115,6 +115,11 @@
           <button onclick="toggleReticle()" id="targetBtn" title="Show where the logo must sit: dead-center, 18% of the width">🎯 Target</button>
         </div>
 
+        <div class="control-line">
+          <button onclick="randomAll()" id="randomAllBtn" style="flex:1" title="Rolls the speed, the effects and the sound together, and matches the sound to the speed">🎲 Random all</button>
+          <button onclick="undoRandom()" id="undoRandomBtn" title="Go back to the settings from before the last random" disabled>↶ Undo</button>
+        </div>
+
         <div class="seg fx-tabs" role="tablist">
           <button id="tabVideo" class="on" onclick="showFxTab('video')">Video</button>
           <button id="tabMusic" onclick="showFxTab('music')">Music</button>
@@ -123,6 +128,7 @@
         <input type="hidden" id="seedVal" value="7" />
 
         <div class="tabpane" id="paneVideo">
+          <button onclick="randomVideo()" id="randomVideoBtn" title="Picks a new speed and effects: tempo or a variable run, Multiple, Invert, Zoom">🎲 Random video</button>
           <div class="control-line">
             <span>Speed</span>
             <select id="rhythmSelect" onchange="updateRhythm()" style="flex:1" title="Flat: every cut the same length, set by a tempo. Variable: the cuts speed up or slow down from an entry length to an exit length.">
@@ -355,11 +361,11 @@
             <div class="subhead">Dynamics</div>
             <div class="control-line">
               <span>Dynamics</span>
-              <select id="dynSelect" onchange="updateMusic()" style="flex:1" title="Off: steady. Build up / fade out: the whole clip. Follows the speed: louder when the cuts are fast, softer as they slow (with Variable speed).">
+              <select id="dynSelect" onchange="updateMusic()" style="flex:1" title="Off: steady. Rise / Fall: the notes climb or sink over the whole clip. Follows the speed: higher and brighter while the cuts are fast (with Variable speed).">
                 <option value="0">Off · steady</option>
-                <option value="1">Build up · crescendo</option>
-                <option value="2">Fade out · decrescendo</option>
-                <option value="3">Follows the speed</option>
+                <option value="1">Rise · notes climb and sharpen</option>
+                <option value="2">Fall · notes sink and soften</option>
+                <option value="3">Follows the speed · fast = higher</option>
               </select>
             </div>
           </div>
