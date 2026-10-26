@@ -629,3 +629,27 @@ test('the grid only touches what changed: a refresh, a reorder or a new image ke
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('playing 150 images at one frame a cut, the stage never paints an image that is not ready', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945, delays: { image: 40 } })   // each image takes 20-60 ms to arrive (a plate from the local server);
+  for (let i = 0; i < 150; i++) { const f = `z${i}`; api.state.plates.push({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg`, preview: `/assets/ai-plates/${f}.svg?w=540` }); api.state.sequences[0].order.push(f); }   // like the real server: the stage's size is not the film strip's
+  await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
+  await film();
+  await page.fill('#bpmInput', '450'); await page.locator('#bpmInput').dispatchEvent('input');
+  await page.selectOption('#multSelect', '4');
+  await page.evaluate(() => {
+    window.__bad = 0; window.__frames = 0; window.__srcs = new Set();
+    const img = document.getElementById('stageImg');
+    const loop = () => { window.__frames++; window.__srcs.add(img.getAttribute('src')); if (!(img.complete && img.naturalWidth > 0)) window.__bad++; requestAnimationFrame(loop); };
+    requestAnimationFrame(loop);
+  });
+  await page.click('#playBtn');
+  await page.waitForTimeout(3000);
+  await page.click('#playBtn');
+  const r = await page.evaluate(() => ({ bad: window.__bad, frames: window.__frames, shown: window.__srcs.size, ...window.stageStats() }));
+  console.log(`stage: ${r.frames} frames, ${r.shown} images shown, ${r.bad} not ready, ${r.lateFrames} held, ${r.ready} decoded ahead`);
+  assert.ok(r.shown > 40, 'it really moved through the images');
+  assert.equal(r.bad, 0, 'no frame painted an image that was not ready');
+  assert.ok(r.lateFrames < r.frames * 0.15, `it keeps up: ${r.lateFrames} held frames`);   // without decoding ahead, 176 of 184 frames painted an image that was not ready
+  await ctx.close();
+});

@@ -1280,3 +1280,21 @@ test('refresh while playing: a longer or shorter film updates the sound, the sam
   assert.equal(h.ctx.__drone.updates.length, u + 1);
   assert.equal(h.ctx.__drone.updates.at(-1).starts.length, h.run('synthStartsSec().length'));
 });
+
+test('playing, the stage only switches to an image that is decoded; it decodes the next ones ahead; paused, it shows at once', async () => {
+  const h = await playerWith();
+  const pending = new Map();
+  h.ctx.Image = class { set src(u) { this._src = u; } get src() { return this._src; } decode() { return new Promise(res => pending.set(this._src, res)); } };
+  h.$('bpmInput').value = '60'; h.$('multSelect').value = '1'; h.run('updateTempo()');
+  h.run('aheadFrom = -1; jumpToPlate(0)');                                         // paused: straight away, decoded or not
+  assert.equal(h.$('stageImg').src, '/p/a');
+  assert.ok(['/p/a', '/p/b', '/p/c'].every(u => pending.has(u)), 'the next images are decoding');
+  h.run('isPlaying = true');
+  h.run('cutPos = 30.5; drawFrame()');                                              // image 2 is due but not decoded yet
+  assert.equal(h.$('stageImg').src, '/p/a', 'holds the last frame');
+  assert.equal(h.run('stageStats().lateFrames'), 1);
+  pending.get('/p/b')(); await settle();
+  h.run('drawFrame()');
+  assert.equal(h.$('stageImg').src, '/p/b', 'and switches as soon as it can paint');
+  h.run('isPlaying = false');
+});

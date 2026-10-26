@@ -1159,8 +1159,33 @@
         drawFrame();
       }, 16);
     }
+    // ---- images decoded ahead of the playhead: while playing, the stage only switches to an image that is ready to paint,
+    // so a fast cut never shows an empty or half-drawn frame (it holds the last one instead, and catches up at the next cut) ----
+    const ready = new Map();                                                // url -> Image, decoded (most recent last)
+    const loading = new Map();                                              // url -> Image, decoding
+    let lateFrames = 0;
+    function preload(url) {
+      if (!url || ready.has(url) || loading.has(url) || typeof Image !== 'function') return;
+      const im = new Image();
+      im.decoding = 'async';
+      im.src = url;
+      loading.set(url, im);
+      const done = () => { loading.delete(url); ready.set(url, im); while (ready.size > 80) ready.delete(ready.keys().next().value); };
+      (im.decode ? im.decode() : Promise.resolve()).then(done, () => loading.delete(url));
+    }
+    function isReady(url) { return typeof Image !== 'function' || ready.has(url); }
+    // the next images in film order, as many as the next 2 seconds hold (at least 8, at most 40)
+    function preloadAhead(fromPlate) {
+      const active = activePlates();
+      if (!active.length) return;
+      const tl = timelineFor(active.length), cuts = tl.length - 1;
+      const perPlate = cuts / active.length, cutFrames = tl[cuts] / Math.max(1, cuts);
+      const n = Math.max(8, Math.min(40, Math.ceil(60 / Math.max(1, cutFrames * perPlate))));
+      for (let k = 0; k < Math.min(n, active.length); k++) { const p = active[(fromPlate + k) % active.length]; preload(p.preview || p.url); }
+    }
     // the picture at cutPos: the stage image, its effects (while playing), the film strip mark and the time
     let shownTime = '';
+    let aheadFrom = -1;
     function drawFrame() {
       const active = activePlates();
       const stageImg = document.getElementById('stageImg');
@@ -1170,8 +1195,13 @@
       const plan = planAt(cutPos, active.length, fx.invert, tl);
       currentIdx = plan.plate;
       const url = active[plan.plate].preview || active[plan.plate].url;
-      if (stageImg.getAttribute('src') !== url) stageImg.src = url;
-      if (isPlaying) applyFx(plan, fx); else clearFx();
+      if (plan.plate !== aheadFrom) { aheadFrom = plan.plate; preloadAhead(plan.plate); }
+      let held = false;
+      if (stageImg.getAttribute('src') !== url) {
+        if (!isPlaying || isReady(url)) stageImg.src = url;                   // paused or jumping: show it whatever it takes
+        else { held = true; lateFrames++; preload(url); }                  // playing: hold the last frame until this one can paint
+      }
+      if (!isPlaying) clearFx(); else if (!held) applyFx(plan, fx);        // a held frame keeps its own look
       markFilmstrip(plan.plate);
       movePlayhead();
       const total = tl[tl.length - 1], t = ((cutPos % total) + total) % total;
@@ -1206,6 +1236,7 @@
       lastTick = performance.now();
       if (!isPlaying) { clearFx(); drawFrame(); }
       setPlayLabel();
+      if (isPlaying) preloadAhead(currentIdx);                            // start decoding before the first cut is due
       if (!isPlaying) stopMusic();
       else if (musicOn()) startMusic(cutPos / 30);
     }
@@ -1670,6 +1701,7 @@ Object.assign(window, {
   rhythmStripClick,
   setThumbSize,
   refreshLibrary,
+  stageStats: () => ({ lateFrames, ready: ready.size }),
   toggleMini,
   restoreSelected,
   trashCurrent,

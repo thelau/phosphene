@@ -63,7 +63,9 @@ function start(state = makeState()) {
 
     if (url.pathname.startsWith('/assets/ai-plates/')) {
       const name = decodeURIComponent(url.pathname.split('/').pop()).replace(/\.svg$/, '');
-      res.writeHead(200, { 'Content-Type': 'image/svg+xml' }); return res.end(svg(name));
+      const send = () => { res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'max-age=3600' }); res.end(svg(name)); };
+      const d = (state.delays && state.delays.image) || 0;                      // a real plate takes a while to arrive and decode
+      return d ? setTimeout(send, d / 2 + Math.random() * d) : send();
     }
     switch (url.pathname) {
       case '/api/state': {
