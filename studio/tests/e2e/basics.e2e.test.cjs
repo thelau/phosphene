@@ -185,8 +185,15 @@ test('Random (any character or a chosen one), the card dice and Undo work in the
   assert.equal(await page.locator('#musicSelect').inputValue(), 'on');
   assert.equal(await page.locator('#characterSelect').inputValue(), 'any', 'Random does not change the type');
   assert.equal(await page.locator('#undoRandomBtn').isEnabled(), true);
-  await page.click('#undoRandomBtn');
-  assert.equal(await page.locator('#undoRandomBtn').isEnabled(), false);
+  const snap = () => page.evaluate(() => ['rhythmSelect', 'bpmInput', 'invertSelect', 'seedVal'].map(id => document.getElementById(id).value).join());
+  const last = await snap();
+  await page.click('#randomAllBtn');
+  assert.notEqual(await snap(), last);
+  await page.click('#undoRandomBtn');                                          // one click: back to before that Random
+  await page.waitForFunction(s => ['rhythmSelect', 'bpmInput', 'invertSelect', 'seedVal'].map(id => document.getElementById(id).value).join() === s, last);
+  assert.match(await text('#toast'), /^Undone: Random/);
+  await page.keyboard.press('Meta+Shift+z');
+  await page.waitForFunction(s => ['rhythmSelect', 'bpmInput', 'invertSelect', 'seedVal'].map(id => document.getElementById(id).value).join() !== s, last);
   await page.selectOption('#characterSelect', 'float');                       // choosing a character rolls inside it
   assert.equal(await page.locator('#rhythmSelect').inputValue(), 'flat');
   assert.ok(+(await page.locator('#bpmInput').inputValue()) <= 80);
@@ -661,6 +668,20 @@ test('keys in the page: arrows step, F fills the screen with the preview and F l
   await page.keyboard.press('f');
   await page.waitForFunction(() => document.fullscreenElement && document.fullscreenElement.id === 'stage');
   assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('stageImg')).objectFit), 'contain', 'the whole frame, not cropped');
+  await page.mouse.move(400, 400);
+  assert.equal(await page.locator('#fsBar').isVisible(), true, 'its own controls, for anyone who does not know Esc');
+  await page.click('#fsPlayBtn');
+  assert.equal(await page.locator('#fsPlayBtn').getAttribute('aria-label'), 'Pause');
+  await shot('23-fullscreen');
+  await page.waitForTimeout(2300);
+  assert.equal(await page.locator('#stage').evaluate(e => e.classList.contains('idle')), true, 'they fade when the mouse rests');
+  await page.mouse.move(420, 420);
+  await page.click('#fsPlayBtn');
+  await page.click('#fsExitBtn');
+  await page.waitForFunction(() => !document.fullscreenElement);
+  assert.equal(await page.locator('#fsBar').isVisible(), false);
+  await page.keyboard.press('f');
+  await page.waitForFunction(() => document.fullscreenElement);
   await page.keyboard.press('f');
   await page.waitForFunction(() => !document.fullscreenElement);
   await page.keyboard.press('Delete');

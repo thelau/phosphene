@@ -224,6 +224,12 @@
               <div class="reticle-circle"></div>
               <span class="ret-label">logo · centre · 18%</span>
             </div>
+            <div class="fs-bar" id="fsBar">
+              <button onclick="togglePlay()" id="fsPlayBtn" class="play-btn" aria-label="Play">Play</button>
+              <button onclick="restartPlay()" class="icon-btn" title="Back to the start (0)" aria-label="Back to the start"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6"></path><path d="M4 4v4h4"></path></svg></button>
+              <span class="fs-time" id="fsTime"></span>
+              <button onclick="toggleFullscreen()" id="fsExitBtn" class="small-btn" title="Leave full screen (F or Esc)">Exit full screen</button>
+            </div>
           </div>
         </div>
 
@@ -272,7 +278,8 @@
 
       <aside class="inspector" aria-label="Inspector">
         <div class="look-bar" aria-label="Type and Random">
-            <label class="look-char">Type
+            <div class="type-random" role="group" aria-label="Random, inside a type">
+            <label class="look-char"><span>Type</span>
               <select id="characterSelect" onchange="pickCharacter()" title="What Random may make. Any: anything that works. A type: only that kind of film, modelled on the references. Choosing one rolls at once.">
                 <option value="any">Any</option>
                 <option value="landing">Landing · fast, then slows</option>
@@ -289,7 +296,8 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg>
               Random
             </button>
-            <button onclick="undoRandom()" id="undoRandomBtn" class="icon-btn" title="Go back to the settings from before the last random" aria-label="Undo random" disabled>
+            </div>
+            <button onclick="undoRandom()" id="undoRandomBtn" class="icon-btn" title="Nothing to undo" aria-label="Undo (⌘Z)" disabled>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 0 1 0 12h-3"></path></svg>
             </button>
           </div>

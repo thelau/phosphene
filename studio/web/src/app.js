@@ -477,10 +477,11 @@
     async function restoreSelected() {
       if (blockedByAi() || !trashSel.size) return;
       const files = [...trashSel];
-      for (const filename of files) await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename, trashed: false }) });
+      const set = trashed => async () => { for (const filename of files) await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename, trashed }) }); await loadState(); };
+      await set(false)();
       trashSel = new Set();
+      pushStep({ label: `Restore ${files.length} image${files.length === 1 ? '' : 's'}`, undo: set(true), redo: set(false) });
       setStatus(`${files.length} image${files.length === 1 ? '' : 's'} back in the selection.`);
-      await loadState();
     }
 
     function escapeHtml(str) {
@@ -529,15 +530,17 @@
       const toIdx = plates.findIndex(p => p.filename === target);
       if (fromIdx === -1 || toIdx === -1) return;
 
+      const before = plates.map(p => p.filename), seq = activeSeq;
       const [moved] = plates.splice(fromIdx, 1);
       plates.splice(toIdx, 0, moved);
-
-      const res = await (await fetch('/api/reorder', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ order: plates.map(p => p.filename) })
-      })).json();
-      await loadState();
+      const after = plates.map(p => p.filename);
+      const reorder = order => async () => {
+        if (seq !== activeSeq) { setStatus('That move was in the other order: switch back to it to undo it.'); return; }
+        await fetch('/api/reorder', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ order }) });
+        await loadState();
+      };
+      await reorder(after)();
+      pushStep({ label: `Move “${moved.title}”`, undo: reorder(before), redo: reorder(after) });
     }
     function onDragEnd(e) {
       e.currentTarget.classList.remove('dragging');
@@ -578,7 +581,7 @@
     // · F full screen · T the logo target · R Random (video and sound) · S Random sound · Cmd/Ctrl+Z undo
     function onKey(e) {
       if (typingIn(e.target) || document.getElementById('confirmModal').classList.contains('open')) return;
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undoLast(); return; }
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redoLast(); else undoLast(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.repeat && ['Tab', 'Delete', 'Backspace', 'f', 'F', 't', 'T', 'r', 'R', 's', 'S'].includes(e.key)) { e.preventDefault(); return; }   // a held key acts once
       if (e.target && e.target.type === 'range' && e.key.startsWith('Arrow')) return;             // a slider with focus keeps its arrows
@@ -600,6 +603,16 @@
       if (isPlaying && droneLive.playing) droneLive.restart(synthParams(), synthStartsSec());
       drawFrame();
     }
+    // in full screen the controls show while the mouse moves and fade after 2 s of stillness
+    let fsIdleTimer = null;
+    function fsWake() {
+      const st = document.getElementById('stage');
+      st.classList.remove('idle');
+      clearTimeout(fsIdleTimer);
+      fsIdleTimer = setTimeout(() => st.classList.add('idle'), 2000);
+    }
+    document.getElementById('stage').addEventListener('mousemove', fsWake);
+    document.addEventListener('fullscreenchange', () => { if (document.fullscreenElement) fsWake(); else document.getElementById('stage').classList.remove('idle'); });
     // the list of keys: ? or the hint in the header; Esc or a click elsewhere closes it
     function toggleKeys(e) {
       if (e && e.stopPropagation) e.stopPropagation();
@@ -619,9 +632,7 @@
       if (mode === 'curate' && !miniOpen) return;                          // the stage is hidden: nothing to show
       if (stage.requestFullscreen) stage.requestFullscreen().catch(() => {});
     }
-    // the last thing that can be undone: a Random (the Undo button) or a trash (the toast's Undo)
-    let undoLastFn = null;
-    function undoLast() { if (blockedByAi()) return; const f = undoLastFn; undoLastFn = null; if (f) f(); }
+
     document.addEventListener('keydown', onKey);
     // a button clicked with the mouse gives its focus back, so Space plays instead of pressing it again
     document.addEventListener('click', e => { const b = e.target && e.target.closest && e.target.closest('button'); if (b && e.detail > 0) b.blur(); }, true);
@@ -713,8 +724,20 @@
     }
     let trashing = false;
     function offerUndoTrash(p, where) {
-      undoLastFn = () => untrash(p.filename, where);
-      setStatus(`“${p.title}” moved to Trash`, { label: 'Undo', run: () => { undoLastFn = null; untrash(p.filename, where); } });
+      const step = pushStep({ label: `Trash “${p.title}”`, undo: () => untrash(p.filename, where), redo: () => trashFile(p.filename) });
+      setStatus(`“${p.title}” moved to Trash`, { label: 'Undo', run: () => undoStep(step) });
+    }
+    // the toast's Undo: this step, wherever it now is in the history
+    function undoStep(step) {
+      const i = history.indexOf(step);
+      if (i < 0) return;
+      if (i === history.length - 1) { undoLast(); return; }
+      history.splice(i, 1); showUndo();
+      step.undo();
+    }
+    async function trashFile(filename) {
+      await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename, trashed: true }) });
+      await loadState();
     }
     // back from the Trash, at the place it had in the order it was trashed from (if that order is still the one shown; else at the end, as a restore does)
     async function untrash(filename, where) {
@@ -908,21 +931,74 @@
     const rpick = list => list[Math.floor(Math.random() * list.length)];
     const setv = (id, v) => { document.getElementById(id).value = String(v); };
     const getn = id => parseFloat(document.getElementById(id).value) || 0;
-    // one step back from the last random (rhythm, look, sound or all): the values of every persisted control, restored as they were
-    let randomBefore = null;
+    // ---- Undo / Redo: one history for the whole app (Cmd+Z, Cmd+Shift+Z, the Undo button) ----
+    // Steps: a settings change (one slider drag, one Random = one step), trashing and restoring, a drag in the grid.
+    // Not in it: permanent deletes and generation (they say so when you start them), the mode and the views.
+    const history = [], future = [];
+    let applyingHistory = false;
     const NOT_UNDONE = ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect'];
-    const rememberForUndo = () => {
-      randomBefore = {};
-      PERSISTED.filter(id => !NOT_UNDONE.includes(id)).forEach(id => { const el = document.getElementById(id); if (el) randomBefore[id] = el.type === 'checkbox' ? el.checked : el.value; });
-      document.getElementById('undoRandomBtn').disabled = false;
-      undoLastFn = undoRandom;
-    };
-    function undoRandom() {
-      if (!randomBefore) return;
-      for (const [id, v] of Object.entries(randomBefore)) { const el = document.getElementById(id); if (el) { if (el.type === 'checkbox') el.checked = v; else el.value = v; } }
-      randomBefore = null; document.getElementById('undoRandomBtn').disabled = true;
-      updateTempo(); updateRhythm(); updateFx(); updateMusic();
+    function pushStep(step) { if (!step.settings) commitSettings(); history.push(step); if (history.length > 100) history.shift(); future.length = 0; showUndo(); return step; }
+    function showUndo() {
+      const b = document.getElementById('undoRandomBtn');
+      b.disabled = !history.length;
+      b.title = history.length ? `Undo ${history[history.length - 1].label} (⌘Z)` : 'Nothing to undo';
     }
+    async function undoLast() {
+      if (blockedByAi()) return;
+      commitSettings();
+      const step = history.pop();
+      if (!step) { setStatus('Nothing to undo.'); return; }
+      applyingHistory = true;
+      try { await step.undo(); } finally { applyingHistory = false; }
+      future.push(step); showUndo();
+      setStatus(`Undone: ${step.label}. ⌘⇧Z to redo.`);
+    }
+    async function redoLast() {
+      if (blockedByAi()) return;
+      commitSettings();
+      const step = future.pop();
+      if (!step) { setStatus('Nothing to redo.'); return; }
+      applyingHistory = true;
+      try { await step.redo(); } finally { applyingHistory = false; }
+      history.push(step); showUndo();
+      setStatus(`Redone: ${step.label}.`);
+    }
+    // settings: a change is one step once it settles (a slider dragged for a while is one step, not fifty)
+    let settled = null, settleTimer = null;
+    function settingsSnap() {
+      const out = {};
+      PERSISTED.filter(id => !NOT_UNDONE.includes(id)).forEach(id => { const el = document.getElementById(id); out[id] = el.type === 'checkbox' ? el.checked : el.value; });
+      if (rampWanted !== null) out.rampRange = String(rampWanted);            // what was asked for: the library growing or shrinking is not a change of yours
+      return out;
+    }
+    function settingsChanged() {
+      if (applyingHistory || settled === null) return;
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => commitSettings(), 700);
+    }
+    function changeName(before, after) {
+      let ids = Object.keys(after).filter(id => after[id] !== before[id]);
+      if (ids.length > 1) ids = ids.filter(id => id !== 'rampRange');         // Change over follows the cut count: it is not what was changed
+      if (ids.length !== 1) return 'the settings';
+      const el = document.getElementById(ids[0]), row = el.closest ? el.closest('.row, .check-line') : null;
+      const lbl = row && row.querySelector ? row.querySelector('.lbl, span') : null;
+      return lbl && lbl.textContent ? lbl.textContent.trim() : 'a setting';
+    }
+    function commitSettings(label) {
+      clearTimeout(settleTimer);
+      if (settled === null) return;
+      const now = settingsSnap(), before = settled;
+      if (JSON.stringify(now) === JSON.stringify(before)) return;
+      settled = now;
+      pushStep({ settings: true, label: label || changeName(before, now), undo: () => applySnap(before), redo: () => applySnap(now) });
+    }
+    function applySnap(snap) {
+      for (const [id, v] of Object.entries(snap)) { const el = document.getElementById(id); if (el) { if (el.type === 'checkbox') el.checked = v; else el.value = v; } }
+      updateTempo(); updateRhythm(); updateFx(); updateMusic();
+      settled = settingsSnap();
+    }
+    const rememberForUndo = () => commitSettings();                          // a Random starts: what came before is its own step
+    function undoRandom() { return undoLast(); }                              // the Undo button
     function applyRhythm(r) {
       setv('rhythmSelect', r.mode);
       if (r.mode === 'flat') setv('bpmInput', rint(r.bpm));
@@ -941,18 +1017,20 @@
       }
       document.getElementById('followCuts').checked = Math.random() < 0.15;
       refreshVideo(quiet === true);
+      if (quiet !== true) commitSettings('Random rhythm');
     }
     // a random look: invert and zoom
     function randomLook(quiet) {
       if (quiet !== true) rememberForUndo();
       applyLook({ invert: ['off', 'off', 'mono', 'colour'], zoom: ['off', 'out', 'out', 'in'], amount: [0.3, 3] });
       refreshVideo(quiet === true);
+      if (quiet !== true) commitSettings('Random look');
     }
     // the Video half of Random: rhythm and look
     function randomVideo(quiet) {
       if (quiet !== true) rememberForUndo();
       randomRhythm(true); randomLook(true);
-      if (quiet !== true) { saveSettings(); musicChanged(); }
+      if (quiet !== true) { saveSettings(); musicChanged(); commitSettings('Random video'); }
     }
     // how many cuts a second the music hears (flat: the tempo, or every picture cut when the check is on; variable: the mean of the two ends)
     function rhythmCutsPerSecond() {
@@ -1002,7 +1080,7 @@
       choice('padWaveSelect', 4); choice('chordSelect', 4);
       setv('seedVal', 1 + Math.floor(Math.random() * 99999));
       soundRules();
-      if (quiet !== true) updateMusic();
+      if (quiet !== true) { updateMusic(); commitSettings('Random sound'); }
     }
     function applySound(c) {
       for (const k of Object.keys(RANDOM_RANGES)) setv(`${k}Range`, rint(c[k]));
@@ -1026,6 +1104,7 @@
       soundRules();
       refreshVideo(true);
       updateMusic();
+      commitSettings('Random');
       return c ? key : 'any';
     }
     function randomAll() { return rollCharacter(document.getElementById('characterSelect').value); }
@@ -1344,6 +1423,7 @@
         shownTime = txt;
         document.getElementById('timecode').innerHTML = `${clock(t)} <span>/ ${clock(total)} · cut ${plan.cut + 1} / ${tl.length - 1}</span>`;
         document.getElementById('miniCount').textContent = `${plan.plate + 1} / ${active.length}`;
+        document.getElementById('fsTime').textContent = `${clock(t)} / ${clock(total)}`;
       }
     }
 
@@ -1358,6 +1438,8 @@
       b.textContent = isPlaying ? 'Pause' : 'Play';
       b.setAttribute('aria-label', b.textContent);
       b.classList.toggle('playing', isPlaying);
+      const f = document.getElementById('fsPlayBtn');
+      f.textContent = b.textContent; f.setAttribute('aria-label', b.textContent); f.classList.toggle('playing', isPlaying);
       const m = document.getElementById('miniPlayBtn');
       m.textContent = b.textContent; m.setAttribute('aria-label', b.textContent); m.classList.toggle('playing', isPlaying);
     }
@@ -1399,6 +1481,7 @@
         if (rampWanted !== null) out.rampRange = String(rampWanted);          // what was asked for, not what fits today
         localStorage.setItem('studioSettings', JSON.stringify(out));
       } catch (e) {}
+      settingsChanged();
     }
 
     // the frames a picture cut lasts, next to the Multiple: one number (Flat) or from start to end (Variable)
@@ -1454,6 +1537,7 @@
       await loadState();
       const p = plates.find(x => x.filename === filename);
       if (trashed && p) offerUndoTrash(p, where);
+      if (!trashed && p) pushStep({ label: `Restore “${p.title}”`, undo: () => trashFile(filename), redo: async () => { await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename, trashed: false }) }); await loadState(); } });
     }
 
 
@@ -1760,6 +1844,7 @@
     try { setMode(localStorage.getItem('studioMode') || 'curate'); } catch (e) { setMode('curate'); }
     try { toggleMini(localStorage.getItem('studioMini') !== '0'); } catch (e) { toggleMini(true); }
     setThumbSize(document.getElementById('thumbSizeVal').value);
+    settled = settingsSnap(); showUndo();                                    // the history starts here
     ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'].forEach(id => document.getElementById(id).addEventListener('change', saveSettings));
     document.getElementById('worldSelect').addEventListener('change', () => { document.getElementById('directionInput').value = ''; saveSettings(); updateDirectionHint(); });
     loadWorlds();
@@ -1767,6 +1852,7 @@
       const slow = setTimeout(() => { document.getElementById('loaderMsg').textContent = 'Still loading (checking new images)…'; }, 4000);
       try {
         await loadState();
+        if (!history.length) { clearTimeout(settleTimer); settled = settingsSnap(); }   // the library fitted the sliders to it: not a change of yours
       } catch (e) {
         document.getElementById('loaderMsg').textContent = 'Could not reach the server. Is it running? Retrying…';
         setTimeout(() => location.reload(), 3000);
@@ -1831,6 +1917,8 @@ Object.assign(window, {
   randomVideo,
   randomAll,
   undoRandom,
+  undoLast,
+  redoLast,
   showSoundGroup,
   setMode,
   randomRhythm,

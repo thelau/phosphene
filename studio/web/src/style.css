@@ -118,10 +118,13 @@
     /* ---------- film: stage ---------- */
     .film-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 14px; padding: 16px 24px 18px; overflow: hidden; }
     .look-bar { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }   /* top of the inspector: what Random may make, Random, Undo */
-    .look-char { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
-    .look-char select { flex: 1; min-width: 0; height: 34px; border-radius: 8px; }
-    .look-random { height: 34px; padding: 0 14px; display: inline-flex; align-items: center; gap: 8px; border-radius: 8px; border-color: var(--line-3); }
-    .look-bar .icon-btn { width: 34px; height: 34px; border-color: var(--line-3); color: var(--text); }
+    .type-random { flex: 1; min-width: 0; display: flex; align-items: stretch; height: 36px; border: 1px solid var(--line-3); border-radius: 9px; background: var(--field); }   /* one control: Random rolls inside the type shown */
+    .look-char { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding-left: 12px; font-size: 12px; color: var(--muted); }
+    .look-char > span { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+    .look-char select { flex: 1; min-width: 0; height: 34px; border: 0; background: transparent; padding: 0 2px; margin-right: 12px; }   /* room right of the arrow, before the divider */
+    .look-random { height: auto; padding: 0 14px; display: inline-flex; align-items: center; gap: 8px; border: 0; border-left: 1px solid var(--line-3); border-radius: 0 8px 8px 0; background: transparent; }
+    .look-random:hover:not(:disabled) { background: #2A2825; }
+    .look-bar .icon-btn { width: 36px; height: 36px; border-color: var(--line-3); color: var(--text); }
     .look-bar .icon-btn:disabled { color: var(--off); opacity: 1; }
     .stage-wrap { flex: none; display: flex; justify-content: center; }
     .stage {
@@ -144,6 +147,13 @@
     .stage:fullscreen { background: #000; border-radius: 0; box-shadow: none; }       /* the whole frame, letterboxed */
     .stage:fullscreen img { object-fit: contain; }
     .stage:fullscreen .reticle { display: none; }
+    /* full screen has its own controls: they show while the mouse moves, and fade after a moment */
+    .fs-bar { display: none; }
+    .stage:fullscreen .fs-bar { display: flex; position: absolute; left: 50%; bottom: 32px; transform: translateX(-50%); align-items: center; gap: 12px; padding: 10px 14px; border-radius: 14px; background: rgba(18, 17, 16, .82); border: 1px solid var(--line-3); transition: opacity .3s; }
+    .stage:fullscreen.idle .fs-bar { opacity: 0; pointer-events: none; }
+    .stage:fullscreen.idle { cursor: none; }
+    .fs-time { font-family: var(--mono); font-size: 13px; color: var(--text-2); min-width: 120px; text-align: center; }
+    .fs-bar .small-btn { color: var(--text); height: 34px; }
     .ret-label { position: absolute; left: 8px; bottom: 8px; font-family: var(--mono); font-size: 10px; color: var(--text); background: rgba(26, 26, 26, .8); padding: 2px 6px; border-radius: 4px; }
 
     .transport { flex: none; display: flex; align-items: center; justify-content: center; gap: 8px; height: 40px; }

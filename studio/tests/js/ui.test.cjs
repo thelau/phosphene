@@ -972,11 +972,16 @@ test('Random video: every draw is a valid speed and look inside the slider range
   }
   assert.ok(seen.flat > 60 && seen.variable > 60, `both speeds come up (${JSON.stringify(seen)})`);
   h.$('bpmInput').value = '77'; h.$('rhythmSelect').value = 'flat'; h.$('invertSelect').value = 'colour'; h.$('multSelect').value = '2';
+  h.run('commitSettings(); history.length = 0');                                   // the hand-set values are a step of their own (the 300 draws filled the history: start clean)
+  const n = h.run('history.length');
   h.run('randomVideo()');
   assert.equal(h.$('undoRandomBtn').disabled, false);
-  h.run('undoRandom()');
+  assert.equal(h.run('history.length'), n + 1, 'one Random, one step');
+  h.run('undoRandom()'); await settle();
   assert.deepEqual([h.$('bpmInput').value, h.$('rhythmSelect').value, h.$('invertSelect').value, h.$('multSelect').value], ['77', 'flat', 'colour', '2']);
-  assert.equal(h.$('undoRandomBtn').disabled, true);
+  assert.equal(h.run('history.length'), n);
+  h.run('history.length = 0; showUndo()');
+  assert.equal(h.$('undoRandomBtn').disabled, true, 'nothing left: the button is off');
   assert.doesNotThrow(() => h.run('undoRandom()'));                                 // nothing left to undo
 });
 
@@ -1006,8 +1011,12 @@ test('Random turns the sound on, rolls inside the type (Any: anything), and the 
     if (rate <= 1.5) { assert.ok(n('arpRateSelect') >= 2 && n('hitOnSelect') === 0 && n('spaceRange') >= 40, 'slow cuts: busier notes, every-cut hits, a big room'); }
     if (rate >= 4) { assert.ok(n('arpRateSelect') <= 1 && n('hitOnSelect') > 0 && n('spaceRange') <= 50 && n('echoRange') <= 20, 'fast cuts: sparse notes and hits, a drier room'); }
   }
-  h.run('randomAll()'); h.run('undoRandom()');                                      // one step back covers both halves
-  assert.equal(h.$('undoRandomBtn').disabled, true);
+  const before = JSON.stringify(h.run('settingsSnap()'));
+  h.run('randomAll()'); h.run('undoRandom()'); await settle();                       // one step back covers both halves
+  assert.equal(JSON.stringify(h.run('settingsSnap()')), before);
+  assert.equal(h.run('future.length'), 1, 'and it can be redone');
+  h.run('redoLast()'); await settle();
+  assert.notEqual(JSON.stringify(h.run('settingsSnap()')), before);
 });
 
 test('each character keeps the rhythm and the look inside its own kind of film', async () => {
@@ -1532,4 +1541,56 @@ test('the Keys panel opens with ? or the hint, and Esc closes it', async () => {
   key('?'); assert.equal(h.$('keysPanel').hidden, false);
   key('Escape'); assert.equal(h.$('keysPanel').hidden, true);
   h.run('toggleKeys()'); assert.equal(h.$('keysPanel').hidden, false);
+});
+
+test('one undo history for the app: settings settle into one step each, trash and moves are steps, Cmd+Z goes back in order, Cmd+Shift+Z forward', async () => {
+  const r = baseRoutes();
+  let st = [mkPlate('a'), mkPlate('b'), mkPlate('c')];
+  r['/api/state'] = () => ({ plates: st });
+  r['/api/trash'] = body => { const p = st.find(x => x.filename === body.filename); st = st.filter(x => x !== p).concat([{ ...p, trashed: body.trashed }]); return { ok: true }; };
+  r['/api/reorder'] = body => { st = body.order.map(f => st.find(p => p.filename === f)).concat(st.filter(p => !body.order.includes(p.filename))); return { ok: true }; };
+  const h = load({ routes: r }); await settle(); await settle();
+  const key = (shiftKey = false) => h.ctx.onKey({ key: 'z', metaKey: true, shiftKey, target: { tagName: 'BODY' }, preventDefault() {} });
+  const flush = async () => { for (let i = 0; i < 6; i++) await settle(); };
+  assert.equal(h.$('undoRandomBtn').disabled, true, 'nothing yet');
+  // a slider dragged through many values is one step
+  const bpm0 = h.$('bpmInput').value;
+  for (const v of ['100', '110', '120', '130']) { h.$('bpmInput').value = v; h.run('updateTempo()'); }
+  h.run('commitSettings()');                                                     // what 0.7 s of quiet does
+  assert.equal(h.run('history.length'), 1);
+  assert.equal(h.run('history[0].label'), 'a setting');
+  const inv0 = h.$('invertSelect').value;
+  h.$('invertSelect').value = 'mono'; h.run('updateFx()');
+  // trashing: a step, after the settings change (which is committed first)
+  h.run('jumpToPlate(1)'); await h.run('trashCurrent()');
+  assert.deepEqual(JSON.parse(JSON.stringify(h.run('history.map(s => s.label)'))), ['a setting', 'a setting', 'Trash “b”'], 'the invert, committed before the trash: in the order they happened');
+  assert.match(h.$('undoRandomBtn').title, /Undo Trash “b”/);
+  key(); await flush();
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['a', 'b', 'c'], '1: the trash');
+  key(); await flush();
+  assert.equal(h.$('invertSelect').value, inv0, '2: the invert');
+  key(); await flush();
+  assert.equal(h.$('bpmInput').value, bpm0, '3: the tempo, back to where it started');
+  key(true); await flush();
+  assert.equal(h.$('bpmInput').value, '130', 'redo: forward again');
+  key(true); key(true); await flush();
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['a', 'c'], 'redo the trash too');
+  // a new change after undoing drops the redo
+  key(); await flush();
+  h.$('zoomSelect').value = 'out'; h.run('updateFx(); commitSettings()');
+  assert.equal(h.run('future.length'), 0);
+});
+
+test('a drag in the grid is a step: undo puts the order back, unless the other order is shown', async () => {
+  const r = baseRoutes();
+  let st = [mkPlate('a'), mkPlate('b'), mkPlate('c')];
+  r['/api/state'] = () => ({ plates: st });
+  r['/api/reorder'] = body => { st = body.order.map(f => st.find(p => p.filename === f)); return { ok: true }; };
+  const h = load({ routes: r }); await settle(); await settle();
+  h.run("draggedFilename = 'c'");
+  await h.run("onDrop({ preventDefault() {}, currentTarget: { classList: { remove() {} } } }, 'a')");
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['c', 'a', 'b']);
+  assert.equal(h.run('history.at(-1).label'), 'Move “c”');
+  await h.run('undoLast()'); await settle();
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['a', 'b', 'c']);
 });
