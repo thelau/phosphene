@@ -740,26 +740,12 @@
       const on = musicOn();
       document.getElementById('synthBox').hidden = !on;
       document.getElementById('soundOffNote').hidden = on;
-      showSoundButton();
       for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer', 'hit', 'arp']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
       syncSegs(); paintRanges();
       saveSettings();
       musicChanged();
     }
     // the transport's sound button: the same switch as Source
-    // the transport's speaker: mutes what you hear, nothing else (Source and the export stay as they are)
-    function toggleSound() {
-      if (!musicOn()) return;
-      droneLive.setMuted(!droneLive.muted);
-      showSoundButton();
-    }
-    function showSoundButton() {
-      const on = musicOn(), b = document.getElementById('soundBtn');
-      b.disabled = !on;
-      b.setAttribute('aria-pressed', String(on && !droneLive.muted));
-      document.getElementById('soundLabel').textContent = !on ? 'No sound' : droneLive.muted ? 'Muted' : 'Sound on';
-      b.title = !on ? 'The film is silent: choose Synthesized under Sound' : droneLive.muted ? 'Hear the sound again (the export is not affected)' : 'Mute the preview (the export keeps its sound)';
-    }
     // the four groups of sound settings, one shown at a time
     const SOUND_GROUPS = ['bed', 'tone', 'texture', 'notes'];
     function showSoundGroup(g) {
@@ -1642,7 +1628,6 @@ Object.assign(window, {
   randomAll,
   undoRandom,
   showSoundGroup,
-  toggleSound,
   setMode,
   randomRhythm,
   randomLook,

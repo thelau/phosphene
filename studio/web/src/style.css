@@ -143,8 +143,6 @@
               mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='6' y='5' width='4' height='14' rx='1'/%3E%3Crect x='14' y='5' width='4' height='14' rx='1'/%3E%3C/svg%3E"); }
     .timecode { width: 270px; text-align: center; font-family: var(--mono); font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
     .timecode span { color: var(--faint); }
-    .sound-btn { height: 36px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; background: transparent; color: var(--faint); font-size: 12px; }
-    .sound-btn[aria-pressed="true"] { color: var(--text); }
 
     .timeline { flex: 1; min-height: 120px; display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; background: var(--panel); border: 1px solid #24221F; border-radius: 12px; overflow: hidden; }
     .tl-head { flex: none; display: flex; align-items: center; gap: 12px; font-size: 12px; min-width: 0; }

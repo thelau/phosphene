@@ -514,13 +514,13 @@
   // Cheap by design: notes and hits are scheduled a short way ahead (not for the whole clip), settings changes are coalesced into one swap
   // every ~120 ms however fast a slider moves, and the exact loudness is worked out in the background (the old level carries on meanwhile).
   class Live {
-    constructor() { this.ctx = null; this.inst = null; this.params = null; this.starts = null; this.t0 = 0; this.total = 0; this.timer = null; this.playing = false; this.holding = 0; this.cal = 1; this.pending = null; this.swapAt = 0; this.calTimer = null; this.ticker = null; this.rooms = new Map(); this.buildMs = 20; this.muted = false; this.master = null; }
+    constructor() { this.ctx = null; this.inst = null; this.params = null; this.starts = null; this.t0 = 0; this.total = 0; this.timer = null; this.playing = false; this.holding = 0; this.cal = 1; this.pending = null; this.swapAt = 0; this.calTimer = null; this.ticker = null; this.rooms = new Map(); this.buildMs = 20; this.master = null; }
     get playingNow() { return this.playing; }
     pos() { return this.playing && !this.holding ? (((this.ctx.currentTime - this.t0) % this.total) + this.total) % this.total : 0; }
     _context() {
       if (!this.ctx) {
         const C = window.AudioContext || window.webkitAudioContext; this.ctx = new C({ latencyHint: 'interactive' });
-        this.master = this.ctx.createGain(); this.master.gain.value = this.muted ? 0 : 1; this.master.connect(this.ctx.destination);   // the preview's mute; the export never passes here
+        this.master = this.ctx.createGain(); this.master.connect(this.ctx.destination);   // every live sound goes out through here
       }
       return this.ctx;
     }
@@ -617,11 +617,6 @@
       if (params && starts) { starts = cleanStarts(starts); this.params = params; this.starts = starts; this.total = starts[starts.length - 1]; }
       this.pending = null; this.holding = 0;
       this._swap(0);
-    }
-    // silence the preview (it keeps playing and keeps time: the picture does not notice); a short ramp, no click
-    setMuted(on) {
-      this.muted = !!on;
-      if (this.master) this.master.gain.setTargetAtTime(this.muted ? 0 : 1, this.ctx.currentTime, 0.02);
     }
     // jump to a position in the clip (seconds), keeping the settings: the film strip and the rhythm strip use it
     seek(offset) {

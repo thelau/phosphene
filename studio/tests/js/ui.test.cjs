@@ -1138,23 +1138,12 @@ test('trash the image on screen from the film strip, and Undo puts it back where
   assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['a', 'b', 'c'], 'back in its place, not at the end');
 });
 
-test('the speaker in the transport mutes the preview only: Source, the settings and the export are untouched', async () => {
+test('one sound switch: Source (no second one in the transport), and the sound groups show one at a time', async () => {
   const h = await playerWith();
-  assert.equal(h.$('soundLabel').textContent, 'No sound');
-  assert.equal(h.$('soundBtn').disabled, true, 'nothing to mute while the film is silent');
-  h.run('toggleSound()');
-  assert.equal(h.run('musicOn()'), false, 'it never turns the sound on');
+  assert.equal(h.$('synthBox').hidden, true); assert.equal(h.$('soundOffNote').hidden, false);
   h.$('musicSelect').value = 'on'; h.run('updateMusic()');
-  assert.equal(h.$('soundLabel').textContent, 'Sound on');
   assert.equal(h.$('synthBox').hidden, false); assert.equal(h.$('soundOffNote').hidden, true);
-  h.run('toggleSound()');
-  assert.equal(h.run('droneLive.muted'), true);
-  assert.equal(h.$('soundLabel').textContent, 'Muted');
-  assert.equal(h.$('soundBtn').getAttribute('aria-pressed'), 'false');
-  assert.equal(h.$('musicSelect').value, 'on', 'Source stays Synthesized');
-  assert.equal(h.$('synthBox').hidden, false, 'the settings stay');
-  h.run('toggleSound()');
-  assert.equal(h.run('droneLive.muted'), false);
+  assert.equal(h.run('typeof toggleSound'), 'undefined');
   h.run("showSoundGroup('notes')");
   assert.equal(h.$('groupNotes').hidden, false); assert.equal(h.$('groupBed').hidden, true);
   assert.equal(h.$('soundTabNotes').getAttribute('aria-selected'), 'true');

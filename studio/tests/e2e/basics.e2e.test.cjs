@@ -240,7 +240,7 @@ test('the inspector: Rhythm, Look and Sound always open; Sound in four groups; A
   assert.ok(!(await page.locator('#pulseRange').isVisible()), 'no synth settings while the sound is off');
   assert.ok(await page.locator('#soundOffNote').isVisible());
   await choose('musicSelect', 'on');
-  assert.equal(await text('#soundLabel'), 'Sound on', 'the transport follows Source');
+  assert.equal(await page.locator('#soundBtn').count(), 0, 'Source is the only sound switch');
   const groups = { Bed: ['#pulseRange', '#lowRange', '#powerRange', '#spaceRange', '#brightRange', '#widthRange'], Tone: ['#pitchRange', '#chordSelect', '#subWaveSelect', '#padWaveSelect', '#movementRange'], Texture: ['#echoRange', '#washRange', '#ringRange', '#shimmerRange'], Notes: ['#hitTypeSelect', '#hitRange', '#hitOnSelect', '#arpRange', '#arpStepsSelect', '#arpRateSelect', '#dynSelect'] };
   for (const [g, ids] of Object.entries(groups)) {
     await page.click(`#soundTab${g}`);
@@ -248,12 +248,6 @@ test('the inspector: Rhythm, Look and Sound always open; Sound in four groups; A
     for (const [other, oids] of Object.entries(groups)) if (other !== g) assert.ok(!(await page.locator(oids[0]).isVisible()), `${g} hides ${other}`);
   }
   assert.deepEqual(await page.locator('#chordSelect option').allTextContents(), ['Dark cluster', 'Open fifth', 'Minor', 'Suspended'], 'the real names');
-  await page.click('#soundBtn');
-  assert.equal(await text('#soundLabel'), 'Muted');
-  assert.equal(await page.locator('#musicSelect').inputValue(), 'on', 'the speaker only mutes the preview: Source stays');
-  assert.ok(await page.locator('#pulseRange').isVisible() || await page.locator('#hitTypeSelect').isVisible(), 'the sound settings stay');
-  await page.click('#soundBtn');
-  assert.equal(await text('#soundLabel'), 'Sound on');
   await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
   assert.equal(await page.evaluate(() => document.body.dataset.mode), 'film', 'the mode is remembered');
   await shot('music-tab');
@@ -469,7 +463,9 @@ test('Random sound: every draw stays a dark, heavy, level drone and a new sound 
   const rows = await page.evaluate(async () => {
     const out = [];
     const starts = Array.from({ length: 21 }, (_, i) => i * 0.2);
-    for (let t = 0; t < 4; t++) {
+    const real = Math.random; let x = 20261026;                               // seeded: the same 10 draws every run, so a failure can be replayed
+    Math.random = () => { x = (Math.imul(x, 1664525) + 1013904223) >>> 0; return x / 4294967296; };
+    for (let t = 0; t < 10; t++) {
       randomMusic();                                                           // the page's own draw, rendered by the real engine
       const u = id => parseInt(document.getElementById(id).value, 10) / 100;
       const prm = { pulse: u('pulseRange'), low: u('lowRange'), bright: u('brightRange'), width: u('widthRange'), space: u('spaceRange'), power: u('powerRange'), pitch: u('pitchRange'), movement: u('movementRange'), echo: u('echoRange'), wash: u('washRange'), ring: u('ringRange'), shimmer: u('shimmerRange'), hitType: parseInt(document.getElementById('hitTypeSelect').value, 10), hit: u('hitRange'), hitOn: parseInt(document.getElementById('hitOnSelect').value, 10), arp: u('arpRange'), arpSteps: parseInt(document.getElementById('arpStepsSelect').value, 10), arpRate: parseInt(document.getElementById('arpRateSelect').value, 10), dynamics: parseInt(document.getElementById('dynSelect').value, 10), subWave: parseInt(document.getElementById('subWaveSelect').value, 10), padWave: parseInt(document.getElementById('padWaveSelect').value, 10), chord: parseInt(document.getElementById('chordSelect').value, 10), seed: parseInt(document.getElementById('seedVal').value, 10) };
@@ -484,6 +480,7 @@ test('Random sound: every draw stays a dark, heavy, level drone and a new sound 
       let s = 0, mx = 0; for (let i = 0; i < r.left.length; i++) { s += r.left[i] ** 2 + r.right[i] ** 2; mx = Math.max(mx, Math.abs(r.left[i]), Math.abs(r.right[i])); }
       out.push({ dom: pf, low: low / tot, high: high / tot, rms: Math.sqrt(s / (2 * r.left.length)), peak: mx });
     }
+    Math.random = real;
     return out;
   });
   for (const m of rows) {
