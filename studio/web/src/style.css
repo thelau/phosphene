@@ -370,6 +370,30 @@
     .size-seg button { transition: none; width: 34px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); }
     .size-seg button[aria-pressed="true"] { background: var(--text); color: #1A1A1A; }
     .size-seg i { display: block; border: 1.6px solid currentColor; border-radius: 2px; }
+    /* groups: one row of chips (All, yours, then the automatic ones); the picks' actions on the right */
+    .group-row { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 24px 12px; min-height: 34px; }
+    .group-row[hidden] { display: none; }
+    .group-bar { display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+    .group-bar::-webkit-scrollbar { display: none; }
+    .chip { flex: none; height: 28px; padding: 0 11px; border-radius: 14px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; white-space: nowrap; transition: none; }
+    .chip span { font-family: var(--mono); font-size: 10px; font-weight: 400; color: var(--faint); margin-left: 3px; }
+    .chip:hover { border-color: var(--line-3); color: var(--text); }
+    .chip.on { background: var(--text); border-color: var(--text); color: #1A1A1A; }
+    .chip.on span { color: #5E5A50; }
+    .chip-more { flex: none; width: 28px; height: 28px; margin-left: -2px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 14px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); transition: none; }
+    .chip-more:hover { color: var(--text); border-color: var(--line-3); }
+    .chip-sep { flex: none; width: 1px; margin: 4px 4px; background: var(--line-2); }
+    .pick-bar { flex: none; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+    .pick-bar[hidden] { display: none; }
+    .pick-bar button:not(.icon-btn) { height: 30px; padding: 0 12px; font-size: 12px; }
+    .group-menu { position: fixed; z-index: 120; min-width: 220px; padding: 6px; display: flex; flex-direction: column; gap: 2px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 20px 50px rgba(0,0,0,.55); }
+    .group-menu[hidden] { display: none; }
+    .gm-item { text-align: left; height: 32px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 500; }
+    .gm-item:hover { background: #2A2825; color: var(--text); }
+    .gm-item.danger-text { color: #F7A3B6; }
+    .gm-new { display: flex; gap: 6px; padding: 4px; }
+    .gm-new input { flex: 1; min-width: 0; height: 30px; font-size: 13px; }
+    .gm-new button { height: 30px; padding: 0 10px; font-size: 12px; }
     .lock-banner { flex: none; margin: 0 24px 12px; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line-3); font-size: 13px; }
     .lock-banner[hidden] { display: none; }
     .lock-banner span { color: var(--muted); }

@@ -1625,3 +1625,32 @@ test('the tempo lock: Random (any type, the R key, Random rhythm) keeps the temp
   const seen = new Set(); for (let i = 0; i < 30; i++) { h.$('characterSelect').value = 'any'; h.run('randomAll()'); seen.add(h.$('bpmInput').value + h.$('rhythmSelect').value); }
   assert.ok(seen.size > 5, 'unlocked: Random changes it again');
 });
+
+test('groups: the grid, the film, AI re-order and export follow the group chosen; a group that is gone falls back to All', async () => {
+  const r = baseRoutes();
+  const P = (f, look, world) => ({ ...mkPlate(f), look, world });
+  let state = { plates: [P('a', ['warm'], 'Fog'), P('b', ['cold'], 'Fog'), P('c', ['warm', 'dark'], 'Fog'), P('d', [], 'Fog'), P('f', [], 'Fog'), P('g', [], 'Fog'), P('e', [], 'Sea')], groups: [{ id: 'g1', name: 'Mine', files: ['b', 'd'] }], kimi_configured: true };
+  r['/api/state'] = () => state;
+  r['/api/order-ai'] = { ok: true, job: 'j1', steps: ['a'] };
+  r['/api/export-video'] = { ok: true, images: 2, seconds: 1, video_url: '/x.mp4', filename: 'x.mp4' };
+  const h = load({ routes: r }); await settle(); await settle();
+  const chips = JSON.parse(JSON.stringify(h.run('groupChips()')));
+  assert.deepEqual(chips.chips.map(c => `${c.key}=${c.n}`), ['all=7', 'g:g1=2']);
+  assert.deepEqual(chips.auto.map(c => `${c.key}=${c.n}`), ['look:warm=2', 'world:Fog=6'], 'a look needs 2 images, a territory 6, to make a chip');
+  h.run("setGroup('look:warm')");
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['a', 'c']);
+  assert.deepEqual(h.run('visiblePlates().map(p => p.filename)'), ['a', 'c']);
+  assert.equal(h.store.studioGroup, 'look:warm', 'remembered');
+  h.run("setGroup('g:g1')");
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['b', 'd']);
+  assert.equal(h.$('aiLength').disabled, true, 'best N belongs to the whole selection');
+  await h.run('exportVideo()');
+  assert.deepEqual(h.calls.find(c => c.url === '/api/export-video').body.files, ['b', 'd']);
+  h.ctx.setTimeout = () => 0;                                                     // the AI job is not followed here: only what it is asked
+  h.run('startAiOrder()'); await settle(); await settle();
+  assert.deepEqual(h.calls.find(c => c.url === '/api/order-ai').body.files, ['b', 'd']);
+  state = { ...state, groups: [] };                                               // the group was deleted elsewhere
+  await h.run('loadState()');
+  assert.equal(h.run('currentGroup'), 'all');
+  assert.equal(h.run('activePlates().length'), 7);
+});

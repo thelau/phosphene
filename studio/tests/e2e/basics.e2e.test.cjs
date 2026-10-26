@@ -876,3 +876,55 @@ test('the info panel on a card: less at small sizes, the text scrolls, Copy copi
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('groups: chips for All, yours and the automatic looks; pick cards, make a group, the film plays just the group; undo', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  const chips = async () => page.locator('#groupBar .chip').evaluateAll(b => b.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
+  assert.deepEqual(await chips(), ['All 3', 'Warm 2'], 'automatic groups appear once they have two images');
+  await page.click('#groupBar .chip[data-key="look:warm"]');
+  assert.deepEqual(await names(), ['k2', 'k3'], 'the grid shows the group');
+  await film();
+  assert.equal(await page.locator('#filmstrip button').count(), 2, 'and so does the film');
+  await curate();
+  await page.click('#groupBar .chip[data-key="all"]');
+  // pick two with Cmd-click, make a group of them
+  await page.locator('.card[data-filename="k1"]').click({ modifiers: ['Meta'] });
+  await page.locator('.card[data-filename="k3"]').click({ modifiers: ['Meta'] });
+  assert.equal(await text('#pickCount'), '2 selected');
+  await page.click('#addToGroupBtn');
+  await page.fill('#groupNameInput', 'Night');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#groupBar .chip.on.own');
+  assert.match(await text('#groupBar .chip.on'), /^Night\s*2$/);
+  assert.deepEqual(await names(), ['k1', 'k3'], 'the new group is shown');
+  assert.equal(await page.locator('#pickBar').isVisible(), false, 'the picks are cleared');
+  await shot('26-groups');
+  // the export is the group's
+  await film();
+  await page.click('#exportBtn'); await page.waitForSelector('#exportDock[data-state="ready"]');
+  assert.deepEqual(api.state.calls.filter(c => c.path === '/api/export-video').pop().body.files, ['k1', 'k3']);
+  await curate();
+  // take one out, rename, undo, delete and undo
+  await page.locator('.card[data-filename="k3"]').click({ modifiers: ['Meta'] });
+  await page.click('#removeFromGroupBtn');
+  await page.waitForFunction(() => document.querySelectorAll('.card[data-filename]').length === 1);
+  await page.keyboard.press('Meta+z');
+  await page.waitForFunction(() => document.querySelectorAll('.card[data-filename]').length === 2);
+  await page.click('#groupMenuBtn');
+  await page.fill('#groupNameInput', 'Night chrome'); await page.keyboard.press('Enter');
+  await page.waitForFunction(() => /Night chrome/.test(document.querySelector('#groupBar .chip.on').textContent));
+  await page.click('#groupMenuBtn');
+  await page.click('.gm-item.danger-text');
+  await page.waitForFunction(() => document.querySelector('#groupBar .chip.on').dataset.key === 'all');
+  assert.equal(await page.locator('.card[data-filename]').count(), 3, 'deleting a group keeps the images');
+  await page.click('#toast button');                                              // Undo
+  await page.waitForSelector('#groupBar .chip.own');
+  // Cmd+A picks every card shown, Esc clears
+  await page.click('#groupBar .chip[data-key="all"]');
+  await page.keyboard.press('Meta+a');
+  assert.equal(await text('#pickCount'), '3 selected');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#pickBar').isVisible(), false);
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

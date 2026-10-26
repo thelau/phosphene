@@ -76,6 +76,33 @@ def get(path: Path) -> dict:
     return cache[key]
 
 
+def peek(path: Path) -> dict | None:
+    """The measurements if they are already cached (never measures: the state must answer fast)."""
+    try:
+        return _load_cache().get(f"{path.name}:{path.stat().st_size}")
+    except OSError:
+        return None
+
+
+def look(f: dict | None) -> list:
+    """Plain words for how an image looks, for the automatic groups: warm / cold / mono, and dark / bright."""
+    if not f:
+        return []
+    tags = []
+    hue, sat, lum = f.get("hue"), f.get("sat", 0), f.get("lum", 0.5)
+    if hue is None or sat < 0.12:
+        tags.append("mono")
+    elif hue < 70 or hue >= 300:
+        tags.append("warm")
+    elif 150 <= hue < 270:
+        tags.append("cold")
+    if lum < 0.33:
+        tags.append("dark")
+    elif lum > 0.62:
+        tags.append("bright")
+    return tags
+
+
 def hue_gap(a, b) -> float:
     """Degrees apart on the colour wheel (0..180). 90 when either side has no real colour."""
     if a is None or b is None:

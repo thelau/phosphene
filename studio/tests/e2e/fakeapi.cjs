@@ -8,6 +8,8 @@ function makeState() {
     qa_passed: true, qa_score: 90, qa_issues: [],
   });
   const plates = [plate('k1', false, 0), plate('k2', false, 1), plate('k3', false, 2), plate('t1', true, 1), plate('t2', true, 2), plate('t3', true, 3), plate('t4', true, 4)];
+  const looks = { k1: ['cold'], k2: ['warm', 'bright'], k3: ['warm', 'dark'] };                // like the svg colours: blue, yellow, purple
+  plates.forEach(p => { p.look = looks[p.filename] || []; });
   return {
     plates,
     sequences: [{ id: 's1', name: 'Manual', kind: 'manual', order: plates.map(p => p.filename), summary: null }],
@@ -20,6 +22,7 @@ function makeState() {
     aiFail: null,
     calls: [],
     genCount: 0,
+    groups: [],
   };
 }
 
@@ -70,7 +73,7 @@ function start(state = makeState()) {
     switch (url.pathname) {
       case '/api/state': {
         const visible = new Set(state.plates.filter(p => !p.trashed).map(p => p.filename));
-        return send({ plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, krea_connected: true, kimi_configured: true, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3', critic_enabled: false, critic_autotrash: false });
+        return send({ plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, groups: (state.groups || []).map(g => ({ ...g, files: g.files.filter(f => state.plates.some(p => p.filename === f)) })), krea_connected: true, kimi_configured: true, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3', critic_enabled: false, critic_autotrash: false });
       }
       case '/api/worlds':
         return send({ ok: true, worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', n: 7, kept: 3, wildcard: false }, { name: 'Matter & Elements', brief: 'Fluids and fire.', n: 10, kept: 2, wildcard: false }] });
@@ -140,9 +143,22 @@ function start(state = makeState()) {
         state.plates.push({ filename: name, url: `/assets/ai-plates/${name}.svg`, title: body.title, prompt: body.prompt, model: body.model, trashed: false, qa_passed: true, qa_score: 90, qa_issues: [], world: body.world });
         return send({ ok: true, qa_passed: true, trashed: false, filename: name, title: body.title });
       }
+      case '/api/groups': {                    // the same rules as studio/groups.py
+        const gs = state.groups || (state.groups = []);
+        const g = gs.find(x => x.id === body.id);
+        const name = String(body.name || '').trim();
+        if (body.action === 'create') { if (!name || gs.some(x => x.name.toLowerCase() === name.toLowerCase())) return send({ ok: false, error: name ? `There is already a group called “${name}”.` : 'A group needs a name.' }, 400); const ng = { id: `g${gs.length + 1}${Date.now() % 1000}`, name, files: [...new Set(body.files || [])] }; gs.push(ng); return send({ ok: true, group: ng }); }
+        if (body.action === 'restore') { gs.push({ ...body.group }); return send({ ok: true }); }
+        if (!g) return send({ ok: false, error: 'That group is gone.' }, 400);
+        if (body.action === 'add') { g.files = [...new Set([...g.files, ...(body.files || [])])]; return send({ ok: true }); }
+        if (body.action === 'remove') { g.files = g.files.filter(f => !(body.files || []).includes(f)); return send({ ok: true }); }
+        if (body.action === 'rename') { if (!name) return send({ ok: false, error: 'A group needs a name.' }, 400); g.name = name; return send({ ok: true }); }
+        if (body.action === 'delete') { state.groups = gs.filter(x => x !== g); return send({ ok: true, group: g }); }
+        return send({ ok: false, error: 'Unknown action.' }, 400);
+      }
       case '/api/export-video': {
         await sleep(state.delays.export);
-        const n = state.plates.filter(p => !p.trashed).length;
+        const n = Array.isArray(body.files) && body.files.length ? body.files.length : state.plates.filter(p => !p.trashed).length;
         return send({ ok: true, video_url: '/outputs/Demo-test.mp4', filename: 'Demo-test.mp4', images: n, seconds: n * 0.5, cuts: n });
       }
       case '/api/export-audio': {    // the drone rendered in the page: keep what arrived so a test can look at it

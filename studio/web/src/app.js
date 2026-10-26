@@ -93,6 +93,8 @@
       const lengthBefore = activePlates().length;
       plates = data.plates || [];
       sequences = data.sequences || [];
+      groups = data.groups || [];
+      if (!groupMembers(currentGroup)) currentGroup = 'all';                // a group that is gone (deleted, emptied by the library)
       activeSeq = data.active_sequence || null;
 
       const kreaDot = document.getElementById('kreaDot');
@@ -119,6 +121,7 @@
       document.getElementById('tabTrash').className = showTrash ? 'on' : '';
 
       renderSequences();
+      renderGroups();
       renderGrid();
       renderFilmstrip();
       applyLocks();                                                          // nothing to export or trash when there are no images
@@ -165,9 +168,153 @@
       return cur && cur.cut_off ? cur.cut_off : null;
     }
     function activePlates() {
-      const shown = plates.filter(p => !p.trashed);
-      const n = activeCutOff();
+      const shown = inGroup(plates.filter(p => !p.trashed));
+      const n = currentGroup === 'all' ? activeCutOff() : null;             // a best-N cut belongs to the whole selection
       return n ? shown.slice(0, n) : shown;
+    }
+
+    // ---- groups: All, yours (stored), and automatic ones from each image's look and territory. The grid and the film show the group chosen. ----
+    let groups = [];
+    let currentGroup = (() => { try { return localStorage.getItem('studioGroup') || 'all'; } catch (e) { return 'all'; } })();
+    const LOOKS = [['warm', 'Warm'], ['cold', 'Cold'], ['mono', 'Mono'], ['dark', 'Dark'], ['bright', 'Bright']];
+    // the members of a group key ('all', 'g:<id>', 'look:<tag>', 'world:<name>'), or null when there is no such group
+    function groupMembers(key) {
+      if (key === 'all') return 'all';
+      const shown = plates.filter(p => !p.trashed);
+      if (key.startsWith('g:')) { const g = groups.find(x => x.id === key.slice(2)); return g ? new Set(g.files) : null; }
+      if (key.startsWith('look:')) { const set = new Set(shown.filter(p => (p.look || []).includes(key.slice(5))).map(p => p.filename)); return set.size ? set : null; }
+      if (key.startsWith('world:')) { const set = new Set(shown.filter(p => p.world === key.slice(6)).map(p => p.filename)); return set.size ? set : null; }
+      return null;
+    }
+    function inGroup(list) {
+      const m = groupMembers(currentGroup);
+      return m === 'all' || !m ? list : list.filter(p => m.has(p.filename));
+    }
+    function ownGroup() { return currentGroup.startsWith('g:') ? groups.find(g => g.id === currentGroup.slice(2)) : null; }
+    // the chips: All, your groups, then the automatic ones that have a few images (looks first, then territories)
+    function groupChips() {
+      const shown = plates.filter(p => !p.trashed), count = key => { const m = groupMembers(key); return m === 'all' ? shown.length : m ? [...m].filter(f => shown.some(p => p.filename === f)).length : 0; };
+      const chips = [{ key: 'all', name: 'All', n: shown.length }];
+      groups.forEach(g => chips.push({ key: `g:${g.id}`, name: g.name, n: count(`g:${g.id}`), own: true }));
+      const auto = [];
+      LOOKS.forEach(([tag, name]) => { const n = count(`look:${tag}`); if (n >= 2) auto.push({ key: `look:${tag}`, name, n }); });
+      const worlds = {};
+      shown.forEach(p => { if (p.world) worlds[p.world] = (worlds[p.world] || 0) + 1; });
+      Object.entries(worlds).filter(([, n]) => n >= 6).sort((a, b) => b[1] - a[1]).forEach(([w, n]) => auto.push({ key: `world:${w}`, name: w, n }));
+      return { chips, auto };
+    }
+    function renderGroups() {
+      const bar = document.getElementById('groupBar');
+      document.getElementById('groupRow').hidden = showTrash;
+      const { chips, auto } = groupChips();
+      const menu = '<button type="button" class="chip-more" id="groupMenuBtn" onclick="openGroupMenu(event, \'edit\')" title="Rename or delete this group" aria-label="Rename or delete this group"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></button>';
+      const chip = c => `<button type="button" class="chip${c.key === currentGroup ? ' on' : ''}${c.own ? ' own' : ''}" data-key="${escapeHtml(c.key)}" onclick="setGroup(this.dataset.key)">${escapeHtml(c.name)} <span>${c.n}</span></button>${c.own && c.key === currentGroup ? menu : ''}`;   // your group's menu sits right after its chip
+      bar.innerHTML = chips.map(chip).join('') + (auto.length ? '<i class="chip-sep"></i>' + auto.map(chip).join('') : '');
+      const own = ownGroup();
+      document.getElementById('removeFromGroupBtn').hidden = !own;
+      document.getElementById('miniTitle').textContent = currentGroup === 'all' ? 'Film' : (chips.concat(auto).find(c => c.key === currentGroup) || { name: 'Film' }).name;
+      const len = document.getElementById('aiLength');
+      len.disabled = currentGroup !== 'all';                                 // best N is for the whole selection
+      if (len.disabled) len.value = '';
+    }
+    function setGroup(key) {
+      if (!groupMembers(key)) key = 'all';
+      if (key === currentGroup) return;
+      currentGroup = key;
+      try { localStorage.setItem('studioGroup', key); } catch (e) {}
+      pickSel = new Set();
+      renderGroups(); renderGrid(); renderFilmstrip();
+      cutPos = 0; clockPos = null; currentIdx = 0;                           // a new film: from its first image
+      if (isPlaying && droneLive.playing) droneLive.restart(synthParams(), synthStartsSec());
+      musicChanged();
+      if (!isPlaying) drawFrame();
+    }
+
+    // ---- picking cards (Cmd/Ctrl-click, Shift-click for a range, Cmd+A for all) to add them to a group or take them out ----
+    let pickSel = new Set(), lastPick = null;
+    function togglePick(e, filename) {
+      const list = visiblePlates().map(p => p.filename);
+      if (e.shiftKey && lastPick && list.includes(lastPick)) {
+        const [a, b] = [list.indexOf(lastPick), list.indexOf(filename)].sort((x, y) => x - y);
+        list.slice(a, b + 1).forEach(f => pickSel.add(f));
+      } else if (pickSel.has(filename)) pickSel.delete(filename);
+      else pickSel.add(filename);
+      lastPick = filename;
+      syncSelection();
+    }
+    function pickAll() { pickSel = new Set(visiblePlates().map(p => p.filename)); syncSelection(); }
+    function clearPicks() { pickSel = new Set(); closeGroupMenu(); syncSelection(); }
+    function updatePickBar() {
+      const n = showTrash ? 0 : pickSel.size;
+      document.getElementById('pickBar').hidden = !n;
+      document.getElementById('pickCount').textContent = `${n} selected`;
+    }
+    async function groupsCall(payload) {
+      const res = await (await fetch('/api/groups', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
+      if (!res.ok) { setStatus(res.error || 'Could not do that.'); return null; }
+      await loadState();
+      return res;
+    }
+    // the menu next to the picks (Add to group) and next to your group's chip (Rename, Delete): one popover, two uses
+    let groupMenuFor = null;
+    function openGroupMenu(e, mode) {
+      if (e) e.stopPropagation();
+      const m = document.getElementById('groupMenu');
+      if (!m.hidden && groupMenuFor === mode) { closeGroupMenu(); return; }
+      groupMenuFor = mode;
+      const own = ownGroup();
+      m.innerHTML = mode === 'add'
+        ? groups.map(g => `<button type="button" class="gm-item" data-id="${g.id}" onclick="addToGroup(this.dataset.id)">${escapeHtml(g.name)}</button>`).join('')
+          + `<form class="gm-new" onsubmit="event.preventDefault(); newGroup(this.elements.name.value)"><input name="name" id="groupNameInput" type="text" maxlength="40" placeholder="New group…" autocomplete="off" /><button type="submit">Add</button></form>`
+        : `<form class="gm-new" onsubmit="event.preventDefault(); renameGroup(this.elements.name.value)"><input name="name" id="groupNameInput" type="text" maxlength="40" value="${escapeHtml(own ? own.name : '')}" autocomplete="off" /><button type="submit">Rename</button></form>`
+          + `<button type="button" class="gm-item danger-text" onclick="deleteGroup()">Delete group</button>`;
+      const anchor = document.getElementById(mode === 'add' ? 'addToGroupBtn' : 'groupMenuBtn').getBoundingClientRect();
+      m.hidden = false;
+      m.style.top = `${anchor.bottom + 6}px`;
+      m.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - m.offsetWidth - 8))}px`;
+      if (mode === 'add' && !groups.length || mode === 'edit') { const i = document.getElementById('groupNameInput'); if (i && i.focus) i.focus(); if (mode === 'edit' && i && i.select) i.select(); }
+    }
+    function closeGroupMenu() { const m = document.getElementById('groupMenu'); if (m) m.hidden = true; groupMenuFor = null; }
+    document.addEventListener('click', e => { if (!(e.target.closest && (e.target.closest('#groupMenu') || e.target.closest('#addToGroupBtn') || e.target.closest('#groupMenuBtn')))) closeGroupMenu(); });
+    async function addToGroup(id) {
+      const g = groups.find(x => x.id === id), files = [...pickSel].filter(f => g && !g.files.includes(f));
+      closeGroupMenu();
+      if (!g) return;
+      if (files.length && await groupsCall({ action: 'add', id, files })) {
+        pushStep({ label: `Add to “${g.name}”`, undo: () => groupsCall({ action: 'remove', id, files }), redo: () => groupsCall({ action: 'add', id, files }) });
+      }
+      setStatus(`${pickSel.size} in “${g.name}”.`); clearPicks();
+    }
+    async function newGroup(name) {
+      const files = [...pickSel];
+      const res = await groupsCall({ action: 'create', name, files });
+      if (!res) return;
+      closeGroupMenu();
+      const g = res.group;
+      pushStep({ label: `New group “${g.name}”`, undo: () => groupsCall({ action: 'delete', id: g.id }), redo: () => groupsCall({ action: 'restore', group: g }) });
+      clearPicks();
+      setGroup(`g:${g.id}`);
+    }
+    async function removeFromGroup() {
+      const g = ownGroup(), files = [...pickSel];
+      if (!g || !files.length) return;
+      if (await groupsCall({ action: 'remove', id: g.id, files })) pushStep({ label: `Remove from “${g.name}”`, undo: () => groupsCall({ action: 'add', id: g.id, files }), redo: () => groupsCall({ action: 'remove', id: g.id, files }) });
+      clearPicks();
+    }
+    async function renameGroup(name) {
+      const g = ownGroup(); if (!g) return;
+      const old = g.name;
+      if (await groupsCall({ action: 'rename', id: g.id, name })) { closeGroupMenu(); pushStep({ label: `Rename “${old}”`, undo: () => groupsCall({ action: 'rename', id: g.id, name: old }), redo: () => groupsCall({ action: 'rename', id: g.id, name }) }); }
+    }
+    async function deleteGroup() {
+      const g = ownGroup(); if (!g) return;
+      closeGroupMenu();
+      const res = await groupsCall({ action: 'delete', id: g.id });
+      if (!res) return;
+      const kept = res.group || g;
+      const step = pushStep({ label: `Delete “${g.name}”`, undo: () => groupsCall({ action: 'restore', group: kept }), redo: () => groupsCall({ action: 'delete', id: g.id }) });
+      setGroup('all');
+      setStatus(`Group “${g.name}” deleted (the images stay).`, { label: 'Undo', run: () => undoStep(step) });
     }
 
     function visiblePlates() {
@@ -175,7 +322,7 @@
       return showTrash
         // newest trashed first; plates trashed before timestamps existed fall back to creation number
         ? plates.filter(p => p.trashed).sort((a, b) => (b.trashed_at || 0) - (a.trashed_at || 0) || num(b) - num(a))
-        : plates.filter(p => !p.trashed);
+        : inGroup(plates.filter(p => !p.trashed));
     }
 
     // ---- trash: select, delete selected, empty ----
@@ -196,8 +343,9 @@
       if (shown < 2) { setStatus('Keep at least two images before ordering.'); return; }
       const before = { order: plates.filter(p => !p.trashed).map(p => p.filename), cut_off: activeCutOff() };   // for Undo: the order as it was
       const body = {
-        length: parseInt(document.getElementById('aiLength').value, 10) || null,
+        length: currentGroup === 'all' ? parseInt(document.getElementById('aiLength').value, 10) || null : null,
         direction: document.getElementById('aiDirection').value.trim(),
+        ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // a group: its images change places among themselves
       };
       document.getElementById('aiPanel').hidden = true;
       const start = await (await fetch('/api/order-ai', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) })).json();
@@ -258,7 +406,10 @@
     let trashSel = new Set();
     let lastSel = null;
     function cardClick(e, filename) {
-      if (!showTrash) { previewPlate(filename); return; }
+      if (!showTrash) {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || pickSel.size) { togglePick(e, filename); return; }   // picking: Cmd/Ctrl/Shift-click, then plain clicks add too
+        previewPlate(filename); return;
+      }
       const list = visiblePlates().map(p => p.filename);
       if (e.shiftKey && lastSel && list.includes(lastSel)) {
         const [a, b] = [list.indexOf(lastSel), list.indexOf(filename)].sort((x, y) => x - y);
@@ -272,8 +423,10 @@
       syncSelection();
     }
     function syncSelection() {
-      document.querySelectorAll('.card[data-filename]').forEach(el => el.classList.toggle('sel', trashSel.has(el.dataset.filename)));
+      const sel = showTrash ? trashSel : pickSel;
+      document.querySelectorAll('.card[data-filename]').forEach(el => el.classList.toggle('sel', sel.has(el.dataset.filename)));
       updateTrashBar();
+      updatePickBar();
     }
     function updateTrashBar() {
       const trashed = plates.filter(p => p.trashed).map(p => p.filename);
@@ -568,6 +721,7 @@
     function onKey(e) {
       if (typingIn(e.target) || document.getElementById('confirmModal').classList.contains('open')) return;
       if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redoLast(); else undoLast(); return; }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A') && mode === 'curate' && !showTrash) { e.preventDefault(); pickAll(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.repeat && ['Tab', 'Delete', 'Backspace', 'f', 'F', 't', 'T', 'r', 'R', 's', 'S'].includes(e.key)) { e.preventDefault(); return; }   // a held key acts once
       if (e.target && e.target.type === 'range' && e.key.startsWith('Arrow')) return;             // a slider with focus keeps its arrows
@@ -578,7 +732,7 @@
       else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); }
       else if (e.key === '0' || e.key === 'Home') { e.preventDefault(); flash('restartBtn'); toStart(); }
       else if (e.key === '?') { e.preventDefault(); toggleKeys(); }
-      else if (e.key === 'Escape') document.getElementById('keysPanel').hidden = true;
+      else if (e.key === 'Escape') { document.getElementById('keysPanel').hidden = true; if (pickSel.size) clearPicks(); }
       else if (e.key === 't' || e.key === 'T') { e.preventDefault(); flash('targetBtn'); toggleReticle(); }
       else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); flash('randomAllBtn'); randomAll(); }
       else if (e.key === 's' || e.key === 'S') { e.preventDefault(); flash('randomBtn'); if (!musicOn()) { setv('musicSelect', 'on'); } randomMusic(); }
@@ -1671,7 +1825,7 @@
 
     function setTrashView(on) {
       showTrash = on;
-      trashSel = new Set();
+      trashSel = new Set(); pickSel = new Set();
       return loadState();
     }
 
@@ -1958,7 +2112,8 @@
             ...variableParams(),
             music: musicOn() ? 'synth' : 'off',
             zoom_mode: document.getElementById('zoomSelect').value,
-            zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0
+            zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
+            ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) })   // a group: just its images
           })
         });
         const data = await res.json();
@@ -2078,6 +2233,14 @@ Object.assign(window, {
   rhythmStripClick,
   setThumbSize,
   refreshLibrary,
+  setGroup,
+  openGroupMenu,
+  addToGroup,
+  newGroup,
+  removeFromGroup,
+  renameGroup,
+  deleteGroup,
+  clearPicks,
   toggleFullscreen,
   toggleKeys,
   stageStats: () => ({ lateFrames, ready: ready.size }),

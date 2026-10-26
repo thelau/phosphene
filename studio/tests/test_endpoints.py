@@ -74,7 +74,7 @@ def live(srv, monkeypatch):
 
 
 GET_ENDPOINTS = ["/api/state", "/api/worlds", "/api/stats", "/api/version"]
-POST_ENDPOINTS = ["/api/save-settings", "/api/reorder", "/api/sequence", "/api/trash", "/api/purge", "/api/invent-prompts", "/api/generate-image", "/api/order-ai", "/api/export-video", "/api/export-audio"]
+POST_ENDPOINTS = ["/api/save-settings", "/api/reorder", "/api/sequence", "/api/trash", "/api/purge", "/api/invent-prompts", "/api/generate-image", "/api/order-ai", "/api/export-video", "/api/export-audio", "/api/groups"]
 
 
 @pytest.mark.parametrize("path", GET_ENDPOINTS)
@@ -569,3 +569,37 @@ def test_version_carries_a_cheap_library_fingerprint_that_moves_when_the_library
     time.sleep(0.01)
     assert live("POST", "/api/trash", {"filename": res["filename"], "trashed": True})[1]["ok"]
     assert live("GET", "/api/version")[1]["state"] != sig1, "trashing writes the curation file: the fingerprint moves"
+
+
+def test_groups_over_http_and_a_group_exports_alone(live, srv):
+    """Groups: made, filled and shown in the state; an export of a group has just its images."""
+    _three_plates(live)
+    names = [p["filename"] for p in live("GET", "/api/state")[1]["plates"] if not p["trashed"]]
+    status, res = live("POST", "/api/groups", {"action": "create", "name": "Two", "files": names[:2]})
+    assert status == 200 and res["ok"]
+    gid = res["group"]["id"]
+    _, state = live("GET", "/api/state")
+    assert state["groups"] == [{"id": gid, "name": "Two", "files": names[:2]}]
+    assert all("look" in p for p in state["plates"])
+    assert live("POST", "/api/groups", {"action": "create", "name": "two"})[0] == 400        # names are unique
+    status, whole = live("POST", "/api/export-video", {"rhythm": "flat", "bpm": 120, "multiple": 2})
+    full = _streams(srv.OUTPUTS_DIR / whole["filename"])[1]                     # measured now: two exports in the same second share a file name
+    status, part = live("POST", "/api/export-video", {"rhythm": "flat", "bpm": 120, "multiple": 2, "files": names[:2]})
+    assert status == 200
+    two = _streams(srv.OUTPUTS_DIR / part["filename"])[1]
+    assert whole["images"] == len(names) and part["images"] == 2, (whole, part)
+    assert two == pytest.approx(full * 2 / len(names), abs=0.12), (full, two, len(names))
+    assert live("POST", "/api/groups", {"action": "delete", "id": gid})[1]["ok"]
+    assert live("GET", "/api/state")[1]["groups"] == []
+
+
+def test_ai_reorder_of_a_group_moves_only_its_images_among_their_own_places(live, srv, monkeypatch):
+    _three_plates(live)
+    names = [p["filename"] for p in live("GET", "/api/state")[1]["plates"] if not p["trashed"]][:3]      # order: n0, n1, n2...
+    built = {"result": {"names": [names[2], names[0]], "left_out": [], "cuts": []}, "summary": "s", "brief_ok": True, "images": 2}
+    with srv.STATE_LOCK:
+        st = srv.load_state()
+        srv.add_group_order(st, built, {names[0], names[2]})
+        srv.save_state(st)
+    _, state = live("GET", "/api/state")
+    assert [p["filename"] for p in state["plates"] if not p["trashed"]][:3] == [names[2], names[1], names[0]], "n1 kept its place; the group swapped"

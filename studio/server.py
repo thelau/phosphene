@@ -30,6 +30,7 @@ import critic
 import cutplan
 import editor
 import gen_log
+import groups
 import features
 import sequences
 import diversity
@@ -490,10 +491,11 @@ AI_STEPS = ["Reading the images", "Writing the edit brief", "Cutting the edit", 
 
 
 def build_ai_order(st: dict, call_llm, api_key: str, model: str, length: int | None = None, direction: str = "",
-                   progress=lambda step, note="": None) -> dict:
-    """Works out an AI edit of the images currently shown (does not touch the state). Kimi writes the brief; editor.py cuts the order."""
+                   progress=lambda step, note="": None, only: set | None = None) -> dict:
+    """Works out an AI edit of the images currently shown (does not touch the state). Kimi writes the brief; editor.py cuts the order.
+    `only`: the images of a group: just those are ordered (and they keep the places the group has in the order)."""
     trashed = set(st.get("trashed", []))
-    files = [p for p in ordered_plate_files(st) if p.name not in trashed]
+    files = [p for p in ordered_plate_files(st) if p.name not in trashed and (only is None or p.name in only)]
     if len(files) < 2:
         raise RuntimeError("Need at least two images in the selection to make an edit.")
     progress(0, f"{len(files)} images")
@@ -513,6 +515,31 @@ def build_ai_order(st: dict, call_llm, api_key: str, model: str, length: int | N
     progress(3, "writing the summary")
     titles = st.get("titles", {})
     return {"result": result, "summary": note + editor.summarize(titles, result, brief.get("summary")), "brief_ok": brief_ok, "images": len(files)}
+
+
+_MEASURING = {"on": False}
+
+
+def measure_in_background() -> None:
+    """Measures the plates not measured yet (once, in a thread), so their looks show in the automatic groups at the next refresh."""
+    if _MEASURING["on"]:
+        return
+    missing = [p for p in PLATES_DIR.glob("*.jpg") if features.peek(p) is None]
+    if not missing:
+        return
+    _MEASURING["on"] = True
+
+    def run():
+        try:
+            for p in missing:
+                try:
+                    features.get(p)
+                except Exception:
+                    pass
+            features.save_cache()
+        finally:
+            _MEASURING["on"] = False
+    threading.Thread(target=run, daemon=True).start()
 
 
 _INFLIGHT = {"n": 0}
@@ -593,7 +620,14 @@ def add_ai_sequence(st: dict, built: dict) -> dict:
                             cut_off=len(result["names"]) if result["left_out"] else None, cuts=result["cuts"])
 
 
-def run_ai_order_job(job_id: str, length, direction: str) -> None:
+def add_group_order(st: dict, built: dict, only: set) -> dict:
+    """A group re-ordered by the AI: its images change places among themselves; everything else stays where it is."""
+    new = iter(built["result"]["names"] + built["result"]["left_out"])
+    merged = [next(new, n) if n in only else n for n in sequences.get_order(st)]
+    return sequences.add_ai(st, merged, summary=built["summary"], cut_off=None, cuts=built["result"]["cuts"])
+
+
+def run_ai_order_job(job_id: str, length, direction: str, only: set | None = None) -> None:
     job = AI_JOBS[job_id]
     t_job = time.time()
     try:
@@ -602,10 +636,10 @@ def run_ai_order_job(job_id: str, length, direction: str) -> None:
 
         def progress(step, note=""):
             job.update(step=step, stage=AI_STEPS[step], note=note)
-        built = build_ai_order(st, call_kimi_llm, key, model, length, direction, progress)
+        built = build_ai_order(st, call_kimi_llm, key, model, None if only else length, direction, progress, only)
         with STATE_LOCK:
             fresh = load_state()
-            seq = add_ai_sequence(fresh, built)
+            seq = add_group_order(fresh, built, only) if only else add_ai_sequence(fresh, built)
             save_state(fresh)
         job.update(done=True, step=len(AI_STEPS), stage="Done", sequence={"id": seq["id"], "name": seq["name"], "summary": seq["summary"]})
         gen_log.record("ai_order", ok=True, images=built["images"], length=length, direction=direction, kimi_ok=built["brief_ok"], summary=seq["summary"], seconds=round(time.time() - t_job, 1))
@@ -823,6 +857,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/api/state":
+            measure_in_background()                # the automatic groups need every image measured once
             sig = state_signature()          # taken first: a change made while this is built shows up at the next poll
             st = load_state()
             trashed_set = set(st.get("trashed", []))
@@ -850,6 +885,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     ),
                     "critic": st.get("critic", {}).get(p.name),
                     "world": st.get("worlds", {}).get(p.name),
+                    "look": features.look(features.peek(p)),
                     "idea": st.get("ideas", {}).get(p.name),
                     "qa_passed": qa["qa_passed"],
                     "qa_score": qa["qa_score"],
@@ -867,6 +903,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 "critic_enabled": st.get("critic_enabled", True),
                 "critic_autotrash": st.get("critic_autotrash", False),
                 "sequences": sequences.public(st, {p["filename"] for p in plates if not p["trashed"]}),
+                "groups": groups.public(st, {p["filename"] for p in plates}),
                 "active_sequence": st.get("active_sequence"),
             })
             return
@@ -945,8 +982,18 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 length = None
             job_id = f"job{int(time.time() * 1000)}"
             AI_JOBS[job_id] = {"done": False, "step": 0, "steps": len(AI_STEPS), "stage": AI_STEPS[0], "note": ""}
-            threading.Thread(target=run_ai_order_job, args=(job_id, length, str(body.get("direction", ""))[:300]), daemon=True).start()
+            only = set(str(f) for f in body["files"]) if isinstance(body.get("files"), list) and body["files"] else None
+            threading.Thread(target=run_ai_order_job, args=(job_id, length, str(body.get("direction", ""))[:300], only), daemon=True).start()
             self.send_json({"ok": True, "job": job_id, "steps": AI_STEPS})
+            return
+
+        if parsed.path == "/api/groups":
+            with STATE_LOCK:
+                st = load_state()
+                res = groups.act(st, body)
+                if res.get("ok"):
+                    save_state(st)
+            self.send_json(res, 200 if res.get("ok") else 400)
             return
 
         if parsed.path == "/api/sequence":
@@ -1151,6 +1198,9 @@ class StudioHandler(SimpleHTTPRequestHandler):
             st = load_state()
             trashed_set = set(st.get("trashed", []))
             active_files = sequences.edit_files([p for p in ordered_plate_files(st) if p.name not in trashed_set], st)
+            if isinstance(body.get("files"), list) and body["files"]:          # a group: just its images, in the order
+                wanted = set(str(f) for f in body["files"])
+                active_files = [p for p in ordered_plate_files(st) if p.name not in trashed_set and p.name in wanted]
             if not active_files:
                 self.send_json({"ok": False, "error": "No active plates"}, 400)
                 return
