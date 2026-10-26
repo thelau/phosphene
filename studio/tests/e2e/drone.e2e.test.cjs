@@ -277,10 +277,10 @@ test('Choir and Industrial over the drone: the same level, still sub-heavy, each
   await ctx.close();
 });
 
-test('arpeggio moods: one instrument (Pluck\'s patch) played differently; each renders level and dark, and Dark sits low (measured, not heard)', { skip }, async () => {
+test('arpeggio moods: one instrument (Pluck\'s patch) played differently; each renders level and dark (measured, not heard)', { skip }, async () => {
   const ctx = await fresh();
   const arp = { arp: 0.45, arpRate: 1, arpSteps: 2, chord: 1 };
-  const rows = await spectra([0, 1, 2, 3, 4, 5, 6, 7].map(m => ({ ...arp, arpMood: m })));
+  const rows = await spectra([0, 1, 2, 3, 4, 5].map(m => ({ ...arp, arpMood: m })));
   console.log('moods: ' + JSON.stringify(rows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, +(+v).toFixed(4)])))));
   for (const [i, m] of rows.entries()) {
     assert.ok(!m.bad && Math.abs(m.rms - 0.17) < 0.01 && m.peak <= 0.97, `mood ${i}: level ${m.rms.toFixed(3)}, peak ${m.peak.toFixed(2)}`);
@@ -288,8 +288,6 @@ test('arpeggio moods: one instrument (Pluck\'s patch) played differently; each r
   }
   const pluck = rows[0];                                                           // one instrument (the modular patch), played differently: close to Pluck's balance
   for (const [i, m] of rows.entries()) assert.ok(Math.abs(m.sub - pluck.sub) < 0.1 && Math.abs(m.mid - pluck.mid) < 0.1, `mood ${i} stays the same instrument as Pluck: sub ${m.sub.toFixed(2)} vs ${pluck.sub.toFixed(2)}, mid ${m.mid.toFixed(2)} vs ${pluck.mid.toFixed(2)}`);
-  const [, dark, , tender] = rows, cents = rows.map(r => Math.round(r.cent));   // the centre of 120 Hz-2 kHz, where the bed sits too
-  assert.ok(tender.cent > dark.cent * 1.08, `Dark sits under Tender: ${cents}`);
   await ctx.close();
 });
 

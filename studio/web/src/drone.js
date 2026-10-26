@@ -151,17 +151,16 @@
   // Arpeggio moods. One instrument for all of them, the first arpeggio's patch (two detuned saws into a resonant low-pass that snaps shut on
   // each note: the modular sound), played differently, as a player turns the same patch: the notes (scale over the tonic, two octaves above
   // the root; register lo..hi times the tonic), the shape (Dark falls; Phase: two voices loop the same notes, one a note longer, so they drift
-  // apart and back (Reich, Barbieri), one on each side; Tender sighs in falling pairs; Sweep keeps a short walk while the filter opens and
-  // shuts over ~7 s, resonant (Barbieri's Ecstatic Computation); Ratchet repeats some steps 2-4 times inside the step; Mutate changes one
+  // apart and back (Reich, Barbieri), one on each side;
+  // Sweep keeps a short walk while the filter opens and
+  // shuts over ~7 s, resonant (Barbieri's Ecstatic Computation); Mutate changes one
   // note each round (a Turing Machine); Accumulate plays 2 notes, then 3, ... up to the whole pattern, and starts over (an additive process)), how far the filter opens and shuts (`open`, `close`), its resonance (`q`) and how long a note rings (`sustain`).
   // Two voices take turns, so a note rings on under the next. Pluck keeps its own path (chord tones, a random walk).
   const ARP_MOODS = [
     { name: 'Pluck' },
     { name: 'Dark', scale: [0, 1, 3, 5, 7, 8], lo: 0.5, hi: 1.6, open: 1100, close: 240, q: 3, sustain: 1.6, gain: 1.0, voices: 1, shape: 'fall' },
     { name: 'Phase', scale: [0, 3, 7, 10], lo: 1, hi: 2.6, open: 1500, close: 380, q: 2.5, sustain: 1.2, gain: 0.7, voices: 2, shape: 'phase' },
-    { name: 'Tender', scale: [0, 2, 3, 7, 10], lo: 1, hi: 3, open: 1600, close: 420, q: 2.5, sustain: 2.2, gain: 1.0, voices: 2, shape: 'sigh' },
     { name: 'Sweep', scale: [0, 3, 7, 10], lo: 1, hi: 2.2, open: 1600, close: 300, q: 6, sustain: 1.4, gain: 0.9, voices: 2, shape: 'walk', sweep: 7 },
-    { name: 'Ratchet', scale: [0, 3, 5, 7, 10], lo: 0.75, hi: 2.2, open: 1900, close: 400, q: 2.5, sustain: 0.7, gain: 0.9, voices: 1, shape: 'walk', ratchet: true },
     { name: 'Mutate', scale: [0, 2, 3, 7, 10], lo: 0.75, hi: 2.6, open: 1700, close: 400, q: 2.5, sustain: 1.2, gain: 1.0, voices: 2, shape: 'walk', mutate: true },
     { name: 'Accumulate', scale: [0, 3, 5, 7, 10], lo: 0.75, hi: 2.6, open: 1700, close: 400, q: 2.5, sustain: 1.2, gain: 1.0, voices: 2, shape: 'walk', accumulate: true },
   ];
@@ -174,12 +173,10 @@
   const phaseLoop = a => [...a.slice(0, a.length >> 1), a[a.length >> 1], ...a.slice(a.length >> 1)];   // Phase's second loop: the same notes, one repeated, a step longer
   function moodPattern(shape, n, steps, rand) {                        // indices into the notes, `steps` long
     const top = n - 1, out = [];
-    let c = shape === 'fall' ? top : shape === 'sigh' ? Math.max(1, Math.round(top * 0.75)) : Math.floor(rand() * n);
+    let c = shape === 'fall' ? top : Math.floor(rand() * n);
     for (let k = 0; k < steps; k++) {
       if (shape === 'fall') {                                          // down by a step, now and then two; from the top again at the bottom
         out.push(c); c -= rand() < 0.3 ? 2 : 1; if (c < 0) c = top - Math.floor(rand() * 2);
-      } else if (shape === 'sigh') {                                   // falling pairs: a note and the one under it, each pair a step lower
-        out.push(Math.max(0, c - Math.floor(k / 2) - (k % 2)));
       } else {                                                         // walk (and Phase): a step or two each way
         out.push(c); c = Math.max(0, Math.min(top, c + [-2, -1, 1, 2][Math.floor(rand() * 4)]));
       }
@@ -468,7 +465,6 @@
         return { lp, env, oscs };
       });
       const L = pattern.length, mrand = mulberry32(seedN + 977);
-      const ratchets = m.ratchet ? pattern.map(() => { const x = mrand(); return x < 0.6 ? 1 : x < 0.85 ? 2 : x < 0.95 ? 3 : 4; }) : null;   // fixed per step: a rhythm, not noise
       const accPos = [];                                                  // Accumulate: 2 notes, then 3, ... then the whole pattern, over again
       if (m.accumulate) for (let k = Math.min(2, L); k <= L; k++) for (let j = 0; j < k; j++) accPos.push(j);
       let mutCycle = 0; const mutated = pattern.slice();                 // Mutate: the pattern as it stands this round; one note changes per round
@@ -484,8 +480,7 @@
           const t = tc + (per < 1 ? 0 : (len * k) / n), at0 = starts[i] + (per < 1 ? 0 : (len * k) / n);
           const s = arc(at0);
           const stepLen = per < 1 ? len * 2 : len / n;
-          const reps = ratchets ? ratchets[step % L] : 1, hitLen = stepLen / reps;
-          const decay = Math.min(1.6, Math.max(0.05, hitLen * 0.9 * m.sustain)) * (1.5 - s), f = noteAt(step) * lift(s, 1.2);
+          const decay = Math.min(1.6, Math.max(0.08, stepLen * 0.9 * m.sustain)) * (1.5 - s), f = noteAt(step) * lift(s, 1.2);
           const sw = m.sweep ? 0.15 + 0.85 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / m.sweep)) : 1;   // Sweep: how far the filter opens now
           const play = (v, fq, tt) => {
             for (const [o, det] of v.oscs) o.frequency.setValueAtTime(fq * (1 + det), tt);
@@ -493,7 +488,7 @@
             strike(v.env, tt, 2.2 * arpAmt, decay);
           };
           if (phase) { play(voices[0], f, t); play(voices[1], patternB[step % patternB.length] * lift(s, 1.2), t); }   // both on every step, each round its own loop
-          else for (let r = 0; r < reps; r++) play(voices[(step + r) % voices.length], f, t + r * hitLen);
+          else play(voices[step % voices.length], f, t);
         }
       });
     } else if (arpAmt > 0.01) {

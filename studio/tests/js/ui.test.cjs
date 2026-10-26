@@ -1142,13 +1142,13 @@ test('the logo target: one switch for the Film preview and every Curate card (T 
   assert.equal(again.$('gridTargetBtn').getAttribute('aria-pressed'), 'true');
 });
 
-test('arpeggio moods: Random draws them all (Pluck often), a type keeps to its own, soft moods unhurried', async () => {
+test('arpeggio moods: Random draws them all (Pluck often), a type keeps to its own, Phase unhurried', async () => {
   const h = await playerWith();
   const n = id => +h.$(id).value;
-  const seen = [0, 0, 0, 0, 0, 0, 0, 0];
+  const seen = [0, 0, 0, 0, 0, 0];
   const rules = why => {
-    if ([2, 3, 5].includes(n('arpMoodSelect')) && h.run('rhythmCutsPerSecond()') > 2.5) assert.ok(n('arpRateSelect') <= 1, `${why}: Phase, Tender and Ratchet on fast cuts play a note a cut at most`);
-    if (n('choirRange') > 0) assert.ok(![0, 1, 5].includes(n('arpMoodSelect')), `${why}: under the choir, no Pluck, Dark or Ratchet`);
+    if (n('arpMoodSelect') === 2 && h.run('rhythmCutsPerSecond()') > 2.5) assert.ok(n('arpRateSelect') <= 1, `${why}: Phase on fast cuts plays a note a cut at most`);
+    if (n('choirRange') > 0) assert.ok(![0, 1].includes(n('arpMoodSelect')), `${why}: under the choir, no Pluck or Dark`);
   };
   for (let i = 0; i < 800; i++) { h.run('randomMusic()'); seen[n('arpMoodSelect')]++; rules('Random sound'); }
   assert.ok(seen.every(c => c > 25), `every mood comes up: ${seen}`);
