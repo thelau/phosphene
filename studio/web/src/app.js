@@ -1125,6 +1125,7 @@
     // Random rolls everything again inside the type; choosing a type rolls at once.
     function rollCharacter(key) {
       rememberForUndo();
+      cutPos = 0; clockPos = null; lastTick = performance.now();             // the new film starts at its first image: set before the new timeline draws, or the old position shows a stray frame of the new one
       const c = CHARACTERS[key];
       setv('musicSelect', 'on');
       if (c) { applyRhythm(c.rhythm); applyLook(c.look); applySound(c.sound); }

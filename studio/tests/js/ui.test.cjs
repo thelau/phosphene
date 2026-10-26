@@ -1600,3 +1600,16 @@ test('a drag in the grid is a step: undo puts the order back, unless the other o
   await h.run('undoLast()'); await settle();
   assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['a', 'b', 'c']);
 });
+
+test('R never shows a stray image: every frame drawn during a Random is from the new film\'s start', async () => {
+  const h = await playerWith();
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: 12 }, (_, i) => mkPlate('p' + i)) };
+  const v = load({ routes: r }); await settle(); await settle();
+  v.$('stageImg').style.display = 'block';
+  v.run('jumpToPlate(9)');
+  const shown = [];
+  let src = v.$('stageImg').src;
+  Object.defineProperty(v.$('stageImg'), 'src', { get: () => src, set: u => { src = u; shown.push(u); } });
+  for (let i = 0; i < 20; i++) { shown.length = 0; v.run('jumpToPlate(9); randomAll()'); assert.deepEqual(shown.slice(1), shown.length > 1 ? Array(shown.length - 1).fill('/p/p0') : [], `only the first image after the jump: ${shown}`); }
+});
