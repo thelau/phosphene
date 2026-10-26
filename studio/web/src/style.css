@@ -334,7 +334,12 @@
     body:has(#tabTrash.on) .card-num { display: none; }   /* a place in the order means nothing in the Trash */
     .card-num { position: absolute; left: 6px; top: 6px; font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 4px; background: rgba(18, 17, 16, .75); color: var(--text); z-index: 4; pointer-events: none; }
     .card-new { position: absolute; right: 6px; top: 6px; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--orange); color: #1A1A1A; z-index: 4; pointer-events: none; }
-    .card-pick { position: absolute; right: 6px; top: 6px; width: 22px; height: 22px; border-radius: 5px; border: 1.5px solid var(--text); background: rgba(18, 17, 16, .6); z-index: 4; pointer-events: none; }
+    .card-pick { position: absolute; right: 6px; top: 6px; width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 1.5px solid var(--text); background: rgba(18, 17, 16, .6); z-index: 5; pointer-events: none; transition: none; }
+    /* in the Selection the circle picks a card (as ⌘-click does): shown on hover, on every card while picking, always on a picked one */
+    button.card-pick { pointer-events: auto; cursor: pointer; opacity: 0; }
+    .card:hover button.card-pick, body.picking button.card-pick, .card.sel button.card-pick { opacity: 1; }
+    button.card-pick:hover { background: rgba(18, 17, 16, .85); border-color: #fff; }
+    .card:hover .card-new, body.picking .card-new { display: none; }
     .card-actions { position: absolute; left: 6px; right: 6px; bottom: 6px; display: flex; gap: 4px; opacity: 0; transition: opacity .12s; z-index: 6; }
     .card:hover .card-actions, .card:focus-within .card-actions { opacity: 1; }
     .drag-handle { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: rgba(18, 17, 16, .8); color: var(--text-2); cursor: grab; }
@@ -351,7 +356,7 @@
     .po-critic { color: var(--faint); font-size: 11px; }
     .prompt-overlay-meta { flex: none; display: flex; justify-content: flex-end; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, .1); }
     .po-copy { height: 26px; padding: 0 10px; font-size: 11px; border-radius: 6px; }
-    .card.info-open .card-num, .card.info-open .card-actions, .card.info-open .card-new { display: none; }
+    .card.info-open .card-num, .card.info-open .card-actions, .card.info-open .card-new, .card.info-open .card-pick { display: none; }
     .grid-col[data-size="S"] .po-world, .grid-col[data-size="S"] .po-idea, .grid-col[data-size="S"] .po-critic, .grid-col[data-size="M"] .po-idea, .grid-col[data-size="M"] .po-critic { display: none; }
     .grid-col[data-size="S"] .prompt-overlay { padding: 8px 8px 6px; font-size: 10.5px; line-height: 1.4; }
     .grid-col[data-size="S"] .po-copy { width: 100%; padding: 0; }

@@ -343,6 +343,35 @@ test('many groups: the chips scroll sideways with a fade on the side that has mo
   await ctx.close();
 });
 
+test('the pick circle: hidden until hover, a click picks without opening the image, every card shows it while picking, a second click unpicks', { skip }, async () => {
+  const ctx = await fresh();
+  await curate();
+  const card = n => page.locator('.card').nth(n), pick = n => card(n).locator('.card-pick');
+  const shown = async n => +(await pick(n).evaluate(e => getComputedStyle(e).opacity));
+  await page.mouse.move(5, 5);
+  assert.equal(await shown(0), 0, 'out of the way at rest');
+  await card(0).hover();
+  assert.equal(await shown(0), 1, 'on hover');
+  const src = await page.locator('#stageImg').getAttribute('src');
+  await pick(0).click();
+  assert.equal(await text('#pickCount'), '1 selected');
+  assert.equal(await card(0).evaluate(e => e.classList.contains('sel')), true);
+  assert.equal(await page.locator('#stageImg').getAttribute('src'), src, 'picking does not open the image');
+  await page.mouse.move(5, 5);
+  assert.equal(await shown(1), 1, 'while picking, every card shows its circle');
+  await shot('27-pick-circle');
+  await card(1).hover(); await pick(1).click();
+  assert.equal(await text('#pickCount'), '2 selected');
+  await pick(0).click();
+  assert.equal(await text('#pickCount'), '1 selected', 'a second click unpicks');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#pickBar').isVisible(), false);
+  await page.mouse.move(5, 5);
+  assert.equal(await shown(1), 0, 'and they hide again');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('the film strip: one thumbnail per image in order, click jumps there; no key trashes from the Film', { skip }, async () => {
   const ctx = await fresh();
   await film();
@@ -714,7 +743,7 @@ test('playing 150 images at one frame a cut, the stage never paints an image tha
   await ctx.close();
 });
 
-test('keys in the page: arrows step, F fills the screen with the preview and F leaves, Delete trashes and Cmd+Z brings it back', { skip }, async () => {
+test('keys in the page: arrows step, F fills the screen with the preview and F leaves', { skip }, async () => {
   const ctx = await fresh();
   await film();
   await page.keyboard.press('ArrowRight');

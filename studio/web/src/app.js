@@ -274,12 +274,14 @@
       lastPick = filename;
       syncSelection();
     }
+    function pickClick(e, filename) { e.stopPropagation(); togglePick(e, filename); }   // the circle on a card: picking without knowing ⌘-click
     function pickAll() { pickSel = new Set(visiblePlates().map(p => p.filename)); syncSelection(); }
     function clearPicks() { pickSel = new Set(); closeGroupMenu(); syncSelection(); }
     function updatePickBar() {
       const n = showTrash ? 0 : pickSel.size;
       document.getElementById('pickBar').hidden = !n;
       document.getElementById('pickCount').textContent = `${n} selected`;
+      document.body.classList.toggle('picking', n > 0);                     // every card shows its circle while picking
       groupFade();                                                           // the bar takes width from the chips
     }
     async function groupsCall(payload) {
@@ -593,7 +595,7 @@
             <img src="${p.thumb || p.url}" loading="lazy" decoding="async" alt="" />
             <span class="card-num"></span>
             ${!showTrash && seenAtLoad && !seenAtLoad.has(p.filename) ? '<span class="card-new">New</span>' : ''}
-            ${showTrash ? '<span class="card-pick" aria-hidden="true"></span>' : ''}
+            ${showTrash ? '<span class="card-pick" aria-hidden="true"></span>' : `<button type="button" class="card-pick" title="Pick (⌘-click) to add to a group" aria-label="Pick ${escapeHtml(p.title)}" onclick="pickClick(event, '${p.filename}')"></button>`}
             <div class="card-actions">
               ${showTrash ? '' : '<span class="drag-handle" title="Drag to reorder" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span><span class="grow"></span>'}
               <button class="action-btn info-btn" title="The prompt and the model" aria-label="Info for ${escapeHtml(p.title)}" onclick="togglePromptOverlay(event, '${p.filename}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></button>
@@ -2300,6 +2302,7 @@ Object.assign(window, {
   renameGroup,
   deleteGroup,
   clearPicks,
+  pickClick,
   toggleFullscreen,
   toggleKeys,
   stageStats: () => ({ lateFrames, ready: ready.size }),
