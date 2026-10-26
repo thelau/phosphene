@@ -606,3 +606,26 @@ test('refresh: the Curate and Film buttons pick up new images at once, and the f
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('the grid only touches what changed: a refresh, a reorder or a new image keep the other cards (and their loaded images)', { skip }, async () => {
+  const ctx = await fresh();
+  const tag = () => page.evaluate(() => document.querySelectorAll('.card[data-filename]').forEach(el => { el.__kept = el.dataset.filename; }));
+  const kept = () => page.evaluate(() => [...document.querySelectorAll('.card[data-filename]')].map(el => (el.__kept ? el.dataset.filename : '-' + el.dataset.filename)));
+  await tag();
+  await page.click('#refreshBtn'); await page.waitForTimeout(300);
+  assert.deepEqual(await kept(), ['k1', 'k2', 'k3'], 'nothing changed: every card kept');
+  await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
+  assert.deepEqual(await kept(), ['k3', 'k1', 'k2'], 'a reorder moves the cards, it does not rebuild them');
+  assert.deepEqual(await page.locator('.card-num').allTextContents(), ['01', '02', '03'], 'and the numbers follow');
+  api.state.plates.push({ ...api.state.plates[0], filename: 'k9', title: 'Plate k9', url: '/assets/ai-plates/k9.svg' });
+  api.state.sequences[0].order.push('k9');
+  await page.click('#refreshBtn');
+  await page.waitForSelector('.card[data-filename="k9"]');
+  assert.deepEqual(await kept(), ['k3', 'k1', 'k2', '-k9'], 'a new image adds one card');
+  await page.locator('.card[data-filename="k1"] .info-btn').click({ force: true });
+  await page.click('#refreshBtn'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.card[data-filename="k1"] .prompt-overlay.open').count(), 1, 'an open info panel stays open through a refresh');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

@@ -367,8 +367,40 @@
       const visible = visiblePlates();
       if (seenAtLoad === null && plates.length) seenAtLoad = new Set(plates.map(p => p.filename));
       const cutOff = showTrash ? null : activeCutOff();
-      grid.innerHTML = visible.map((p, i) => `${cutOff && i === cutOff && i < visible.length ? `<div class="edit-divider">left out of this edit (${visible.length - cutOff}) <button onclick="includeAll()">Include them all</button></div>` : ''}
-        <div class="card${cutOff && i >= cutOff ? ' out' : ''}"
+      const items = [];
+      visible.forEach((p, i) => {
+        if (cutOff && i === cutOff && i < visible.length) items.push(['divider', `<div class="edit-divider">left out of this edit (${visible.length - cutOff}) <button onclick="includeAll()">Include them all</button></div>`]);
+        items.push([`card:${p.filename}`, cardHtml(p)]);
+      });
+      if (!showTrash) pendingCards().forEach((html, i) => items.push([`pending:${i}`, html]));
+      patchChildren(grid, items);
+      if (grid.querySelectorAll) grid.querySelectorAll('.card[data-filename]').forEach((el, i) => {   // the place in the order lives outside the markup, so a reorder only moves cards
+        const num = el.querySelector('.card-num'), txt = String(i + 1).padStart(2, '0');
+        if (num && num.textContent !== txt) num.textContent = txt;
+        el.classList.toggle('out', !!(cutOff && i >= cutOff));
+      });
+      document.getElementById('gridHint').textContent = showTrash ? 'Trashed images stay restorable' : aiRunning ? 'Locked while the AI orders' : 'Drag to reorder';
+      syncSelection();
+    }
+    // Only what changed is touched: a card whose markup is the same keeps its element (its image stays decoded, an open info panel stays open);
+    // new ones are made, gone ones removed, moved ones moved. The keys are the file names.
+    const shownHtml = new WeakMap();
+    function patchChildren(box, items) {
+      if (!box.insertBefore || !box.children) { box.innerHTML = items.map(x => x[1]).join(''); return; }   // the test page has no real DOM
+      const old = new Map([...box.children].map(el => [el.dataset.key, el]));
+      const tpl = document.createElement('template');
+      items.forEach(([key, html], i) => {
+        let el = old.get(key);
+        if (el && shownHtml.get(el) !== html) { el.remove(); el = null; }
+        if (!el) { tpl.innerHTML = html.trim(); el = tpl.content.firstElementChild; el.dataset.key = key; shownHtml.set(el, html); }
+        old.delete(key);
+        if (box.children[i] !== el) box.insertBefore(el, box.children[i] || null);
+      });
+      old.forEach(el => el.remove());
+    }
+    function cardHtml(p) {
+      return `
+        <div class="card"
              id="card-${CSS.escape(p.filename)}"
              draggable="${!showTrash}"
              data-filename="${p.filename}"
@@ -380,7 +412,7 @@
              onclick="cardClick(event, '${p.filename}')">
           <div class="card-thumb">
             <img src="${p.thumb || p.url}" loading="lazy" decoding="async" alt="" />
-            <span class="card-num">${String(i + 1).padStart(2, '0')}</span>
+            <span class="card-num"></span>
             ${!showTrash && seenAtLoad && !seenAtLoad.has(p.filename) ? '<span class="card-new">New</span>' : ''}
             ${showTrash ? '<span class="card-pick" aria-hidden="true"></span>' : ''}
             <div class="card-actions">
@@ -406,24 +438,16 @@
             ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
             ${!p.qa_passed ? `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>` : ''}
           </div>
-        </div>
-      `).join('') + (showTrash ? '' : pendingCards());
-      document.getElementById('gridHint').textContent = showTrash ? 'Trashed images stay restorable' : aiRunning ? 'Locked while the AI orders' : 'Drag to reorder';
-      syncSelection();
+        </div>`;
     }
     // the images still being made, at the end of the selection while a batch runs
     function pendingCards() {
-      if (!generating || prog.stage !== 'render') return '';
+      if (!generating || prog.stage !== 'render') return [];
       return prog.slots.map((st, i) => (st === 'wait' || st === 'run'
         ? `<div class="card pending-card" aria-hidden="true"><div class="card-thumb"><div class="pending-ring"></div><span class="pending-label">${st === 'run' ? 'Rendering' : 'Queued'}</span><div class="pending-bar ${st}"><i></i></div></div><div class="card-title">${escapeHtml(prog.titles[i] || '')}</div><div class="card-meta"><span class="card-model-badge">generating…</span></div></div>`
-        : '')).join('');
+        : '')).filter(Boolean);
     }
-    function refreshPending() {
-      const grid = document.getElementById('grid');
-      if (showTrash || !grid.querySelectorAll) return;
-      grid.querySelectorAll('.pending-card').forEach(el => el.remove());
-      grid.insertAdjacentHTML && grid.insertAdjacentHTML('beforeend', pendingCards());
-    }
+    function refreshPending() { if (generating) renderGrid(); }          // only the placeholders change, so only they are touched
     // thumbnail size in Curate: S, M or L
     function setThumbSize(v) {
       if (!['S', 'M', 'L'].includes(v)) v = 'M';
