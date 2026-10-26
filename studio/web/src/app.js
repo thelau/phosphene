@@ -430,7 +430,7 @@
           </div>
         </div>`;
     }
-    function gridHintText() { return showTrash ? 'Trashed images stay restorable' : aiRunning ? 'Locked while the AI orders' : 'Drag to reorder'; }
+    function gridHintText() { return showTrash ? 'Trashed images stay restorable' : aiRunning ? 'Locked while the AI orders' : ''; }   // dragging needs no hint
     // the images still being made, at the end of the selection while a batch runs
     function pendingCards() {
       if (!generating || prog.stage !== 'render') return [];
