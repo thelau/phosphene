@@ -465,7 +465,7 @@
     }
 
     // ---- what is on screen when (mirrored in studio/cutplan.py; tests keep the two in step) ----
-    // A "cut" is one hold of framesPerCut frames. With invert on, every image takes two cuts: normal, then inverted.
+    // A "cut" is one hold of the picture. With invert on, every image takes two cuts: normal, then inverted.
     function planAt(cutPos, nPlates, invertMode, starts) {
       let cut = Math.floor(cutPos);
       let p = cutPos - cut;
@@ -505,19 +505,36 @@
       }
       return starts;
     }
-    // frames in one unit of the timeline: flat counts in base cuts (framesPerCut frames each), variable in frames
-    function cutFrames() { return rhythmMode() === 'variable' ? 1 : framesPerCut; }
-    let timelineCache = { key: '', starts: null };
-    function timelineFor(nPlates) {
-      const invert = document.getElementById('invertSelect').value;
-      const nCuts = nPlates * (invert === 'mono' || invert === 'colour' ? 2 : 1);
-      const v = rhythmMode() === 'variable' ? variableParams() : null;
-      const key = v ? `${nCuts}|${v.start_ms}|${v.end_ms}|${v.ramp}|${v.at}` : `${nCuts}|flat`;
-      if (timelineCache.key !== key) {
-        timelineCache = { key, starts: v ? variableStarts(nCuts, v.start_ms, v.end_ms, v.ramp, v.at) : Array.from({ length: nCuts + 1 }, (_, i) => i) };
+    // Two timelines, both in frames (30 per second). The BASE is what the music follows: the beat grid (Flat) or the variable run.
+    // The PICTURE cuts `multiple` times per base cut, and only the picture feels the multiple (mirrors cutplan.rhythm_timeline).
+    function subdivideStarts(base, multiple, nCuts) {
+      const m = Math.max(0.05, multiple), nBase = base.length - 1, out = [];
+      for (let k = 0; k <= nCuts; k++) {
+        const x = Math.min(k / m, nBase), i = Math.min(Math.floor(x), nBase - 1);
+        const v = nBase >= 1 ? base[i] + (base[i + 1] - base[i]) * (x - i) : 0;
+        out.push(out.length ? Math.max(v, out[out.length - 1] + 1) : v);
       }
-      return timelineCache.starts;
+      return out;
     }
+    let timelineCache = { key: '', value: null };
+    function rhythmFor(nPlates) {
+      const invert = document.getElementById('invertSelect').value;
+      const paired = invert === 'mono' || invert === 'colour';
+      const nCuts = nPlates * (paired ? 2 : 1);
+      const mult = parseFloat(document.getElementById('multSelect').value) || 1;
+      const bpm = parseInt(document.getElementById('bpmSlider').value, 10) || 120;
+      const v = rhythmMode() === 'variable' ? variableParams() : null;
+      const key = `${nCuts}|${mult}|${v ? `${v.start_ms}|${v.end_ms}|${v.ramp}|${v.at}` : `flat|${bpm}`}`;
+      if (timelineCache.key !== key) {
+        const nBase = Math.max(1, Math.ceil(nCuts / Math.max(0.05, mult) - 1e-9));
+        const base = v ? variableStarts(nBase, v.start_ms, v.end_ms, v.ramp, v.at) : Array.from({ length: nBase + 1 }, (_, i) => (i * 1800) / bpm);
+        const pic = subdivideStarts(base, mult, nCuts), end = pic[nCuts];
+        const audio = base.filter(f => f < end - 1e-6).concat([end]).map(f => f / 30);       // the music's cuts: the base cuts that fall inside the clip
+        timelineCache = { key, value: { pic, audio, end, landAt: pic[Math.max(0, nCuts - (paired ? 2 : 1))] / 30 } };
+      }
+      return timelineCache.value;
+    }
+    function timelineFor(nPlates) { return rhythmFor(nPlates).pic; }
 
     // ---- music: the synthesized drone (WebAudio, see drone.js) ----
     const MUSIC_HINT = 'A dark, wide drone around 54 Hz in a big room, as in Soiltone and Ecwora. It breathes with every cut.';
@@ -534,10 +551,11 @@
         arp: unit('arpRange'), arpSteps: parseInt(document.getElementById('arpStepsSelect').value, 10) || 0, arpRate: parseInt(document.getElementById('arpRateSelect').value, 10) || 0,
         dynamics: parseInt(document.getElementById('dynSelect').value, 10) || 0,
         subWave: parseInt(document.getElementById('subWaveSelect').value, 10) || 0, padWave: parseInt(document.getElementById('padWaveSelect').value, 10) || 0,
-        seed: parseInt(document.getElementById('seedVal').value, 10) || 7, paired
+        seed: parseInt(document.getElementById('seedVal').value, 10) || 7, paired,
+        landAt: activePlates().length ? rhythmFor(activePlates().length).landAt : undefined
       };
     }
-    function synthStartsSec() { return timelineFor(activePlates().length).map(x => (x * cutFrames()) / 30); }
+    function synthStartsSec() { return rhythmFor(activePlates().length).audio; }
     function setMusicState(kind, text) {
       const el = document.getElementById('musicState');
       el.hidden = !text;
@@ -554,7 +572,7 @@
       musicChanged();
     }
     // a random sound within what works: every setting is drawn from a range that stays a dark, heavy drone (the ranges are the taste)
-    const RANDOM_RANGES = { pulse: [30, 90], low: [65, 100], power: [30, 90], space: [5, 85], bright: [0, 55], width: [30, 100], pitch: [0, 100], movement: [15, 85], echo: [0, 55], wash: [0, 55], ring: [0, 45], shimmer: [0, 45], hit: [35, 85], arp: [25, 60] };
+    const RANDOM_RANGES = { pulse: [30, 90], low: [65, 100], power: [30, 90], space: [5, 85], bright: [0, 55], width: [30, 100], pitch: [0, 100], movement: [15, 85], echo: [0, 55], wash: [0, 55], ring: [0, 45], shimmer: [0, 45], hit: [30, 70], arp: [20, 45] };
     function randomMusic() {
       const pick = ([lo, hi]) => Math.round(lo + Math.random() * (hi - lo));
       for (const [k, range] of Object.entries(RANDOM_RANGES)) document.getElementById(`${k}Range`).value = String(pick(range));
@@ -583,7 +601,8 @@
     // the "Change over" slider can take at most every cut of the selection, so its range follows the images (and the invert pairs)
     function syncRampRange() {
       const invert = document.getElementById('invertSelect').value;
-      const nCuts = activePlates().length * (invert === 'mono' || invert === 'colour' ? 2 : 1);
+      const mult = parseFloat(document.getElementById('multSelect').value) || 1;
+      const nCuts = Math.max(1, Math.ceil((activePlates().length * (invert === 'mono' || invert === 'colour' ? 2 : 1)) / Math.max(0.05, mult) - 1e-9));    // base cuts: what the change runs over
       const el = document.getElementById('rampRange');
       el.max = String(Math.max(2, nCuts));
       if ((parseInt(el.value, 10) || 0) > Math.max(2, nCuts)) el.value = el.max;
@@ -597,12 +616,12 @@
       if (!n) { info.textContent = ''; return; }
       const starts = timelineFor(n);
       const cuts = starts.length - 1;
-      const sec = c => (c * cutFrames()) / 30;
+      const sec = c => c / 30;
       const lens = starts.slice(1).map((v, i) => sec(v - starts[i]));
       const f = v => (v < 1 ? `${Math.round(v * 1000)} ms` : `${v.toFixed(1)} s`);
       const lo = Math.min(...lens), hi = Math.max(...lens);
       const v = variableParams();
-      const whole = v.ramp >= cuts;
+      const whole = v.ramp >= Math.ceil(cuts / (parseFloat(document.getElementById('multSelect').value) || 1) - 1e-9);
       const pace = rhythmMode() === 'variable' ? (v.start_ms === v.end_ms ? f(lens[0]) : whole ? `${f(lens[0])} → ${f(lens[lens.length - 1])}` : v.at === 'start' ? `${f(lens[0])} → ${f(lens[lens.length - 1])} over the first ${v.ramp}` : `${f(lens[0])}, then ${f(lens[lens.length - 1])} over the last ${v.ramp}`) : hi > lo * 1.05 ? `${f(lo)} – ${f(hi)}` : f(lo);
       info.textContent = `${n} images · ${fmtDuration(sec(starts[cuts]))} · cuts ${pace}`;
     }
@@ -626,8 +645,7 @@
       if (!isPlaying) return;
       if (!musicOn()) { droneLive.stop(); return; }
       if (droneLive.playing) {
-        const cutMs = Math.max(16, (cutFrames() / 30) * 1000);
-        droneLive.update(synthParams(), synthStartsSec(), () => (cutPos * cutMs) / 1000);
+        droneLive.update(synthParams(), synthStartsSec(), () => cutPos / 30);
       } else startMusic();
     }
     function zoomScale(mode, amountPct, p) {
@@ -677,9 +695,8 @@
         const stageImg = document.getElementById('stageImg');
         if (!active.length || stageImg.style.display === 'none') return;
         if (musicPending) return;
-        const cutMs = Math.max(16, (cutFrames() / 30) * 1000);
-        if (musicOn() && droneLive.playing && !droneLive.holding) cutPos = (droneLive.pos() * 1000) / cutMs;           // the drone is the clock
-        else cutPos += dt / cutMs;
+        if (musicOn() && droneLive.playing && !droneLive.holding) cutPos = droneLive.pos() * 30;           // the drone is the clock (positions are in frames)
+        else cutPos += (dt * 30) / 1000;
         const fx = fxSettings();
         const tl = timelineFor(active.length);
         const plan = planAt(cutPos, active.length, fx.invert, tl);
@@ -737,6 +754,7 @@
       const variable = rhythmMode() === 'variable';
       document.getElementById('flatBox').hidden = variable;
       document.getElementById('varBox').hidden = !variable;
+      document.getElementById('speedVal').textContent = variable ? '' : `${framesPerCut.toFixed(1)}f`;
       const v = variableParams();
       document.getElementById('startMsVal').textContent = `${v.start_ms} ms`;
       document.getElementById('endMsVal').textContent = `${v.end_ms} ms`;
@@ -750,7 +768,7 @@
       const mult = parseFloat(document.getElementById('multSelect').value);
       framesPerCut = Math.max(1, (30 * 60) / (bpm * mult));
       document.getElementById('bpmVal').textContent = `${bpm} BPM`;
-      document.getElementById('speedVal').textContent = `${framesPerCut.toFixed(1)}f`;
+      document.getElementById('speedVal').textContent = rhythmMode() === 'variable' ? '' : `${framesPerCut.toFixed(1)}f`;
       restartLoop();
       musicChanged();
     }

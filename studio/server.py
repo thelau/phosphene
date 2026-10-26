@@ -1157,10 +1157,9 @@ class StudioHandler(SimpleHTTPRequestHandler):
                             except (TypeError, ValueError):
                                 return default
                         variable = (num("start_ms", 100.0, lo, hi), num("end_ms", 600.0, lo, hi), int(num("ramp", 12, *cutplan.VARIABLE_RAMP)), "start" if body.get("at") == "start" else "end")
-                        frames_per_cut = 1.0
-                        starts = cutplan.variable_timeline(len(active_files) * (2 if invert_mode in ("mono", "colour") else 1), *variable)
-                    else:
-                        starts = cutplan.timeline(len(active_files), invert_mode)
+                    n_picture = len(active_files) * (2 if invert_mode in ("mono", "colour") else 1)
+                    starts, _base = cutplan.rhythm_timeline(n_picture, bpm, multiple, variable)       # the picture's cuts: the multiple only affects these
+                    frames_per_cut = 1.0                                   # the timeline is in frames
                     n_cuts, total_frames = cutplan.export_length(len(active_files), frames_per_cut, invert_mode, starts)  # every selected image, once
                     write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount, starts)
 

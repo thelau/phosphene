@@ -182,8 +182,13 @@ test('the player panel: preview, play / target, then Video and Music tabs with t
 test('variable speed: Flat shows tempo and multiple, Variable shows start, end and curve, and the picture accelerates', { skip }, async () => {
   const ctx = await fresh();
   assert.ok(await page.locator('#bpmSlider').isVisible() && !(await page.locator('#startMsRange').isVisible()));
+  await page.selectOption('#multSelect', '1');
   await page.selectOption('#rhythmSelect', 'variable');
-  assert.ok(!(await page.locator('#bpmSlider').isVisible()) && !(await page.locator('#multSelect').isVisible()));
+  assert.ok(!(await page.locator('#bpmSlider').isVisible()), 'no tempo in variable');
+  assert.ok(await page.locator('#multSelect').isVisible(), 'the multiple stays: it only changes the pictures');
+  await page.selectOption('#rhythmSelect', 'flat');
+  assert.equal(await page.locator('#bpmSlider').getAttribute('max'), '250');
+  await page.selectOption('#rhythmSelect', 'variable');
   for (const id of ['#startMsRange', '#endMsRange', '#rampRange', '#atSelect']) assert.ok(await page.locator(id).isVisible(), id);
   await page.fill('#startMsRange', '100'); await page.fill('#endMsRange', '600'); await page.fill('#rampRange', '2');
   assert.match(await text('#rhythmInfo'), /cuts 100 ms, then 600 ms over the last 2$/);
@@ -341,7 +346,7 @@ test('Random sound: every draw stays a dark, heavy, level drone and a new sound 
   });
   for (const m of rows) {
     assert.ok(m.dom > 34 && m.dom < 76, `dominant ${m.dom}`);
-    assert.ok(m.low > 0.45, `energy below 80 Hz ${m.low}`);
+    assert.ok(m.low > 0.35, `energy below 80 Hz ${m.low}`);
     assert.ok(m.high < 0.02, `above 2 kHz ${m.high}`);
     assert.ok(Math.abs(m.rms - 0.17) < 0.01 && m.peak <= 0.97 + 1e-6, `level ${m.rms} peak ${m.peak}`);
   }

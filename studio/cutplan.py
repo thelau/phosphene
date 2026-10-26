@@ -46,6 +46,35 @@ def variable_timeline(n_cuts: int, start_ms: float, end_ms: float, ramp: int = 1
     return starts
 
 
+def flat_base(n_base: int, bpm: float) -> list[float]:
+    """The beat grid in frames: one base cut per beat."""
+    beat = 60.0 * FPS / max(1.0, float(bpm))
+    return [i * beat for i in range(n_base + 1)]
+
+
+def subdivide(base: list[float], multiple: float, n_cuts: int) -> list[float]:
+    """The picture's cut starts (frames) from a base timeline (a beat grid, or a variable run): `multiple` cuts per base cut (0.5 = one
+    cut every two base cuts), each at position k / multiple along the base cuts, linear inside one. A cut is never shorter than a frame."""
+    m = max(0.05, float(multiple))
+    n_base = len(base) - 1
+    out = []
+    for k in range(n_cuts + 1):
+        x = min(k / m, float(n_base))
+        i = min(int(x), n_base - 1)
+        v = base[i] + (base[i + 1] - base[i]) * (x - i) if n_base >= 1 else 0.0
+        out.append(v if not out else max(v, out[-1] + 1.0))
+    return out
+
+
+def rhythm_timeline(n_cuts: int, bpm: float, multiple: float, variable: tuple | None = None) -> tuple[list[float], list[float]]:
+    """(picture cut starts, base starts) in frames for n_cuts picture cuts. The base is what the music follows: the beat grid at `bpm`, or
+    the variable run (start_ms, end_ms, ramp, at); the picture cuts at `multiple` per base cut, and only the picture feels the multiple."""
+    m = max(0.05, float(multiple))
+    n_base = max(1, math.ceil(n_cuts / m - 1e-9))
+    base = variable_timeline(n_base, *variable) if variable else flat_base(n_base, bpm)
+    return subdivide(base, m, n_cuts), base
+
+
 def cut_at(starts: list[float], t: float) -> tuple[int, float]:
     """(cut index, progress 0..1 inside it) at position t; t wraps around the sequence."""
     total = starts[-1]

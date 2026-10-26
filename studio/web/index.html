@@ -132,24 +132,8 @@
           <div id="flatBox">
           <div class="control-line">
             <span>Tempo</span>
-            <input type="range" id="bpmSlider" min="60" max="220" value="136" oninput="updateTempo()" />
+            <input type="range" id="bpmSlider" min="60" max="250" value="136" oninput="updateTempo()" />
             <span id="bpmVal">136 BPM</span>
-          </div>
-          <div class="control-line">
-            <span>Multiple</span>
-            <select id="multSelect" onchange="updateTempo()" style="flex:1">
-              <option value="0.25">×¼ (1 cut / 4 beats)</option>
-              <option value="0.5">×½ (1 cut / 2 beats)</option>
-              <option value="1">×1 (1 cut / beat)</option>
-              <option value="1.3333333">×1⅓ (1 cut / ¾ beat)</option>
-              <option value="2">×2 (2 cuts / beat)</option>
-              <option value="3">×3 (triplets, 3 cuts / beat)</option>
-              <option value="4" selected>×4 (4 cuts / beat)</option>
-              <option value="6">×6 (6 cuts / beat)</option>
-              <option value="8">×8 (8 cuts / beat)</option>
-              <option value="9">×9 (9 cuts / beat)</option>
-            </select>
-            <span id="speedVal">~4f</span>
           </div>
           </div>
           <div id="varBox" hidden>
@@ -175,6 +159,22 @@
                 <option value="start">The start · a build-up</option>
               </select>
             </div>
+          </div>
+          <div class="control-line">
+            <span>Multiple</span>
+            <select id="multSelect" onchange="updateTempo()" style="flex:1" title="How many picture cuts per beat (or per cut of the variable run). It only changes the pictures: the music stays on the beat.">
+              <option value="0.25">×¼ (1 cut / 4 beats)</option>
+              <option value="0.5">×½ (1 cut / 2 beats)</option>
+              <option value="1">×1 (1 cut / beat)</option>
+              <option value="1.3333333">×1⅓ (1 cut / ¾ beat)</option>
+              <option value="2">×2 (2 cuts / beat)</option>
+              <option value="3">×3 (triplets, 3 cuts / beat)</option>
+              <option value="4" selected>×4 (4 cuts / beat)</option>
+              <option value="6">×6 (6 cuts / beat)</option>
+              <option value="8">×8 (8 cuts / beat)</option>
+              <option value="9">×9 (9 cuts / beat)</option>
+            </select>
+            <span id="speedVal">~4f</span>
           </div>
           <div class="rhythm-info" id="rhythmInfo"></div>
           <div class="control-line">

@@ -233,3 +233,31 @@ def test_variable_speed_never_goes_below_a_frame_or_outside_its_limits():
     t = lengths(cutplan.variable_timeline(4, 1, 99999, 4))
     assert min(t) >= 1.0 and t[-1] == pytest.approx(45.0)                  # 50 ms .. 1500 ms at 30 fps
     assert cutplan.variable_timeline(5, 100, 600, 1) == cutplan.variable_timeline(5, 100, 600, 2)     # at least 2 cuts of change
+
+
+def test_the_multiple_only_changes_the_picture_cuts_not_the_base_the_music_follows():
+    pic, base = cutplan.rhythm_timeline(8, 120, 4)                          # 120 BPM = a beat every 15 frames; 4 picture cuts per beat
+    assert base == pytest.approx([0.0, 15.0, 30.0])                          # the music grid: two beats cover 8 cuts
+    assert lengths(pic) == pytest.approx([3.75] * 8)
+    pic1, base1 = cutplan.rhythm_timeline(8, 120, 1)
+    assert lengths(pic1) == pytest.approx([15.0] * 8) and len(base1) == 9
+    assert base1[:3] == pytest.approx(base)                                  # the beat grid is the same whatever the multiple
+    slow, _ = cutplan.rhythm_timeline(3, 120, 0.5)                           # one cut every two beats
+    assert lengths(slow) == pytest.approx([30.0] * 3)
+
+
+def test_flat_pictures_match_the_old_frames_per_cut():
+    pic, _ = cutplan.rhythm_timeline(10, 120, 2)
+    assert lengths(pic) == pytest.approx([7.5] * 10)                          # 1800 / (120 * 2)
+    pic, _ = cutplan.rhythm_timeline(5, 250, 9)                                 # never below one frame
+    assert min(lengths(pic)) >= 1.0
+
+
+def test_variable_speed_with_a_multiple_subdivides_each_base_cut():
+    var = (300.0, 300.0, 12, "end")                                           # flat 300 ms = 9 frames per base cut
+    pic, base = cutplan.rhythm_timeline(6, 0, 3, var)
+    assert lengths(base) == pytest.approx([9.0, 9.0]) and lengths(pic) == pytest.approx([3.0] * 6)
+    accel, base = cutplan.rhythm_timeline(12, 0, 2, (500.0, 100.0, 12, "end"))
+    bl = lengths(base)
+    assert len(bl) == 6 and bl[0] > bl[-1]                                    # the base speeds up, and the picture cuts follow it at twice the rate
+    assert accel[-1] == pytest.approx(base[6]) and lengths(accel)[0] == pytest.approx(bl[0] / 2, rel=0.01)

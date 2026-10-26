@@ -41,12 +41,29 @@
     return c;
   }
 
-  function noiseLoop(ctx, rand, seconds, shape) {
-    const n = Math.floor(seconds * ctx.sampleRate), x = new Float32Array(n);
-    for (let i = 0; i < n; i++) x[i] = gauss(rand);
-    shape(x, ctx.sampleRate);
+  function makeRoom(ctx, seedN, i, roomSeconds) {
+    const conv = ctx.createConvolver(); conv.normalize = false;
+    conv.buffer = cached(ctx, `room|${seedN}|${i}|${roomSeconds}`, () => roomBuffer(ctx, mulberry32(seedN + 7919 * (i + 1)), roomSeconds));
+    return conv;
+  }
+
+  // Buffers that take a while to make (seconds of noise, the room) are made once per context and seed, not at every rebuild of the sound.
+  const bufferCache = new WeakMap();
+  function cached(ctx, key, make) {
+    let m = bufferCache.get(ctx); if (!m) bufferCache.set(ctx, m = new Map());
+    if (!m.has(key)) { m.set(key, make()); if (m.size > 60) m.delete(m.keys().next().value); }
+    return m.get(key);
+  }
+  function noiseLoop(ctx, seed, name, seconds, shape) {
+    const buf = cached(ctx, `noise|${name}|${seed}|${seconds}`, () => {
+      const rand = mulberry32((seed * 2654435761 + name.length * 97 + name.charCodeAt(0)) >>> 0);
+      const n = Math.floor(seconds * ctx.sampleRate), x = new Float32Array(n);
+      for (let i = 0; i < n; i++) x[i] = gauss(rand);
+      shape(x, ctx.sampleRate);
+      return bufferOf(ctx, normalise(x));
+    });
     const src = ctx.createBufferSource();
-    src.buffer = bufferOf(ctx, normalise(x));
+    src.buffer = buf;
     src.loop = true;
     return src;
   }
@@ -110,13 +127,14 @@
   // landing (the sub gives way on the last image), seed.
   function build(ctx, dest, p, starts, opts = {}) {
     const pulse = clamp01(p.pulse), low = clamp01(p.low), bright = clamp01(p.bright), width = clamp01(p.width), space = clamp01(p.space), power = clamp01(p.power);
-    const rand = mulberry32(Number.isFinite(+p.seed) ? +p.seed : 7);
+    const seedN = (Number.isFinite(+p.seed) ? +p.seed : 7) >>> 0;
+    const rand = mulberry32(seedN);
     const total = opts.total || starts[starts.length - 1];
     const offset = opts.offset || 0;
     const t0 = opts.t0 !== undefined ? opts.t0 : ctx.currentTime - offset;
     const at = s => t0 + s;                                               // clip second -> context time
     const nCuts = starts.length - 1;
-    const land = opts.landing === false ? Infinity : starts[Math.max(0, nCuts - (p.paired ? 2 : 1))];
+    const land = opts.landing === false ? Infinity : (Number.isFinite(+p.landAt) ? +p.landAt : starts[Math.max(0, nCuts - (p.paired ? 2 : 1))]);   // where the last image begins
     const f0 = Number.isFinite(+p.pitch) && p.pitch !== null && p.pitch !== undefined ? rootHz(clamp01(p.pitch)) : 51 + 6 * rand();
     const chord = CHORDS[Math.max(0, Math.min(CHORDS.length - 1, Math.round(+p.chord || 0)))];
     const echo = clamp01(p.echo === undefined ? 0 : p.echo);
@@ -129,11 +147,12 @@
     const padWave = Math.max(0, Math.min(PAD_WAVES.length - 1, Math.round(+p.padWave || 0)));
     const move = Math.pow(2, 2 * (clamp01(p.movement === undefined ? 0.5 : p.movement) - 0.5));   // 0.5 = as measured; 1 = twice as fast
     const nodes = [];                                                      // everything that must be stopped
+    const links = [];                                                      // connections to unplug when this sound is retired (a shared room outlives it)
     const keep = n => { nodes.push(n); return n; };
     const gain = (v, to) => { const g = ctx.createGain(); g.gain.value = v; if (to) g.connect(to); return g; };
     const osc = (type, freq, to) => { const o = keep(ctx.createOscillator()); o.type = type; o.frequency.value = freq; if (to) o.connect(to); return o; };
     const lfo = (rate, depth, param) => { const o = osc('sine', rate); const g = gain(depth, param); o.connect(g); return o; };
-    const shaper = (curve, to) => { const s = ctx.createWaveShaper(); s.curve = curve; s.oversample = '2x'; if (to) s.connect(to); return s; };
+    const shaper = (curve, to) => { const s = ctx.createWaveShaper(); s.curve = curve; if (to) s.connect(to); return s; };
     const lowpass = (fc, to) => { const a = ctx.createBiquadFilter(); a.type = 'lowpass'; a.frequency.value = fc; a.Q.value = 0.707; const b = ctx.createBiquadFilter(); b.type = 'lowpass'; b.frequency.value = fc; b.Q.value = 0.707; a.connect(b); if (to) b.connect(to); return [a, b]; };
 
     // automation helpers; each skips what is already in the past when playing from an offset
@@ -144,17 +163,25 @@
       param.setValueCurveAtTime(c, at(from), span);
     };
     const landed = t => smooth((t - land) / 1.2);                           // 0 -> 1 over the last hold
+    // Everything that happens at a cut is scheduled just ahead of the sound (advance), not for the whole clip at once: a long, fast clip
+    // would otherwise put thousands of events and nodes in the graph before the first note plays.
+    const perCut = [];                                                       // (cut index, context time) handlers, run in order
+    let cursor = 0;
+    { const c = cutAtTime(starts, offset); cursor = starts[c] >= offset - 0.001 ? c : c + 1; }
+    const advance = to => {
+      while (cursor < nCuts && starts[cursor] <= to) { const i = cursor++; for (const h of perCut) h(i, at(starts[i])); }
+    };
     const pump = (param, depth, decay) => {                                // dips and comes back on every cut
       const c = cutAtTime(starts, offset), tau = offset - starts[c];
       param.setValueAtTime(1 - depth * (1 - Math.exp(-tau / decay)), at(offset));
       param.setTargetAtTime(1 - depth, at(offset), decay);
-      for (let i = c + 1; i < nCuts; i++) { param.setValueAtTime(1, at(starts[i])); param.setTargetAtTime(1 - depth, at(starts[i]), decay); }
+      perCut.push((i, t) => { param.setValueAtTime(1, t); param.setTargetAtTime(1 - depth, t, decay); });
     };
     const tickEnv = (param, decay) => {                                    // a short click at every cut
       const c = cutAtTime(starts, offset), tau = offset - starts[c];
       param.setValueAtTime(Math.exp(-tau / decay), at(offset));
       param.setTargetAtTime(0, at(offset), decay);
-      for (let i = c + 1; i < nCuts; i++) { param.setValueAtTime(1, at(starts[i])); param.setTargetAtTime(0, at(starts[i]), decay); }
+      perCut.push((i, t) => { param.setValueAtTime(1, t); param.setTargetAtTime(0, t, decay); });
     };
 
     // ---- the sub: shared by both sides ----
@@ -177,7 +204,7 @@
       const pg = gain(1); pump(pg.gain, 0.25 * pulse, 0.15);
       const lg = gain(1); sampled(lg.gain, t => 1 - 0.6 * landed(t));
       sat.connect(pg); pg.connect(lg); lg.connect(subBus);
-      const rumble = noiseLoop(ctx, rand, 4, (x, r) => onePole(x, 110, r, 2));
+      const rumble = noiseLoop(ctx, seedN, 'rumble', 4, (x, r) => onePole(x, 110, r, 2));
       keep(rumble);
       rumble.connect(gain(0.10 * low, subBus));
     }
@@ -185,7 +212,7 @@
     // ---- shared sources for the mid body ----
     const ratios = chord.ratios, lfoGains = [0.2, 0.8, 1.0, 0.6];
     const sides = [];
-    const air = noiseLoop(ctx, rand, 4, (x, r) => { onePole(x, 1400, r, 2); const lowpassed = x.slice(); onePole(lowpassed, 250, r, 2); for (let i = 0; i < x.length; i++) x[i] -= lowpassed[i]; });
+    const air = noiseLoop(ctx, seedN, 'air', 4, (x, r) => { onePole(x, 1400, r, 2); const lowpassed = x.slice(); onePole(lowpassed, 250, r, 2); for (let i = 0; i < x.length; i++) x[i] -= lowpassed[i]; });
     keep(air);
     const lfoRates = ratios.map(() => (0.15 + 0.55 * rand()) * move);
     const driftPhase = TAU * rand();
@@ -228,7 +255,7 @@
       air.connect(gain(0.05 * bright, body));
       // texture layers (all off by default)
       if (wash > 0.01) {                                                   // a slow wash of filtered noise, its centre drifting
-        const w = noiseLoop(ctx, rand, 4, (x, r) => onePole(x, 2500, r, 1)); keep(w);
+        const w = noiseLoop(ctx, seedN, 'wash' + side, 4, (x, r) => onePole(x, 2500, r, 1)); keep(w);
         const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 550; bp.Q.value = 0.9;
         lfo((0.04 + 0.05 * rand()) * move, 380, bp.frequency);
         w.connect(bp); bp.connect(gain(1.1 * wash, body));
@@ -261,13 +288,16 @@
     }
 
     // ---- the room: the send skips the sub ----
-    const seconds = 2.4 + 3.6 * space, wet = 0.05 + 0.5 * space;
+    const roomSeconds = Math.round((2.4 + 3.6 * space) * 2) / 2, wet = 0.05 + 0.5 * space;    // the room's length in half-second steps, so it can be reused while a slider moves
     const mix = [gain(1), gain(1)];
     sides.forEach((br, i) => {
       br.connect(mix[i]);
       const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 140; hp.Q.value = 0.707;
-      const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = roomBuffer(ctx, rand, seconds);
-      br.connect(hp); hp.connect(conv); conv.connect(gain(wet, mix[i]));
+      // the room is a convolver, and loading its impulse response is the costliest step of a rebuild: the live preview passes in a shared one
+      const conv = opts.room ? opts.room(i, seedN, roomSeconds) : makeRoom(ctx, seedN, i, roomSeconds);
+      const wetG = gain(wet, mix[i]);
+      br.connect(hp); hp.connect(conv); conv.connect(wetG);
+      links.push([hp, conv], [conv, wetG]);
       if (echo > 0.01) {                                                   // a dark feedback echo, a different time each side
         const avg = total / Math.max(1, nCuts);
         const dl = ctx.createDelay(2); dl.delayTime.value = Math.min(0.75, Math.max(0.18, avg * 3)) * (i ? 1.33 : 1);
@@ -276,37 +306,42 @@
         br.connect(hp2); hp2.connect(dl); dl.connect(dark); dark.connect(fb); fb.connect(dl); dark.connect(gain(0.7 * echo, mix[i]));
       }
     });
-    // ---- hits: a percussive impact on some of the cuts ----
+    // ---- hits: a percussive impact on some of the cuts. Fixed voices (made once), retriggered by automation: no node per hit ----
     const hitBus = gain(1);
     sides.forEach(br => hitBus.connect(gain(0.9, br)));
     const accents = Array.from({ length: 8 }, () => rand() < 0.4);       // an irregular pattern for "accents"
     accents[0] = true;
+    // an envelope on a gain: a fast rise to peak, then an exponential fall (setTarget is open-ended, so the next hit simply takes over)
+    const strike = (g, t, peak, decay) => { g.gain.setTargetAtTime(peak, t, 0.0015); g.gain.setTargetAtTime(0, t + 0.012, decay / 3); };
+    const voiceOsc = (type, to) => { const o = osc(type, 100); const g = gain(0, to); o.connect(g); return [o, g]; };
+    const voiceNoise = (secs, filterType, fc, q, to) => {
+      const n = ctx.createBufferSource(); n.buffer = knockNoise(ctx, secs); n.loop = true; keep(n);
+      const f = ctx.createBiquadFilter(); f.type = filterType; f.frequency.value = fc; f.Q.value = q;
+      const g = gain(0, to); n.connect(f); f.connect(g); return g;
+    };
     if (hitType > 0 && hitAmt > 0.01) {
-      for (let i = 0; i < nCuts; i++) {
-        const on = hitOn === 0 ? true : hitOn === 1 ? i % 2 === 0 : hitOn === 2 ? i % 4 === 0 : accents[i % 8];
-        if (!on || starts[i] < offset - 0.001) continue;
-        const t = at(starts[i]), a = hitAmt, env = (g, peak, decay, delay = 0) => {
-          g.gain.setValueAtTime(0, t + delay); g.gain.linearRampToValueAtTime(peak, t + delay + 0.004); g.gain.setTargetAtTime(0, t + delay + 0.004, decay / 3);
-        };
-        const tone = (type, f1, f2, drop, peak, decay, to) => {
-          const o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + drop);
-          const g = ctx.createGain(); env(g, peak, decay); o.connect(g); g.connect(to); o.start(t); o.stop(t + decay * 1.6 + 0.05);
-        };
-        if (hitType === 1) tone('sine', f0 * 3.2, f0, 0.11, 1.1 * a, 0.32, hitBus);                       // thud: a sub that drops onto the root
-        else if (hitType === 2) {                                                                        // knock: a short low tone and a dull click
-          tone('triangle', f0 * 5, f0 * 2.2, 0.05, 0.75 * a, 0.14, hitBus);
-          const n = ctx.createBufferSource(); n.buffer = knockNoise(ctx); const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700;
-          const g = ctx.createGain(); env(g, 0.5 * a, 0.04); n.connect(lp); lp.connect(g); g.connect(hitBus); n.start(t); n.stop(t + 0.12);
-        } else if (hitType === 3) {                                                                      // metal: inharmonic partials ringing out
-          [[1, 1, 0.42], [2.76, 0.6, 0.26], [5.4, 0.35, 0.16]].forEach(([r, g0, d]) => tone('sine', f0 * 5 * r, f0 * 5 * r, 0.01, 0.4 * a * g0, d, hitBus));
-        } else {                                                                                         // noise burst: a dark, short snare
-          const n = ctx.createBufferSource(); n.buffer = knockNoise(ctx, 0.3); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 420; bp.Q.value = 0.8;
-          const g = ctx.createGain(); env(g, 1.3 * a, 0.16); n.connect(bp); bp.connect(g); g.connect(hitBus); n.start(t); n.stop(t + 0.35);
-        }
+      const a = hitAmt;
+      let fire;
+      if (hitType === 1) {                                                // thud: a sub that drops onto the root
+        const [o, g] = voiceOsc('sine', hitBus);
+        fire = t => { o.frequency.setValueAtTime(f0 * 3.2, t); o.frequency.setTargetAtTime(f0, t, 0.035); strike(g, t, 1.1 * a, 0.32); };
+      } else if (hitType === 2) {                                         // knock: a short low tone and a dull click
+        const [o, g] = voiceOsc('triangle', hitBus), click = voiceNoise(0.5, 'lowpass', 700, 0.7, hitBus);
+        fire = t => { o.frequency.setValueAtTime(f0 * 5, t); o.frequency.setTargetAtTime(f0 * 2.2, t, 0.02); strike(g, t, 0.75 * a, 0.14); strike(click, t, 0.5 * a, 0.04); };
+      } else if (hitType === 3) {                                         // metal: inharmonic partials ringing out
+        const parts = [[1, 1, 0.42], [2.76, 0.6, 0.26], [5.4, 0.35, 0.16]].map(([r, g0, d]) => { const [o, g] = voiceOsc('sine', hitBus); o.frequency.value = f0 * 5 * r; return [g, 0.4 * g0, d]; });
+        fire = t => { for (const [g, peak, d] of parts) strike(g, t, peak * a, d); };
+      } else {                                                            // noise burst: a dark, short snare
+        const g = voiceNoise(1, 'bandpass', 420, 0.8, hitBus);
+        fire = t => strike(g, t, 1.3 * a, 0.16);
       }
+      perCut.push((i, t) => {
+        const on = hitOn === 0 ? true : hitOn === 1 ? i % 2 === 0 : hitOn === 2 ? i % 4 === 0 : accents[i % 8];
+        if (on) fire(t);
+      });
     }
 
-    // ---- arpeggio: a short pattern of plucked notes that repeats, one step per beat of the cuts ----
+    // ---- arpeggio: a short pattern of plucked notes that repeats, stepping with the cuts. One voice (two detuned saws), its pitch automated ----
     if (arpAmt > 0.01) {
       const degrees = [];                                                // the notes it may use: the chord's tones over two octaves, kept dark
       for (const r of chord.ratios) for (const oct of [0.5, 1]) { const f = f0 * r * oct; if (f > 100 && f < 700) degrees.push(f); }
@@ -316,24 +351,25 @@
       for (let k = 0; k < arpSteps; k++) { pattern.push(degrees[cur]); cur = Math.max(0, Math.min(degrees.length - 1, cur + [-2, -1, 1, 2, 3][Math.floor(rand() * 5)])); }
       const arpBus = [gain(1), gain(1)];
       arpBus.forEach((b, i) => b.connect(sides[i]));
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 2; lp.frequency.value = 1900;
+      const env = gain(0);
+      const voices = [-0.004, 0.004].map(det => { const o = osc('sawtooth', 200); o.connect(lp); return [o, det]; });
+      lp.connect(env);
+      env.connect(gain(0.6, arpBus[0])); env.connect(gain(0.6, arpBus[1]));
       const per = ARP_PER_CUT[arpRate];
-      let step = 0;
-      for (let i = 0; i < nCuts; i++) {
-        const n = per < 1 ? (i % 2 === 0 ? 1 : 0) : per, len = starts[i + 1] - starts[i];
+      const stepsIn = n => (per < 1 ? Math.ceil(n / 2) : n * per);       // steps played in the first n cuts: keeps the pattern in phase when playing from an offset
+      let step = stepsIn(cursor);
+      perCut.push((i, tc) => {
+        const len = starts[i + 1] - starts[i];
+        const n = per < 1 ? (i % 2 === 0 ? 1 : 0) : per;
         for (let k = 0; k < n; k++, step++) {
-          const ts = starts[i] + (per < 1 ? 0 : (len * k) / n);
-          if (ts < offset - 0.001) continue;
-          const stepLen = per < 1 ? len * 2 : len / n, decay = Math.min(0.5, Math.max(0.07, stepLen * 0.9)), t = at(ts), f = pattern[step % arpSteps];
-          const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 2;
-          lp.frequency.setValueAtTime(1900, t); lp.frequency.exponentialRampToValueAtTime(420, t + decay);
-          const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(2.2 * arpAmt, t + 0.004); g.gain.setTargetAtTime(0, t + 0.004, decay / 3);
-          lp.connect(g);
-          for (const det of [-0.004, 0.004]) {                           // two detuned saws
-            const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f * (1 + det); o.connect(lp); o.start(t); o.stop(t + decay * 1.6 + 0.05);
-          }
-          g.connect(gain(0.85, arpBus[step % 2])); g.connect(gain(0.35, arpBus[(step + 1) % 2]));   // the note sits to one side, alternating
+          const t = tc + (per < 1 ? 0 : (len * k) / n);
+          const stepLen = per < 1 ? len * 2 : len / n, decay = Math.min(0.5, Math.max(0.05, stepLen * 0.9)), f = pattern[step % arpSteps];
+          for (const [o, det] of voices) o.frequency.setValueAtTime(f * (1 + det), t);
+          lp.frequency.setValueAtTime(1900, t); lp.frequency.setTargetAtTime(420, t + 0.003, decay / 3);
+          strike(env, t, 2.2 * arpAmt, decay);
         }
-      }
+      });
     }
 
     // stereo width: mid/side
@@ -358,7 +394,8 @@
     if (opts.tap === 'sub') subBus.connect(dest); else if (opts.tap === 'dry') { mix[0].connect(dest); } else dyn.connect(dest);
 
     for (const n of nodes) n.start();
-    return { stop: when => { for (const n of nodes) { try { n.stop(when); } catch (e) {} } } };
+    if (opts.live) advance(offset + (opts.lookahead || 0.8)); else advance(Infinity);     // live: the rest is scheduled as the sound plays (Live.tick)
+    return { advance, stop: when => { for (const n of nodes) { try { n.stop(when); } catch (e) {} } }, dispose: () => { for (const [a, b] of links) { try { a.disconnect(b); } catch (e) {} } } };
   }
 
   function rmsOf(buf) {
@@ -369,8 +406,9 @@
 
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
+  const levelKey = p => JSON.stringify([p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate]);
   async function level(p, starts) {
-    const key = JSON.stringify([p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate]);
+    const key = levelKey(p);
     if (levelCache.has(key)) return levelCache.get(key);
     const rate = 22050, secs = Math.min(4, starts[starts.length - 1]);
     const trimmed = starts.filter(s => s < secs); trimmed.push(secs);
@@ -417,8 +455,10 @@
   }
 
   // The live preview: plays the drone from an offset, is the player's clock, and swaps in new settings in ~40 ms with a crossfade.
+  // Cheap by design: notes and hits are scheduled a short way ahead (not for the whole clip), settings changes are coalesced into one swap
+  // every ~120 ms however fast a slider moves, and the exact loudness is worked out in the background (the old level carries on meanwhile).
   class Live {
-    constructor() { this.ctx = null; this.inst = null; this.params = null; this.starts = null; this.t0 = 0; this.total = 0; this.timer = null; this.playing = false; this.holding = 0; this.cal = 1; }
+    constructor() { this.ctx = null; this.inst = null; this.params = null; this.starts = null; this.t0 = 0; this.total = 0; this.timer = null; this.playing = false; this.holding = 0; this.cal = 1; this.pending = null; this.swapAt = 0; this.calTimer = null; this.ticker = null; this.rooms = new Map(); }
     get playingNow() { return this.playing; }
     pos() { return this.playing && !this.holding ? (((this.ctx.currentTime - this.t0) % this.total) + this.total) % this.total : 0; }
     _context() {
@@ -436,9 +476,16 @@
       glue.curve = c;
       const pre = ctx.createGain(); pre.gain.value = 0.5;                  // the shaper sees -2..2
       level.connect(pre); pre.connect(glue); glue.connect(out); out.connect(ctx.destination);
-      const graph = build(ctx, level, this.params, this.starts, { offset, t0: now - offset });
+      const room = (i, seedN, seconds) => {                                 // one room per setting, kept between swaps: its tail carries on through them
+        const key = `${seedN}|${i}|${seconds}`;
+        if (!this.rooms.has(key)) { this.rooms.set(key, makeRoom(ctx, seedN, i, seconds)); if (this.rooms.size > 8) this.rooms.delete(this.rooms.keys().next().value); }
+        return this.rooms.get(key);
+      };
+      const graph = build(ctx, level, this.params, this.starts, { offset, t0: now - offset, live: true, room });
       this.t0 = now - offset;
       this.inst = { graph, out, level };
+      clearInterval(this.ticker);                                           // keep scheduling the next ~0.8 s of cuts, hits and notes
+      this.ticker = setInterval(() => { if (this.inst && this.inst.graph === graph) graph.advance(ctx.currentTime - this.t0 + 0.8); }, 90);
       const loopIn = (this.total - offset) * 1000;
       clearTimeout(this.timer);
       this.timer = setTimeout(() => { if (this.playing) this._swap(Math.max(0, this.ctx.currentTime - (this.t0 + this.total))); }, Math.max(0, loopIn));
@@ -450,9 +497,9 @@
       inst.out.gain.setValueAtTime(inst.out.gain.value, now);
       inst.out.gain.linearRampToValueAtTime(0, now + 0.04);
       inst.graph.stop(now + 0.06);
-      setTimeout(() => { try { inst.out.disconnect(); } catch (e) {} }, 400);
+      setTimeout(() => { try { inst.out.disconnect(); } catch (e) {} inst.graph.dispose(); }, 250);
     }
-    _swap(offset) { const old = this.inst; this._spawn(offset); this._retire(old); }
+    _swap(offset) { const old = this.inst; this._spawn(offset); this._retire(old); this.swapAt = performance.now(); }
     async play(params, starts, offset = 0) {
       const ctx = this._context();
       if (ctx.state !== 'running') { try { await ctx.resume(); } catch (e) {} }
@@ -462,21 +509,45 @@
       if (this.inst) this._retire(this.inst);
       this._spawn(offset % this.total);
     }
-    // new settings or a new timeline: carry on from where the picture is (getOffset gives seconds on the new timeline, asked when the swap happens)
-    async update(params, starts, getOffset) {
-      if (!this.playing) return;
+    // new settings or a new timeline: carry on from where the picture is (getOffset gives seconds on the new timeline, asked when the swap happens).
+    // Calls that arrive while one is waiting are merged, and swaps are at least ~120 ms apart, so dragging a slider does not rebuild the sound 60 times a second.
+    update(params, starts, getOffset) {
+      if (!this.playing) return Promise.resolve();
       this.params = params; this.starts = starts; this.total = starts[starts.length - 1];
-      this.holding++;                                                       // until the swap the old sound's position means nothing on the new timeline
-      try {
-        const cal = await level(params, starts);
-        if (!this.playing) return;
-        this.cal = cal;
-        this._swap(Math.max(0, Math.min(getOffset(), this.total - 0.01)));
-      } finally { this.holding--; }
+      this.holding = Math.max(this.holding, 1);                            // until the swap the old sound's position means nothing on the new timeline
+      if (this.pending) { this.pending.getOffset = getOffset; return this.pending.promise; }
+      const wait = Math.max(0, 120 - (performance.now() - this.swapAt));
+      const job = { getOffset };
+      job.promise = new Promise(resolve => {
+        setTimeout(() => {
+          this.pending = null;
+          this.holding = 0;
+          if (this.playing) {
+            if (levelCache.has(levelKey(this.params))) this.cal = levelCache.get(levelKey(this.params));
+            this._swap(Math.max(0, Math.min(job.getOffset(), this.total - 0.01)));
+            this._recalibrate();
+          }
+          resolve();
+        }, wait);
+      });
+      this.pending = job;
+      return job.promise;
+    }
+    // the exact level for the current settings, worked out off the swap path; the running sound eases to it
+    _recalibrate() {
+      clearTimeout(this.calTimer);
+      this.calTimer = setTimeout(async () => {
+        if (!this.playing || !this.inst) return;
+        const p = this.params, st = this.starts, g = await level(p, st);
+        if (!this.playing || !this.inst || p !== this.params) return;
+        this.cal = g;
+        this.inst.level.gain.setTargetAtTime(g, this.ctx.currentTime, 0.15);
+      }, 350);
     }
     stop() {
       this.playing = false;
-      clearTimeout(this.timer);
+      this.pending = null; this.holding = 0;
+      clearTimeout(this.timer); clearTimeout(this.calTimer); clearInterval(this.ticker);
       if (this.inst) { this._retire(this.inst); this.inst = null; }
     }
   }

@@ -523,3 +523,11 @@ def test_export_with_variable_speed_runs_the_cuts_from_entry_to_exit(live, srv):
     assert status == 200 and "120bpm" in flat["filename"]
     status, odd = live("POST", "/api/export-video", {"rhythm": "variable", "start_ms": "x", "end_ms": 99999, "ramp": 5000})      # nonsense is clamped
     assert status == 200 and "var100to1500ms" in odd["filename"]
+
+
+def test_export_multiple_cuts_the_pictures_faster_in_both_speed_modes(live, srv):
+    _three_plates(live)
+    status, res = live("POST", "/api/export-video", {"rhythm": "variable", "start_ms": 600, "end_ms": 600, "ramp": 2, "multiple": 2})
+    pic, _ = cutplan.rhythm_timeline(3, 120, 2, (600.0, 600.0, 2, "end"))
+    assert status == 200 and _streams(srv.OUTPUTS_DIR / res["filename"])[1] == pytest.approx(pic[-1] / 30, abs=0.15)
+    assert pic[-1] / 30 == pytest.approx(0.9)                                   # 3 pictures at 300 ms each: the 600 ms base cut split in two
