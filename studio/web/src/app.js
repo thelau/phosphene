@@ -658,7 +658,7 @@
         // the music's cuts: the base cuts that fall inside the clip, or (if the user asks) every picture cut
         const audio = follow ? pic.map(f => f / 30) : base.filter(f => f < end - 1e-6).concat([end]).map(f => f / 30);
         if (audio.length < 2) audio.push(audio[0] + 0.1);                                       // no images: still a valid (empty) clip
-        timelineCache = { key, value: { pic, audio, end, landAt: pic[Math.max(0, nCuts - (paired ? 2 : 1))] / 30 } };
+        timelineCache = { key, value: { pic, audio, base, end, landAt: pic[Math.max(0, nCuts - (paired ? 2 : 1))] / 30 } };
       }
       return timelineCache.value;
     }
@@ -828,6 +828,10 @@
       if (getn('dynSelect') === 3 && rhythmMode() !== 'variable') setv('dynSelect', 0);          // a flat speed has nothing to follow
       if (getn('brightRange') > 45) { setv('ringRange', Math.min(20, getn('ringRange'))); setv('shimmerRange', Math.min(20, getn('shimmerRange'))); }   // bright plus metal is harsh
       if (rate > 6) setv('echoRange', 0);                                                        // an echo smears very fast cuts
+      // keep the weight in the sub: a square sub, a high root, the metal ring and metal hits all move energy up and away from it
+      if (getn('subWaveSelect') === 2 && (getn('pitchRange') > 60 || getn('lowRange') < 80)) setv('subWaveSelect', 0);
+      if (getn('pitchRange') > 60) { setv('ringRange', Math.min(20, getn('ringRange'))); setv('brightRange', Math.min(40, getn('brightRange'))); }
+      if (getn('hitTypeSelect') === 3) setv('ringRange', Math.min(25, getn('ringRange')));
       const tex = ['echoRange', 'washRange', 'ringRange', 'shimmerRange'].filter(id => getn(id) > 0).sort((a, b) => getn(b) - getn(a));
       tex.slice(2).forEach(id => setv(id, 0));                                                   // two textures at most
     }
@@ -893,6 +897,8 @@
       syncRampRange();
       const n = activePlates().length;
       const info = document.getElementById('rhythmInfo');
+      renderRhythmStrip();
+      if (!isPlaying) drawFrame();                                         // paused: the time and the length follow the new settings at once
       if (!n) { info.textContent = ''; return; }
       const starts = timelineFor(n);
       const cuts = starts.length - 1;
@@ -905,6 +911,93 @@
       const pace = rhythmMode() === 'variable' ? (v.start_ms === v.end_ms ? f(lens[0]) : whole ? `${f(lens[0])} → ${f(lens[lens.length - 1])}` : v.at === 'start' ? `${f(lens[0])} → ${f(lens[lens.length - 1])} over the first ${v.ramp}` : `${f(lens[0])}, then ${f(lens[lens.length - 1])} over the last ${v.ramp}`) : hi > lo * 1.05 ? `${f(lo)} – ${f(hi)}` : f(lo);
       info.textContent = `${n} images · ${fmtDuration(sec(starts[cuts]))} · cuts ${pace}`;
       document.getElementById('exportMeta').textContent = `1080 × 1920 · ${fmtDuration(sec(starts[cuts]))} · ${musicOn() ? 'sound included' : 'silent'}`;
+    }
+
+    // ---- the rhythm strip: the whole film as one line, drawn in time from the same timeline the player and the export use ----
+    // x runs 0..1000 over the clip; the speed line is high where the cuts are short (fast) and low where they are long
+    function rhythmStripModel(n) {
+      if (!n) return null;
+      const r = rhythmFor(n), pic = r.pic, total = pic[pic.length - 1];
+      const X = f => (f / total) * 1000;
+      const lens = pic.slice(1).map((v, i) => v - pic[i]);
+      const lo = Math.min(...lens), hi = Math.max(...lens);
+      const flat = hi - lo < 0.5;
+      const Y = len => (flat ? 14 : 40 - ((hi - len) / (hi - lo)) * 30);      // 48 tall: fastest at 10, slowest at 40
+      const curve = [[0, Y(lens[0])]].concat(lens.map((len, i) => [X(pic[i] + len / 2), Y(len)]), [[1000, Y(lens[lens.length - 1])]]);
+      const variable = rhythmMode() === 'variable';
+      const v = variableParams();
+      let band = null, handles = [];
+      if (variable && v.start_ms !== v.end_ms) {
+        const nBase = r.base.length - 1, ramp = Math.max(1, Math.min(nBase, Math.min(200, Math.max(2, v.ramp))));
+        const yOfMs = ms => Y(Math.max(1, (ms * 30) / 1000 / (parseFloat(document.getElementById('multSelect').value) || 1)));
+        if (v.at === 'end') {
+          const from = Math.min(r.base[nBase - ramp], total);
+          band = { left: X(from) / 10, width: 100 - X(from) / 10, label: `Landing · ${ramp} cuts` };
+          handles = [{ left: band.left, top: yOfMs(v.start_ms), label: `Start ${v.start_ms} ms`, side: 'left' }, { left: 100, top: yOfMs(v.end_ms), label: `End ${v.end_ms} ms`, side: 'left' }];
+        } else {
+          const to = Math.min(r.base[Math.min(nBase, ramp)], total);
+          band = { left: 0, width: X(to) / 10, label: `Build-up · ${ramp} cuts` };
+          handles = [{ left: 0, top: yOfMs(v.start_ms), label: `Start ${v.start_ms} ms`, side: 'right' }, { left: band.width, top: yOfMs(v.end_ms), label: `End ${v.end_ms} ms`, side: 'right' }];
+        }
+      }
+      const beats = r.audio.slice(0, -1).map(t => X(t * 30)).filter(x => x < 1000).slice(0, 2000);
+      const sec = total / 30, step = sec <= 3 ? 0.5 : sec <= 8 ? 1 : sec <= 20 ? 2 : sec <= 60 ? 5 : 10;
+      const axis = [];
+      for (let t = 0; t <= sec + 1e-6; t += step) axis.push({ left: (t / sec) * 100, text: `${+t.toFixed(1)} s` });
+      const beatText = followCuts() ? 'Music on every picture cut'
+        : variable ? `Music on the run · ${r.audio.length - 1} cuts` : `Music on the beat · ${Math.round(bpmValue())} BPM`;
+      return { total, ticks: pic.slice(0, -1).map(X), curve, band, handles, beats, axis, beatText, oneFrame: lo <= 1.0001 };
+    }
+    function renderRhythmStrip() {
+      const m = rhythmStripModel(activePlates().length);
+      const el = id => document.getElementById(id);
+      el('rhythmStrip').hidden = !m;
+      if (!m) return;
+      const f = x => x.toFixed(1);
+      el('rsTicks').setAttribute('d', m.ticks.map(x => `M${f(x)} 5V21`).join(''));
+      const pts = m.curve.map(([x, y]) => `${f(x)},${f(y)}`).join(' ');
+      el('rsCurve').setAttribute('points', pts);
+      el('rsArea').setAttribute('points', `0,48 ${pts} 1000,48`);
+      el('rsBeats').setAttribute('d', m.beats.map(x => `M${f(x)} 7h0.01`).join(''));
+      el('rsBand').hidden = !m.band;
+      if (m.band) { el('rsBand').style.left = `${m.band.left}%`; el('rsBand').style.width = `${m.band.width}%`; el('rsBandLabel').textContent = m.band.label; }
+      for (const k of [0, 1]) {
+        const h = m.handles[k], dot = el(`rsH${k}`), lab = el(`rsH${k}L`);
+        dot.hidden = lab.hidden = !h;
+        if (!h) continue;
+        dot.style.left = lab.style.left = `${h.left}%`;
+        dot.style.top = lab.style.top = `${(h.top / 48) * 100}%`;
+        lab.textContent = h.label;
+        lab.className = `rs-hlabel ${h.left < 25 ? 'right' : 'left'}`;                    // near the left edge the label reads to the right, so it stays inside
+      }
+      el('rsAxis').innerHTML = m.axis.map((a, i) => `<span style="left:${a.left}%"${i === 0 ? ' class="first"' : ''}>${a.text}</span>`).join('');
+      el('rsBeatText').textContent = m.beatText;
+      el('rsFast').textContent = m.oneFrame ? 'fastest cut = 1 frame at 30 fps' : '';
+      shownHead = -1;
+      movePlayhead();
+    }
+    // the playhead follows the picture; only its position changes while playing
+    let shownHead = -1;
+    function movePlayhead() {
+      const n = activePlates().length;
+      if (!n) return;
+      const total = timelineFor(n).at(-1);
+      const pct = Math.round(((((cutPos % total) + total) % total) / total) * 10000) / 100;
+      if (pct === shownHead) return;
+      shownHead = pct;
+      document.getElementById('rsPlayhead').style.left = `${pct}%`;
+    }
+    // a click on the strip puts the playhead there
+    function rhythmStripClick(e) {
+      const body = document.getElementById('rsBody');
+      const n = activePlates().length;
+      if (!n || !body.getBoundingClientRect) return;
+      const b = body.getBoundingClientRect();
+      const u = Math.max(0, Math.min(0.9999, (e.clientX - b.left) / b.width));
+      cutPos = u * timelineFor(n).at(-1);
+      lastTick = performance.now();
+      if (isPlaying && droneLive.playing) droneLive.seek(cutPos / 30);
+      drawFrame();
     }
     // ---- while the drone plays it is the player's clock ----
     const droneLive = new window.Drone.Live();
@@ -995,6 +1088,7 @@
       if (stageImg.getAttribute('src') !== url) stageImg.src = url;
       if (isPlaying) applyFx(plan, fx); else clearFx();
       markFilmstrip(plan.plate);
+      movePlayhead();
       const total = tl[tl.length - 1], t = ((cutPos % total) + total) % total;
       const clock = f => { const s = f / 30; return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`; };
       const txt = `${clock(t)}|${clock(total)}|${plan.cut + 1}|${tl.length - 1}`;
@@ -1478,6 +1572,7 @@ Object.assign(window, {
   randomLook,
   pickCharacter,
   filmstripClick,
+  rhythmStripClick,
   trashCurrent,
   togglePromptOverlay,
   toggleReticle,

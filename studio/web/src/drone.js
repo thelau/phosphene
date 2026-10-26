@@ -78,12 +78,15 @@
     return src;
   }
 
-  // a dark room: decaying noise, low-passed, after a short pre-delay
+  // a dark room: decaying noise, band-limited to 150-900 Hz, after a short pre-delay. Without the cut at the bottom, low-passed noise
+  // drifts: for some seeds its sum is far from zero and the room becomes a strong boost around 100 Hz that swamps the sub
   function roomData(rate, rand, seconds) {
     const n = Math.floor(seconds * rate), pre = Math.floor(0.025 * rate);
     const ir = new Float32Array(n);
     for (let i = 0; i < n; i++) ir[i] = gauss(rand) * Math.exp(-(i / rate) * (6.9 / seconds));
     onePole(ir, 900, rate, 2);
+    const low = ir.slice(); onePole(low, 150, rate, 2);
+    for (let i = 0; i < n; i++) ir[i] -= low[i];
     let e = 0; for (let i = 0; i < n; i++) e += ir[i] * ir[i];
     for (let i = 0; i < n; i++) ir[i] /= Math.sqrt(e) + 1e-9;                  // unit energy
     const out = new Float32Array(pre + n);

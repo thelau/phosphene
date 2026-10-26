@@ -1150,3 +1150,70 @@ test('the frames readout next to the Multiple: one number for Flat, start → en
   h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '100'; h.$('endMsRange').value = '600'; h.$('multSelect').value = '1'; h.run('updateTempo(); updateRhythm()');
   assert.equal(h.$('speedVal').textContent, '3→18f');
 });
+
+test('the rhythm strip is drawn from the real timeline: a tick per picture cut, the speed line, the band, the beats', async () => {
+  const h = await playerWith();                                                  // 3 images, 120 BPM ×2
+  const plain = o => JSON.parse(JSON.stringify(o));
+  // Flat: even ticks, a flat line, a beat on every second picture cut, no band and no handles
+  let m = plain(h.run('rhythmStripModel(3)'));
+  const pic = plain(h.run('timelineFor(3)'));
+  assert.equal(m.ticks.length, 3);
+  assert.deepEqual(m.ticks.map(x => +x.toFixed(3)), pic.slice(0, -1).map(f => +((f / pic.at(-1)) * 1000).toFixed(3)));
+  assert.ok(m.curve.every(([, y]) => y === 14), 'a flat speed is a flat line');
+  assert.equal(m.band, null); assert.deepEqual(m.handles, []);
+  assert.deepEqual(m.beats.map(Math.round), [0, 667], 'the music is on the beat: every second cut at ×2');
+  assert.equal(m.beatText, 'Music on the beat · 120 BPM');
+  h.$('followCuts').checked = true; h.run('updateTempo()');
+  m = plain(h.run('rhythmStripModel(3)'));
+  assert.equal(m.beats.length, 3); assert.equal(m.beatText, 'Music on every picture cut');
+  h.$('followCuts').checked = false;
+  // Variable with a landing: the last cuts are long (low on the line), the band covers the change, Start and End marked
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: 24 }, (_, i) => mkPlate('p' + i)) };
+  const v = load({ routes: r }); await settle(); await settle();
+  v.$('rhythmSelect').value = 'variable'; v.$('startMsRange').value = '100'; v.$('endMsRange').value = '600'; v.$('rampRange').value = '8'; v.$('atSelect').value = 'end'; v.$('multSelect').value = '1';
+  v.run('updateTempo(); updateRhythm()');
+  m = plain(v.run('rhythmStripModel(24)'));
+  const ys = m.curve.slice(1, -1).map(([, y]) => y);
+  assert.ok(ys.slice(0, 16).every(y => Math.abs(y - 10) < 1e-6), 'the fast hold sits at the top');
+  assert.ok(Math.abs(ys.at(-1) - 40) < 1e-6, 'the slowest cut at the bottom');
+  for (let i = 16; i < ys.length; i++) assert.ok(ys[i] > ys[i - 1], 'it slows down cut after cut');
+  const vpic = plain(v.run('timelineFor(24)'));
+  assert.ok(Math.abs(m.band.left - (vpic[16] / vpic.at(-1)) * 100) < 1e-6 && Math.abs(m.band.left + m.band.width - 100) < 1e-6, 'the band starts where the change does');
+  assert.equal(m.band.label, 'Landing · 8 cuts');
+  assert.deepEqual(m.handles.map(x => x.label), ['Start 100 ms', 'End 600 ms']);
+  assert.ok(Math.abs(m.handles[0].top - 10) < 1e-6 && Math.abs(m.handles[1].top - 40) < 1e-6);
+  assert.match(m.beatText, /^Music on the run · 24 cuts$/);
+  v.$('atSelect').value = 'start'; v.$('startMsRange').value = '600'; v.$('endMsRange').value = '100'; v.run('updateRhythm()');
+  m = plain(v.run('rhythmStripModel(24)'));
+  assert.equal(m.band.left, 0); assert.equal(m.band.label, 'Build-up · 8 cuts');
+  // one frame a cut: flagged; no images: nothing to draw
+  h.$('bpmInput').value = '500'; h.$('multSelect').value = '9'; h.run('updateTempo()');
+  assert.equal(h.run('rhythmStripModel(3)').oneFrame, true);
+  assert.equal(h.run('rhythmStripModel(0)'), null);
+  // the axis is in seconds and ends inside the clip
+  m = plain(v.run('rhythmStripModel(24)'));
+  assert.equal(m.axis[0].text, '0 s'); assert.ok(m.axis.every(a => a.left >= 0 && a.left <= 100));
+});
+
+test('a click on the rhythm strip puts the playhead there, and the sound follows while playing', async () => {
+  const h = await playerWith();
+  h.$('rsBody').getBoundingClientRect = () => ({ left: 100, width: 400 });
+  const total = h.run('timelineFor(3).at(-1)');
+  h.run('rhythmStripClick({ clientX: 300 })');                                    // half way
+  assert.ok(Math.abs(h.run('cutPos') - total / 2) < 1e-9);
+  assert.equal(h.$('rsPlayhead').style.left, '50%');
+  h.$('musicSelect').value = 'on'; h.run('updateMusic()'); h.run('togglePlay()'); await settle();
+  h.run('rhythmStripClick({ clientX: 100 })');
+  assert.equal(h.ctx.__drone.seeks.at(-1), 0);
+  h.run('rhythmStripClick({ clientX: 9999 })');                                  // past the end: the last moment, never a wrap to the start
+  assert.ok(h.run('cutPos') > total * 0.99);
+});
+
+test('paused, the timecode follows a tempo change at once (the length of the film changes)', async () => {
+  const h = await playerWith();
+  h.$('bpmInput').value = '60'; h.$('multSelect').value = '1'; h.run('updateTempo()');
+  assert.match(h.$('timecode').innerHTML, /\/ 0:03\.0 · cut 1 \/ 3/);
+  h.$('bpmInput').value = '120'; h.run('updateTempo()');
+  assert.match(h.$('timecode').innerHTML, /\/ 0:01\.5 · cut 1 \/ 3/);
+});

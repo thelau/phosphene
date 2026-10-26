@@ -222,7 +222,22 @@
             </button>
           </div>
           <div class="filmstrip" id="filmstrip" onclick="filmstripClick(event)"></div>
-          <div class="rhythm-info" id="rhythmInfo"></div>
+          <div class="rstrip" id="rhythmStrip">
+            <div class="rs-labels" aria-hidden="true"><span class="l-cuts">Cuts</span><span class="l-speed">Speed</span><span class="l-beat">Beat</span></div>
+            <div class="rs-body" id="rsBody" onclick="rhythmStripClick(event)" title="The whole film: a tick per picture cut, the speed (higher is faster) and the music's beats. Click to jump.">
+              <svg class="rs-cuts" viewBox="0 0 1000 26" preserveAspectRatio="none" aria-hidden="true"><path id="rsTicks" d=""></path></svg>
+              <div class="rs-speed">
+                <div class="rs-band" id="rsBand" hidden><span id="rsBandLabel"></span></div>
+                <svg viewBox="0 0 1000 48" preserveAspectRatio="none" aria-hidden="true"><polygon id="rsArea" points=""></polygon><polyline id="rsCurve" points=""></polyline></svg>
+                <span class="rs-handle" id="rsH0" hidden></span><span class="rs-hlabel" id="rsH0L" hidden></span>
+                <span class="rs-handle" id="rsH1" hidden></span><span class="rs-hlabel" id="rsH1L" hidden></span>
+              </div>
+              <svg class="rs-beats" viewBox="0 0 1000 14" preserveAspectRatio="none" aria-hidden="true"><path id="rsBeats" d=""></path></svg>
+              <div class="rs-playhead" id="rsPlayhead"></div>
+            </div>
+            <div class="rs-axis" id="rsAxis"></div>
+            <div class="rs-readout"><span><span id="rhythmInfo"></span> <span id="rsFast" class="rs-fast"></span></span><span id="rsBeatText" class="rs-beat"></span></div>
+          </div>
         </section>
       </main>
 

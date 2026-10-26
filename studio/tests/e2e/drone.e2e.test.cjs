@@ -204,6 +204,27 @@ test('every hit type, every hit pattern, every arpeggio shape and every wave: fi
   await ctx.close();
 });
 
+test('no room seed boosts the lows: with a big room the sub still carries the sound, whatever the seed', { skip }, async () => {
+  const ctx = await fresh();
+  const lows = await page.evaluate(async BASE => {
+    const starts = Array.from({ length: 21 }, (_, i) => i * 0.2), out = [];
+    for (const seed of [69792, 7, 1234, 22456, 50312, 94730, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 99999, 31337]) {
+      const r = await window.Drone.renderExport({ ...BASE, space: 0.85, pitch: 0.7, seed }, starts);
+      const n = 1 << 16, re = new Float64Array(n), im = new Float64Array(n);
+      for (let i = 0; i < n; i++) re[i] = (r.left[i] + r.right[i]) / 2 * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)));
+      for (let i = 1, j = 0; i < n; i++) { let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) { [re[i], re[j]] = [re[j], re[i]]; } }
+      for (let len = 2; len <= n; len <<= 1) { const ang = (-2 * Math.PI) / len, wr = Math.cos(ang), wi = Math.sin(ang);
+        for (let i = 0; i < n; i += len) { let cr = 1, ci = 0; for (let k = 0; k < len / 2; k++) { const a = i + k, b = i + k + len / 2, tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr; re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti; const q = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = q; } } }
+      let tot = 0, low = 0;
+      for (let k = 1; k < n / 2; k++) { const f = (k * 44100) / n, pw = re[k] ** 2 + im[k] ** 2; tot += pw; if (f < 80) low += pw; }
+      out.push([seed, low / tot]);
+    }
+    return out;
+  }, BASE);
+  for (const [seed, low] of lows) assert.ok(low > 0.4, `seed ${seed}: ${low.toFixed(3)} of the energy below 80 Hz`);   // seed 69792 measured 0.14 before the room lost its low end
+  await ctx.close();
+});
+
 test('the engine finds no console errors across all of this', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(async (BASE) => {
