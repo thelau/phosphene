@@ -294,14 +294,14 @@
     .exp-done .small-btn { margin-left: auto; color: var(--text); }
 
     /* ---------- curate ---------- */
-    .gen-row { flex: none; display: flex; align-items: center; gap: 10px; padding: 16px 24px 12px; }
+    .gen-row { flex: none; display: flex; align-items: center; gap: 10px; padding: 16px 24px; border-bottom: 1px solid var(--line); }   /* making images, set apart from browsing them below */
     .gen-row select { height: 36px; border-radius: 8px; }
     #worldSelect { width: 210px; }
     #directionInput { flex: 1; min-width: 0; height: 36px; border-radius: 8px; background: #1C1B19; }
     #batchCountSelect { width: 110px; }
     #generateBtn { height: 36px; padding: 0 22px; border-radius: 8px; }
     .gallery-col { flex: 1; min-height: 0; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
-    .gallery-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 24px 12px; flex-shrink: 0; }
+    .gallery-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 24px 12px; flex-shrink: 0; }
     .seg { display: inline-flex; padding: 2px; background: var(--field); border: 1px solid var(--line-2); border-radius: 8px; }
     .seg button { border: 0; border-radius: 6px; background: transparent; color: var(--text-2); padding: 0 14px; height: 30px; white-space: nowrap; }
     .seg button.on { background: var(--text); color: #1A1A1A; }
