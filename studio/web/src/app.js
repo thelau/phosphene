@@ -1027,7 +1027,7 @@
               }
             </div>
             <div class="prompt-overlay" id="overlay-${CSS.escape(p.filename)}" onclick="togglePromptOverlay(event, '${p.filename}')">
-              <div class="prompt-overlay-text">${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${p.critic ? `<span class="po-critic">AI critic ${p.critic.mean}: ${escapeHtml(p.critic.reason)}</span>` : ''}</div>
+              <div class="prompt-overlay-text">${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${p.critic ? `<span class="po-critic">AI critic ${p.critic.mean}: ${escapeHtml(p.critic.reason)}</span>` : ''}${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-critic po-qa">Logo check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : ''}</div>
               <div class="prompt-overlay-meta"><button class="po-copy" onclick="copyPromptText(event, '${p.filename}')">Copy prompt</button></div>
             </div>
           </div>
@@ -1051,10 +1051,10 @@
     function refreshPending() { if (generating) renderGrid(); }          // only the placeholders change, so only they are touched
     // thumbnail size in Curate: S, M or L
     function setThumbSize(v) {
-      if (!['S', 'M', 'L'].includes(v)) v = 'M';
+      if (!['S', 'M', 'L', 'XL'].includes(v)) v = 'M';
       document.getElementById('thumbSizeVal').value = v;
       document.getElementById('grid').dataset.size = v;
-      for (const k of ['S', 'M', 'L']) document.getElementById(`thumb${k}`).setAttribute('aria-pressed', String(k === v));
+      for (const k of ['S', 'M', 'L', 'XL']) document.getElementById(`thumb${k}`).setAttribute('aria-pressed', String(k === v));
       saveSettings();
     }
     // the floating film preview in Curate: the same stage, moved here, so there is one player and one sound

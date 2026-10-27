@@ -407,6 +407,7 @@
     }
     .grid-col[data-size="S"] { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 14px 8px; }
     .grid-col[data-size="L"] { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+    .grid-col[data-size="XL"] { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }   /* to look closely: two or three a row */
     .card { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; cursor: grab; user-select: none; transition: opacity .15s; }
     .card:active { cursor: grabbing; }
     .card.out { opacity: .5; }
@@ -443,6 +444,7 @@
     .po-world { color: var(--text); font-weight: 700; }
     .po-idea { color: var(--muted); }
     .po-critic { color: var(--faint); font-size: 11px; }
+    .po-qa { color: #F2A0A0; }                                         /* why the logo check flagged it */
     .prompt-overlay-meta { flex: none; display: flex; justify-content: flex-end; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, .1); }
     .po-copy { height: 26px; padding: 0 10px; font-size: 11px; border-radius: 6px; }
     .card.info-open .card-num, .card.info-open .card-actions, .card.info-open .card-new, .card.info-open .card-pick { display: none; }

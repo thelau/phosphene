@@ -1805,3 +1805,12 @@ test('a Kimi key that Kimi refuses: not kept, the field empties, Settings says K
   assert.equal(h.$('kimiStatusLabel').textContent, 'Key refused');
   assert.match(h.$('toast').textContent, /starts with sk-/);
 });
+
+test('Info on a card says why the logo check flagged it, as it says the AI critic\'s score', async () => {
+  const h = load({ routes: baseRoutes() });
+  await settle(); await settle();
+  const html = h.run(`cardHtml(${JSON.stringify({ ...mkPlate('x.jpg', true), qa_passed: false, qa_issues: ['The mark looks too big (it fits about as well at 1.5x)'], critic: { mean: 6.8, reason: 'calm' } })})`);
+  assert.match(html, /Logo check: The mark looks too big \(it fits about as well at 1\.5x\)/);
+  assert.match(html, /AI critic 6\.8: calm/);
+  assert.doesNotMatch(h.run(`cardHtml(${JSON.stringify({ ...mkPlate('y.jpg'), qa_passed: true })})`), /Logo check:/);
+});

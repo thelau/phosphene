@@ -974,8 +974,9 @@ test('Curate: thumbnail sizes, trash from the grid with Undo, restore picked ima
   const cols = async () => page.evaluate(() => getComputedStyle(document.getElementById('grid')).gridTemplateColumns.split(' ').length);
   const m = await cols();
   await page.click('#thumbS'); const sm = await cols();
+  await page.click('#thumbXL'); const xl = await cols();
   await page.click('#thumbL'); const lg = await cols();
-  assert.ok(sm > m && m > lg, `S ${sm} > M ${m} > L ${lg} columns`);
+  assert.ok(sm > m && m > lg && lg > xl, `S ${sm} > M ${m} > L ${lg} > XL ${xl} columns`);
   await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
   assert.equal(await page.locator('#thumbL').getAttribute('aria-pressed'), 'true', 'the size is remembered');
   // trash from the grid, then Undo: back in its place
