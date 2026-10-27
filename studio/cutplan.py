@@ -9,7 +9,7 @@ Which image is on screen at which moment, and how it is treated: shared by the e
 import bisect
 import math
 
-from PIL import Image, ImageChops, ImageOps
+from PIL import Image, ImageOps
 
 INVERT_MODES = ("off", "mono", "colour")
 ZOOM_MODES = ("off", "out", "in")
@@ -114,54 +114,6 @@ def zoom_scale(mode: str, amount_pct: float, p: float) -> float:
 
 TRAIL_FRAMES = 4          # how long the previous image lingers after a cut
 TRAIL_MAX = 0.6
-
-# Chord colour: with the chord changes on, each chord brings a brand colour (the home chord none), switching on the cut where the chord
-# changes. Two looks, both exact formulas so the page matches the export:
-# - Invert off, the grade: the darks lift to a deep shade of the colour, highlights and the logo untouched. out = max(picture, GRADE[colour])
-#   per channel (the page: an overlay of that shade, mix-blend-mode lighten).
-# - Invert on, the twin: the inverted copy becomes a duotone, the chord's colour in its lights and oxblood or ink in its darks; the original
-#   stays as it is, the home chord's twin the plain inverted copy. out = colour + (shadow - colour) * L, L the original's luma (601), so the
-#   twin's lights are the original's darks (the page: an SVG filter per colour, #duo-xxxxxx in index.html, the same numbers).
-CHORD_TINTS = {-2: "#5D8FF4", 5: "#5D8FF4", -4: "#EC540C", 3: "#EC540C", -5: "#F64570"}
-GRADE = {"#5D8FF4": "#253962", "#EC540C": "#5E2205", "#F64570": "#621C2D"}      # each colour at 40%
-DUO_SHADOW = {"#5D8FF4": "#1A1A1A", "#EC540C": "#381313", "#F64570": "#381313"}  # blue over ink, the warm ones over oxblood
-
-
-def graded(img, colour: str):
-    """Invert off: the picture with its darks lifted to the chord's shade."""
-    return ImageChops.lighter(img, Image.new("RGB", img.size, GRADE[colour]))
-
-
-def duotone(img, colour: str):
-    """Invert on: the inverted twin in the chord's colour (from the original, not the inverted copy: the same picture)."""
-    return ImageOps.colorize(img.convert("L"), black=colour, white=DUO_SHADOW[colour])
-
-
-def clean_tints(value) -> list:
-    """[[start second, "#rrggbb" or None], ...] from the page, checked: numbers in order, known colours only, at most 4000."""
-    out = []
-    if not isinstance(value, list):
-        return out
-    known = set(CHORD_TINTS.values())
-    for item in value[:4000]:
-        try:
-            t, c = float(item[0]), item[1]
-        except (TypeError, ValueError, IndexError):
-            continue
-        if math.isfinite(t) and (c is None or c in known) and (not out or t >= out[-1][0]):
-            out.append([t, c])
-    return out
-
-
-def tint_at(tints: list, t: float):
-    """The colour at clip second t from [[start second, colour or None], ...] in order."""
-    colour = None
-    for start, c in tints or []:
-        if start <= t + 1e-9:
-            colour = c
-        else:
-            break
-    return colour
 
 
 def trail_alpha(frames_since_cut: float, amount: float) -> float:

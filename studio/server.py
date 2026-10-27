@@ -711,53 +711,40 @@ def prune_exports(folder: Path, keep: int = 12) -> None:
         old.unlink(missing_ok=True)
 
 
-def write_export_frames(files, tmp_dir: Path, total_frames: int, frames_per_cut: float, invert_mode: str = "off", zoom_mode: str = "off", zoom_amount: float = 0.6, starts: list | None = None, trail: float = 0.0, tints: list | None = None) -> int:
+def write_export_frames(files, tmp_dir: Path, total_frames: int, frames_per_cut: float, invert_mode: str = "off", zoom_mode: str = "off", zoom_amount: float = 0.6, starts: list | None = None, trail: float = 0.0) -> int:
     """Writes f_0000.jpg ... for the export. Plain cuts reuse the encoded bytes; zoom needs a render per frame."""
     base = [Image.open(p).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS) for p in files]
-    flipped = {}  # (plate, chord colour or None) -> inverted copy, built on demand
+    flipped = {}  # plate index -> inverted copy, built on demand
 
     def encode(im) -> bytes:
         buf = io.BytesIO()
         im.save(buf, "JPEG", quality=92)
         return buf.getvalue()
 
-    paired = invert_mode in ("mono", "colour")
-
-    def cut_colour(cut: int):                                  # the chord colour a picture cut wears (chords change on cuts: its middle)
-        if not tints:
-            return None
-        a, b = (starts[cut], starts[cut + 1]) if starts and cut + 1 < len(starts) else (cut * frames_per_cut, (cut + 1) * frames_per_cut)
-        return cutplan.tint_at(tints, (a + b) / 60.0)
-
-    def look(plate: int, inv: bool, scale: float, colour=None):
+    def look(plate: int, inv: bool, scale: float):
         img = base[plate]
         if inv:
-            key = (plate, colour)
-            if key not in flipped:                             # Colour follows the chords, Invert on: the twin in the chord's duotone
-                flipped[key] = cutplan.duotone(img, colour) if colour else cutplan.inverted(img, invert_mode)
-            img = flipped[key]
+            if plate not in flipped:
+                flipped[plate] = cutplan.inverted(img, invert_mode)
+            img = flipped[plate]
         return cutplan.zoomed(img, scale) if scale > 1.0005 else img
 
     cache: dict = {}
     for f in range(total_frames):
         plan = cutplan.frame_plan(f, frames_per_cut, len(base), invert_mode, starts)
         scale = cutplan.zoom_scale(zoom_mode, zoom_amount, plan["p"])
-        duo = cut_colour(plan["cut"]) if paired and plan["inverted"] else None
-        img = look(plan["plate"], plan["inverted"], 1.0, duo)
+        img = look(plan["plate"], plan["inverted"], 1.0)
         start = starts[plan["cut"]] if starts else plan["cut"] * frames_per_cut
         alpha = cutplan.trail_alpha(f + 0.5 - start, trail) if plan["cut"] > 0 else 0.0
-        colour = cutplan.tint_at(tints, (f + 0.5) / 30.0) if tints and not paired else None   # Invert off: the grade over the whole frame
-        tint = (lambda im: cutplan.graded(im, colour)) if colour else (lambda im: im)
         if alpha > 0:                                           # Trail: the previous cut, as it ended, lingers on top
             prev_plate, prev_inv = cutplan.cut_plate(plan["cut"] - 1, len(base), invert_mode)
-            prev_duo = cut_colour(plan["cut"] - 1) if paired and prev_inv else None
-            cur = look(plan["plate"], plan["inverted"], scale, duo)
-            data = encode(tint(Image.blend(cur, look(prev_plate, prev_inv, cutplan.zoom_scale(zoom_mode, zoom_amount, 1.0), prev_duo), alpha)))
+            cur = look(plan["plate"], plan["inverted"], scale)
+            data = encode(Image.blend(cur, look(prev_plate, prev_inv, cutplan.zoom_scale(zoom_mode, zoom_amount, 1.0)), alpha))
         elif scale > 1.0005:
-            data = encode(tint(cutplan.zoomed(img, scale)))
+            data = encode(cutplan.zoomed(img, scale))
         else:
-            key = (plan["plate"], plan["inverted"], colour, duo)
-            data = cache.get(key) or cache.setdefault(key, encode(tint(img)))
+            key = (plan["plate"], plan["inverted"])
+            data = cache.get(key) or cache.setdefault(key, encode(img))
         (tmp_dir / f"f_{f:04d}.jpg").write_bytes(data)
     return total_frames
 
@@ -1275,8 +1262,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         trail = max(0.0, min(cutplan.TRAIL_MAX, float(body.get("trail") or 0)))
                     except (TypeError, ValueError):
                         trail = 0.0
-                    tints = cutplan.clean_tints(body.get("tints"))         # Colour follows the chords: the page sends where each chord starts
-                    write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount, starts, trail, tints)
+                    write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount, starts, trail)
 
                     out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode, music_mode, variable, str(body.get("edit") or ""))
                     # cut length follows the tempo, multiple, rhythm and effects chosen in the player; music only when asked for

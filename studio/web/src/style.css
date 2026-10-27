@@ -185,9 +185,6 @@
     #stageImg:not([src]) { visibility: hidden; }
     #stageGhost { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; pointer-events: none; transform-origin: 50% 50%; }   /* Trail: the previous image, fading over a few frames */
     #stageGhost:not([src]) { display: none; }
-    #stageTint { position: absolute; inset: 0; opacity: 0; pointer-events: none; mix-blend-mode: lighten; }   /* the chord's shade lifts the darks (cutplan.graded) */
-    .stage { isolation: isolate; }
-    .stage:fullscreen #stageTint { margin: auto; width: min(100%, 56.25vh); height: min(100%, 177.78vw); }   /* only over the picture, not the letterbox */
     .stage:fullscreen #stageGhost { object-fit: contain; }
     .reticle { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .15s; }
     .reticle.visible { opacity: 1; }
@@ -292,7 +289,6 @@
     .check-line { display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 13px; color: var(--text-2); cursor: pointer; user-select: none; }
     .check-line input { accent-color: var(--orange); width: 16px; height: 16px; margin: 0; flex: none; }
     .check-line.indent { padding-left: 98px; }
-    .check-line.off { color: var(--off); cursor: default; }
     .subhead { margin-top: 6px; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
     .sound-tabs { display: flex; gap: 2px; margin: 6px 0 4px; border-bottom: 1px solid var(--line-2); }
     .sound-tabs button { transition: none; flex: 1; height: 32px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: 12px; font-weight: 600; box-shadow: inset 0 -2px 0 transparent; }

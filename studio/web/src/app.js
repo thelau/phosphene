@@ -1265,7 +1265,6 @@
     function updateMusic() {
       const on = musicOn();
       document.getElementById('synthBox').hidden = !on;
-      syncTintRow();
       if (on) warmSound();
       document.getElementById('soundOffNote').hidden = on;
       for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer', 'choir', 'industrial', 'hit', 'arp', 'bass', 'pad', 'tape']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
@@ -1572,7 +1571,6 @@
       document.getElementById('followCuts').checked = Math.random() < 0.2;               // now and then the music takes every picture cut
       matchSoundToSpeed();
       soundRules();
-      document.getElementById('tintChords').checked = +document.getElementById('progSelect').value > 0 && Math.random() < 0.6;   // the picture answers the chords more often than not, when there are chords to answer
       refreshVideo(true);
       updateMusic();
       commitSettings('Random');
@@ -1812,7 +1810,6 @@
         zoom: document.getElementById('zoomSelect').value,
         amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
         trail: (parseFloat(document.getElementById('trailRange').value) || 0) / 100,
-        tint: document.getElementById('tintChords').checked && musicOn() && +document.getElementById('progSelect').value > 0,
       };
     }
     // Trail: after a cut the previous image lingers on top for 4 whole frames, fading (mirrors cutplan.trail_alpha; shared vectors)
@@ -1820,36 +1817,6 @@
     function trailAlpha(framesSinceCut, amount) {
       const a = Math.max(0, Math.min(0.6, amount || 0)), k = Math.floor(framesSinceCut);
       return a <= 0 || k < 0 || k >= TRAIL_FRAMES ? 0 : a * (1 - k / TRAIL_FRAMES);
-    }
-    // Colour follows the chords (cutplan.CHORD_TINTS / GRADE; the home chord none): Invert off, the darks lift to the chord's shade (an overlay,
-    // mix-blend-mode lighten); Invert on, the inverted copy becomes the chord's duotone (the SVG filters #duo-xxxxxx in index.html), the original untouched
-    const CHORD_TINTS = { '-2': '#5D8FF4', 5: '#5D8FF4', '-4': '#EC540C', 3: '#EC540C', '-5': '#F64570' };
-    const GRADE = { '#5D8FF4': '#253962', '#EC540C': '#5E2205', '#F64570': '#621C2D' };
-    const duoFilter = c => `url(#duo-${c.slice(1).toLowerCase()})`;
-    const invertFilter = (fx, colour) => (colour ? duoFilter(colour) : fx.invert === 'mono' ? 'invert(1) grayscale(1)' : 'invert(1)');
-    let tintShown = '';
-    function chordTint(sec) { return window.Drone && window.Drone.chordAt ? CHORD_TINTS[window.Drone.chordAt(synthParams(), synthStartsSec(), sec)] || null : null; }
-    function syncTintRow() {                                                // the check only means something with chord changes playing
-      const ok = musicOn() && +document.getElementById('progSelect').value > 0, row = document.getElementById('tintRow'), box = document.getElementById('tintChords');
-      box.disabled = !ok;
-      row.title = ok ? 'Each chord brings its colour (the home chord none), switching on the cut where the chord changes: in the darks, or with Invert on, the inverted copy in the chord\'s duotone' : 'Turn on chord Changes (Sound, Tone) for the colour to follow them';
-      row.classList.toggle('off', !ok);
-    }
-    function drawTint(fx) {
-      const paired = fx.invert === 'mono' || fx.invert === 'colour';
-      const c = fx.tint && !paired ? chordTint(cutPos / 30) : null, key = c || '';   // with Invert on the inverted copy wears the colour instead (applyFx)
-      if (key === tintShown) return;
-      tintShown = key;
-      const el = document.getElementById('stageTint');
-      el.style.background = c ? GRADE[c] : ''; el.style.opacity = c ? '1' : '0';
-    }
-    // for the export: where each chord starts and its colour
-    function tintSegments() {
-      const fx = fxSettings();
-      if (!fx.tint || !window.Drone) return [];
-      const starts = synthStartsSec(), out = [];
-      for (let i = 0; i < starts.length - 1; i++) { const c = chordTint(starts[i] + 1e-6); if (!out.length || out[out.length - 1][1] !== c) out.push([starts[i], c]); }
-      return out;
     }
     let ghostCut = -1, ghostOpacity = '';
     function drawTrail(plan, fx, tl, active) {
@@ -1860,7 +1827,7 @@
         const paired = fx.invert === 'mono' || fx.invert === 'colour', prev = plan.cut - 1;
         const pp = active[(paired ? Math.floor(prev / 2) : prev) % active.length];
         g.src = pp.preview || pp.url;
-        g.style.filter = paired && prev % 2 === 1 ? invertFilter(fx, fx.tint ? chordTint((tl[prev] + tl[prev + 1]) / 60) : null) : '';
+        g.style.filter = paired && prev % 2 === 1 ? (fx.invert === 'mono' ? 'invert(1) grayscale(1)' : 'invert(1)') : '';
         const s = zoomScale(fx.zoom, fx.amount, 1);
         g.style.transform = s > 1.0005 ? `scale(${s.toFixed(5)})` : '';
       }
@@ -1872,13 +1839,12 @@
       img.style.transform = '';
       img.style.filter = '';
       document.getElementById('stageGhost').style.opacity = '0'; ghostOpacity = '0'; ghostCut = -1;
-      document.getElementById('stageTint').style.opacity = '0'; tintShown = '';
     }
     function applyFx(plan, fx) {
       const img = document.getElementById('stageImg');
       const s = zoomScale(fx.zoom, fx.amount, plan.p);
       img.style.transform = s > 1.0005 ? `scale(${s.toFixed(5)})` : '';
-      img.style.filter = plan.inverted ? invertFilter(fx, fx.tint ? chordTint(cutPos / 30) : null) : '';
+      img.style.filter = plan.inverted ? (fx.invert === 'mono' ? 'invert(1) grayscale(1)' : 'invert(1)') : '';
     }
     function updateFx() {
       saveSettings();
@@ -1973,7 +1939,7 @@
         else { held = true; lateFrames++; preload(url); }                  // playing: hold the last frame until this one can paint
       }
       if (!isPlaying) clearFx(); else if (!held) applyFx(plan, fx);        // a held frame keeps its own look
-      if (!held) { drawTrail(plan, fx, tl, active); drawTint(fx); }
+      if (!held) drawTrail(plan, fx, tl, active);
       markFilmstrip(plan.plate);
       movePlayhead();
       const total = tl[tl.length - 1], t = ((cutPos % total) + total) % total;
@@ -2026,7 +1992,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'tintChords', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
@@ -2374,7 +2340,6 @@
             zoom_mode: document.getElementById('zoomSelect').value,
             zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
             trail: (parseFloat(document.getElementById('trailRange').value) || 0) / 100,
-            tints: tintSegments(),
             ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // a group: just its images
             ...(editOf(currentEdit) ? { edit: editOf(currentEdit).name } : {}),   // the file is named after the edit
           })

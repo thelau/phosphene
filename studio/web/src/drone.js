@@ -167,20 +167,6 @@
     { name: 'Wander', walk: [0, -2, 3, -5, 5, -4] },
   ];
   const PROG_EVERY = [2, 4, 8, 16];
-  const progSeqFor = p => {                                              // the progression's degrees in order (Wander: a seeded walk)
-    const pr = PROGRESSIONS[Math.max(0, Math.min(PROGRESSIONS.length - 1, Math.round(+p.prog || 0)))];
-    if (!pr) return [0];
-    if (pr.steps) return pr.steps;
-    const r = mulberry32(((Number.isFinite(+p.seed) ? +p.seed : 7) >>> 0) + 31), out = [0];
-    for (let k = 1; k < 8; k++) out.push(pr.walk[1 + Math.floor(r() * (pr.walk.length - 1))]);
-    return out;
-  };
-  // the chord sounding at clip second t (semitones from the root), for the picture to answer it: the same timing as the sound
-  function chordAt(p, starts, t) {
-    const seq = progSeqFor(p), every = PROG_EVERY[Math.max(0, Math.min(PROG_EVERY.length - 1, Math.round(+p.progEvery || 0)))];
-    const i = Math.max(0, Math.min(starts.length - 2, cutAtTime(starts, t)));
-    return seq[Math.floor(i / every) % seq.length];
-  }
   // The bassline: a sequencer on a plucked saw an octave over the sub (it follows the chord changes). Only root, fifth and octave, so it
   // stays in key on every chord; the rhythm comes from rests and accents. Four steps, 1 / 2 / 4 a cut.
   const BASS_PATTERNS = [
@@ -283,7 +269,7 @@
     const arpAmt = clamp01(p.arp || 0), arpSteps = ARP_STEPS[pick(p.arpSteps, ARP_STEPS.length)], arpRate = pick(p.arpRate, ARP_PER_CUT.length);
     const dynamics = opts.dynamics === false ? 0 : pick(p.dynamics, 4);
     const prog = PROGRESSIONS[pick(p.prog, PROGRESSIONS.length)], progEvery = PROG_EVERY[pick(p.progEvery, PROG_EVERY.length)];
-    const progSeq = progSeqFor(p);
+    const progSeq = !prog ? [0] : prog.steps || (() => { const r = mulberry32(seedN + 31), out = [0]; for (let k = 1; k < 8; k++) out.push(prog.walk[1 + Math.floor(r() * (prog.walk.length - 1))]); return out; })();
     const degreeAt = i => progSeq[Math.floor(i / progEvery) % progSeq.length];   // the chord at music cut i, in semitones from the root
     const padAmt = clamp01(p.pad || 0), tape = clamp01(p.tape || 0);
     const bassAmt = clamp01(p.bass || 0), bassPat = BASS_PATTERNS[pick(p.bassPattern, BASS_PATTERNS.length)], bassPer = BASS_PER_CUT[pick(p.bassRate, BASS_PER_CUT.length)];
@@ -920,5 +906,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, notesIn, chordAt, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, notesIn, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz };
 })();

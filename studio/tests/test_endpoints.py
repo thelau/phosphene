@@ -621,28 +621,6 @@ def test_ai_reorder_of_a_group_moves_only_its_images_among_their_own_places(live
     assert [p["filename"] for p in state["plates"] if not p["trashed"]][:3] == [names[2], names[1], names[0]], "n1 kept its place; the group swapped"
 
 
-def test_export_frames_take_the_chord_colour_from_the_tints(srv, tmp_path):
-    """Colour follows the chords. Invert off: from 0.2 s on the darks lift to the chord's shade. Invert on: the twin is the chord's duotone,
-    the original untouched; the home chord's twin the plain inverted copy."""
-    from PIL import Image
-    dark = tmp_path / "d.jpg"
-    Image.new("RGB", (40, 72), (20, 20, 20)).save(dark)
-    px = lambda d, f: Image.open(d / f"f_{f:04d}.jpg").convert("RGB").resize((1, 1)).getpixel((0, 0))
-    out = tmp_path / "off"
-    out.mkdir()
-    srv.write_export_frames([dark, dark], out, 12, 1.0, "off", "off", 0.6, [0, 6, 12], tints=[[0, None], [0.2, "#EC540C"]])
-    assert max(px(out, 0)) < 26, "before the chord: as it was"
-    r, g, b = px(out, 8)
-    assert abs(r - 0x5E) < 5 and abs(g - 0x22) < 5 and b < 26, f"after: the darks in the orange's shade ({px(out, 8)})"
-    out = tmp_path / "pair"
-    out.mkdir()
-    srv.write_export_frames([dark, dark], out, 24, 1.0, "mono", "off", 0.6, [0, 6, 12, 18, 24], tints=[[0, None], [0.4, "#5D8FF4"]])
-    assert max(px(out, 2)) < 26 and min(px(out, 8)) > 225, "home chord: the original, then the plain inverted twin"
-    assert max(px(out, 14)) < 26, "the original stays as it is"
-    r, g, b = px(out, 20)
-    assert b > 200 and r < 110, f"the twin in the chord's duotone: its darks become the blue ({px(out, 20)})"
-
-
 def test_export_frames_trail_blends_the_previous_image_after_each_cut(srv, tmp_path):
     """Trail: on the first frames of a cut the previous image shows through, fading over 4 frames; the first cut has none."""
     from PIL import Image
