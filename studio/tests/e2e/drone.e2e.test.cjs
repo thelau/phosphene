@@ -379,6 +379,29 @@ test('pad, acid and tape: the pad voices each chord in the key (VI gets its majo
   await ctx.close();
 });
 
+test('polyrhythm, rise and stutter: 3 notes over 2 cuts, a swell into the drop and an impact on it, a stuttering cut repeats one slice; the level holds', { skip }, async () => {
+  const ctx = await fresh();
+  const poly = await page.evaluate(() => [0, 1, 2, 3].map(i => window.Drone.notesIn(i, 1.5).map(([k, f]) => [k, +f.toFixed(3)])));
+  assert.equal(JSON.stringify(poly), '[[[0,0],[1,0.667]],[[2,0.333]],[[3,0],[4,0.667]],[[5,0.333]]]', '3 against 2: notes at 0, 2/3, 4/3 cuts...');
+  const r = await page.evaluate(async BASE => {
+    const sr = 44100, starts = Array.from({ length: 21 }, (_, i) => i * 0.25);      // flat: a drop at cut 16 (4 s)
+    const band = (x, a, b, hp) => { let e = 0, y = 0, prev = 0; const al = Math.exp(-2 * Math.PI * (hp ? 2000 : 120) / sr); for (let i = Math.round(a * sr); i < Math.round(b * sr); i++) { const v = x.left[i] + x.right[i]; if (hp) { y = al * (y + v - prev); prev = v; } else y += (1 - al) * (v - y); e += y * y; } return e / ((b - a) * sr); };
+    const lvl = x => { let s2 = 0; for (let i = 0; i < x.left.length; i++) s2 += x.left[i] ** 2; return Math.sqrt(s2 / x.left.length); };
+    const rise = await window.Drone.renderExport({ ...BASE, rise: 0.8 }, starts), none = await window.Drone.renderExport({ ...BASE }, starts);
+    const st = Array.from({ length: 33 }, (_, i) => i * 0.25), stut = await window.Drone.renderExport({ ...BASE, arp: 0.4, arpRate: 3, stutter: 1 }, st), plain = await window.Drone.renderExport({ ...BASE, arp: 0.4, arpRate: 3 }, st);
+    const corr = (x, a, lag) => { let n = 0, d1 = 0, d2 = 0; const L = Math.round(lag * sr); for (let i = Math.round(a * sr); i < Math.round((a + 0.08) * sr); i++) { n += x.left[i] * x.left[i + L]; d1 += x.left[i] ** 2; d2 += x.left[i + L] ** 2; } return n / Math.sqrt(d1 * d2); };
+    const phraseEnds = [7, 15, 23].map(c => ({ c, stut: corr(stut, c * 0.25 + 0.07, 0.0625), plain: corr(plain, c * 0.25 + 0.07, 0.0625) }));
+    return { early: band(rise, 1.0, 1.7, true) / band(none, 1.0, 1.7, true), late: band(rise, 3.3, 3.9, true) / band(none, 3.3, 3.9, true),
+      boom: band(rise, 4.0, 4.5, false) / band(none, 4.0, 4.5, false), riseLevel: lvl(rise), stutLevel: lvl(stut), phraseEnds };
+  }, BASE);
+  assert.ok(r.late > 3 * r.early && r.late > 3, `the swell grows into the drop: ×${r.early.toFixed(1)} early, ×${r.late.toFixed(1)} just before`);
+  assert.ok(r.boom > 1.4, `an impact on the drop: ×${r.boom.toFixed(2)} low end`);
+  const looped = r.phraseEnds.filter(p => p.stut > 0.9 && p.plain < 0.6);
+  assert.ok(looped.length >= 1, `at least one phrase end repeats one slice: ${JSON.stringify(r.phraseEnds)}`);
+  assert.ok(Math.abs(r.riseLevel - 0.17) < 0.015 && Math.abs(r.stutLevel - 0.17) < 0.015, `the level holds: ${r.riseLevel}, ${r.stutLevel}`);
+  await ctx.close();
+});
+
 test('the engine finds no console errors across all of this', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(async (BASE) => {

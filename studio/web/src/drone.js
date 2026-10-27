@@ -237,7 +237,9 @@
     return out;
   }
 
-  const ARP_PER_CUT = [0.5, 1, 2, 4];                                  // arpeggio notes per cut
+  const ARP_PER_CUT = [0.5, 1, 2, 4, 1.5, 0.75];                      // arpeggio notes per cut; 1.5 and 0.75 are 3 against 2 and 3 against 4: polyrhythms that drift against the picture
+  // the notes falling in cut i at `per` notes a cut: note k sits at k / per cuts (so the pattern stays in phase from any offset)
+  const notesIn = (i, per) => { const out = []; for (let k = Math.ceil(i * per - 1e-9); k < (i + 1) * per - 1e-9; k++) out.push([k, k / per - i]); return out; };
   const rootHz = pitch => 38 * Math.pow(2, 0.9 * pitch);                // 38..71 Hz
 
   // Builds the drone into ctx and connects it to `dest` (stereo, before the final glue).
@@ -264,12 +266,12 @@
     const choir = clamp01(p.choir || 0), industrial = clamp01(p.industrial || 0);   // two layers mixed into the drone: low voices, and metal and noise
     const hitType = pick(p.hitType, 5), hitAmt = clamp01(p.hit || 0), hitOn = pick(p.hitOn, 4);
     const arpMood = ARP_MOODS[pick(p.arpMood, ARP_MOODS.length)];
-    const arpAmt = clamp01(p.arp || 0), arpSteps = ARP_STEPS[pick(p.arpSteps, ARP_STEPS.length)], arpRate = pick(p.arpRate, 4);
+    const arpAmt = clamp01(p.arp || 0), arpSteps = ARP_STEPS[pick(p.arpSteps, ARP_STEPS.length)], arpRate = pick(p.arpRate, ARP_PER_CUT.length);
     const dynamics = opts.dynamics === false ? 0 : pick(p.dynamics, 4);
     const prog = PROGRESSIONS[pick(p.prog, PROGRESSIONS.length)], progEvery = PROG_EVERY[pick(p.progEvery, PROG_EVERY.length)];
     const progSeq = !prog ? [0] : prog.steps || (() => { const r = mulberry32(seedN + 31), out = [0]; for (let k = 1; k < 8; k++) out.push(prog.walk[1 + Math.floor(r() * (prog.walk.length - 1))]); return out; })();
     const degreeAt = i => progSeq[Math.floor(i / progEvery) % progSeq.length];   // the chord at music cut i, in semitones from the root
-    const padAmt = clamp01(p.pad || 0), tape = clamp01(p.tape || 0);
+    const padAmt = clamp01(p.pad || 0), tape = clamp01(p.tape || 0), riseAmt = clamp01(p.rise || 0), stutterAmt = clamp01(p.stutter || 0);
     const bassAmt = clamp01(p.bass || 0), bassPat = BASS_PATTERNS[pick(p.bassPattern, BASS_PATTERNS.length)], bassPer = BASS_PER_CUT[pick(p.bassRate, BASS_PER_CUT.length)];
     const arrange = pick(p.arrange, ARRANGEMENTS.length);
     const subWave = Math.max(0, Math.min(SUB_WAVES.length - 1, Math.round(+p.subWave || 0)));
@@ -558,15 +560,12 @@
       const mutateTo = cycle => { while (mutCycle < cycle) { mutated[Math.floor(mrand() * L)] = notes[Math.floor(mrand() * notes.length)]; mutCycle++; } };
       const noteAt = st => m.accumulate ? pattern[accPos[st % accPos.length]] : m.mutate ? (mutateTo(Math.floor(st / L)), mutated[st % L]) : pattern[st % L];
       const per = ARP_PER_CUT[arpRate];
-      const stepsIn = n => (per < 1 ? Math.ceil(n / 2) : n * per);
-      let step = stepsIn(cursor);
       perCut.push((i, tc) => {
         const len = starts[i + 1] - starts[i];
-        const n = per < 1 ? (i % 2 === 0 ? 1 : 0) : per;
-        for (let k = 0; k < n; k++, step++) {
-          const t = tc + (per < 1 ? 0 : (len * k) / n), at0 = starts[i] + (per < 1 ? 0 : (len * k) / n);
+        for (const [step, frac] of notesIn(i, per)) {
+          const t = tc + frac * len, at0 = starts[i] + frac * len;
           const s = arc(at0);
-          const stepLen = per < 1 ? len * 2 : len / n;
+          const stepLen = len / per;
           const decay = Math.min(1.6, Math.max(0.08, stepLen * 0.9 * m.sustain)) * (1.5 - s), f = noteAt(step) * lift(s, 1.2);
           const sw = m.sweep ? 0.15 + 0.85 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / m.sweep)) : 1;   // Sweep: how far the filter opens now
           const acc = accent ? (accent[step % L] ? 1.35 : 0.8) : 1, glide = slide && slide[step % L];
@@ -594,15 +593,12 @@
       lp.connect(env);
       env.connect(gain(0.6, arpBus[0])); env.connect(gain(0.6, arpBus[1]));
       const per = ARP_PER_CUT[arpRate];
-      const stepsIn = n => (per < 1 ? Math.ceil(n / 2) : n * per);       // steps played in the first n cuts: keeps the pattern in phase when playing from an offset
-      let step = stepsIn(cursor);
       perCut.push((i, tc) => {
         const len = starts[i + 1] - starts[i];
-        const n = per < 1 ? (i % 2 === 0 ? 1 : 0) : per;
-        for (let k = 0; k < n; k++, step++) {
-          const t = tc + (per < 1 ? 0 : (len * k) / n);
-          const s = arc(starts[i] + (per < 1 ? 0 : (len * k) / n));
-          const stepLen = per < 1 ? len * 2 : len / n, decay = Math.min(0.5, Math.max(0.05, stepLen * 0.9)) * (1.5 - s), f = pattern[step % arpSteps] * lift(s, 1.2);
+        for (const [step, frac] of notesIn(i, per)) {
+          const t = tc + frac * len;
+          const s = arc(starts[i] + frac * len);
+          const stepLen = len / per, decay = Math.min(0.5, Math.max(0.05, stepLen * 0.9)) * (1.5 - s), f = pattern[step % arpSteps] * lift(s, 1.2);
           for (const [o, det] of voices) o.frequency.setValueAtTime(f * (1 + det), t);
           lp.frequency.setValueAtTime(1900 * lift(s, 0.8), t); lp.frequency.setTargetAtTime(420 * lift(s, 1.2), t + 0.003, decay / 3);
           strike(env, t, 2.2 * arpAmt, decay);
@@ -635,7 +631,22 @@
     const cross = (a, b, ch) => { const g1 = gain((1 + w) / 2); const g2 = gain((1 - w) / 2); mix[a].connect(g1); mix[b].connect(g2); g1.connect(merger, 0, ch); g2.connect(merger, 0, ch); };
     cross(0, 1, 0); cross(1, 0, 1);
     const dyn = ctx.createGain();                                           // the volume is never touched by Dynamics: it shapes the notes (see arc)
-    merger.connect(dyn);
+    const gap = gain(1); merger.connect(gap);                               // the Rise's breath before the drop
+    let pre = gap;
+    // stutter: now and then, on the last cut of a phrase of 8, the whole sound repeats a slice of itself (a quarter of the cut) until the next
+    if (stutterAmt > 0.01) {
+      const dry = gain(1), inGate = gain(0), dl = ctx.createDelay(1), fb = gain(0), wet = gain(0), sum = gain(1);
+      pre.connect(dry); pre.connect(inGate); inGate.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(wet); dry.connect(sum); wet.connect(sum);
+      pre = sum;
+      perCut.push((i, t) => {
+        if (i % 8 !== 7 || i >= nCuts - 1 || mulberry32(seedN * 31 + i)() >= 0.6 * stutterAmt) return;   // seeded: the same stutters every time
+        const len = starts[i + 1] - starts[i], slice = Math.min(0.25, Math.max(0.03, len / 4)), end = t + len;
+        dl.delayTime.setValueAtTime(slice - 128 / ctx.sampleRate, t);                      // a feedback loop adds one render block (128 samples): the loop is exactly the slice
+        inGate.gain.setValueAtTime(1, t); inGate.gain.setValueAtTime(0, t + slice);        // take one slice...
+        for (const [g, v] of [[fb, 1], [wet, 1], [dry, 0]]) { g.gain.setTargetAtTime(v, t + slice, 0.002); g.gain.setTargetAtTime(v ? 0 : 1, end, 0.003); }   // ...and loop it to the next cut
+      });
+    }
+    pre.connect(dyn);
     let out = dyn;
     if (tape > 0.01) {                                                      // tape: wow and flutter, saturation, a darker top, a little dust
       const wow = ctx.createDelay(0.1); wow.delayTime.value = 0.012;
@@ -671,6 +682,35 @@
         }
       }
     }
+    // rise and drop: a filtered noise swell into one moment, a breath, then a deep impact. The moment comes from the film: where a landing
+    // begins or a build-up peaks (Variable), else every 16 music cuts
+    if (riseAmt > 0.01 && nCuts > 4) {
+      const lens = starts.slice(1).map((v, i) => v - starts[i]), whole = lens.length > 2 ? lens.slice(0, -1) : lens;
+      const lo = Math.min(...whole), hi = Math.max(...whole), drops = [];
+      if (hi > lo * 1.3) {
+        const landing = whole[0] < whole[whole.length - 1];
+        const c = whole.findIndex(l => (landing ? l > whole[0] * 1.15 : l <= lo * 1.1));
+        if (c > 0) drops.push(c);
+      } else for (let c = 16; c < nCuts - 1; c += 16) drops.push(c);
+      const noise = voiceNoise(1, 'bandpass', 400, 1.2, null), f = noise.__filter;
+      noise.connect(mix[0]); noise.connect(mix[1]); for (const sd of sends) noise.connect(gain(0.4, sd));
+      const boomO = osc('sine', f0 * 2), boomG = gain(0); boomO.connect(boomG); boomG.connect(mix[0]); boomG.connect(mix[1]);
+      let prev = 0;
+      for (const c of drops) {
+        const dropT = starts[c], riseFrom = Math.max(prev + 0.3, dropT - Math.min(2.5, Math.max(0.6, (dropT - prev) * 0.5)));
+        prev = dropT;
+        if (dropT <= offset) continue;
+        const go = () => {
+          const rs = Math.max(riseFrom, offset), d = at(dropT);
+          noise.gain.setValueAtTime(0, at(rs)); noise.gain.linearRampToValueAtTime(0.6 * riseAmt, d - 0.06); noise.gain.setValueAtTime(0, d - 0.05);
+          f.frequency.setValueAtTime(350 * Math.pow(4500 / 350, (rs - riseFrom) / (dropT - riseFrom)), at(rs)); f.frequency.exponentialRampToValueAtTime(4500, d - 0.05);
+          gap.gain.setValueAtTime(1, d - 0.07); gap.gain.linearRampToValueAtTime(0.12, d - 0.05); gap.gain.setTargetAtTime(1, d, 0.012);   // the breath
+          boomO.frequency.setValueAtTime(f0 * 3, d); boomO.frequency.setTargetAtTime(f0, d, 0.08); strike(boomG, d, 1.8 * riseAmt, 1.4);
+        };
+        const rc = cutAtTime(starts, riseFrom);
+        if (rc >= cursor) perCut.push(i => { if (i === rc) go(); }); else go();   // scheduled as the rise begins (live), or now if it already has
+      }
+    }
     // chord changes: one control signal (cents) into the bed's oscillators' detune, so it adds to whatever else moves the pitch;
     // a short glide at each change, as a modular's portamento
     if (prog) {
@@ -694,7 +734,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   const cutSignature = starts => { const head = []; for (const t of starts) { head.push(Math.round(t * 1000)); if (t > 4) break; } return head.join(','); };   // the cuts of the window the level is measured on: faster cuts pump differently
-  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.tape]);
+  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.tape, p.rise, p.stutter]);
   async function level(p, starts) {
     starts = cleanStarts(starts);
     const key = levelKey(p, starts);
@@ -910,5 +950,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, notesIn, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz };
 })();

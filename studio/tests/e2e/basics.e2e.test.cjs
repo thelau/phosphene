@@ -247,7 +247,7 @@ test('the inspector: Rhythm, Look and Sound always open; Sound in four groups; A
   assert.ok(await page.locator('#soundOffNote').isVisible());
   await choose('musicSelect', 'on');
   assert.equal(await page.locator('#soundBtn').count(), 0, 'Source is the only sound switch');
-  const groups = { Bed: ['#pulseRange', '#lowRange', '#powerRange', '#spaceRange', '#brightRange', '#widthRange'], Tone: ['#pitchRange', '#chordSelect', '#progSelect', '#progEverySelect', '#padRange', '#subWaveSelect', '#padWaveSelect', '#movementRange'], Texture: ['#echoRange', '#washRange', '#ringRange', '#shimmerRange', '#choirRange', '#industrialRange', '#tapeRange'], Notes: ['#hitTypeSelect', '#hitRange', '#hitOnSelect', '#arpRange', '#arpMoodSelect', '#arpStepsSelect', '#arpRateSelect', '#bassRange', '#bassPatternSelect', '#bassRateSelect', '#arrangeSelect', '#dynSelect'] };
+  const groups = { Bed: ['#pulseRange', '#lowRange', '#powerRange', '#spaceRange', '#brightRange', '#widthRange'], Tone: ['#pitchRange', '#chordSelect', '#progSelect', '#progEverySelect', '#padRange', '#subWaveSelect', '#padWaveSelect', '#movementRange'], Texture: ['#echoRange', '#washRange', '#ringRange', '#shimmerRange', '#choirRange', '#industrialRange', '#tapeRange'], Notes: ['#hitTypeSelect', '#hitRange', '#hitOnSelect', '#arpRange', '#arpMoodSelect', '#arpStepsSelect', '#arpRateSelect', '#bassRange', '#bassPatternSelect', '#bassRateSelect', '#arrangeSelect', '#riseRange', '#stutterRange', '#dynSelect'] };
   for (const [g, ids] of Object.entries(groups)) {
     await page.click(`#soundTab${g}`);
     for (const id of ids) assert.ok(await page.locator(id).isVisible(), `${g}: ${id}`);
