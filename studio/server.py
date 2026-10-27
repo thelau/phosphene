@@ -35,7 +35,9 @@ import edits
 import features
 import sequences
 import diversity
+import places
 import projects
+import qa_engine
 import taste
 
 from krea_mcp_client import (
@@ -58,11 +60,11 @@ from qa_engine import (
 STUDIO_DIR = Path(__file__).resolve().parent
 THUMBS_DIR = STUDIO_DIR / ".thumbs"   # resized copies for the grid and the preview (gitignored)
 THUMB_WIDTHS = (360, 540)
-EXPORT_DIR = STUDIO_DIR / ".export"      # the drone the page rendered for the next export (gitignored)
-WEB_DIST = STUDIO_DIR / "web" / "dist"  # built page (npm run build); in dev Vite serves it instead
-OUTPUTS_DIR = ROOT_DIR / "outputs"
+EXPORT_DIR = places.SUPPORT_DIR / ".export"  # the drone and the frames the page made for the next export, zips (gitignored)
+WEB_DIST = places.WEB_DIST              # built page (npm run build, or inside the Mac app); in dev Vite serves it instead
+OUTPUTS_DIR = places.OUTPUTS_DIR
 CURATION_FILE = STUDIO_DIR / "curation_state.json"
-SECRETS_FILE = STUDIO_DIR / ".secrets.json"  # gitignored; holds kimi_api_key
+SECRETS_FILE = places.SUPPORT_DIR / ".secrets.json"  # gitignored; holds kimi_api_key
 
 PLATES_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -70,6 +72,8 @@ OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 def find_tool(name: str) -> str:
     """A command line tool wherever it is installed (PATH first; Homebrew's places when the server was started without them)."""
+    if name == "ffmpeg" and places.FFMPEG:
+        return places.FFMPEG
     return shutil.which(name) or next((p for p in (f"/opt/homebrew/bin/{name}", f"/usr/local/bin/{name}") if Path(p).exists()), name)
 
 
@@ -82,7 +86,14 @@ except Exception:
     QA_CACHE = {}
 
 # ---- the project the server works on (projects.py): its plates, curation, caches, mark and words ----
-PROJECT: dict = projects.load(projects.DEFAULT)
+def _first_project():
+    try:
+        return projects.load(projects.active_slug() or projects.DEFAULT)
+    except Exception:                                                        # the app before its first launch copied the sample in
+        return None
+
+
+PROJECT: dict = _first_project()
 
 
 def apply_project(p: dict) -> None:
@@ -95,6 +106,8 @@ def apply_project(p: dict) -> None:
     except Exception:
         QA_CACHE = {}
     features.use_cache(p["features_file"])
+    if p.get("qa") == "demo-tuned":                                       # DEMO's logo check reads its orbital mark from the project
+        qa_engine.LOGO_CREAM_PATH = p["mark_file"]
 
 
 def is_demo() -> bool:
@@ -108,7 +121,8 @@ def current_mark():
 
 def current_guide():
     """The guide image Krea draws from: None for DEMO (its originals, one pre-uploaded), else this project's, uploaded once and cached."""
-    return None if is_demo() else {"files": PROJECT["guides"], "cache": PROJECT["guide_cache_file"]}
+    original = PROJECT["guides"]["dark"] == ROOT_DIR / "assets" / "logo-guides" / "guide_dark_1080x1920.png"
+    return None if is_demo() and original else {"files": PROJECT["guides"], "cache": PROJECT["guide_cache_file"]}
 
 
 def mark_words(p: dict | None = None) -> dict:
@@ -755,6 +769,27 @@ EXPORT_FRAME_MAX_BYTES = 16 * 1024 * 1024
 EXPORT_FRAMES_MAX = 200000                 # about 1 h 50 at 30 fps
 
 
+DESCRIBE_MARK = (
+    "This is a brand's mark (logo), shown on grey. It will sit at the same place in every shot of a film of AI images, physically part of each "
+    "scene. Describe it for an image model. Return ONLY raw JSON: {\"shape\": \"2-6 words naming its shape and kind, e.g. circular orbital logo, "
+    "angular monogram, horizontal wordmark\", \"noun\": \"1-3 words to call it in a sentence, e.g. circular mark, monogram, wordmark\", "
+    "\"palette\": [\"2 or 3 hex colours that would suit a brand with this mark, besides its own\"]}"
+)
+
+
+def describe_mark(img, api_key: str, model: str) -> dict:
+    """Kimi's words for a mark (its shape, what to call it) and colours to go with it."""
+    tile = Image.new("RGB", (512, 512), (128, 128, 128))
+    m = img.convert("RGBA")
+    m.thumbnail((400, 400))
+    tile.paste(m, ((512 - m.width) // 2, (512 - m.height) // 2), m)
+    buf = io.BytesIO(); tile.save(buf, "JPEG", quality=90)
+    data = parse_llm_json(call_kimi_llm(DESCRIBE_MARK, api_key, model, images=[buf.getvalue()]), "{")
+    clean = lambda v, n: re.sub(r"\s+", " ", str(v or "")).strip()[:n]
+    return {"shape": clean(data.get("shape"), 80), "noun": clean(data.get("noun"), 40),
+            "suggested": [c for c in (projects.clean_hex(x) for x in (data.get("palette") or [])[:3]) if c]}
+
+
 def build_download_zip(files: list[str], label: str) -> tuple[Path, str]:
     """The full-size images shown in Curate, numbered in their order, in one zip (stored as they are: JPEGs do not compress).
     Kept in studio/.export/zips until fetched once (older ones are cleared). Returns (file, download name)."""
@@ -1114,6 +1149,32 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 dest.write_bytes(raw)
             self.send_json({"ok": True})
             return
+        if parsed.path == "/api/project-import":
+            # a project file (Export project's zip) as a new project, then open it; the zip comes as it is and is written to disk first
+            if busy():
+                self.rfile.read(max(0, length))
+                self.send_json({"ok": False, "busy": True, "error": "Something is running (images, an AI order or an export). Wait until it ends."}, 409)
+                return
+            EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+            tmp = EXPORT_DIR / f"import-{uuid.uuid4().hex}.zip"
+            try:
+                with tmp.open("wb") as fh:
+                    left = length
+                    while left > 0:
+                        chunk = self.rfile.read(min(left, 1 << 20))
+                        if not chunk:
+                            break
+                        fh.write(chunk); left -= len(chunk)
+                p = projects.import_zip(tmp)
+                apply_project(projects.set_active(p["slug"]))
+            except ValueError as e:
+                self.send_json({"ok": False, "error": str(e)}, 400)
+                return
+            finally:
+                tmp.unlink(missing_ok=True)
+            gen_log.record("project", action="import", project=PROJECT["slug"])
+            self.send_json({"ok": True, "active": PROJECT["slug"], "project": projects.public(PROJECT), "projects": [projects.public(x) for x in projects.all_projects()]})
+            return
         body = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
         if parsed.path in LOCKED_DURING_AI and ai_busy():
             self.send_json({"ok": False, "busy": True, "error": "The AI is ordering your selection. Wait until it finishes."}, 409)
@@ -1164,6 +1225,40 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(e)}, 400)
                 return
             self.send_json({"ok": True, "url": f"/api/download-zip?id={f.stem}&name={quote(name)}", "filename": name, "bytes": f.stat().st_size})
+            return
+
+        if parsed.path == "/api/project-export":
+            # a project as one file (its folder zipped, images included), downloaded once like the image zip
+            try:
+                (EXPORT_DIR / "zips").mkdir(parents=True, exist_ok=True)
+                out = EXPORT_DIR / "zips" / f"{uuid.uuid4().hex}.zip"
+                name = projects.export_zip(str(body.get("slug") or PROJECT["slug"]), out)
+            except FileNotFoundError:
+                self.send_json({"ok": False, "error": "There is no such project."}, 404)
+                return
+            self.send_json({"ok": True, "url": f"/api/download-zip?id={out.stem}&name={quote(name)}", "filename": name, "bytes": out.stat().st_size})
+            return
+
+        if parsed.path == "/api/describe-mark":
+            # a mark just chosen in the form: its own colours (from its pixels) and, with a Kimi key, the words for it and colours to go with it
+            try:
+                import base64
+                img = Image.open(io.BytesIO(base64.b64decode(str(body.get("mark") or "").split(",", 1)[-1])))
+                img.load()
+                alpha = projects.mark_alpha(img)
+            except Exception:
+                self.send_json({"ok": False, "error": "That is not an image of a mark."}, 400)
+                return
+            out = {"ok": True, "colours": projects.mark_colours(img)}
+            st = load_state()
+            if st.get("kimi_api_key"):
+                try:
+                    out.update(describe_mark(img, st["kimi_api_key"], st.get("kimi_model", "kimi-k3")))
+                except Exception as e:
+                    out["note"] = f"Kimi could not describe it ({str(e)[:120]}): fill in the words yourself."
+            else:
+                out["note"] = "With a Kimi key (Settings), Kimi suggests the words for the mark."
+            self.send_json(out)
             return
 
         if parsed.path == "/api/krea-auth":
@@ -1522,6 +1617,10 @@ class QuietServer(ThreadingHTTPServer):
 
 
 if __name__ == "__main__":
+    if os.environ.get("PHOSPHENE_EXAMPLES"):                                 # the Mac app's first launch: Demo, the sample, copied in once
+        projects.seed_examples(Path(os.environ["PHOSPHENE_EXAMPLES"]))
+    if not projects.active_slug():
+        sys.exit(f"No project in {projects.PROJECTS_DIR}. Import one, or put Demo's folder back.")
     apply_project(projects.load(projects.active_slug()))                     # the project open last time on this machine
     port = int(os.environ.get("PORT", "8765"))
     server = QuietServer(("127.0.0.1", port), StudioHandler)

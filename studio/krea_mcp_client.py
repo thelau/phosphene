@@ -19,7 +19,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-AUTH_FILE = Path(__file__).resolve().parent / ".krea_auth.json"
+import places
+
+AUTH_FILE = places.SUPPORT_DIR / ".krea_auth.json"
 KREA_MCP_URL = "https://api.krea.ai/mcp"
 KREA_AUTHORIZE_URL = "https://www.krea.ai/auth/v1/oauth/authorize"     # from https://www.krea.ai/.well-known/oauth-authorization-server
 KREA_TOKEN_URL = "https://www.krea.ai/auth/v1/oauth/token"

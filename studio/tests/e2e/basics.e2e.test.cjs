@@ -507,7 +507,7 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   assert.equal(await text('#projectName'), 'Demo');
   await page.click('#projectBtn');
   await page.waitForSelector('#projectMenu:not([hidden])');
-  assert.deepEqual(await page.locator('#projectMenu .gm-item').allTextContents(), ['Demo', 'New project…', 'Project settings…']);
+  assert.deepEqual(await page.locator('#projectMenu .gm-item').allTextContents(), ['Demo', 'New project…', 'Project settings…', 'Export project…', 'Import project…']);
   assert.equal(await page.locator('#projectMenu .gm-item.on').textContent(), 'Demo');
   await page.locator('#projectMenu .gm-item', { hasText: 'Project settings' }).click();       // DEMO: name, brand and colours; its mark, place and words locked
   assert.equal(await page.locator('#projectModal').isVisible(), true);
@@ -531,12 +531,15 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   });
   await page.setInputFiles('#pfMark', { name: 'owl.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
   await page.waitForFunction(() => document.getElementById('pfPreviewMark').getAttribute('src'));
+  await page.waitForFunction(() => document.getElementById('pfShape').value === 'horizontal bar mark');
+  assert.equal(await page.locator('#pfPalette').inputValue(), '#F0A020 #1A1A1A', 'the mark\'s own colours, then Kimi\'s');
+  assert.match(await text('#pfKimi'), /suggestions/);
   await page.fill('#pfSize', '30'); await page.locator('#pfSize').dispatchEvent('input');
   await page.fill('#pfY', '40'); await page.locator('#pfY').dispatchEvent('input');
   assert.equal(await text('#pfSizeVal'), '30%');
   const prev = await page.locator('#pfPreview').boundingBox(), mark = await page.locator('#pfPreviewMark').boundingBox();
   assert.ok(Math.abs(mark.width - prev.width * 0.3) < 2 && Math.abs(mark.y + mark.height / 2 - (prev.y + prev.height * 0.4)) < 2, 'the preview places it at its size and height');
-  await page.fill('#pfShape', 'owl wordmark'); await page.fill('#pfNoun', 'owl'); await page.fill('#pfBrief', 'Night Owl, a late bar');
+  await page.fill('#pfShape', 'owl wordmark'); await page.fill('#pfNoun', 'owl'); await page.fill('#pfBrief', 'Night Owl, a late bar');   // typed by hand: Kimi never writes over it
   await page.fill('#pfPalette', '#223344 #ff8800 nope'); await page.locator('#pfPalette').dispatchEvent('input');
   assert.equal(await page.locator('#pfSwatches i').count(), 2);
   await shot('32-new-project');
@@ -556,6 +559,12 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   await page.waitForFunction(() => document.getElementById('projectName').textContent === 'Demo', null, { timeout: 10000 });
   await page.waitForSelector('#loader', { state: 'detached' });
   assert.equal(await page.locator('.card').count(), 0, 'switching reloads with the other project');   // (the fake keeps one library)
+  await page.click('#projectBtn');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#projectMenu .gm-item', { hasText: 'Export project' }).click()]);
+  assert.ok(dl, 'Export project downloads the project file');
+  await page.setInputFiles('#pfImport', { name: 'demo.zip', mimeType: 'application/zip', buffer: Buffer.from('PK\u0003\u0004 a zip') });
+  await page.waitForFunction(() => document.getElementById('projectName').textContent === 'Imported', null, { timeout: 10000 });
+  await page.waitForSelector('#loader', { state: 'detached' });
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });

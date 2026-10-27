@@ -122,3 +122,72 @@ def test_the_logo_check_finds_a_projects_own_mark_where_it_should_be(pdir, tmp_p
     assert not moved["qa_passed"], moved
     as_demo = qa_engine.evaluate_plate_qa(tmp_path / "good.jpg")
     assert not as_demo["qa_passed"], "DEMO's check does not take another mark for its own"
+
+
+def test_export_then_import_brings_the_project_back_as_it_was_and_never_carries_the_kimi_key(pdir, tmp_path):
+    import json, zipfile
+    p = projects.create({"name": "Night Owl", "mark_size": 22, "palette": ["#112233"]}, star_png())
+    for i in range(3):
+        Image.new("RGB", (54, 96), (i * 60, 20, 20)).save(p["plates_dir"] / f"{i:02d}_shot.jpg")
+    state = {"order": ["02_shot.jpg", "00_shot.jpg", "01_shot.jpg"], "trashed": ["01_shot.jpg"], "groups": [{"id": "g1", "name": "Red", "files": ["02_shot.jpg"]}],
+             "edits": [{"id": "e1", "name": "Feral Ember"}], "kimi_api_key": "sk-secret"}
+    p["state_file"].write_text(json.dumps(state))
+    (p["plates_dir"].parent / ".qa_cache.json").write_text("{}")
+    out = tmp_path / "x.zip"
+    assert projects.export_zip("night-owl", out) == "Night-Owl-project.zip"
+    names = zipfile.ZipFile(out).namelist()
+    assert sorted(names) == sorted(["night-owl/project.json", "night-owl/state.json", "night-owl/mark.png", "night-owl/guide_dark.png", "night-owl/guide_light.png",
+                                    "night-owl/plates/00_shot.jpg", "night-owl/plates/01_shot.jpg", "night-owl/plates/02_shot.jpg"]), "everything it is, no caches"
+    assert b"sk-secret" not in out.read_bytes(), "the key never travels"
+    q = projects.import_zip(out)
+    assert q["slug"] == "night-owl-2" and q["name"] == "Night Owl" and q["mark_size"] == 22 and q["palette"] == ["#112233"], "a new project, nothing replaced"
+    got = json.loads(q["state_file"].read_text())
+    assert (got["order"], got["trashed"], got["groups"], got["edits"]) == (state["order"], state["trashed"], state["groups"], state["edits"]), "as it was"
+    assert sorted(f.name for f in q["plates_dir"].iterdir()) == ["00_shot.jpg", "01_shot.jpg", "02_shot.jpg"]
+    demo_out = tmp_path / "demo.zip"
+    projects.export_zip("demo", demo_out)
+    assert "Demo/mark.png" in zipfile.ZipFile(demo_out).namelist() and "paths" not in json.loads(zipfile.ZipFile(demo_out).read("Demo/project.json")), "DEMO travels with its files inside"
+
+
+def test_import_refuses_what_is_not_a_project_and_takes_nothing_outside_its_folder(pdir, tmp_path):
+    import json, zipfile
+    bad = tmp_path / "bad.zip"; bad.write_bytes(b"not a zip")
+    with pytest.raises(ValueError, match="not a project file"):
+        projects.import_zip(bad)
+    nojson = tmp_path / "n.zip"
+    with zipfile.ZipFile(nojson, "w") as z:
+        z.writestr("x/readme.txt", "hi")
+    with pytest.raises(ValueError, match="no project.json"):
+        projects.import_zip(nojson)
+    sly = tmp_path / "s.zip"
+    with zipfile.ZipFile(sly, "w") as z:
+        z.writestr("x/project.json", json.dumps({"name": "Sly"}))
+        z.writestr("x/mark.png", star_png())
+        z.writestr("x/../../escape.txt", "no")
+        z.writestr("x/plates/../../evil.jpg", "no")
+        z.writestr("x/run.sh", "no")
+    p = projects.import_zip(sly)
+    assert sorted(f.name for f in (pdir / "sly").iterdir()) == ["guide_dark.png", "guide_light.png", "mark.png", "plates", "project.json"], "only a project's files"
+    assert not (tmp_path / "escape.txt").exists() and not (pdir / "evil.jpg").exists()
+
+
+def test_the_sample_is_copied_in_once_and_never_over_a_project(pdir, tmp_path, monkeypatch):
+    import shutil
+    monkeypatch.setattr(projects.places, "SUPPORT_DIR", tmp_path)
+    examples = tmp_path / "examples"
+    shutil.copytree(pdir / "demo", examples / "Demo")
+    shutil.rmtree(pdir / "demo")
+    assert projects.seed_examples(examples) == ["Demo"]
+    assert (pdir / "Demo" / "project.json").is_file() and projects.active_slug() == "Demo", "Demo opens when there is no demo"
+    shutil.rmtree(pdir / "Demo")
+    projects.create({"name": "Owl"}, star_png())
+    assert projects.seed_examples(examples) == [], "deleted later: it does not come back"
+    shutil.rmtree(pdir / "owl")
+    assert projects.seed_examples(examples) == ["Demo"], "with no project left at all, the sample comes back"
+
+
+def test_a_marks_own_colours(pdir):
+    im = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+    ImageDraw.Draw(im).rectangle((0, 0, 70, 100), fill=(236, 84, 12, 255))
+    ImageDraw.Draw(im).rectangle((71, 0, 100, 100), fill=(20, 20, 30, 255))
+    assert projects.mark_colours(im) == ["#EC540C", "#14141E"]

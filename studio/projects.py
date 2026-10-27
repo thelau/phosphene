@@ -18,10 +18,12 @@ from pathlib import Path
 
 from PIL import Image, ImageChops
 
+import places
+
 ROOT_DIR = Path(__file__).resolve().parent.parent
 STUDIO_DIR = ROOT_DIR / "studio"
-PROJECTS_DIR = ROOT_DIR / "projects"
-LOCAL_FILE = STUDIO_DIR / ".local.json"          # this machine's choices: which project is open (gitignored)
+PROJECTS_DIR = places.PROJECTS_DIR                 # the repo's projects/, or ~/Documents/Phosphene in the Mac app
+LOCAL_FILE = places.SUPPORT_DIR / ".local.json"          # this machine's choices: which project is open (gitignored)
 DEFAULT = "demo"
 FRAME_W, FRAME_H = 1080, 1920
 GUIDE_DARK, GUIDE_LIGHT = "#141416", "#FEFFE7"    # the guide images: the mark in cream on near-black, and in ink on cream
@@ -115,11 +117,17 @@ def all_projects() -> list[dict]:
 
 
 def active_slug() -> str:
+    """The project open last time; else Demo; else the first there is (None when there are none)."""
     try:
         slug = json.loads(LOCAL_FILE.read_text()).get("project") or DEFAULT
     except Exception:
         slug = DEFAULT
-    return slug if _project_file(slug).exists() else DEFAULT
+    if _project_file(slug).exists():
+        return slug
+    if _project_file(DEFAULT).exists():
+        return DEFAULT
+    first = all_projects()
+    return first[0]["slug"] if first else None
 
 
 def set_active(slug: str) -> dict:
@@ -220,7 +228,7 @@ def create(body: dict, mark_png: bytes) -> dict:
         raise
     except Exception:
         raise ValueError("The mark must be a PNG or JPEG image.")
-    raw = _fields({**body, "name": name}, {"created": time.strftime("%Y-%m-%dT%H:%M:%S")})
+    raw = _fields({**body, "name": name}, {"v": 1, "created": time.strftime("%Y-%m-%dT%H:%M:%S")})   # v: the project file's format, for later changes
     raw.setdefault("mark_size", 18.0); raw.setdefault("mark_x", 50.0); raw.setdefault("mark_y", 50.0)
     folder = PROJECTS_DIR / slug
     try:
@@ -270,3 +278,118 @@ def rebrand(text: str, p: dict) -> str:
     if not pal:
         return DEMO_COLOUR.sub("one brand colour", text)
     return DEMO_COLOUR.sub(lambda m: f"brand colour {pal[DEMO_PALETTE.index(m.group(1).upper()) % len(pal)]}", text)
+
+
+# ---- a project as one file: its folder zipped (mark, guides, curation, images), to send to someone or keep ----
+EXPORT_NAMES = ("project.json", "mark.png", "guide_dark.png", "guide_light.png", "state.json")
+
+
+def export_zip(slug: str, out: Path) -> str:
+    """Writes the project to `out` as a zip with one folder: project.json (with no paths: everything inside), the mark, the
+    guides, the curation (groups, snapshots, order, titles, the trash) and every image, so it opens as it was. Caches stay out.
+    Returns the file name to save it as."""
+    import zipfile
+    p = load(slug)
+    raw = json.loads(_project_file(slug).read_text())
+    raw.pop("paths", None)
+    raw["mark"] = "mark.png"
+    try:
+        state = json.loads(p["state_file"].read_text())
+    except Exception:
+        state = {}
+    for secret in ("kimi_api_key",):                    # never in a file that travels
+        state.pop(secret, None)
+    top = slugify(p["name"])
+    with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_STORED) as z:
+        z.writestr(f"{top}/project.json", json.dumps(raw, indent=2) + "\n")
+        z.writestr(f"{top}/state.json", json.dumps(state, indent=1))
+        z.write(p["mark_file"], f"{top}/mark.png")
+        for kind, f in p["guides"].items():
+            if f.is_file():
+                z.write(f, f"{top}/guide_{kind}.png")
+        for img in sorted(p["plates_dir"].glob("*.jpg")):
+            z.write(img, f"{top}/plates/{img.name}")
+    return f"{re.sub(r'[^A-Za-z0-9]+', '-', p['name']).strip('-') or 'Project'}-project.zip"
+
+
+def import_zip(path: Path) -> dict:
+    """A project file made by export_zip, as a new project (a new folder; nothing existing is replaced). Only the files a
+    project has are taken, and none outside its folder."""
+    import zipfile
+    try:
+        z = zipfile.ZipFile(path)
+    except zipfile.BadZipFile:
+        raise ValueError("That is not a project file (a .zip made by Export project).")
+    with z:
+        names = [n for n in z.namelist() if not n.endswith("/")]
+        tops = {n.split("/", 1)[0] for n in names}
+        if len(tops) != 1 or f"{next(iter(tops))}/project.json" not in names:
+            raise ValueError("That zip is not a project: it has no project.json.")
+        top = next(iter(tops))
+        raw = json.loads(z.read(f"{top}/project.json"))
+        if not isinstance(raw, dict) or not raw.get("name"):
+            raise ValueError("That project file has no name.")
+        raw.pop("paths", None)
+        raw["mark"] = "mark.png"
+        base = slugify(raw["name"])
+        slug, n = base, 2
+        while (PROJECTS_DIR / slug).exists():
+            slug, n = f"{base[:36]}-{n}", n + 1
+        folder = PROJECTS_DIR / slug
+        try:
+            (folder / "plates").mkdir(parents=True)
+            for n_ in names:
+                rel = n_[len(top) + 1:]
+                ok = rel in EXPORT_NAMES[1:] or (rel.startswith("plates/") and rel.count("/") == 1 and rel.lower().endswith(".jpg") and not rel.split("/")[1].startswith("."))
+                if ok:
+                    with z.open(n_) as src, open(folder / rel, "wb") as dst:
+                        shutil.copyfileobj(src, dst, 1 << 20)
+            if not (folder / "mark.png").is_file():
+                raise ValueError("That project file has no mark.")
+            raw["imported"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+            _write(slug, raw)
+            p = load(slug)
+            if not all(f.is_file() for f in p["guides"].values()):
+                make_guides(p)
+        except Exception:
+            shutil.rmtree(folder, ignore_errors=True)
+            raise
+    return p
+
+
+def seed_examples(examples: Path) -> list[str]:
+    """First launch of the app: the projects that come with it (Demo, the sample) are copied in, once. A project folder
+    that exists is never touched, and one deleted later does not come back, unless no project is left at all."""
+    marker = places.SUPPORT_DIR / ".examples_copied"
+    if not examples or not Path(examples).is_dir():
+        return []
+    if marker.exists() and all_projects():             # copied before, and there are projects: leave things as they are
+        return []                                       # (with none left at all, the sample comes back: the app always opens on something)
+    added = []
+    for src in sorted(Path(examples).iterdir()):
+        if (src / "project.json").is_file() and not (PROJECTS_DIR / src.name).exists():
+            shutil.copytree(src, PROJECTS_DIR / src.name)
+            added.append(src.name)
+    marker.write_text(json.dumps({"copied": added, "at": time.strftime("%Y-%m-%dT%H:%M:%S")}))
+    return added
+
+
+def mark_colours(img: Image.Image, n: int = 4) -> list[str]:
+    """The mark's own colours (its visible pixels), most used first, near-duplicates merged."""
+    im = img.convert("RGBA")
+    im.thumbnail((200, 200))
+    raw = im.tobytes()
+    px = [tuple(raw[i:i + 3]) for i in range(0, len(raw), 4) if raw[i + 3] > 200]
+    if not px:
+        return []
+    q = Image.new("RGB", (len(px), 1)); q.putdata(px)
+    pal = q.quantize(colors=8, method=Image.Quantize.MEDIANCUT)
+    counts = sorted(pal.getcolors() or [], reverse=True)
+    colours = pal.getpalette()
+    out: list[tuple] = []
+    for count, idx in counts:
+        c = tuple(colours[idx * 3: idx * 3 + 3])
+        if count < len(px) * 0.04 or any(sum((a - b) ** 2 for a, b in zip(c, o)) < 40 ** 2 for o in out):
+            continue
+        out.append(c)
+    return ["#%02X%02X%02X" % c for c in out[:n]]

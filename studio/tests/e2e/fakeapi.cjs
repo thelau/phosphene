@@ -93,6 +93,13 @@ function start(state = makeState()) {
         } else if (body.action === 'update') Object.assign(projectOf(state), { name: body.name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y, brief: body.brief, palette: body.palette });
         return send({ ok: true, active: state.project, project: projectOf(state), projects: state.projects });
       }
+      case '/api/describe-mark': return send({ ok: true, colours: ['#F0A020'], shape: 'horizontal bar mark', noun: 'bar', suggested: ['#1A1A1A'] });
+      case '/api/project-export': return send({ ok: true, url: '/api/download-zip?id=0123456789abcdef0123456789abcdef&name=p.zip', filename: 'Demo-project.zip', bytes: 9e7 });
+      case '/api/project-import': {
+        if (!req.raw.length || req.raw[0] !== 0x50) return send({ ok: false, error: 'That is not a project file (a .zip made by Export project).' }, 400);
+        state.projects.push({ ...state.projects[0], slug: 'imported', name: 'Imported', fixed: false, round: false }); state.project = 'imported';
+        return send({ ok: true, active: 'imported', project: projectOf(state), projects: state.projects });
+      }
       case '/api/download-zip':
         if (req.method === 'POST') { state.zipAsked = body; return send({ ok: true, url: '/api/download-zip?id=0123456789abcdef0123456789abcdef&name=x.zip', filename: 'x.zip', bytes: 2e6 }); }
         res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="x.zip"' }); return res.end('PK');

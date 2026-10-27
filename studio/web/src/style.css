@@ -645,3 +645,6 @@
     .pf-locked[hidden] { display: none; }
     .project-form input:disabled { opacity: .45; cursor: not-allowed; }
     #downloadBtn[hidden] { display: none; }
+    #cover { position: fixed; inset: 0; background: rgba(18, 17, 16, .92); z-index: 190; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }   /* opening a project: until the page comes back */
+    #cover[hidden] { display: none; }
+    #cover .msg { font-size: 13px; color: var(--text-2); }

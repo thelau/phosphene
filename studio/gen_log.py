@@ -20,7 +20,9 @@ import threading
 import time
 from pathlib import Path
 
-LOG_FILE = Path(__file__).resolve().parent / "generation_log.jsonl"
+import places  # noqa: E402
+
+LOG_FILE = places.SUPPORT_DIR / "generation_log.jsonl"
 MAX_BYTES = 5_000_000          # past this the file is rotated to .1 (one older file is kept)
 _LOCK = threading.Lock()
 

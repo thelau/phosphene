@@ -729,3 +729,24 @@ def test_download_zip_has_the_images_shown_full_size_in_order_and_is_fetched_onc
     assert live("GET", res["url"])[0] == 404, "fetched once"
     assert live("POST", "/api/download-zip", {"files": ["nope.jpg"]})[0] == 400
     assert live("GET", "/api/download-zip?id=../../x&name=a.zip")[0] == 404
+
+
+def test_project_export_and_import_over_http_and_kimi_reads_a_mark(live, srv, monkeypatch):
+    import base64, json as _json
+    from test_projects import star_png
+    _three_plates(live)
+    status, res = live("POST", "/api/project-export", {})
+    assert status == 200 and res["filename"] == "Demo-project.zip"
+    status, data = live("GET", res["url"])
+    assert status == 200 and data[:2] == b"PK"
+    status, imp = live("POST", "/api/project-import", raw=data)
+    assert status == 200 and imp["active"] == "Demo" and imp["project"]["name"] == "Demo", "a copy, opened"
+    _, state = live("GET", "/api/state")
+    assert len([p for p in state["plates"] if not p["trashed"]]) == 3, "with its images"
+    assert live("POST", "/api/project-import", raw=b"nope, not a zip at all")[0] == 400
+    calls = []
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda prompt, *a, **k: calls.append(k.get("images")) or _json.dumps({"shape": "angular arrow mark", "noun": "arrow", "palette": ["#123456", "bad"]}))
+    status, d = live("POST", "/api/describe-mark", {"mark": "data:image/png;base64," + base64.b64encode(star_png()).decode()})
+    assert status == 200 and d["shape"] == "angular arrow mark" and d["noun"] == "arrow" and d["suggested"] == ["#123456"]
+    assert d["colours"] == ["#F03C14"] and calls and calls[0][0][:2] == b"\xff\xd8", "its own colour, and Kimi saw it as an image"
+    assert live("POST", "/api/describe-mark", {"mark": "data:image/png;base64,AAAA"})[0] == 400
