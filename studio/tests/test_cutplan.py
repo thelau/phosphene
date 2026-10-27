@@ -337,13 +337,34 @@ def test_cut_plate_follows_the_invert_pairs():
     assert cutplan.cut_plate(3, 3, "mono") == (1, True)
 
 
-def test_chord_tint_is_a_plain_mix_the_page_can_match():
-    """Colour follows the chords: out = picture * (1 - 0.16) + colour * 0.16, the same mix as the page's overlay at opacity 0.16."""
-    img = Image.new("RGB", (4, 4), (100, 100, 100))
-    got = cutplan.tinted(img, "#EC540C").getpixel((0, 0))
-    want = (100 * 0.84 + 0xEC * 0.16, 100 * 0.84 + 0x54 * 0.16, 100 * 0.84 + 0x0C * 0.16)
-    assert all(abs(a - b) <= 1 for a, b in zip(got, want)), (got, want)            # PIL truncates, the browser rounds: a level at most
-    assert cutplan.TINT_ALPHA == 0.16
+def test_chord_grade_lifts_the_darks_only():
+    """Invert off: out = max(picture, the chord's shade), the page's lighten overlay. Darks take the colour, lights and the logo stay."""
+    img = Image.new("RGB", (2, 1)); img.putpixel((0, 0), (10, 10, 10)); img.putpixel((1, 0), (240, 235, 220))
+    out = cutplan.graded(img, "#5D8FF4")
+    assert out.getpixel((0, 0)) == (0x25, 0x39, 0x62) and out.getpixel((1, 0)) == (240, 235, 220)
+    for c, shade in cutplan.GRADE.items():                                             # each shade is its colour at 40%
+        assert all(abs(int(shade[i:i + 2], 16) - int(c[i:i + 2], 16) * 0.4) <= 0.5 for i in (1, 3, 5)), c
+    assert set(cutplan.GRADE) == set(cutplan.CHORD_TINTS.values()) == set(cutplan.DUO_SHADOW)
+
+
+def test_chord_duotone_twin_matches_the_page_filter():
+    """Invert on: the twin = colour + (shadow - colour) * luma(original), the numbers of the page's SVG filter (index.html)."""
+    import re
+    from pathlib import Path
+    img = Image.new("RGB", (3, 1)); img.putpixel((0, 0), (0, 0, 0)); img.putpixel((1, 0), (255, 255, 255)); img.putpixel((2, 0), (200, 100, 50))
+    out = cutplan.duotone(img, "#EC540C")
+    assert out.getpixel((0, 0)) == (0xEC, 0x54, 0x0C), "the original's darks are the twin's lights: the chord colour"
+    assert out.getpixel((1, 0)) == (0x38, 0x13, 0x13), "its lights the oxblood"
+    html = (Path(cutplan.__file__).parent / "web" / "index.html").read_text()
+    for c, sh in cutplan.DUO_SHADOW.items():
+        m = re.search(rf'id="duo-{c[1:].lower()}".*?</filter>', html)
+        assert m and "0.299 0.587 0.114" in m.group(0), c
+        tables = [[float(x) for x in t.split()] for t in re.findall(r'tableValues="([^"]+)"', m.group(0))]
+        want = [[int(c[i:i + 2], 16) / 255, int(sh[i:i + 2], 16) / 255] for i in (1, 3, 5)]
+        assert all(abs(a - b) < 0.001 for t, w in zip(tables, want) for a, b in zip(t, w)), (c, tables)
+    L = 0.299 * 200 + 0.587 * 100 + 0.114 * 50
+    want = [0xEC + (0x38 - 0xEC) * L / 255, 0x54 + (0x13 - 0x54) * L / 255, 0x0C + (0x13 - 0x0C) * L / 255]
+    assert all(abs(a - b) <= 2 for a, b in zip(out.getpixel((2, 0)), want)), (out.getpixel((2, 0)), want)
 
 
 def test_tint_at_and_clean_tints():

@@ -454,12 +454,31 @@ test('colour follows the chords: off without chord changes; with them, the stage
     await page.waitForTimeout(150);
     seen.add(await page.evaluate(() => { const el = document.getElementById('stageTint'); return `${el.style.background || 'none'}|${el.style.opacity}`; }));
   }
-  await page.waitForFunction(() => document.getElementById('stageTint').style.opacity === '0.16');
+  await page.waitForFunction(() => document.getElementById('stageTint').style.opacity === '1');
   await shot('30-chord-colour');
   await page.click('#playBtn');
   const colours = [...seen].filter(x => !x.startsWith('none'));
   assert.ok(colours.length >= 1 && seen.size >= 2, `the colour changes with the chords: ${[...seen]}`);
-  assert.ok(colours.every(x => x.endsWith('|0.16')), 'mixed lightly, as the export');
+  assert.ok(colours.every(x => x.endsWith('|1')), 'the shade at full, lightening only (the export\'s max)');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('stageTint')).mixBlendMode), 'lighten');
+  await choose('invertSelect', 'mono');                                                 // Invert on: the twin wears the colour, no overlay
+  await page.click('#playBtn');
+  const filters = new Set();
+  const both = () => [...filters].some(f => f.startsWith('url')) && [...filters].some(f => f.startsWith('invert'));
+  for (let k = 0; k < 200 && !both(); k++) { await page.waitForTimeout(100); filters.add(await page.evaluate(() => document.getElementById('stageImg').style.filter)); }   // until both looks came round (slow machines too)
+  await page.click('#playBtn');
+  assert.ok([...filters].some(f => /url\("?#duo-/.test(f)), `a twin in a chord's duotone: ${[...filters]}`);
+  assert.ok([...filters].some(f => f.startsWith('invert')), `the home chord's twin the plain inverted copy: ${[...filters]}`);
+  assert.equal(await page.evaluate(() => document.getElementById('stageTint').style.opacity), '0', 'no overlay with Invert on');
+  for (const id of ['duo-5d8ff4', 'duo-ec540c', 'duo-f64570']) assert.ok(await page.locator(`#${id}`).count(), id);
+  const px = await page.evaluate(() => {                                              // the filter's numbers, as the export's cutplan.duotone
+    const c = document.createElement('canvas'); c.width = c.height = 4; const x = c.getContext('2d');
+    x.filter = 'url(#duo-ec540c)'; x.fillStyle = 'rgb(200,100,50)'; x.fillRect(0, 0, 4, 4);
+    return [...x.getImageData(1, 1, 1, 1).data].slice(0, 3);
+  });
+  const L = (0.299 * 200 + 0.587 * 100 + 0.114 * 50) / 255, want = [[0xEC, 0x38], [0x54, 0x13], [0x0C, 0x13]].map(([c, s]) => c + (s - c) * L);
+  assert.ok(px.every((v, i) => Math.abs(v - want[i]) <= 3), `the page's duotone ${px} = the export's ${want.map(Math.round)}`);
+  await choose('invertSelect', 'off');
   let sent = null;
   page.on('request', r => { if (r.url().endsWith('/api/export-video')) sent = JSON.parse(r.postData()); });
   await page.click('#exportBtn');

@@ -1821,22 +1821,27 @@
       const a = Math.max(0, Math.min(0.6, amount || 0)), k = Math.floor(framesSinceCut);
       return a <= 0 || k < 0 || k >= TRAIL_FRAMES ? 0 : a * (1 - k / TRAIL_FRAMES);
     }
-    // Colour follows the chords: each chord's brand colour mixed lightly over the picture (cutplan.CHORD_TINTS / TINT_ALPHA; the home chord none)
-    const CHORD_TINTS = { '-2': '#5D8FF4', 5: '#5D8FF4', '-4': '#EC540C', 3: '#EC540C', '-5': '#F64570' }, TINT_ALPHA = 0.16;
+    // Colour follows the chords (cutplan.CHORD_TINTS / GRADE; the home chord none): Invert off, the darks lift to the chord's shade (an overlay,
+    // mix-blend-mode lighten); Invert on, the inverted copy becomes the chord's duotone (the SVG filters #duo-xxxxxx in index.html), the original untouched
+    const CHORD_TINTS = { '-2': '#5D8FF4', 5: '#5D8FF4', '-4': '#EC540C', 3: '#EC540C', '-5': '#F64570' };
+    const GRADE = { '#5D8FF4': '#253962', '#EC540C': '#5E2205', '#F64570': '#621C2D' };
+    const duoFilter = c => `url(#duo-${c.slice(1).toLowerCase()})`;
+    const invertFilter = (fx, colour) => (colour ? duoFilter(colour) : fx.invert === 'mono' ? 'invert(1) grayscale(1)' : 'invert(1)');
     let tintShown = '';
     function chordTint(sec) { return window.Drone && window.Drone.chordAt ? CHORD_TINTS[window.Drone.chordAt(synthParams(), synthStartsSec(), sec)] || null : null; }
     function syncTintRow() {                                                // the check only means something with chord changes playing
       const ok = musicOn() && +document.getElementById('progSelect').value > 0, row = document.getElementById('tintRow'), box = document.getElementById('tintChords');
       box.disabled = !ok;
-      row.title = ok ? 'Each chord lays its colour lightly over the picture (the home chord none), switching on the cut where the chord changes' : 'Turn on chord Changes (Sound, Tone) for the colour to follow them';
+      row.title = ok ? 'Each chord brings its colour (the home chord none), switching on the cut where the chord changes: in the darks, or with Invert on, the inverted copy in the chord\'s duotone' : 'Turn on chord Changes (Sound, Tone) for the colour to follow them';
       row.classList.toggle('off', !ok);
     }
     function drawTint(fx) {
-      const c = fx.tint ? chordTint(cutPos / 30) : null, key = c || '';
+      const paired = fx.invert === 'mono' || fx.invert === 'colour';
+      const c = fx.tint && !paired ? chordTint(cutPos / 30) : null, key = c || '';   // with Invert on the inverted copy wears the colour instead (applyFx)
       if (key === tintShown) return;
       tintShown = key;
       const el = document.getElementById('stageTint');
-      el.style.background = c || ''; el.style.opacity = c ? String(TINT_ALPHA) : '0';
+      el.style.background = c ? GRADE[c] : ''; el.style.opacity = c ? '1' : '0';
     }
     // for the export: where each chord starts and its colour
     function tintSegments() {
@@ -1855,7 +1860,7 @@
         const paired = fx.invert === 'mono' || fx.invert === 'colour', prev = plan.cut - 1;
         const pp = active[(paired ? Math.floor(prev / 2) : prev) % active.length];
         g.src = pp.preview || pp.url;
-        g.style.filter = paired && prev % 2 === 1 ? (fx.invert === 'mono' ? 'invert(1) grayscale(1)' : 'invert(1)') : '';
+        g.style.filter = paired && prev % 2 === 1 ? invertFilter(fx, fx.tint ? chordTint((tl[prev] + tl[prev + 1]) / 60) : null) : '';
         const s = zoomScale(fx.zoom, fx.amount, 1);
         g.style.transform = s > 1.0005 ? `scale(${s.toFixed(5)})` : '';
       }
@@ -1873,7 +1878,7 @@
       const img = document.getElementById('stageImg');
       const s = zoomScale(fx.zoom, fx.amount, plan.p);
       img.style.transform = s > 1.0005 ? `scale(${s.toFixed(5)})` : '';
-      img.style.filter = plan.inverted ? (fx.invert === 'mono' ? 'invert(1) grayscale(1)' : 'invert(1)') : '';
+      img.style.filter = plan.inverted ? invertFilter(fx, fx.tint ? chordTint(cutPos / 30) : null) : '';
     }
     function updateFx() {
       saveSettings();

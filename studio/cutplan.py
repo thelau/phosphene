@@ -9,7 +9,7 @@ Which image is on screen at which moment, and how it is treated: shared by the e
 import bisect
 import math
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageChops, ImageOps
 
 INVERT_MODES = ("off", "mono", "colour")
 ZOOM_MODES = ("off", "out", "in")
@@ -115,16 +115,26 @@ def zoom_scale(mode: str, amount_pct: float, p: float) -> float:
 TRAIL_FRAMES = 4          # how long the previous image lingers after a cut
 TRAIL_MAX = 0.6
 
-# Chord colour: with the chord changes on, each chord lays a brand colour lightly over the picture (the home chord none), switching on the
-# cut where the chord changes. A plain mix, out = picture * (1 - TINT_ALPHA) + colour * TINT_ALPHA: the page does the same with an overlay.
-TINT_ALPHA = 0.16
+# Chord colour: with the chord changes on, each chord brings a brand colour (the home chord none), switching on the cut where the chord
+# changes. Two looks, both exact formulas so the page matches the export:
+# - Invert off, the grade: the darks lift to a deep shade of the colour, highlights and the logo untouched. out = max(picture, GRADE[colour])
+#   per channel (the page: an overlay of that shade, mix-blend-mode lighten).
+# - Invert on, the twin: the inverted copy becomes a duotone, the chord's colour in its lights and oxblood or ink in its darks; the original
+#   stays as it is, the home chord's twin the plain inverted copy. out = colour + (shadow - colour) * L, L the original's luma (601), so the
+#   twin's lights are the original's darks (the page: an SVG filter per colour, #duo-xxxxxx in index.html, the same numbers).
 CHORD_TINTS = {-2: "#5D8FF4", 5: "#5D8FF4", -4: "#EC540C", 3: "#EC540C", -5: "#F64570"}
+GRADE = {"#5D8FF4": "#253962", "#EC540C": "#5E2205", "#F64570": "#621C2D"}      # each colour at 40%
+DUO_SHADOW = {"#5D8FF4": "#1A1A1A", "#EC540C": "#381313", "#F64570": "#381313"}  # blue over ink, the warm ones over oxblood
 
 
-def tinted(img, colour: str):
-    """The picture with the chord's colour mixed over it."""
-    solid = Image.new("RGB", img.size, colour)
-    return Image.blend(img, solid, TINT_ALPHA)
+def graded(img, colour: str):
+    """Invert off: the picture with its darks lifted to the chord's shade."""
+    return ImageChops.lighter(img, Image.new("RGB", img.size, GRADE[colour]))
+
+
+def duotone(img, colour: str):
+    """Invert on: the inverted twin in the chord's colour (from the original, not the inverted copy: the same picture)."""
+    return ImageOps.colorize(img.convert("L"), black=colour, white=DUO_SHADOW[colour])
 
 
 def clean_tints(value) -> list:
