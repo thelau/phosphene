@@ -457,7 +457,7 @@
     .card-model-badge.warn { color: #F7A3B6; background: rgba(244, 63, 94, .16); }
     .pending-card { cursor: default; }
     .pending-card .card-thumb { border: 1px dashed var(--line-3); background: #181715; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
-    .pending-ring { width: 18%; aspect-ratio: 1; border-radius: 50%; border: 1.5px dashed var(--off); }
+    .pending-ring { width: var(--mark-w); aspect-ratio: 1 / var(--mark-ar); border-radius: var(--mark-r); border: 1.5px dashed var(--off); }   /* where the mark will land: its box, as the logo target */
     .pending-label { font-family: var(--mono); font-size: 11px; color: var(--muted); }
     .pending-bar { position: absolute; left: 10px; right: 10px; bottom: 10px; height: 3px; border-radius: 2px; background: var(--line-2); overflow: hidden; }
     .pending-bar.run i { position: absolute; top: 0; bottom: 0; width: 40%; background: var(--orange); animation: slide 1.1s ease-in-out infinite; }

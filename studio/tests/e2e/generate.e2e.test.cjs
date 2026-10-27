@@ -24,6 +24,7 @@ test('generate: controls lock, progress shows per image, direction clears afterw
   await shot('06-rendering');
   await page.waitForSelector('.pending-card');                                    // the images still coming hold their place at the end of the grid
   assert.ok(await page.locator('.pending-card').count() >= 1);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.pending-ring')).borderRadius), '2px', 'the mark\'s box, as the logo target, not a circle');
   await page.waitForFunction(() => /Done — 4 added/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   for (const id of ['#worldSelect', '#directionInput', '#batchCountSelect', '#generateBtn']) await enabled(id);
   assert.equal(await page.inputValue('#directionInput'), '');
