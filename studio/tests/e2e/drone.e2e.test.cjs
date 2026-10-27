@@ -379,7 +379,7 @@ test('pad, acid and tape: the pad voices each chord in the key (VI gets its majo
   await ctx.close();
 });
 
-test('polyrhythm, rise and stutter: 3 notes over 2 cuts, a swell into the drop and an impact on it, a stuttering cut repeats one slice; the level holds', { skip }, async () => {
+test('polyrhythm, rise and stutter: 3 notes over 2 cuts, a swell into the moment, an impact on it, then a fall (no hard stop), a stuttering cut repeats one slice; the level holds', { skip }, async () => {
   const ctx = await fresh();
   const poly = await page.evaluate(() => [0, 1, 2, 3].map(i => window.Drone.notesIn(i, 1.5).map(([k, f]) => [k, +f.toFixed(3)])));
   assert.equal(JSON.stringify(poly), '[[[0,0],[1,0.667]],[[2,0.333]],[[3,0],[4,0.667]],[[5,0.333]]]', '3 against 2: notes at 0, 2/3, 4/3 cuts...');
@@ -392,10 +392,12 @@ test('polyrhythm, rise and stutter: 3 notes over 2 cuts, a swell into the drop a
     const corr = (x, a, lag) => { let n = 0, d1 = 0, d2 = 0; const L = Math.round(lag * sr); for (let i = Math.round(a * sr); i < Math.round((a + 0.08) * sr); i++) { n += x.left[i] * x.left[i + L]; d1 += x.left[i] ** 2; d2 += x.left[i + L] ** 2; } return n / Math.sqrt(d1 * d2); };
     const phraseEnds = [7, 15, 23].map(c => ({ c, stut: corr(stut, c * 0.25 + 0.07, 0.0625), plain: corr(plain, c * 0.25 + 0.07, 0.0625) }));
     return { early: band(rise, 1.0, 1.7, true) / band(none, 1.0, 1.7, true), late: band(rise, 3.3, 3.9, true) / band(none, 3.3, 3.9, true),
+      justAfter: band(rise, 4.0, 4.25, true) / band(none, 4.0, 4.25, true), later: band(rise, 4.8, 5.0, true) / band(none, 4.8, 5.0, true),
       boom: band(rise, 4.0, 4.5, false) / band(none, 4.0, 4.5, false), riseLevel: lvl(rise), stutLevel: lvl(stut), phraseEnds };
   }, BASE);
-  assert.ok(r.late > 3 * r.early && r.late > 3, `the swell grows into the drop: ×${r.early.toFixed(1)} early, ×${r.late.toFixed(1)} just before`);
+  assert.ok(r.late > 2.5 * r.early && r.late > 2.3, `the swell grows into the drop: ×${r.early.toFixed(1)} early, ×${r.late.toFixed(1)} just before`);
   assert.ok(r.boom > 1.4, `an impact on the drop: ×${r.boom.toFixed(2)} low end`);
+  assert.ok(r.justAfter > 0.4 * r.late && r.later < r.justAfter, `no hard stop: it turns over and falls (×${r.late.toFixed(1)} before, ×${r.justAfter.toFixed(1)} just after, ×${r.later.toFixed(1)} later)`);
   const looped = r.phraseEnds.filter(p => p.stut > 0.9 && p.plain < 0.6);
   assert.ok(looped.length >= 1, `at least one phrase end repeats one slice: ${JSON.stringify(r.phraseEnds)}`);
   assert.ok(Math.abs(r.riseLevel - 0.17) < 0.015 && Math.abs(r.stutLevel - 0.17) < 0.015, `the level holds: ${r.riseLevel}, ${r.stutLevel}`);

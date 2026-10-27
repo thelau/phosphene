@@ -631,8 +631,7 @@
     const cross = (a, b, ch) => { const g1 = gain((1 + w) / 2); const g2 = gain((1 - w) / 2); mix[a].connect(g1); mix[b].connect(g2); g1.connect(merger, 0, ch); g2.connect(merger, 0, ch); };
     cross(0, 1, 0); cross(1, 0, 1);
     const dyn = ctx.createGain();                                           // the volume is never touched by Dynamics: it shapes the notes (see arc)
-    const gap = gain(1); merger.connect(gap);                               // the Rise's breath before the drop
-    let pre = gap;
+    let pre = merger;
     // stutter: now and then, on the last cut of a phrase of 8, the whole sound repeats a slice of itself (a quarter of the cut) until the next
     if (stutterAmt > 0.01) {
       const dry = gain(1), inGate = gain(0), dl = ctx.createDelay(1), fb = gain(0), wet = gain(0), sum = gain(1);
@@ -682,7 +681,7 @@
         }
       }
     }
-    // rise and drop: a filtered noise swell into one moment, a breath, then a deep impact. The moment comes from the film: where a landing
+    // rise and fall: a filtered noise swell into one moment, a deep impact there, then the noise turns over and falls with the slowing cuts. The moment comes from the film: where a landing
     // begins or a build-up peaks (Variable), else every 16 music cuts
     if (riseAmt > 0.01 && nCuts > 4) {
       const lens = starts.slice(1).map((v, i) => v - starts[i]), whole = lens.length > 2 ? lens.slice(0, -1) : lens;
@@ -702,9 +701,11 @@
         if (dropT <= offset) continue;
         const go = () => {
           const rs = Math.max(riseFrom, offset), d = at(dropT);
-          noise.gain.setValueAtTime(0, at(rs)); noise.gain.linearRampToValueAtTime(0.6 * riseAmt, d - 0.06); noise.gain.setValueAtTime(0, d - 0.05);
-          f.frequency.setValueAtTime(350 * Math.pow(4500 / 350, (rs - riseFrom) / (dropT - riseFrom)), at(rs)); f.frequency.exponentialRampToValueAtTime(4500, d - 0.05);
-          gap.gain.setValueAtTime(1, d - 0.07); gap.gain.linearRampToValueAtTime(0.12, d - 0.05); gap.gain.setTargetAtTime(1, d, 0.012);   // the breath
+          // up into the moment, then it turns over and falls as the cuts slow: one gesture with the film, never a hard stop
+          const fall = Math.min(2, Math.max(0.8, (total - dropT) * 0.5));
+          noise.gain.setValueAtTime(0, at(rs)); noise.gain.linearRampToValueAtTime(0.6 * riseAmt, d); noise.gain.setTargetAtTime(0, d, fall / 3);
+          f.frequency.setValueAtTime(350 * Math.pow(4500 / 350, (rs - riseFrom) / (dropT - riseFrom)), at(rs)); f.frequency.exponentialRampToValueAtTime(4500, d);
+          f.frequency.exponentialRampToValueAtTime(300, d + fall);
           boomO.frequency.setValueAtTime(f0 * 3, d); boomO.frequency.setTargetAtTime(f0, d, 0.08); strike(boomG, d, 1.8 * riseAmt, 1.4);
         };
         const rc = cutAtTime(starts, riseFrom);
