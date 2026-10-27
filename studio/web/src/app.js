@@ -68,6 +68,13 @@
         body: JSON.stringify(payload)
       });
       const data = await res.json();
+      if (data.kimi_key_status === 'refused') {                               // not kept: the key before (if any) stays
+        document.getElementById('kimiKeyInput').value = '';
+        const lbl = document.getElementById('kimiStatusLabel'), dot = document.getElementById('kimiDot');
+        dot.className = 'dot off'; lbl.textContent = 'Key refused';
+        setStatus(data.error || 'Kimi refused that key.');
+        return;
+      }
       document.getElementById('criticOn').checked = data.critic_enabled !== false;
       document.getElementById('criticTrash').checked = Boolean(data.critic_autotrash);
       kimiConfigured = Boolean(data.kimi_configured);
@@ -317,22 +324,39 @@
         return;
       }
       projectForm = { kind: edit ? 'edit' : 'new', mark: null, markUrl: edit ? project.mark_url : null, typed: new Set() };
-      document.getElementById('pfKimi').hidden = true;
       const set = (id, v) => { document.getElementById(id).value = v; };
       set('pfName', edit ? project.name : ''); set('pfSize', edit ? project.mark_size : 18); set('pfX', edit ? project.mark_x : 50); set('pfY', edit ? project.mark_y : 50);
       set('pfShape', edit ? project.mark_shape : ''); set('pfNoun', edit ? project.mark_noun : ''); set('pfBrief', edit ? project.brief : ''); set('pfPalette', edit ? (project.palette || []).join(' ') : '');
       document.getElementById('pfMark').value = '';
       const locked = !!(edit && project.fixed);                                  // DEMO: name, brand and colours change; its mark, place and words stay
-      for (const id of ['pfMark', 'pfSize', 'pfX', 'pfY', 'pfShape', 'pfNoun']) document.getElementById(id).disabled = locked;
       document.getElementById('pfLocked').hidden = !locked;
+      formStage(edit ? 'ready' : 'pick');
       document.getElementById('projectTitle').textContent = edit ? `${project.name}: settings` : 'New project';
       document.getElementById('pfSave').textContent = edit ? 'Save' : 'Create project';
       document.getElementById('pfError').textContent = '';
       document.getElementById('projectModal').classList.add('open');
       drawProjectPreview();
-      document.getElementById('pfName').focus();
+      document.getElementById(edit ? 'pfName' : 'pfMark').focus();
     }
-    function closeProjectForm() { document.getElementById('projectModal').classList.remove('open'); projectForm = null; }
+    // a new project: the mark first; while Kimi reads it nothing else can be used; then everything it filled in can be changed
+    const PF_FIELDS = ['pfName', 'pfSize', 'pfX', 'pfY', 'pfShape', 'pfNoun', 'pfBrief', 'pfPalette'];
+    let readingTimer = 0;
+    function formStage(stage) {
+      clearInterval(readingTimer);
+      const locked = !!(projectForm && projectForm.kind === 'edit' && project && project.fixed);
+      for (const id of PF_FIELDS) document.getElementById(id).disabled = stage !== 'ready' || (locked && ['pfSize', 'pfX', 'pfY', 'pfShape', 'pfNoun'].includes(id));
+      document.getElementById('pfMark').disabled = stage === 'reading' || locked;
+      document.getElementById('pfSave').disabled = stage !== 'ready';
+      const note = document.getElementById('pfKimi');
+      if (stage === 'pick') { note.hidden = false; note.textContent = 'Choose the mark: Kimi reads it and fills in the rest.'; }
+      else if (stage === 'reading') {
+        const t0 = Date.now();
+        note.hidden = false;
+        note.innerHTML = '<span class="spin"></span><span>Kimi is reading the mark…</span><span class="t" id="pfReadT">0 s · usually 10 to 40 s</span>';
+        readingTimer = setInterval(() => { const t = document.getElementById('pfReadT'); if (t) t.textContent = `${Math.round((Date.now() - t0) / 1000)} s · usually 10 to 40 s`; }, 1000);
+      } else if (projectForm && projectForm.kind === 'edit') note.hidden = true;
+    }
+    function closeProjectForm() { clearInterval(readingTimer); document.getElementById('projectModal').classList.remove('open'); projectForm = null; }   // also while Kimi reads: its answer is dropped
     async function readProjectMark(file) {
       if (!file || !projectForm) return;
       const url = URL.createObjectURL(file);
@@ -373,19 +397,20 @@
     // a mark just chosen: its own colours, and Kimi's words for it with colours to go with them; never over what was typed by hand
     async function describeMark(mark) {
       const note = document.getElementById('pfKimi');
-      note.hidden = false; note.textContent = 'Reading the mark…';
-      try {
-        const r = await (await fetch('/api/describe-mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mark }) })).json();
-        if (!projectForm || projectForm.mark !== mark) return;                  // another mark was chosen meanwhile
-        if (!r.ok) { note.textContent = r.error || ''; return; }
-        const fill = (id, v) => { if (v && !projectForm.typed.has(id)) document.getElementById(id).value = v; };
-        fill('pfShape', r.shape); fill('pfNoun', r.noun);
-        fill('pfPalette', [...(r.colours || []), ...(r.suggested || [])].join(' '));
-        note.textContent = r.shape ? 'Kimi read the mark: the words and colours are suggestions, change them freely.' : (r.note || 'The mark\'s own colours are filled in.');
-        drawProjectPreview();
-      } catch (e) { note.textContent = ''; }
+      formStage('reading');
+      let r = null;
+      try { r = await (await fetch('/api/describe-mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mark }) })).json(); } catch (e) {}
+      if (!projectForm || projectForm.mark !== mark) return;                    // closed, or another mark chosen meanwhile
+      formStage('ready');
+      if (!r || !r.ok) { note.textContent = (r && r.error) || 'The mark could not be read: fill in the fields yourself.'; return; }
+      const fill = (id, v) => { if (v && !projectForm.typed.has(id)) document.getElementById(id).value = v; };
+      fill('pfName', r.name); fill('pfBrief', r.brand); fill('pfShape', r.shape); fill('pfNoun', r.noun);
+      fill('pfPalette', [...(r.colours || []), ...(r.suggested || [])].join(' '));
+      note.textContent = r.shape ? 'Kimi filled this in from the mark: check it and change anything.' : (r.note || 'The mark\'s own colours are filled in.');
+      drawProjectPreview();
+      document.getElementById('pfName').focus();
     }
-    for (const id of ['pfShape', 'pfNoun', 'pfPalette']) { const el = document.getElementById(id); if (el && el.addEventListener) el.addEventListener('input', () => projectForm && projectForm.typed.add(id)); }
+    for (const id of ['pfName', 'pfBrief', 'pfShape', 'pfNoun', 'pfPalette']) { const el = document.getElementById(id); if (el && el.addEventListener) el.addEventListener('input', () => projectForm && projectForm.typed.add(id)); }
     // a project as one file (mark, settings, images, groups, snapshots), and back
     async function exportProject() {
       closeProjectMenu();

@@ -1793,3 +1793,15 @@ test('Krea in Settings: Connect Krea when signed out, only Sign out of Krea once
   assert.equal(h.$('kreaConnectBtn').hidden, false);
   assert.equal(h.$('kreaSignOutBtn').hidden, true);
 });
+
+test('a Kimi key that Kimi refuses: not kept, the field empties, Settings says Key refused and why', async () => {
+  const r = baseRoutes();
+  r['/api/save-settings'] = { ok: false, kimi_key_status: 'refused', kimi_configured: false, error: 'Kimi refused that key. Copy the API key (it starts with sk-) from platform.moonshot.ai or kimi.com.' };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('kimiKeyInput').value = 'depiano-studio';
+  await h.run('saveKimiSettings()');
+  assert.equal(h.$('kimiKeyInput').value, '');
+  assert.equal(h.$('kimiStatusLabel').textContent, 'Key refused');
+  assert.match(h.$('toast').textContent, /starts with sk-/);
+});

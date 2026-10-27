@@ -332,24 +332,44 @@ def ordered_plate_files(st: dict) -> list[Path]:
 KIMI_TIMEOUT = 150  # seconds per attempt
 
 
-def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", images: list | None = None, system: str | None = None) -> str:
+KIMI_ENDPOINT: dict = {}     # key -> the endpoint that took it (found by check_kimi_key or a call): tried first, so a key is not sent round the others
+
+
+def kimi_endpoints(key: str) -> list[str]:
+    """Moonshot .ai, .cn and Kimi Coding, in the order to try for this key: the one that took it before first."""
+    if key.startswith("sk-kimi-"):
+        endpoints = ["https://api.kimi.com/coding/v1/chat/completions", "https://api.moonshot.ai/v1/chat/completions", "https://api.moonshot.cn/v1/chat/completions"]
+    else:
+        endpoints = ["https://api.moonshot.ai/v1/chat/completions", "https://api.moonshot.cn/v1/chat/completions", "https://api.kimi.com/coding/v1/chat/completions"]
+    known = KIMI_ENDPOINT.get(key)
+    return [known] + [e for e in endpoints if e != known] if known in endpoints else endpoints
+
+
+def check_kimi_key(key: str, timeout: float = 8) -> str:
+    """'ok' (an endpoint lists its models for it: remembered), 'refused' (every endpoint says 401/403) or 'unknown' (no answer)."""
+    refused = 0
+    eps = kimi_endpoints(key)
+    for ep in eps:
+        req = urllib.request.Request(ep.replace("/chat/completions", "/models"), headers={"Authorization": f"Bearer {key}", "User-Agent": "KimiCLI/1.0"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout):
+                KIMI_ENDPOINT[key] = ep
+                return "ok"
+        except urllib.error.HTTPError as e:
+            refused += e.code in (401, 403)
+        except Exception:
+            pass
+    return "refused" if refused == len(eps) else "unknown"
+
+
+def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", images: list | None = None, system: str | None = None,
+                  timeout: float | None = None, attempts: int = 2) -> str:
     """Calls Kimi API (Moonshot .ai, .cn, or Kimi Coding) with automatic model/endpoint fallback."""
     key = (api_key or "").strip()
     if not key:
         raise RuntimeError("NEEDS_KIMI_KEY: Please enter your Kimi API key in ⚙️ Settings.")
 
-    if key.startswith("sk-kimi-"):
-        endpoints = [
-            "https://api.kimi.com/coding/v1/chat/completions",
-            "https://api.moonshot.ai/v1/chat/completions",
-            "https://api.moonshot.cn/v1/chat/completions",
-        ]
-    else:
-        endpoints = [
-            "https://api.moonshot.ai/v1/chat/completions",
-            "https://api.moonshot.cn/v1/chat/completions",
-            "https://api.kimi.com/coding/v1/chat/completions",
-        ]
+    endpoints = kimi_endpoints(key)
 
     models_to_try = []
     for m in [preferred_model, "kimi-k3", "kimi-k2.7-code", "kimi-k2.5", "kimi-k2-turbo-preview", "moonshot-v1-8k"]:
@@ -387,10 +407,11 @@ def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", i
                     "User-Agent": "KimiCLI/1.0",
                 },
             )
-            for attempt in (1, 2):  # a timeout is retried once on the same model: writing 10 scenes can take over a minute
+            for attempt in range(1, attempts + 1):  # a timeout is retried once on the same model: writing 10 scenes can take over a minute
                 try:
-                    with urllib.request.urlopen(req, timeout=KIMI_TIMEOUT) as resp:
+                    with urllib.request.urlopen(req, timeout=timeout or KIMI_TIMEOUT) as resp:
                         data = json.loads(resp.read().decode("utf-8"))
+                        KIMI_ENDPOINT[key] = ep
                         return data["choices"][0]["message"]["content"].strip()
                 except urllib.error.HTTPError as e:
                     err_body = e.read().decode("utf-8", errors="replace")
@@ -398,7 +419,7 @@ def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", i
                     break
                 except Exception as e:
                     errors.append(f"{ep.split('/')[2]} ({model}): {e}")
-                    if "timed out" not in str(e) or attempt == 2:
+                    if "timed out" not in str(e) or attempt == attempts:
                         break
             if errors and (errors[-1].startswith("HTTP 401") or "timed out" in errors[-1]):
                 break  # the key is refused here, or the endpoint is too slow: another model will not change that
@@ -820,7 +841,8 @@ EXPORT_FRAMES_MAX = 200000                 # about 1 h 50 at 30 fps
 
 DESCRIBE_MARK = (
     "This is a brand's mark (logo), shown on grey. It will sit at the same place in every shot of a film of AI images, physically part of each "
-    "scene. Describe it for an image model. Return ONLY raw JSON: {\"shape\": \"2-6 words naming its shape and kind, e.g. circular orbital logo, "
+    "scene. Describe it for an image model. Return ONLY raw JSON: {\"name\": \"the brand's name if you recognise the mark or can read it, else a short "
+    "fitting project name\", \"brand\": \"one line on who the brand is, e.g. Nike, a global sportswear brand (empty if unknown)\", \"shape\": \"2-6 words naming its shape and kind, e.g. circular orbital logo, "
     "angular monogram, horizontal wordmark\", \"noun\": \"1-3 words to call it in a sentence, e.g. circular mark, monogram, wordmark\", "
     "\"palette\": [\"2 or 3 hex colours that would suit a brand with this mark, besides its own\"]}"
 )
@@ -833,9 +855,9 @@ def describe_mark(img, api_key: str, model: str) -> dict:
     m.thumbnail((400, 400))
     tile.paste(m, ((512 - m.width) // 2, (512 - m.height) // 2), m)
     buf = io.BytesIO(); tile.save(buf, "JPEG", quality=90)
-    data = parse_llm_json(call_kimi_llm(DESCRIBE_MARK, api_key, model, images=[buf.getvalue()]), "{")
+    data = parse_llm_json(call_kimi_llm(DESCRIBE_MARK, api_key, model, images=[buf.getvalue()], timeout=60, attempts=1), "{")
     clean = lambda v, n: re.sub(r"\s+", " ", str(v or "")).strip()[:n]
-    return {"shape": clean(data.get("shape"), 80), "noun": clean(data.get("noun"), 40),
+    return {"name": clean(data.get("name"), 60), "brand": clean(data.get("brand"), 200), "shape": clean(data.get("shape"), 80), "noun": clean(data.get("noun"), 40),
             "suggested": [c for c in (projects.clean_hex(x) for x in (data.get("palette") or [])[:3]) if c]}
 
 
@@ -1375,7 +1397,13 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
         if parsed.path == "/api/save-settings":
             st = load_state()
+            status = None
             if "kimi_api_key" in body and body["kimi_api_key"].strip():
+                status = check_kimi_key(body["kimi_api_key"].strip())   # a refused key is not kept: the one before stays
+                if status == "refused":
+                    self.send_json({"ok": False, "kimi_key_status": "refused", "kimi_configured": bool(st.get("kimi_api_key")),
+                                    "error": "Kimi refused that key. Copy the API key (it starts with sk-) from platform.moonshot.ai or kimi.com."})
+                    return
                 st["kimi_api_key"] = body["kimi_api_key"].strip()
             if "kimi_model" in body and body["kimi_model"].strip():
                 st["kimi_model"] = body["kimi_model"].strip()
@@ -1383,7 +1411,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 if flag in body:
                     st[flag] = bool(body[flag])
             save_state(st)
-            self.send_json({"ok": True, "kimi_configured": bool(st.get("kimi_api_key"))})
+            self.send_json({"ok": True, "kimi_configured": bool(st.get("kimi_api_key")), "kimi_key_status": status})
             return
 
         if parsed.path == "/api/reorder":

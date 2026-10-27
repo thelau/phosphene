@@ -40,6 +40,7 @@ def live(srv, monkeypatch):
         calls["kimi"].append(prompt)
         return json.dumps(shots)
     monkeypatch.setattr(srv, "call_kimi_llm", fake_kimi)
+    monkeypatch.setattr(srv, "check_kimi_key", lambda key, timeout=8: "refused" if "bad" in key else "ok")   # no network: a key with "bad" in it is refused
     # Jobs live in a module-level dict: never let one test's background job leak into the next. By default a started job finishes instantly.
     srv.AI_JOBS.clear()
     real_job = srv.run_ai_order_job
@@ -747,9 +748,10 @@ def test_project_export_and_import_over_http_and_kimi_reads_a_mark(live, srv, mo
     assert len([p for p in state["plates"] if not p["trashed"]]) == 3, "with its images"
     assert live("POST", "/api/project-import", raw=b"nope, not a zip at all")[0] == 400
     calls = []
-    monkeypatch.setattr(srv, "call_kimi_llm", lambda prompt, *a, **k: calls.append(k.get("images")) or _json.dumps({"shape": "angular arrow mark", "noun": "arrow", "palette": ["#123456", "bad"]}))
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda prompt, *a, **k: calls.append(k.get("images")) or _json.dumps({"name": "Arrowhead", "brand": "Arrowhead, a trail-running brand", "shape": "angular arrow mark", "noun": "arrow", "palette": ["#123456", "bad"]}))
     status, d = live("POST", "/api/describe-mark", {"mark": "data:image/png;base64," + base64.b64encode(star_png()).decode()})
     assert status == 200 and d["shape"] == "angular arrow mark" and d["noun"] == "arrow" and d["suggested"] == ["#123456"]
+    assert d["name"] == "Arrowhead" and d["brand"] == "Arrowhead, a trail-running brand", "Kimi names it and says who it is for"
     assert d["colours"] == ["#F03C14"] and calls and calls[0][0][:2] == b"\xff\xd8", "its own colour, and Kimi saw it as an image"
     assert live("POST", "/api/describe-mark", {"mark": "data:image/png;base64,AAAA"})[0] == 400
 
@@ -806,3 +808,20 @@ def test_only_this_computer_and_its_own_page_can_use_the_server(live, srv):
     assert raw("GET", "/api/state", {"Host": "evil.example:8765"}) == 403, "DNS rebinding"
     assert raw("GET", "/studio/.secrets.json", {}) == 404 and raw("GET", "/studio/.krea_auth.json", {}) == 404
     assert raw("GET", "/assets/../studio/.secrets.json", {}) in (403, 404)
+
+
+def test_a_refused_kimi_key_is_not_kept(live, srv):
+    """Kimi refuses it (every endpoint says 401): the key before stays and the page is told why; a good one is kept."""
+    status, d = live("POST", "/api/save-settings", {"kimi_api_key": "depiano-bad-password"})
+    assert status == 200 and d["ok"] is False and d["kimi_key_status"] == "refused" and "sk-" in d["error"]
+    assert srv.load_state()["kimi_api_key"] == "sk-test"
+    status, d = live("POST", "/api/save-settings", {"kimi_api_key": "sk-good"})
+    assert d["ok"] and d["kimi_key_status"] == "ok" and srv.load_state()["kimi_api_key"] == "sk-good"
+
+
+def test_kimi_endpoint_that_took_the_key_comes_first(srv, monkeypatch):
+    monkeypatch.setattr(srv, "KIMI_ENDPOINT", {})
+    assert srv.kimi_endpoints("sk-abc")[0].startswith("https://api.moonshot.ai")
+    srv.KIMI_ENDPOINT["sk-abc"] = "https://api.kimi.com/coding/v1/chat/completions"
+    eps = srv.kimi_endpoints("sk-abc")
+    assert eps[0] == "https://api.kimi.com/coding/v1/chat/completions" and len(eps) == 3 and len(set(eps)) == 3

@@ -93,7 +93,7 @@ function start(state = makeState()) {
         } else if (body.action === 'update') Object.assign(projectOf(state), { name: body.name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y, brief: body.brief, palette: body.palette });
         return send({ ok: true, active: state.project, project: projectOf(state), projects: state.projects });
       }
-      case '/api/describe-mark': return send({ ok: true, colours: ['#F0A020'], shape: 'horizontal bar mark', noun: 'bar', suggested: ['#1A1A1A'] });
+      case '/api/describe-mark': return void setTimeout(() => send({ ok: true, colours: ['#F0A020'], name: 'Owl Bar', brand: 'Owl Bar, a bar', shape: 'horizontal bar mark', noun: 'bar', suggested: ['#1A1A1A'] }), state.delays.describe || 0);
       case '/api/project-export': return send({ ok: true, url: '/api/download-zip?id=0123456789abcdef0123456789abcdef&name=p.zip', filename: 'Demo-project.zip', bytes: 9e7 });
       case '/api/project-import': {
         if (!req.raw.length || req.raw[0] !== 0x50) return send({ ok: false, error: 'That is not a project file (a .zip made by Export project).' }, 400);

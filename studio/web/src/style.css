@@ -627,7 +627,13 @@
     .pf-hint { margin: -2px 0 4px 84px; font-size: 11px !important; color: var(--faint) !important; }
     .pf-swatches { display: flex; gap: 6px; padding-left: 84px; min-height: 16px; }
     .pf-swatches i { width: 16px; height: 16px; border-radius: 4px; box-shadow: 0 0 0 1px var(--line-3); }
-    .pf-preview { position: relative; width: 150px; aspect-ratio: 9 / 16; border-radius: 8px; background: #141416; box-shadow: 0 0 0 1px var(--line-2); overflow: hidden; }
+    .pf-reading { display: flex; align-items: center; gap: 10px; margin: 2px 0 6px 84px; font-size: 12px; color: var(--text-2); }   /* Kimi reading the mark: a spinner and the seconds, so it is plainly at work */
+    .pf-reading[hidden] { display: none; }
+    .pf-reading .spin { width: 14px; height: 14px; border-width: 2px; flex: none; }
+    .pf-reading .t { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+    .project-form input:disabled + *, .pf-row:has(> input:disabled) > span { color: var(--off); }
+    input.secret { -webkit-text-security: disc; }                       /* masked like a password, but not a password field: macOS offered saved passwords there */
+    .pf-preview { position: relative; width: 150px; aspect-ratio: 9 / 16; border-radius: 8px; background: #6F6E6A; /* mid grey: a black mark and a white one both show */ box-shadow: 0 0 0 1px var(--line-2); overflow: hidden; }
     .pf-preview img { position: absolute; transform: translate(-50%, -50%); object-fit: contain; }
     .pf-preview img:not([src]) { display: none; }
     .pf-preview::before, .pf-preview::after { content: ''; position: absolute; background: rgba(236, 84, 12, .35); }
