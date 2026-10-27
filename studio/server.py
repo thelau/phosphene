@@ -28,7 +28,6 @@ from PIL import Image
 
 import chapters
 import critic
-import cutplan
 import editor
 import gen_log
 import groups
@@ -1230,7 +1229,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 except (TypeError, ValueError):
                     return default
                 return min(hi, max(lo, v)) if v == v else default
-            bpm = clamped("bpm", 136.0, 1.0, 999.0)
+            bpm = clamped("bpm", 136.0, 40.0, 1200.0)
             multiple = clamped("multiple", 1.0, 0.125, 16.0)            # picture cuts per beat: 0.5 = every 2 beats, 4 = 4 cuts/beat
             st = load_state()
             trashed_set = set(st.get("trashed", []))
@@ -1251,28 +1250,28 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         shutil.rmtree(tmp_dir)
                     tmp_dir.mkdir(parents=True, exist_ok=True)
 
-                    invert_mode = body.get("invert_mode", "off") if body.get("invert_mode") in cutplan.INVERT_MODES else "off"
-                    zoom_mode = body.get("zoom_mode", "off") if body.get("zoom_mode") in cutplan.ZOOM_MODES else "off"
+                    invert_mode = body.get("invert_mode", "off") if body.get("invert_mode") in ("off", "mono", "colour") else "off"
+                    zoom_mode = body.get("zoom_mode", "off") if body.get("zoom_mode") in ("off", "out", "in") else "off"
                     music_mode = "synth" if body.get("music") == "synth" else "off"
                     variable = None
-                    if body.get("rhythm") == "variable":                   # accelerating or decelerating: an entry and an exit cut length, and the curve between
-                        lo, hi = cutplan.VARIABLE_MS
-                        def num(key, default, a, b):
-                            try:
-                                return min(b, max(a, float(body.get(key, default))))
-                            except (TypeError, ValueError):
-                                return default
-                        variable = (num("start_ms", 100.0, lo, hi), num("end_ms", 600.0, lo, hi), int(num("ramp", 12, *cutplan.VARIABLE_RAMP)), "start" if body.get("at") == "start" else "end")
-                    n_picture = len(active_files) * (2 if invert_mode in ("mono", "colour") else 1)
-                    starts, _base = cutplan.rhythm_timeline(n_picture, bpm, multiple, variable)       # the picture's cuts: the multiple only affects these
-                    frames_per_cut = 1.0                                   # the timeline is in frames
-                    n_cuts, total_frames = cutplan.export_length(len(active_files), frames_per_cut, invert_mode, starts)  # every selected image, once
-                    sent = export_frames_dir()                              # every frame, drawn by the page (render.js, the preview's renderer)
+                    if body.get("rhythm") == "variable":                   # a change of speed on the timeline: from the tempo to an end length, for the name
+                        try:
+                            variable = (60000.0 / bpm, min(1500.0, max(50.0, float(body.get("end_ms")))))
+                        except (TypeError, ValueError):
+                            variable = None
+                    # the page plans the film (its timeline is the one the preview plays and the music follows) and draws every frame;
+                    # the server checks they all arrived and encodes them
+                    try:
+                        total_frames = int(body.get("frames") or 0)
+                    except (TypeError, ValueError):
+                        total_frames = 0
+                    n_cuts = len(active_files) * (2 if invert_mode in ("mono", "colour") else 1)
                     if total_frames > EXPORT_FRAMES_MAX:
                         raise ValueError(f"The film is {total_frames} frames, more than {EXPORT_FRAMES_MAX} ({EXPORT_FRAMES_MAX // 1800} minutes at 30 fps). Make it shorter.")
-                    missing = next((f for f in range(total_frames) if not (sent / f"f_{f:05d}.jpg").exists()), None) if body.get("frames") == total_frames else 0
-                    if missing is not None:
-                        raise ValueError(f"The page sent {body.get('frames') or 0} frames, the film has {total_frames}" + (f" (frame {missing} is missing)" if body.get("frames") == total_frames else "") + ". Press Export again.")
+                    sent = export_frames_dir()
+                    missing = next((f for f in range(total_frames) if not (sent / f"f_{f:05d}.jpg").exists()), None)
+                    if total_frames < 1 or missing is not None:
+                        raise ValueError("The frames did not all arrive" + (f" (frame {missing} is missing)" if total_frames else "") + ". Press Export again.")
                     frames_in = sent / "f_%05d.jpg"
 
                     out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode, music_mode, variable, str(body.get("edit") or ""))
@@ -1293,7 +1292,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     shutil.rmtree(tmp_dir, ignore_errors=True)
                     shutil.rmtree(export_frames_dir(), ignore_errors=True)   # the next export draws its own
                     prune_exports(OUTPUTS_DIR, keep=12)
-                    self.send_json({"ok": True, "video_url": f"/outputs/{out_mp4.name}", "filename": out_mp4.name, "frames_per_cut": round(frames_per_cut, 2),
+                    self.send_json({"ok": True, "video_url": f"/outputs/{out_mp4.name}", "filename": out_mp4.name,
                                     "images": len(active_files), "cuts": n_cuts, "seconds": round(total_frames / fps, 1), "music": music_mode != "off", "music_mode": music_mode})
                 gen_log.record("export", ok=True, music=music_mode, filename=out_mp4.name, images=len(active_files), seconds=round(total_frames / fps, 1), took=round(time.time() - t_export, 1))
             except Exception as e:

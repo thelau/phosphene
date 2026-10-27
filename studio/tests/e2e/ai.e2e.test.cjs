@@ -1,4 +1,4 @@
-const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, skip, api, page, consoleErrors, addAi } = require('./harness.cjs');
+const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, skip, api, page, consoleErrors, addAi, tempo, mult, change, noChange } = require('./harness.cjs');
 register();
 
 test('AI re-order: panel, live progress, the new order, and Undo puts the old one back', { skip }, async () => {
@@ -104,8 +104,8 @@ test('AI order: "best N" cuts the edit and shows what was left out; playback use
   await shot('18-best-n');
   await film();
   assert.equal(await page.locator('#filmstrip button').count(), 2, 'the film strip holds only the edit');
-  await page.fill('#bpmInput', '220'); await page.locator('#bpmInput').dispatchEvent('input');
-  await page.selectOption('#multSelect', '9');
+  await tempo(220);
+  await mult('9');
   await page.click('#playBtn');
   const seen = new Set();
   const t0 = Date.now();

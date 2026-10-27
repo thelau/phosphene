@@ -1,4 +1,4 @@
-const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, choose, skip, api, page, consoleErrors, addAi } = require('./harness.cjs');
+const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, choose, skip, api, page, consoleErrors, addAi, tempo, mult, change, noChange } = require('./harness.cjs');
 register();
 
 test('page loads without errors: Curate first, generation in one tidy row, no status bar while idle', { skip }, async () => {
@@ -19,7 +19,7 @@ test('page loads without errors: Curate first, generation in one tidy row, no st
   await ctx.close();
 });
 
-test('Film: look bar, preview, transport, timeline down the middle; the inspector on the right with Export pinned at its foot', { skip }, async () => {
+test('Film: preview, then the timeline (transport and group on top, tempo and Multiple over the lanes); the inspector on the right with Look over Sound and Export at its foot', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945 });   // the size of the design: a 16-inch MacBook Pro
   const tabs = await page.locator('.gallery-head').boundingBox();
   const firstCard = await page.locator('.card').first().boundingBox();
@@ -27,18 +27,17 @@ test('Film: look bar, preview, transport, timeline down the middle; the inspecto
   assert.equal(await page.locator('#exportBtn').isVisible(), false, 'no film settings while curating');
   await film();
   const box = async sel => page.locator(sel).first().boundingBox();
-  const [look, stage, play, tl, insp, exp, editBar] = await Promise.all(['.look-bar', '.stage', '#playBtn', '.timeline', '.inspector', '#exportBtn', '.edit-bar'].map(box));
-  assert.ok(stage.y + stage.height <= play.y && play.y + play.height <= tl.y, 'top to bottom: preview, transport, timeline');
+  const [look, stage, play, tl, insp, exp, editBar, group, tempoF, speed] = await Promise.all(['.look-bar', '.stage', '#playBtn', '.timeline', '.inspector', '#exportBtn', '.edit-bar', '.csel[data-for="filmGroup"]', '#tempoField', '#rsSpeed'].map(box));
+  assert.ok(stage.y + stage.height <= tl.y && play.y >= tl.y && play.y + play.height <= tempoF.y, 'top to bottom: preview, then the timeline with the transport on top');
+  assert.ok(Math.abs(group.y + group.height / 2 - (play.y + play.height / 2)) < 4 && group.x > play.x, 'the group sits in the transport row');
+  assert.ok(tempoF.y + tempoF.height <= speed.y, 'the tempo and the Multiple above the lanes');
   assert.ok(editBar.x >= insp.x && editBar.y - insp.y < 16 && look.y >= editBar.y + editBar.height, 'the snapshots head the inspector, then Type, Random and Undo');
-  assert.ok(insp.x >= stage.x + stage.width && Math.abs(insp.width - 600) < 2, 'the inspector is on the right, 600 px');
+  assert.ok(insp.x >= stage.x + stage.width && Math.abs(insp.width - 440) < 2, `the inspector is on the right, 440 px (${insp.width})`);
   const [pic, snd] = await Promise.all(['#inspPicture', '#inspSound'].map(box));
-  assert.ok(Math.abs(pic.y - snd.y) < 1 && snd.x >= pic.x + pic.width - 1, 'two columns: rhythm and look, then sound');
-  const soundTop = (await box('#musicSelect + .segctl')).y;
-  await choose('rhythmSelect', 'variable');
-  assert.equal((await box('#musicSelect + .segctl')).y, soundTop, 'Variable adds controls on the left; the sound does not move');
-  await choose('rhythmSelect', 'flat');
+  assert.ok(snd.y >= pic.y + pic.height - 1 && Math.abs(snd.width - pic.width) < 2, 'Look as a band on top, Sound below it, full width');
+  assert.equal(await page.locator('#rhythmSelect, #bpmInput, #multSelect').evaluateAll(els => els.filter(e => e.offsetParent).length), 0, 'no rhythm controls in the inspector: the timeline is the control');
   assert.ok(exp.y + exp.height <= 945 && exp.y > insp.y + insp.height - 120, 'Export sits at the foot of the inspector');
-  assert.ok(stage.height >= 452 && Math.abs(stage.width / stage.height - 9 / 16) < 0.01, `a 9:16 preview, ${stage.height}px tall`);
+  assert.ok(stage.height >= 470 && Math.abs(stage.width / stage.height - 9 / 16) < 0.01, `a 9:16 preview, ${stage.height}px tall`);
   assert.equal(await page.locator('.grid-col').isVisible(), false, 'no grid while filming');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
@@ -109,9 +108,8 @@ test('player: invert pairs and slow zoom show up on the preview image', { skip }
   await page.fill('#zoomAmt', '5');
   await page.locator('#zoomAmt').dispatchEvent('input');
   assert.equal(await text('#zoomAmtVal'), '5.0%');
-  await page.fill('#bpmInput', '60');
-  await page.locator('#bpmInput').dispatchEvent('input');
-  await page.selectOption('#multSelect', '2');                       // 2 cuts a second: a cut lasts 500ms
+  await tempo(60);
+  await mult('2');                       // 2 cuts a second: a cut lasts 500ms
   await page.click('#playBtn');
   const seen = { inverted: false, normal: false, zoomed: false, srcs: new Set() };
   const t0 = Date.now();
@@ -189,12 +187,12 @@ test('WebGL renderer: invert (colour, grey), zoom about the centre and the trail
   await ctx.close();
 });
 
-test('export with WebGL: the page draws every frame as cutplan plans them and the server is only asked to encode', { skip }, async () => {
+test('export with WebGL: the page draws every frame as planAt plans them and the server is only asked to encode', { skip }, async () => {
   const ctx = await fresh();
   await film();
   await choose('invertSelect', 'colour');
-  await page.fill('#bpmInput', '60'); await page.locator('#bpmInput').dispatchEvent('input');
-  await page.selectOption('#multSelect', '1');                                     // a cut a second: 30 frames each, 3 images x 2 = 180 frames
+  await tempo(60);
+  await mult('1');                                     // a cut a second: 30 frames each, 3 images x 2 = 180 frames
   await page.click('#exportBtn');
   await page.waitForFunction(() => document.getElementById('exportDock').dataset.state === 'ready', null, { timeout: 30000 });
   const body = api.state.calls.find(c => c.path === '/api/export-video').body;
@@ -264,7 +262,7 @@ test('Random (any character or a chosen one), the card dice and Undo work in the
   await page.selectOption('#characterSelect', 'float');                       // choosing a character rolls inside it
   assert.equal(await page.locator('#rhythmSelect').inputValue(), 'flat');
   assert.ok(+(await page.locator('#bpmInput').inputValue()) <= 80);
-  assert.equal(await page.locator('.segctl[data-for="rhythmSelect"] button[aria-pressed="true"]').textContent(), 'Flat', 'the segmented controls follow a random');
+  assert.equal(await page.locator('#rsStart').isVisible(), false, 'the timeline follows a random: one speed, no change');
   for (let i = 0; i < 4; i++) { await page.click('#randomAllBtn'); assert.ok(+(await page.locator('#bpmInput').inputValue()) <= 80, 'Random stays inside Float'); }
   await page.click('#randomBtn');
   await page.waitForTimeout(300);
@@ -282,14 +280,14 @@ test('window size: a 13" laptop (1280 × 720) fits both modes; below 1200 × 640
   assert.ok(gen.x + gen.width <= 1280);
   await film();
   assert.ok(await fits(), 'Film: no page scroll');
-  for (const id of ['#playBtn', '#exportBtn', '#randomAllBtn', '#filmstrip', '#bpmInput']) {
+  for (const id of ['#playBtn', '#exportBtn', '#randomAllBtn', '#filmstrip', '#tempoField', '#multField', '#rsSpeed', '#rsAxis']) {
     const b = await page.locator(id).boundingBox();
     assert.ok(b && b.y >= 0 && b.y + b.height <= 720 && b.x + b.width <= 1280, `${id} in view`);
   }
   const stage = await page.locator('.stage').boundingBox();
-  assert.ok(stage.height >= 200, `the preview stays usable: ${stage.height}px`);
-  await choose('musicSelect', 'on'); await choose('rhythmSelect', 'variable');
-  const cut = await page.evaluate(() => [...document.querySelectorAll('.segctl button, .row > .lbl, .sound-tabs button, #multSelect')].filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.textContent.trim()));
+  assert.ok(stage.height >= 330, `the preview stays usable: ${stage.height}px`);
+  await choose('musicSelect', 'on'); await change();
+  const cut = await page.evaluate(() => [...document.querySelectorAll('.segctl button, .row > .lbl, .sound-tabs button, .vfield, .tl-follow')].filter(e => e.offsetParent && e.scrollWidth > e.clientWidth + 1).map(e => e.textContent.trim()));
   assert.deepEqual(cut, [], 'no label is cut off on a 13" screen');
   await shot('10-laptop');
   await ctx.close();
@@ -299,10 +297,10 @@ test('window size: a 13" laptop (1280 × 720) fits both modes; below 1200 × 640
   await ctx.close();
 });
 
-test('the inspector: Rhythm, Look and Sound always open; Sound in four groups; Amount waits for a zoom', { skip }, async () => {
+test('the inspector: Look and Sound always open; Sound in four groups; Amount waits for a zoom', { skip }, async () => {
   const ctx = await fresh();
   await film();
-  for (const id of ['#bpmInput', '#multSelect', '#followCuts', '#zoomAmt', '#randomBtn']) assert.ok(await page.locator(id).isVisible(), id);
+  for (const id of ['#tempoField', '#multField', '#followCuts', '#zoomAmt', '#randomBtn']) assert.ok(await page.locator(id).isVisible(), id);
   assert.equal(await page.locator('#randomRhythmBtn, #randomLookBtn').count(), 0, 'one Random for the film, one for the sound: no dice that repeat them');
   assert.equal(await text('#randomBtn'), 'Random sound');
   assert.deepEqual(await page.locator('.segctl[data-for="invertSelect"] button').allTextContents(), ['Off', 'Grey', 'Colour']);
@@ -331,8 +329,8 @@ test('modes: Tab switches, Space plays (also after clicking a button), switching
   const ctx = await fresh();
   await page.keyboard.press('Tab');
   assert.equal(await page.evaluate(() => document.body.dataset.mode), 'film');
-  await page.fill('#bpmInput', '20'); await page.locator('#bpmInput').dispatchEvent('input');
-  await page.selectOption('#multSelect', '1');                                 // 3 s a cut: the clock cannot loop back to the same reading
+  await tempo(20);
+  await mult('1');                                 // 3 s a cut: the clock cannot loop back to the same reading
   await page.click('#targetBtn');                                             // a clicked button must not swallow Space
   await page.keyboard.press(' ');
   assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Pause');
@@ -445,13 +443,13 @@ test('snapshots: ＋ Snapshot keeps the film under a name it picks, switching br
   assert.equal(await page.locator('#editBtn').isVisible(), false, 'snapshots are a Film thing');
   await film();
   assert.equal(await text('#editName'), 'No snapshot yet');
-  await page.fill('#bpmInput', '120'); await page.locator('#bpmInput').dispatchEvent('input');
+  await tempo(120);
   await page.click('#editSaveBtn');                                                 // no name asked: it names itself, two words
   await page.waitForFunction(() => /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(document.getElementById('editName').textContent));
   const first = await text('#editName');
   // a second one: another group and tempo, with ⌘S
   await page.selectOption('#filmGroup', 'look:warm');
-  await page.fill('#bpmInput', '150'); await page.locator('#bpmInput').dispatchEvent('input');
+  await tempo(150);
   assert.equal(await page.locator('#editDirty').isVisible(), true, 'changed since the snapshot: a dot');
   await page.locator('#stage').click();
   await page.keyboard.press('Meta+s');
@@ -466,7 +464,7 @@ test('snapshots: ＋ Snapshot keeps the film under a name it picks, switching br
   await page.click('#editBtn');
   assert.equal(await page.locator('#editReplaceBtn').isDisabled(), true, 'nothing changed: nothing to replace');
   await page.click('#editBtn');
-  await page.fill('#bpmInput', '90'); await page.locator('#bpmInput').dispatchEvent('input');
+  await tempo(90);
   await page.click('#editBtn'); await page.click('#editReplaceBtn');
   assert.equal(await text('#confirmTitle'), `Replace “${first}”?`);
   await page.click('#confirmModal button:not(#confirmYes)');                         // No: nothing replaced
@@ -522,42 +520,110 @@ test('the film strip: one thumbnail per image in order, click jumps there; no ke
   await ctx.close();
 });
 
-test('variable speed: Flat shows tempo and multiple, Variable shows start, end and curve, and the picture accelerates', { skip }, async () => {
-  const ctx = await fresh();
+test('the timeline is the rhythm control: drag or type the tempo and the Multiple; click the line to add a change, drag its points and curve, Delete removes it', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
   await film();
-  assert.ok(await page.locator('#bpmInput').isVisible() && !(await page.locator('#startMsRange').isVisible()));
-  await page.selectOption('#multSelect', '1');
-  await choose('rhythmSelect', 'variable');
-  assert.ok(!(await page.locator('#bpmInput').isVisible()), 'no tempo in variable');
-  assert.ok(await page.locator('#multSelect').isVisible(), 'the multiple stays: it only changes the pictures');
-  await choose('rhythmSelect', 'flat');
-  assert.equal(await page.locator('#bpmInput').getAttribute('max'), '500'); assert.equal(await page.locator('#bpmInput').getAttribute('min'), '1');
-  await page.fill('#bpmInput', '500'); assert.equal(await text('#bpmVal'), '500 BPM');
-  await page.fill('#bpmInput', '1'); assert.equal(await text('#bpmVal'), '1 BPM');
-  await page.fill('#bpmInput', '136');
-  assert.ok(await page.locator('#followCuts').isVisible(), 'the check for the music following every cut');
-  await choose('rhythmSelect', 'variable');
-  for (const id of ['#startMsRange', '#endMsRange', '#rampRange', '.segctl[data-for="atSelect"]']) assert.ok(await page.locator(id).isVisible(), id);
-  await page.fill('#startMsRange', '100'); await page.fill('#endMsRange', '600'); await page.fill('#rampRange', '2');
-  assert.match(await text('#rhythmInfo'), /cuts 100 ms, then 600 ms over the last 2$/);
-  await choose('invertSelect', 'mono');
-  assert.match(await text('#rhythmInfo'), /^3 images · .* cuts 100 ms, then 600 ms over the last 2$/);
-  await page.click('#playBtn');
-  await page.waitForFunction(() => document.getElementById('playBtn').textContent.includes('Pause'));
-  await page.waitForTimeout(300);
-  assert.ok(await page.locator('#stageImg').getAttribute('src'));
-  await page.click('#playBtn');
+  await choose('musicSelect', 'on');
+  const val = id => page.evaluate(id => document.getElementById(id).value, id);
+  assert.equal(await text('#tempoVal'), '136 BPM'); assert.equal(await text('#tempoMs'), '441 ms'); assert.equal(await text('#multVal'), '×4');
+  // the tempo: drag up is faster, arrows step, double-click to type (BPM or ms), Esc keeps it
+  const tf = await page.locator('#tempoField').boundingBox();
+  await page.mouse.move(tf.x + tf.width / 2, tf.y + tf.height / 2); await page.mouse.down();
+  await page.mouse.move(tf.x + tf.width / 2, tf.y - 60, { steps: 6 });
+  assert.ok(await page.locator('#tempoField.dragging').count(), 'it shows the drag');
+  await page.mouse.up();
+  const dragged = +(await val('bpmInput'));
+  assert.ok(dragged > 136 * 1.2, `dragging up speeds it up: ${dragged}`);
+  await page.keyboard.press('ArrowDown');
+  assert.equal(+(await val('bpmInput')), dragged - 1, 'an arrow steps it');
+  await page.dblclick('#tempoField');
+  await page.keyboard.press('Meta+a'); await page.keyboard.type('120'); await page.keyboard.press('Enter');
+  assert.equal(await val('bpmInput'), '120'); assert.equal(await text('#tempoVal'), '120 BPM');
+  await page.dblclick('#tempoField'); await page.keyboard.press('Meta+a'); await page.keyboard.type('600 ms'); await page.keyboard.press('Enter');
+  assert.equal(await val('bpmInput'), '100', 'a length in ms works too');
+  await page.dblclick('#tempoField'); await page.keyboard.type('999'); await page.keyboard.press('Escape');
+  assert.equal(await val('bpmInput'), '100', 'Esc keeps it');
+  // the Multiple steps through its values
+  const mf = await page.locator('#multField').boundingBox();
+  await page.mouse.move(mf.x + mf.width / 2, mf.y + mf.height / 2); await page.mouse.down();
+  await page.mouse.move(mf.x + mf.width / 2, mf.y + mf.height / 2 - 15, { steps: 3 }); await page.mouse.up();
+  assert.equal(await text('#multVal'), '×6', 'one step up');
+  await page.dblclick('#multField'); await page.keyboard.press('Meta+a'); await page.keyboard.type('2'); await page.keyboard.press('Enter');
+  assert.equal(await val('multSelect'), '2');
+  // the speed lane: near the line a click adds a change; elsewhere a click does nothing to the film
+  const lane = await page.locator('#rsSpeed').boundingBox();
+  const flatY = await page.evaluate(() => parseFloat(document.getElementById('rsCurve').getAttribute('points').split(' ')[0].split(',')[1]));
+  await page.mouse.move(lane.x + lane.width * 0.3, lane.y + 4);
+  assert.equal(await page.locator('#rsHover').isVisible(), false, 'away from the line: no offer');
+  await page.mouse.click(lane.x + lane.width * 0.3, lane.y + 4);
+  assert.equal(await val('rhythmSelect'), 'flat', 'a click away from the line adds nothing');
+  await page.mouse.move(lane.x + lane.width * 0.4, lane.y + (lane.height * flatY) / 100 + 3);
+  assert.equal(await page.locator('#rsHover').isVisible(), true, 'near the line: "Click to add a change"');
+  await page.mouse.click(lane.x + lane.width * 0.4, lane.y + (lane.height * flatY) / 100 + 3);
+  assert.equal(await val('rhythmSelect'), 'variable');
+  for (const id of ['#rsStart', '#rsEnd', '#rsCurveHandle', '#rsBand', '#rsRemove']) assert.ok(await page.locator(id).isVisible(), id);
+  assert.match(await text('#rsStartL'), /^Start 600 ms · pictures 300$/, 'the music\'s value, the picture\'s beside it');
+  assert.ok(Math.abs(+(await val('changeFrom')) - 0.4) < 0.08, `the change starts where the click was: ${await val('changeFrom')}`);
+  // drag End later and slower; the tooltip says where and how fast
+  let e = await page.locator('#rsEnd').boundingBox();
+  await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2); await page.mouse.down();
+  await page.mouse.move(lane.x + lane.width * 0.85, lane.y + lane.height * 0.9, { steps: 8 });
+  assert.match(await text('#rsTip'), /^End · [\d.]+ s\s*\d+ ms · \d+ BPM\s*pictures \d+ ms$/);
+  await page.mouse.up();
+  assert.equal(await page.locator('#rsTip').isVisible(), false);
+  const end = +(await val('endMsRange'));
+  assert.ok(Math.abs(end - 1068) < 15, `End dragged 90% down the log scale is ~1068 ms: ${end}`);
+  const endBox = await page.locator('#rsEnd').boundingBox();
+  assert.ok(Math.abs(endBox.x + endBox.width / 2 - (lane.x + lane.width * 0.85)) < 12, 'the point sits under the pointer');
+  // drag Start up: faster, and it is the tempo
+  e = await page.locator('#rsStart').boundingBox();
+  await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2); await page.mouse.down();
+  await page.mouse.move(e.x + e.width / 2, lane.y + lane.height * 0.15, { steps: 6 }); await page.mouse.up();
+  const bpm = +(await val('bpmInput'));
+  assert.ok(bpm > 300, `Start up is faster: ${bpm} BPM`); assert.equal(await text('#tempoVal'), `${bpm} BPM`, 'the Start point is the tempo');
+  // the curve handle
+  const c0 = +(await val('curveVal'));
+  e = await page.locator('#rsCurveHandle').boundingBox();
+  await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2); await page.mouse.down();
+  await page.mouse.move(e.x + e.width / 2, e.y - 14, { steps: 4 });
+  assert.match(await text('#rsTip'), /^Curve · /); assert.equal(await page.locator('#rsLinear').isVisible(), true, 'the even change shows as a dashed line while shaping');
+  await page.mouse.up();
+  assert.notEqual(+(await val('curveVal')), c0, 'the curve changed');
+  await shot('31-timeline-change');
+  // the timeline drives the picture and the music
+  const lens = await page.evaluate(() => { const x = document.getElementById('rsTicks').getAttribute('d').match(/M[\d.]+/g).map(m => +m.slice(1)); return [x[1] - x[0], 1000 - x[x.length - 1]]; });   // the first cut, and the last (it ends at the film's end)
+  assert.ok(lens[1] > lens[0] * 3, `the cuts slow down: ${lens}`);
+  // a click on the cuts or the ruler jumps; the speed lane never does
+  await page.click('#rsCuts', { position: { x: lane.width * 0.5, y: 10 } });
+  const head = () => page.evaluate(() => parseFloat(document.getElementById('rsPlayhead').style.left));
+  const at = await head();
+  assert.ok(Math.abs(at - 50) < 3, `the cut ticks jump: ${at}%`);
+  await page.mouse.click(lane.x + lane.width * 0.7, lane.y + 3);
+  assert.equal(await head(), at, 'the speed lane does not move the playhead');
+  assert.equal(await page.locator('#rsRemove').isVisible(), false, 'it clears the selection');
+  await page.click('#rsAxis', { position: { x: 5, y: 9 } });
+  assert.ok(await head() < 5, 'the ruler jumps');
+  // select a point, Delete removes the change; Undo brings it back
+  await page.click('#rsEnd');
+  assert.equal(await page.locator('#rsEnd.sel').count(), 1);
+  await page.keyboard.press('Delete');
+  assert.equal(await val('rhythmSelect'), 'flat');
+  assert.equal(await page.locator('#filmstrip button').count(), 3, 'Delete never touches an image');
+  await page.keyboard.press('Meta+z');
+  await page.waitForFunction(() => document.getElementById('rhythmSelect').value === 'variable');
+  // the export carries the speeds for its name
   await page.click('#exportBtn');
   await page.waitForSelector('#downloadLink:not([hidden])');
   const body = api.state.calls.filter(c => c.path === '/api/export-video').pop().body;
-  assert.deepEqual([body.rhythm, body.start_ms, body.end_ms], ['variable', 100, 600]);
+  assert.deepEqual([body.rhythm, body.bpm, body.end_ms], ['variable', bpm, +(await val('endMsRange'))]);
+  assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
 
 test('synthesized music: the drone plays live in the page, settings swap it at once, export renders it in the page and sends it', { skip }, async () => {
   const ctx = await fresh();
   await film();
-  assert.match(await text('#rhythmInfo'), /^3 images · \d+ s · cuts \d+ ms$/);
+  assert.match(await text('#rhythmInfo'), /^3 images · \d+ s · pictures \d+ ms$/);
   assert.deepEqual(await page.locator('.segctl[data-for="musicSelect"] button').allTextContents(), ['Off', 'Synthesized']);
   await choose('musicSelect', 'on');
   await page.fill('#pulseRange', '80');
@@ -708,38 +774,43 @@ test('Random sound: every draw stays a dark, heavy, level drone and a new sound 
   await ctx.close();
 });
 
-test('the rhythm strip in the page: ticks, band, beats and axis follow the settings; the playhead moves; a click jumps', { skip }, async () => {
+test('the timeline in the page: ticks, band, beats and axis follow the settings; labels stay inside; the playhead moves; old settings come back as a change', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945 });
   await film();
   const ticks = async () => (await page.locator('#rsTicks').getAttribute('d')).split('M').length - 1;
   assert.equal(await ticks(), 3, 'one tick per picture cut');
-  assert.equal(await page.locator('#rsBand').isVisible(), false, 'Flat: no band');
+  assert.equal(await page.locator('#rsBand').isVisible(), false, 'one speed: no band');
   await choose('invertSelect', 'mono');
   assert.equal(await ticks(), 6, 'each image and its inverted copy');
-  await choose('rhythmSelect', 'variable');
-  await page.selectOption('#multSelect', '1');                                     // one picture cut per cut of the run: 6 cuts
-  await page.fill('#startMsRange', '100'); await page.fill('#endMsRange', '600'); await page.fill('#rampRange', '2');
-  await page.locator('#rampRange').dispatchEvent('input');
+  await mult('1');
+  await change({ from: 0.6, to: 1, end: 600, start: 100 });                    // a landing over the last music cuts
   assert.equal(await page.locator('#rsBand').isVisible(), true);
-  assert.equal(await page.locator('.segctl[data-for="rhythmSelect"] button[aria-pressed="true"]').evaluate(b => getComputedStyle(b).backgroundColor), 'rgb(254, 255, 231)', 'the chosen segment is lit at once');
-  const lab = await page.locator('#rsH0L').boundingBox(), body0 = await page.locator('#rsBody').boundingBox();
-  assert.ok(lab.x >= body0.x - 1 && lab.x + lab.width <= body0.x + body0.width + 1, 'the Start label stays inside the strip');
-  assert.equal(await text('#rsBandLabel'), 'Landing · 2 cuts');
-  assert.equal(await text('#rsH1L'), 'End 600 ms');
+  assert.equal(await text('#rsEndL'), 'End 600 ms', 'no Multiple: no picture value');
+  const body0 = await page.locator('#rsBody').boundingBox();
+  await page.click('#rsEnd');                                                  // selected at the film's end: the × stays inside
+  for (const id of ['#rsStartL', '#rsEndL', '#rsRemove']) {
+    const lab = await page.locator(id).boundingBox();
+    assert.ok(lab.x >= body0.x - 1 && lab.x + lab.width <= body0.x + body0.width + 1, `${id} stays inside the timeline`);
+  }
   await shot('19-rhythm-landing');
-  const box = await page.locator('#rsBody').boundingBox();
   const band = await page.locator('#rsBand').boundingBox();
-  assert.ok(band.x > box.x + box.width / 4 && Math.abs(band.x + band.width - (box.x + box.width)) < 2, 'the landing sits at the end, in time');   // the last 2 of 6 cuts are the long ones: about 70% of the time
-  await page.mouse.click(box.x + box.width * 0.75, box.y + 30);                   // jump three quarters in
+  assert.ok(band.x > body0.x + body0.width / 4 && Math.abs(band.x + band.width - (body0.x + body0.width)) < 2, 'the landing sits at the end, in time');
+  assert.match(await text('#rhythmInfo'), /^3 images · .* · pictures 100→\d+ ms$/, 'the summary counts in pictures: the first and last picture cut');
+  await page.click('#rsCuts', { position: { x: body0.width * 0.75, y: 10 } });
   const at = await page.evaluate(() => parseFloat(document.getElementById('rsPlayhead').style.left));
   assert.ok(Math.abs(at - 75) < 1, `playhead at ${at}%`);
   await page.click('#playBtn');
   await page.waitForTimeout(500);
-  const later = await page.evaluate(() => parseFloat(document.getElementById('rsPlayhead').style.left));
-  assert.notEqual(later, at, 'the playhead moves while playing');
+  assert.notEqual(await page.evaluate(() => parseFloat(document.getElementById('rsPlayhead').style.left)), at, 'the playhead moves while playing');
   await page.click('#playBtn');
-  const axis = await page.locator('#rsAxis span').allTextContents();
-  assert.equal(axis[0], '0 s');
+  assert.equal((await page.locator('#rsAxis span').allTextContents())[0], '0 s');
+  // settings saved before the timeline (Variable: Start, End, Change over, Change at) open as the same film
+  await page.evaluate(() => localStorage.setItem('studioSettings', JSON.stringify({ rhythmSelect: 'variable', startMsRange: '100', endMsRange: '600', rampRange: '2', atSelect: 'end', multSelect: '1' })));
+  await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
+  assert.equal(await page.locator('#rhythmSelect').inputValue(), 'variable');
+  assert.equal(await page.locator('#bpmInput').inputValue(), '600', 'Start 100 ms is the tempo, 600 BPM');
+  assert.equal(await page.locator('#endMsRange').inputValue(), '600');
+  assert.ok(+(await page.locator('#changeFrom').inputValue()) > 0.3 && (await page.locator('#changeTo').inputValue()) === '1', 'a landing: the change at the end');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
@@ -749,8 +820,8 @@ test('the rhythm strip stays readable from 1 image to 300 at one frame a cut', {
   for (let i = 0; i < 300; i++) { const f = `q${i}`; api.state.plates.push({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` }); api.state.sequences[0].order.push(f); }
   await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
   await film();
-  await page.fill('#bpmInput', '450'); await page.locator('#bpmInput').dispatchEvent('input');
-  await page.selectOption('#multSelect', '4');
+  await tempo(450);
+  await mult('4');
   assert.match(await text('#rsFast'), /1 frame at 30 fps/);
   assert.equal((await page.locator('#rsTicks').getAttribute('d')).split('M').length - 1, 303);
   const fits = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
@@ -856,8 +927,8 @@ test('playing 150 images at one frame a cut, the stage never paints an image tha
   for (let i = 0; i < 150; i++) { const f = `z${i}`; api.state.plates.push({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg`, preview: `/assets/ai-plates/${f}.svg?w=540` }); api.state.sequences[0].order.push(f); }   // like the real server: the stage's size is not the film strip's
   await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
   await film();
-  await page.fill('#bpmInput', '450'); await page.locator('#bpmInput').dispatchEvent('input');
-  await page.selectOption('#multSelect', '4');
+  await tempo(450);
+  await mult('4');
   await page.evaluate(() => {
     window.__bad = 0; window.__frames = 0; window.__srcs = new Set();
     const img = document.getElementById('stageImg');
@@ -899,33 +970,6 @@ test('keys in the page: arrows step, F fills the screen with the preview and F l
   await page.waitForFunction(() => document.fullscreenElement);
   await page.keyboard.press('f');
   await page.waitForFunction(() => !document.fullscreenElement);
-  assert.deepEqual(consoleErrors, []);
-  await ctx.close();
-});
-
-test('dragging the inner point of a landing with the mouse sets Change over; the playhead does not jump', { skip }, async () => {
-  const ctx = await fresh({ width: 1512, height: 945 });
-  for (let i = 0; i < 21; i++) { const f = `d${i}`; api.state.plates.push({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` }); api.state.sequences[0].order.push(f); }
-  await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
-  await film();
-  await choose('rhythmSelect', 'variable');
-  await page.selectOption('#multSelect', '1');
-  await page.fill('#rampRange', '6'); await page.locator('#rampRange').dispatchEvent('input');
-  const dot = await page.locator('#rsH0.inner').boundingBox();
-  const body = await page.locator('#rsBody').boundingBox();
-  const head = await page.evaluate(() => document.getElementById('rsPlayhead').style.left);
-  await page.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(body.x + body.width * 0.25, dot.y + dot.height / 2, { steps: 8 });
-  await page.mouse.up();
-  const ramp = +(await page.locator('#rampRange').inputValue());
-  assert.ok(ramp > 6, `dragged left: the change takes more cuts (${ramp})`);
-  const dot2 = await page.locator('#rsH0').boundingBox();
-  assert.ok(Math.abs(dot2.x + dot2.width / 2 - (body.x + body.width * 0.25)) < body.width * 0.06, 'the point stays under the pointer');
-  assert.equal(await text('#rsBandLabel'), `Landing · ${ramp} cuts`);
-  assert.equal(await page.evaluate(() => document.getElementById('rsPlayhead').style.left), head, 'letting go did not jump the playhead');
-  assert.equal(await page.locator('#rsH1.inner').count(), 0, 'the End point at the very end does not drag');
-  await shot('21-drag-point');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
@@ -973,16 +1017,16 @@ test('dropdowns in the app style: open below or above depending on room, pick wi
   const ctx = await fresh({ width: 1280, height: 720 });
   await film();
   await choose('musicSelect', 'on');
-  // the Multiple, high on the page: opens downward
-  await page.click('.csel[data-for="multSelect"]');
+  // the Chord, high in the Sound: opens downward
+  await page.click('#soundTabTone');
+  await page.click('.csel[data-for="chordSelect"]');
   await page.waitForSelector('#cselMenu:not([hidden])');
   assert.equal(await page.locator('#cselMenu').getAttribute('data-side'), 'down');
-  assert.deepEqual(await page.locator('#cselMenu .csel-item').allTextContents(), ['×¼', '×½', '×1', '×1⅓', '×2', '×3', '×4', '×6', '×8', '×9']);
-  assert.equal(await page.locator('#cselMenu [aria-selected="true"]').textContent(), '×4');
+  assert.deepEqual(await page.locator('#cselMenu .csel-item').allTextContents(), ['Dark cluster', 'Open fifth', 'Minor', 'Suspended']);
+  assert.equal(await page.locator('#cselMenu [aria-selected="true"]').textContent(), 'Dark cluster');
   await shot('24-dropdown');
-  await page.locator('#cselMenu .csel-item', { hasText: '×2' }).first().click();
-  assert.equal(await page.locator('#multSelect').inputValue(), '2', 'the real select took the value');
-  assert.equal(await page.locator('.csel[data-for="multSelect"] .csel-face').textContent(), '×2');
+  await page.locator('#cselMenu .csel-item', { hasText: 'Minor' }).first().click();
+  assert.equal(await page.locator('#chordSelect').inputValue(), '2', 'the real select took the value');
   assert.equal(await page.locator('#cselMenu').isVisible(), false);
   // Dynamics, low in the Notes group: opens upward
   await page.click('#soundTabNotes');
@@ -999,6 +1043,7 @@ test('dropdowns in the app style: open below or above depending on room, pick wi
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('#cselMenu').isVisible(), false);
   // the keyboard: arrows and Enter
+  await page.evaluate(() => { const c = document.getElementById('chordSelect'); c.value = '0'; c.dispatchEvent(new Event('change')); });   // from the first chord (picked above)
   await page.focus('#chordSelect').catch(() => {});
   await page.click('#soundTabTone');
   await page.focus('#chordSelect');
@@ -1027,8 +1072,8 @@ test('dropdowns in the app style: open below or above depending on room, pick wi
   await page.keyboard.press('Escape');
   await page.click('#playBtn');
   // after a pick, by mouse or keyboard, the keys work again (the dropdown let go of the focus)
-  await page.click('.csel[data-for="multSelect"]');
-  await page.locator('#cselMenu .csel-item', { hasText: '×3' }).first().click();
+  await page.click('.csel[data-for="chordSelect"]');
+  await page.locator('#cselMenu .csel-item', { hasText: 'Suspended' }).first().click();
   await page.keyboard.press(' ');
   assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Pause', 'Space plays right after a pick');
   await page.keyboard.press(' ');
@@ -1038,7 +1083,7 @@ test('dropdowns in the app style: open below or above depending on room, pick wi
   const seed = await page.locator('#seedVal').inputValue();
   await page.keyboard.press('s');
   assert.notEqual(await page.locator('#seedVal').inputValue(), seed, 'S works right after a keyboard pick');
-  await page.click('.csel[data-for="multSelect"]'); await page.keyboard.press('Escape');
+  await page.click('.csel[data-for="chordSelect"]'); await page.keyboard.press('Escape');
   await page.keyboard.press('t');
   assert.equal(await page.locator('#reticle').evaluate(e => e.classList.contains('visible')), true, 'and after Esc');
   // no system dropdown is left in the page (the segmented ones are buttons)
@@ -1048,15 +1093,16 @@ test('dropdowns in the app style: open below or above depending on room, pick wi
   await ctx.close();
 });
 
-test('the tempo lock is a small lock next to the tempo: on, Random keeps the tempo', { skip }, async () => {
+test('the tempo lock is a small lock next to the tempo on the timeline: on, Random keeps the tempo', { skip }, async () => {
   const ctx = await fresh();
   await film();
-  await page.fill('#bpmInput', '97'); await page.locator('#bpmInput').dispatchEvent('input');
+  await tempo(97);
   await page.click('.lock');
   assert.equal(await page.locator('#bpmLock').isChecked(), true);
   for (let i = 0; i < 5; i++) await page.keyboard.press('r');
   assert.equal(await page.locator('#bpmInput').inputValue(), '97');
-  assert.equal(await text('#bpmVal'), '97 BPM');
+  assert.equal(await text('#tempoVal'), '97 BPM');
+  assert.equal(await page.locator('#rhythmSelect').inputValue(), 'flat', 'and adds no change: the tempo is where a change starts');
   await ctx.close();
 });
 
@@ -1141,8 +1187,8 @@ test('groups: chips for All, yours and the automatic looks; pick cards, make a g
 test('Trail in the page: while playing, the previous image shows faintly just after each cut, and the export is asked for it', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945 });
   await film();
-  await page.fill('#bpmInput', '60'); await page.locator('#bpmInput').dispatchEvent('input');
-  await page.selectOption('#multSelect', '2');
+  await tempo(60);
+  await mult('2');
   await page.fill('#trailRange', '50'); await page.locator('#trailRange').dispatchEvent('input');
   assert.equal(await text('#trailVal'), '50%');
   await page.click('#playBtn');

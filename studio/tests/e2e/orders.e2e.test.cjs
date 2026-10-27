@@ -1,4 +1,4 @@
-const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, skip, api, page, consoleErrors, addAi } = require('./harness.cjs');
+const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, skip, api, page, consoleErrors, addAi, tempo, mult, change, noChange } = require('./harness.cjs');
 register();
 
 test('one order: Selection | Trash on the left; AI re-order, sizes and Refresh on the right; no Manual / AI switch, no notes row', { skip }, async () => {
@@ -35,8 +35,8 @@ test('the order is always yours to drag, also after an AI re-order, and a drag c
 test('player: an AI re-order while playing, the film follows the new order', { skip }, async () => {
   const ctx = await fresh({ delays: { ai: 300 } });
   await film();
-  await page.fill('#bpmInput', '20'); await page.locator('#bpmInput').dispatchEvent('input');
-  await page.selectOption('#multSelect', '1');                                        // 3 s a cut
+  await tempo(20);
+  await mult('1');                                        // 3 s a cut
   await page.click('#playBtn');
   await curate();
   await page.click('#aiBtn'); await page.click('#aiGo');

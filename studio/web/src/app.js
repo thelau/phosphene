@@ -2,7 +2,6 @@
     let showTrash = false;
     let isPlaying = false;
     let currentIdx = 0;
-    let framesPerCut = 7.5;
     let timer = null;
     let draggedFilename = null;
     let kimiConfigured = false;
@@ -894,7 +893,8 @@
       else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); }
       else if (e.key === '0' || e.key === 'Home') { e.preventDefault(); flash('restartBtn'); toStart(); }
       else if (e.key === '?') { e.preventDefault(); toggleKeys(); }
-      else if (e.key === 'Escape') { document.getElementById('keysPanel').hidden = true; if (pickSel.size) clearPicks(); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && mode === 'film' && rsSel) { e.preventDefault(); removeChange(); }   // a selected point of the change: the change goes (never an image)
+      else if (e.key === 'Escape') { document.getElementById('keysPanel').hidden = true; if (pickSel.size) clearPicks(); if (rsSel) { rsSel = null; renderRhythmStrip(); } }
       else if (e.key === 't' || e.key === 'T') { e.preventDefault(); flash(mode === 'film' ? 'targetBtn' : 'gridTargetBtn'); toggleReticle(); }
       else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); flash('randomAllBtn'); randomAll(); }
       else if (e.key === 's' || e.key === 'S') { e.preventDefault(); flash('randomBtn'); if (!musicOn()) { setv('musicSelect', 'on'); } randomMusic(); }
@@ -1158,7 +1158,7 @@
       }
     }
 
-    // ---- what is on screen when (mirrored in studio/cutplan.py; tests keep the two in step) ----
+    // ---- what is on screen when: the preview and the export plan every frame with these ----
     // A "cut" is one hold of the picture. With invert on, every image takes two cuts: normal, then inverted.
     function planAt(cutPos, nPlates, invertMode, starts) {
       let cut = Math.floor(cutPos);
@@ -1176,31 +1176,38 @@
       const span = starts[lo + 1] - starts[lo];
       return [lo, span > 0 ? (t - starts[lo]) / span : 0];
     }
+    // ---- the rhythm: one tempo, and at most one change of speed, both set on the timeline ----
+    // The tempo is the music's cut length (60000 / BPM ms) and the speed until a change. A change runs from the tempo at `from` to end_ms at
+    // `to` (both a share of the film's music cuts, so a point stays on its image while the speeds move), eased by `curve` (0: an even,
+    // geometric change, each cut a constant ratio of the one before, as the references slow down; 1: it waits and then changes sharply).
+    const BPM_RANGE = [40, 1200], MS_RANGE = [50, 1500];                     // the same span both ways: 1500 to 50 ms
+    const clampMs = ms => Math.min(MS_RANGE[1], Math.max(MS_RANGE[0], ms));
     function rhythmMode() { return document.getElementById('rhythmSelect').value === 'variable' ? 'variable' : 'flat'; }
-    function variableParams() {
-      return {
-        start_ms: parseInt(document.getElementById('startMsRange').value, 10) || 100,
-        end_ms: parseInt(document.getElementById('endMsRange').value, 10) || 600,
-        ramp: parseInt(document.getElementById('rampRange').value, 10) || 12,
-        at: document.getElementById('atSelect').value === 'start' ? 'start' : 'end'
-      };
+    function changeParams() {
+      if (rhythmMode() !== 'variable') return null;
+      const num = (id, d) => { const v = parseFloat(document.getElementById(id).value); return Number.isFinite(v) ? v : d; };
+      const from = Math.min(0.98, Math.max(0, num('changeFrom', 0.6))), to = Math.min(1, Math.max(from + 0.02, num('changeTo', 1)));
+      return { from, to, end_ms: Math.round(clampMs(num('endMsRange', 600))), curve: Math.min(1, Math.max(0, num('curveVal', 0))) };
     }
-    // Variable speed: where each cut starts, in frames (mirrors cutplan.variable_timeline: hold one speed, then change geometrically over `ramp` cuts)
-    function variableStarts(nCuts, startMs, endMs, ramp, at) {
-      const clamp = v => Math.min(1500, Math.max(50, v));
-      const a = Math.log(clamp(startMs)), b = Math.log(clamp(endMs));
-      const nRamp = Math.max(1, Math.min(nCuts, Math.min(200, Math.max(2, Math.trunc(ramp)))));
+    const easeChange = (u, curve) => Math.pow(Math.min(1, Math.max(0, u)), 1 + 4 * curve);
+    // the music cut length (ms) at a point of the film, x a share of its music cuts
+    function msAtShare(x, bpm, change) {
+      const start = 60000 / bpm;
+      if (!change || x <= change.from) return start;
+      if (x >= change.to) return change.end_ms;
+      const e = easeChange((x - change.from) / (change.to - change.from), change.curve);
+      return Math.exp(Math.log(start) + (Math.log(change.end_ms) - Math.log(start)) * e);
+    }
+    // where each music cut starts, in frames: every cut the tempo, or the change, cut i taken at its middle. Shares count the music cuts
+    // the film holds (nMusic: with a Multiple the last one can run past the film's end)
+    function baseStarts(nBase, bpm, change, nMusic = nBase) {
+      if (!change) return Array.from({ length: nBase + 1 }, (_, i) => (i * 1800) / bpm);
       const starts = [0];
-      for (let i = 0; i < nCuts; i++) {
-        let u;
-        if (at === 'start') u = nRamp > 1 ? Math.min(1, i / (nRamp - 1)) : 1;
-        else { const j = i - (nCuts - nRamp); u = j < 0 ? 0 : (j + 1) / nRamp; }
-        starts.push(starts[i] + Math.max(1, (Math.exp(a + (b - a) * u) * 30) / 1000));
-      }
+      for (let i = 0; i < nBase; i++) starts.push(starts[i] + Math.max(1, (msAtShare((i + 0.5) / nMusic, bpm, change) * 30) / 1000));
       return starts;
     }
     // Two timelines, both in frames (30 per second). The BASE is what the music follows: the beat grid (Flat) or the variable run.
-    // The PICTURE cuts `multiple` times per base cut, and only the picture feels the multiple (mirrors cutplan.rhythm_timeline).
+    // The PICTURE cuts `multiple` times per base cut, and only the picture feels the multiple (the music follows the base).
     function subdivideStarts(base, multiple, nCuts) {
       const m = Math.max(0.05, multiple), nBase = base.length - 1, out = [];
       for (let k = 0; k <= nCuts; k++) {
@@ -1210,8 +1217,8 @@
       }
       return out;
     }
-    // the tempo slider is 1 to 500 BPM; a stored or odd value is kept inside that
-    function bpmValue() { const v = parseFloat(document.getElementById('bpmInput').value); return Number.isFinite(v) ? Math.min(500, Math.max(1, v)) : 120; }
+    // the tempo is 40 to 1200 BPM (1500 to 50 ms a music cut); a stored or odd value is kept inside that
+    function bpmValue() { const v = parseFloat(document.getElementById('bpmInput').value); return Number.isFinite(v) ? Math.min(BPM_RANGE[1], Math.max(BPM_RANGE[0], v)) : 120; }
     function followCuts() { return !!document.getElementById('followCuts').checked; }
     let timelineCache = { key: '', value: null };
     function rhythmFor(nPlates) {
@@ -1221,16 +1228,16 @@
       const mult = parseFloat(document.getElementById('multSelect').value) || 1;
       const bpm = bpmValue();
       const follow = followCuts();
-      const v = rhythmMode() === 'variable' ? variableParams() : null;
-      const key = `${nCuts}|${paired}|${mult}|${v ? `${v.start_ms}|${v.end_ms}|${v.ramp}|${v.at}` : `flat|${bpm}`}|${follow}`;
+      const ch = changeParams();
+      const key = `${nCuts}|${paired}|${mult}|${bpm}|${ch ? `${ch.from}|${ch.to}|${ch.end_ms}|${ch.curve}` : 'flat'}|${follow}`;
       if (timelineCache.key !== key) {
         const nBase = Math.max(1, Math.ceil(nCuts / Math.max(0.05, mult) - 1e-9));
-        const base = v ? variableStarts(nBase, v.start_ms, v.end_ms, v.ramp, v.at) : Array.from({ length: nBase + 1 }, (_, i) => (i * 1800) / bpm);
+        const nMusic = nCuts / Math.max(0.05, mult), base = baseStarts(nBase, bpm, ch, nMusic);
         const pic = subdivideStarts(base, mult, nCuts), end = pic[nCuts];
         // the music's cuts: the base cuts that fall inside the clip, or (if the user asks) every picture cut
         const audio = follow ? pic.map(f => f / 30) : base.filter(f => f < end - 1e-6).concat([end]).map(f => f / 30);
         if (audio.length < 2) audio.push(audio[0] + 0.1);                                       // no images: still a valid (empty) clip
-        timelineCache = { key, value: { pic, audio, base, end, landAt: pic[Math.max(0, nCuts - (paired ? 2 : 1))] / 30 } };
+        timelineCache = { key, value: { pic, audio, base, nBase, nMusic, end, landAt: pic[Math.max(0, nCuts - (paired ? 2 : 1))] / 30 } };
       }
       return timelineCache.value;
     }
@@ -1384,7 +1391,6 @@
     function settingsSnap() {
       const out = {};
       PERSISTED.filter(id => !NOT_UNDONE.includes(id)).forEach(id => { const el = document.getElementById(id); out[id] = el.type === 'checkbox' ? el.checked : el.value; });
-      if (rampWanted !== null) out.rampRange = String(rampWanted);            // what was asked for: the library growing or shrinking is not a change of yours
       return out;
     }
     function settingsChanged() {
@@ -1394,7 +1400,9 @@
     }
     function changeName(before, after) {
       let ids = Object.keys(after).filter(id => after[id] !== before[id]);
-      if (ids.length > 1) ids = ids.filter(id => id !== 'rampRange');         // Change over follows the cut count: it is not what was changed
+      if (ids.some(id => ['rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal'].includes(id))) return 'the change of speed';
+      if (ids.length === 1 && ids[0] === 'bpmInput') return 'the tempo';
+      if (ids.length === 1 && ids[0] === 'multSelect') return 'the Multiple';
       if (ids.length !== 1) return 'the settings';
       const el = document.getElementById(ids[0]), row = el.closest ? el.closest('.row, .check-line') : null;
       const lbl = row && row.querySelector ? row.querySelector('.lbl, span') : null;
@@ -1409,26 +1417,54 @@
       pushStep({ settings: true, label: label || changeName(before, now), undo: () => applySnap(before), redo: () => applySnap(now) });
     }
     function applySnap(snap) {
+      snap = migrateRhythm({ ...snap });
       for (const [id, v] of Object.entries(snap)) { const el = document.getElementById(id); if (el) { if (el.type === 'checkbox') el.checked = v; else el.value = v; } }
       updateTempo(); updateRhythm(); updateFx(); updateMusic();
       settled = settingsSnap();
     }
     const rememberForUndo = () => commitSettings();                          // a Random starts: what came before is its own step
     function undoRandom() { return undoLast(); }                              // the Undo button
-    // the tempo lock: Random keeps the tempo, and a Flat speed (a tempo means nothing to a variable run); the Multiple still rolls
+    // how many music cuts the film has (the change's positions are shares of them)
+    function baseCount(mult) {
+      const paired = ['mono', 'colour'].includes(document.getElementById('invertSelect').value);
+      const m = parseFloat(mult ?? document.getElementById('multSelect').value) || 1;
+      return Math.max(1, (activePlates().length * (paired ? 2 : 1)) / Math.max(0.05, m));
+    }
+    // a change as the Types and Random describe it (a start and an end length, over `ramp` music cuts at the end or the start) on the timeline
+    function setChange(startMs, endMs, ramp, at, curve) {
+      const share = Math.min(1, ramp / Math.max(ramp + 1, baseCount()));
+      setv('rhythmSelect', 'variable');
+      setv('bpmInput', Math.round(Math.min(BPM_RANGE[1], Math.max(BPM_RANGE[0], 60000 / startMs))));
+      setv('endMsRange', Math.round(clampMs(endMs) / 10) * 10);
+      setv('changeFrom', at === 'start' ? 0 : +(1 - share).toFixed(4)); setv('changeTo', at === 'start' ? +share.toFixed(4) : 1);
+      setv('curveVal', curve);
+    }
+    // the tempo lock: Random keeps the tempo and adds no change (the tempo is the change's start); the Multiple still rolls
     function applyRhythm(r) {
-      if (document.getElementById('bpmLock').checked) { setv('rhythmSelect', 'flat'); setv('multSelect', rpick(r.mult)); return; }
-      setv('rhythmSelect', r.mode);
-      if (r.mode === 'flat') setv('bpmInput', rint(r.bpm));
-      else { setv('startMsRange', Math.round(rint(r.start) / 10) * 10); setv('endMsRange', Math.round(rint(r.end) / 10) * 10); setv('rampRange', rint(r.ramp)); setv('atSelect', Array.isArray(r.at) ? rpick(r.at) : r.at); }
       setv('multSelect', rpick(r.mult));
+      if (document.getElementById('bpmLock').checked) { setv('rhythmSelect', 'flat'); return; }
+      if (r.mode === 'flat') { setv('rhythmSelect', 'flat'); setv('bpmInput', rint(r.bpm)); }
+      else setChange(rint(r.start), rint(r.end), rint(r.ramp), Array.isArray(r.at) ? rpick(r.at) : r.at, rpick([0, 0, 0.15, 0.3]));
+    }
+    // settings from before the timeline (Flat / Variable with Start, End, Change over and Change at): the same film on the timeline
+    function migrateRhythm(o) {
+      if (!o || !('startMsRange' in o || 'rampRange' in o || 'atSelect' in o)) return o;
+      if (o.rhythmSelect === 'variable') {
+        const start = parseFloat(o.startMsRange) || 100, ramp = parseInt(o.rampRange, 10) || 12, n = baseCount(o.multSelect) || 60;
+        const share = Math.min(1, ramp / Math.max(ramp + 1, activePlates().length ? n : 60));
+        o.bpmInput = String(Math.round(Math.min(BPM_RANGE[1], Math.max(BPM_RANGE[0], 60000 / start))));
+        o.changeFrom = String(o.atSelect === 'start' ? 0 : +(1 - share).toFixed(4)); o.changeTo = String(o.atSelect === 'start' ? +share.toFixed(4) : 1);
+        o.curveVal = '0';
+      }
+      delete o.startMsRange; delete o.rampRange; delete o.atSelect;
+      return o;
     }
     function applyLook(l) { setv('invertSelect', rpick(l.invert)); setv('zoomSelect', rpick(l.zoom)); setv('zoomAmt', (l.amount[0] + Math.random() * (l.amount[1] - l.amount[0])).toFixed(1)); setv('trailRange', l.trail ? rint(l.trail) : 0); }
     function refreshVideo(quiet) { updateTempo(); updateRhythm(); updateFx(); if (!quiet) { saveSettings(); musicChanged(); } }
     // a random rhythm: a tempo (Flat) or a run that speeds up or slows down (Variable), and the Multiple
     function randomRhythm(quiet) {
       if (quiet !== true) rememberForUndo();
-      if (Math.random() < 0.55) applyRhythm({ mode: 'flat', bpm: [60, 200], mult: ['0.5', '1', '1', '2', '2', '3', '4'] });
+      if (Math.random() < 0.55) applyRhythm({ mode: 'flat', bpm: [60, 200], mult: ['0.5', '1', '1', '2', '2', '3', '4'] });   // a steady tempo
       else {
         const slowing = Math.random() < 0.5;
         applyRhythm({ mode: 'variable', start: slowing ? [60, 200] : [300, 900], end: slowing ? [300, 900] : [60, 200], ramp: [6, 20], at: Math.random() < 0.7 ? 'end' : 'start', mult: ['1', '1', '2', '2', '3'] });
@@ -1454,7 +1490,8 @@
     // how many cuts a second the music hears (flat: the tempo, or every picture cut when the check is on; variable: the mean of the two ends)
     function rhythmCutsPerSecond() {
       const follow = document.getElementById('followCuts').checked ? (parseFloat(document.getElementById('multSelect').value) || 1) : 1;
-      if (rhythmMode() === 'variable') return (1000 / ((parseFloat(document.getElementById('startMsRange').value) + parseFloat(document.getElementById('endMsRange').value)) / 2)) * follow;
+      const ch = changeParams();
+      if (ch) return (1000 / ((60000 / bpmValue() + ch.end_ms) / 2)) * follow;
       return (bpmValue() / 60) * follow;
     }
     // the sound matched to the speed: fast cuts get a slow arpeggio, sparse hits and a drier room; slow cuts get busier notes, every-cut hits and a big room
@@ -1582,27 +1619,7 @@
     function pickCharacter() { saveSettings(); randomAll(); }
 
     // how many images, how long the result runs, and how long the cuts are
-    // the "Change over" slider can take at most every cut of the selection, so its range follows the images (and the invert pairs)
-    // The slider shows at most the cuts there are, but remembers what was asked for: with more cuts again (a Multiple undone, the images
-    // loaded after a reload) it goes back to it. A value it did not write itself (a hand, Random, Undo, a drag) is the new request.
-    let rampWanted = null, rampShown = null;
-    function syncRampRange() {
-      const invert = document.getElementById('invertSelect').value;
-      const mult = parseFloat(document.getElementById('multSelect').value) || 1;
-      const nCuts = Math.max(1, Math.ceil((activePlates().length * (invert === 'mono' || invert === 'colour' ? 2 : 1)) / Math.max(0.05, mult) - 1e-9));    // base cuts: what the change runs over
-      const el = document.getElementById('rampRange');
-      const v = parseInt(el.value, 10) || 12;
-      if (rampWanted === null || v !== rampShown) rampWanted = v;
-      if (plates.length) {                                                   // before the library has loaded there is nothing to clamp to
-        el.max = String(Math.max(2, nCuts));
-        rampShown = Math.max(2, Math.min(rampWanted, Math.max(2, nCuts)));
-        el.value = String(rampShown);
-      }
-      const ramp = parseInt(el.value, 10) || 12;
-      document.getElementById('rampVal').textContent = ramp >= nCuts && nCuts > 2 ? `all ${nCuts}` : `${ramp} cuts`;
-    }
     function drawInfo() {
-      syncRampRange();
       const n = activePlates().length;
       const info = document.getElementById('rhythmInfo');
       renderRhythmStrip();
@@ -1614,10 +1631,9 @@
       const lens = starts.slice(1).map((v, i) => sec(v - starts[i]));
       const f = v => (v < 1 ? `${Math.round(v * 1000)} ms` : `${v.toFixed(1)} s`);
       const lo = Math.min(...lens), hi = Math.max(...lens);
-      const v = variableParams();
-      const whole = v.ramp >= Math.ceil(cuts / (parseFloat(document.getElementById('multSelect').value) || 1) - 1e-9);
-      const pace = rhythmMode() === 'variable' ? (v.start_ms === v.end_ms ? f(lens[0]) : whole ? `${f(lens[0])} → ${f(lens[lens.length - 1])}` : v.at === 'start' ? `${f(lens[0])} → ${f(lens[lens.length - 1])} over the first ${v.ramp}` : `${f(lens[0])}, then ${f(lens[lens.length - 1])} over the last ${v.ramp}`) : hi > lo * 1.05 ? `${f(lo)} – ${f(hi)}` : f(lo);
-      info.textContent = `${n} images · ${fmtDuration(sec(starts[cuts]))} · cuts ${pace}`;
+      const pace = changeParams() && Math.abs(lens[0] - lens[lens.length - 1]) > 0.002 ? `${f(lens[0]).replace(' ms', '')}→${f(lens[lens.length - 1])}` : hi > lo * 1.05 ? `${f(lo)} – ${f(hi)}` : f(lo);
+      info.textContent = `${n} images · ${fmtDuration(sec(starts[cuts]))} · pictures ${pace}`;   // the one place that counts in pictures
+      if (info.parentNode) info.parentNode.title = info.textContent;              // the whole line on hover, when it is cut short
       const est = exportEstimate(sec(starts[cuts]));
       document.getElementById('exportMeta').textContent = `1080 × 1920 · ${fmtDuration(sec(starts[cuts]))} · ${musicOn() ? 'sound included' : 'silent'}${est ? ` · about ${est} to make` : ''}`;
     }
@@ -1634,70 +1650,82 @@
       const t = Math.max(1, Math.round(r[Math.floor(r.length / 2)] * filmSec));
       return t < 60 ? `${t} s` : `${Math.round(t / 60)} min`;
     }
-    // ---- the rhythm strip: the whole film as one line, drawn in time from the same timeline the player and the export use ----
-    // x runs 0..1000 over the clip; the speed line is high where the cuts are short (fast) and low where they are long
+    // ---- the timeline: the whole film in time, from the same timeline the player and the export use ----
+    // Lanes: a tick per picture cut (click to jump), the speed (the music's cut length on a log scale, 50 ms at the top: higher is faster;
+    // the tempo before any change; one change at most, its Start and End dragged anywhere, its curve shaped by the handle), the music's
+    // cuts as blue dots, a seconds ruler (click to jump). Only the line itself takes a click in the speed lane, so a jump never edits.
+    const SPEED_GRID = [100, 250, 500, 1000];                               // ms (600, 240, 120 and 60 BPM)
+    const yOfMs = ms => ((Math.log(clampMs(ms)) - Math.log(MS_RANGE[0])) / (Math.log(MS_RANGE[1]) - Math.log(MS_RANGE[0]))) * 100;
+    const msOfY = pct => Math.exp(Math.log(MS_RANGE[0]) + Math.max(0, Math.min(1, pct / 100)) * (Math.log(MS_RANGE[1]) - Math.log(MS_RANGE[0])));
+    let rsSel = null;                                                        // the selected point: 'start', 'end' or null
+    let rsDrag = null;                                                       // what is being dragged: 'start', 'end', 'curve' or null
     function rhythmStripModel(n) {
       if (!n) return null;
-      const r = rhythmFor(n), pic = r.pic, total = pic[pic.length - 1];
-      const X = f => (f / total) * 1000;
+      const r = rhythmFor(n), pic = r.pic, base = r.base, nBase = r.nBase, nMusic = r.nMusic, total = pic[pic.length - 1];
+      const X = f => Math.min(1000, (f / total) * 1000);
       const lens = pic.slice(1).map((v, i) => v - pic[i]);
-      const lo = Math.min(...lens), hi = Math.max(...lens);
-      const flat = hi - lo < 0.5;
-      const Y = len => (flat ? 14 : 40 - ((hi - len) / (hi - lo)) * 30);      // 48 tall: fastest at 10, slowest at 40
-      const curve = [[0, Y(lens[0])]].concat(lens.map((len, i) => [X(pic[i] + len / 2), Y(len)]), [[1000, Y(lens[lens.length - 1])]]);
-      const variable = rhythmMode() === 'variable';
-      const v = variableParams();
-      let band = null, handles = [];
-      if (variable && v.start_ms !== v.end_ms) {
-        const nBase = r.base.length - 1, ramp = Math.max(1, Math.min(nBase, Math.min(200, Math.max(2, v.ramp))));
-        const mult = parseFloat(document.getElementById('multSelect').value) || 1;
-        const yOfMs = ms => Y(Math.max(1, (ms * 30) / 1000 / mult));
-        const picMs = ms => Math.round(Math.max(1000 / 30, ms / mult));     // what the picture does: with a Multiple, its cuts are shorter than the run's
-        if (v.at === 'end') {
-          const from = Math.min(r.base[nBase - ramp], total);
-          band = { left: X(from) / 10, width: 100 - X(from) / 10, label: `Landing · ${ramp} cuts` };
-          handles = [{ left: band.left, top: yOfMs(v.start_ms), label: `Start ${picMs(v.start_ms)} ms`, inner: true }, { left: 100, top: yOfMs(v.end_ms), label: `End ${picMs(v.end_ms)} ms` }];
-        } else {
-          const to = Math.min(r.base[Math.min(nBase, ramp)], total);
-          band = { left: 0, width: X(to) / 10, label: `Build-up · ${ramp} cuts` };
-          handles = [{ left: 0, top: yOfMs(v.start_ms), label: `Start ${picMs(v.start_ms)} ms` }, { left: band.width, top: yOfMs(v.end_ms), label: `End ${picMs(v.end_ms)} ms`, inner: true }];
-        }
+      const bpm = bpmValue(), ch = changeParams(), mult = parseFloat(document.getElementById('multSelect').value) || 1;
+      const tAt = share => { const x = Math.max(0, Math.min(1, share)) * nMusic, i = Math.min(nBase - 1, Math.floor(x)); return Math.min(total, base[i] + (x - i) * (base[i + 1] - base[i])); };
+      const curve = [];                                                     // the speed itself, through the points (the ticks show where the cuts fall)
+      for (let k = 0; k <= 200; k++) { const share = k / 200; curve.push([X(tAt(share)), yOfMs(msAtShare(share, bpm, ch))]); }
+      const picMs = ms => Math.round(Math.max(1000 / 30, ms / mult));       // what the picture does: with a Multiple, its cuts are shorter
+      let points = [], band = null, handle = null, linear = null;
+      if (ch) {
+        const s0 = 60000 / bpm, xs = X(tAt(ch.from)), xe = X(tAt(ch.to)), mid = ch.from + (ch.to - ch.from) / 2;
+        points = [
+          { id: 'start', name: 'Start', x: xs, y: yOfMs(s0), ms: Math.round(s0), pic: picMs(s0), sec: tAt(ch.from) / 30 },
+          { id: 'end', name: 'End', x: xe, y: yOfMs(ch.end_ms), ms: ch.end_ms, pic: picMs(ch.end_ms), sec: tAt(ch.to) / 30 },
+        ];
+        band = { left: xs / 10, width: Math.max(0, xe - xs) / 10 };
+        handle = { x: X(tAt(mid)), y: yOfMs(msAtShare(mid, bpm, ch)), curve: ch.curve };
+        linear = [xs, points[0].y, xe, points[1].y];
       }
       const beats = r.audio.slice(0, -1).map(t => X(t * 30)).filter(x => x < 1000).slice(0, 2000);
       const sec = total / 30, step = sec <= 3 ? 0.5 : sec <= 8 ? 1 : sec <= 20 ? 2 : sec <= 60 ? 5 : 10;
       const axis = [];
       for (let t = 0; t <= sec + 1e-6; t += step) axis.push({ left: (t / sec) * 100, text: `${+t.toFixed(1)} s` });
-      const beatText = followCuts() ? 'Music on every picture cut'
-        : variable ? `Music on the run · ${r.audio.length - 1} cuts` : `Music on the beat · ${Math.round(bpmValue())} BPM`;
-      return { total, ticks: pic.slice(0, -1).map(X), curve, band, handles, beats, axis, beatText, oneFrame: lo <= 1.0001 };
+      return { total, ticks: pic.slice(0, -1).map(X), curve, points, band, handle, linear, beats, axis, mult, flatY: yOfMs(60000 / bpm), oneFrame: Math.min(...lens) <= 1.0001, tAt, base, nBase, nMusic };
     }
+    let rsModel = null;
     function renderRhythmStrip() {
-      const m = rhythmStripModel(activePlates().length);
+      const m = rsModel = rhythmStripModel(activePlates().length);
       const el = id => document.getElementById(id);
       el('rhythmStrip').hidden = !m;
       if (!m) return;
       const f = x => x.toFixed(1);
-      el('rsTicks').setAttribute('d', m.ticks.map(x => `M${f(x)} 5V21`).join(''));
+      el('rsTicks').setAttribute('d', m.ticks.map(x => `M${f(x)} 4V22`).join(''));
       const pts = m.curve.map(([x, y]) => `${f(x)},${f(y)}`).join(' ');
       el('rsCurve').setAttribute('points', pts);
-      el('rsArea').setAttribute('points', `0,48 ${pts} 1000,48`);
+      el('rsArea').setAttribute('points', `0,100 ${pts} 1000,100`);
       el('rsBeats').setAttribute('d', m.beats.map(x => `M${f(x)} 7h0.01`).join(''));
-      el('rsBand').hidden = !m.band;
-      if (m.band) { el('rsBand').style.left = `${m.band.left}%`; el('rsBand').style.width = `${m.band.width}%`; el('rsBandLabel').textContent = m.band.label; }
-      for (const k of [0, 1]) {
-        const h = m.handles[k], dot = el(`rsH${k}`), lab = el(`rsH${k}L`);
-        dot.hidden = lab.hidden = !h;
-        if (!h) continue;
-        dot.style.left = lab.style.left = `${h.left}%`;
-        dot.style.top = lab.style.top = `${(h.top / 48) * 100}%`;
-        lab.textContent = h.label;
-        lab.className = `rs-hlabel ${h.left < 25 ? 'right' : 'left'}`;                    // near the left edge the label reads to the right, so it stays inside
-        dot.classList.toggle('inner', !!h.inner);                               // the point where the change begins or ends: drag it sideways
-        dot.title = h.inner ? 'Drag sideways: how many cuts the change takes' : '';
+      if (!el('rsGridLines').childElementCount) {                            // the grid never changes: drawn once
+        el('rsGridLines').innerHTML = SPEED_GRID.map((ms, i) => `<i style="top:${yOfMs(ms)}%"></i><span style="top:${yOfMs(ms)}%">${Math.round(60000 / ms)}${i ? '' : ' BPM'}</span>`).join('');
+        el('rsMsLabels').innerHTML = '<b>Speed</b>' + SPEED_GRID.map(ms => `<i style="top:${yOfMs(ms)}%">${ms} ms</i>`).join('');
       }
+      el('rsBand').hidden = !m.band;
+      if (m.band) { el('rsBand').style.left = `${m.band.left}%`; el('rsBand').style.width = `${m.band.width}%`; }
+      for (const [id, lab, k] of [['rsStart', 'rsStartL', 0], ['rsEnd', 'rsEndL', 1]]) {
+        const p = m.points[k], dot = el(id), l = el(lab);
+        dot.hidden = l.hidden = !p;
+        if (!p) continue;
+        dot.style.left = l.style.left = `${p.x / 10}%`;
+        dot.style.top = l.style.top = `${p.y}%`;
+        dot.classList.toggle('sel', rsSel === p.id);
+        l.innerHTML = `${p.name} ${p.ms} ms${m.mult !== 1 ? `<small> · pictures ${p.pic}</small>` : ''}`;
+        l.className = `rs-plabel${(k === 1 ? p.x > 700 : p.x > 850) ? ' left' : ''}${p.y < 30 ? ' below' : ''}`;
+        l.hidden = rsDrag === p.id;                                            // the tooltip says it while dragging
+      }
+      const selP = m.points.find(p => p.id === rsSel);
+      el('rsRemove').hidden = !selP || !!rsDrag;
+      if (selP) { el('rsRemove').style.left = `clamp(10px, ${selP.x / 10}%, calc(100% - 10px))`; el('rsRemove').style.top = `${selP.y}%`; el('rsRemove').classList.toggle('below', selP.y < 40); }   // above the point (below near the top): never off the end
+      el('rsCurveHandle').hidden = !m.handle;
+      if (m.handle) { el('rsCurveHandle').style.left = `${m.handle.x / 10}%`; el('rsCurveHandle').style.top = `${m.handle.y}%`; el('rsCurveHandle').classList.toggle('dragging', rsDrag === 'curve'); }
+      const lin = el('rsLinear');
+      lin.toggleAttribute('hidden', !(m.linear && rsDrag === 'curve'));         // an SVG element: the attribute, it has no .hidden
+      if (m.linear) { lin.setAttribute('x1', f(m.linear[0])); lin.setAttribute('y1', f(m.linear[1])); lin.setAttribute('x2', f(m.linear[2])); lin.setAttribute('y2', f(m.linear[3])); }
       el('rsAxis').innerHTML = m.axis.map((a, i) => `<span style="left:${a.left}%"${i === 0 ? ' class="first"' : ''}>${a.text}</span>`).join('');
-      el('rsBeatText').textContent = m.beatText;
       el('rsFast').textContent = m.oneFrame ? 'fastest cut = 1 frame at 30 fps' : '';
+      showDragTip();
       shownHead = -1;
       movePlayhead();
     }
@@ -1712,60 +1740,120 @@
       shownHead = pct;
       document.getElementById('rsPlayhead').style.left = `${pct}%`;
     }
-    // Dragging the inner point (where a landing begins, where a build-up ends) sets Change over: it snaps to the nearest cut of the run
-    // The change itself moves the film's length, so the point is placed by trying every Change over and keeping the one whose point lands nearest
-    let rampTable = null;                                                    // during a drag: where the point lands for each Change over, worked out once
-    function rampAt(u) {
-      const n = activePlates().length;
-      if (!n) return null;
-      if (rampTable && rampTable.length) {
-        let best = rampTable[0];
-        for (const row of rampTable) if (Math.abs(row.pos - u) < Math.abs(best.pos - u)) best = row;
-        return best.k;
-      }
-      const paired = ['mono', 'colour'].includes(document.getElementById('invertSelect').value);
-      const nCuts = n * (paired ? 2 : 1), mult = parseFloat(document.getElementById('multSelect').value) || 1;
-      const nBase = Math.max(1, Math.ceil(nCuts / Math.max(0.05, mult) - 1e-9));
-      const v = variableParams(), target = Math.max(0, Math.min(1, u));
-      let best = null, bestD = Infinity;
-      const table = [];
-      for (let k = 2; k <= Math.max(2, Math.min(nBase, 200)); k++) {              // the change never takes more than 200 cuts
-        const base = variableStarts(nBase, v.start_ms, v.end_ms, k, v.at), total = subdivideStarts(base, mult, nCuts)[nCuts];
-        const at = v.at === 'end' ? base[Math.max(0, nBase - k)] : base[Math.min(nBase, k)];
-        const pos = Math.min(at, total) / total;
-        table.push({ k, pos });
-        const d = Math.abs(pos - target);
-        if (d < bestD - 1e-9) { bestD = d; best = k; }
-      }
-      rampAt.lastTable = table;
-      return v.ramp > 200 && best === 200 ? v.ramp : Math.max(2, Math.min(nBase, best));
+    // a time on the timeline (0..1 of the film) as a share of the music's cuts: where a point dropped there sits
+    function shareAt(u) {
+      const m = rsModel;
+      if (!m) return 0;
+      const t = Math.max(0, Math.min(1, u)) * m.total, b = m.base;
+      let lo = 0, hi = m.nBase - 1;
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (b[mid] <= t) lo = mid; else hi = mid - 1; }
+      return Math.min(1, (lo + Math.min(1, (t - b[lo]) / Math.max(1e-9, b[lo + 1] - b[lo]))) / m.nMusic);
     }
-    let draggingPoint = false, dragEndedAt = 0;
-    function pointDown(e) {
-      if (!e.currentTarget.classList.contains('inner')) return;
+    const laneBox = () => document.getElementById('rsSpeed').getBoundingClientRect();
+    // the speed lane: near the line (no change yet) a click adds one; anywhere else a click only clears the selection
+    let rsHoverU = null;
+    function rsLaneMove(e) {
+      if (rsDrag || !rsModel) return;
+      const b = laneBox(), u = (e.clientX - b.left) / b.width, yPx = e.clientY - b.top;
+      const near = !changeParams() && u >= 0 && u <= 1 && Math.abs(yPx - (rsModel.flatY / 100) * b.height) < 10;
+      rsHoverU = near ? u : null;
+      const hv = document.getElementById('rsHover');
+      hv.hidden = !near;
+      document.getElementById('rsSpeed').classList.toggle('can-add', near);
+      if (!near) return;
+      const x = `${u * 100}%`, y = `${rsModel.flatY}%`;
+      hv.querySelector('i').style.left = x;
+      const dot = hv.querySelector('.rs-hover-dot'), tip = hv.querySelector('.rs-hover-tip');
+      dot.style.left = tip.style.left = x; dot.style.top = tip.style.top = y;
+      tip.classList.toggle('above', rsModel.flatY > 50);
+    }
+    function rsLaneLeave() { if (rsDrag) return; rsHoverU = null; document.getElementById('rsHover').hidden = true; document.getElementById('rsSpeed').classList.remove('can-add'); }
+    function rsLaneClick(e) {
+      if (dragJustEnded || e.target.closest('.rs-point, .rs-curve, .rs-x')) return;   // the click that ends a drag is not a click
+      if (rsHoverU !== null && !changeParams()) { addChange(shareAt(rsHoverU)); rsLaneLeave(); return; }
+      if (rsSel) { rsSel = null; renderRhythmStrip(); }
+    }
+    function addChange(share) {
+      const from = Math.max(0, Math.min(0.85, share)), start = 60000 / bpmValue();
+      setv('rhythmSelect', 'variable'); setv('changeFrom', +from.toFixed(4)); setv('changeTo', +Math.min(1, from + 0.22).toFixed(4));
+      setv('endMsRange', Math.round(clampMs(start * 2))); setv('curveVal', 0.3);
+      rsSel = 'end';
+      updateRhythm();
+      commitSettings('Add a change of speed');
+    }
+    function removeChange(e) {
+      if (e && e.stopPropagation) e.stopPropagation();
+      if (!changeParams()) return;
+      setv('rhythmSelect', 'flat');
+      rsSel = null;
+      updateRhythm();
+      commitSettings('Remove the change of speed');
+    }
+    // dragging a point: sideways sets where it sits, up or down its speed (Start's speed is the tempo); the curve handle: up or down
+    let dragJustEnded = false;
+    function rsPointDown(which, e) {
+      if (e.button !== undefined && e.button !== 0) return;
       e.preventDefault(); e.stopPropagation();
-      draggingPoint = true;
-      rampTable = null; rampAt(0); rampTable = rampAt.lastTable;              // one pass now; the moves only look it up
-      if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
+      rsDrag = which; rsSel = which === 'curve' ? rsSel : which; rsLaneLeave();
+      if (e.currentTarget.setPointerCapture && e.pointerId !== undefined) e.currentTarget.setPointerCapture(e.pointerId);
+      renderRhythmStrip();
     }
-    function pointMove(e) {
-      if (!draggingPoint) return;
-      const b = document.getElementById('rsBody').getBoundingClientRect();
-      const ramp = rampAt((e.clientX - b.left) / b.width);
-      const el = document.getElementById('rampRange');
-      if (ramp !== null && String(ramp) !== el.value) { el.value = String(ramp); updateRhythm(); }
+    function rsPointMove(e) {
+      if (!rsDrag) return;
+      const b = laneBox(), u = (e.clientX - b.left) / b.width, pct = ((e.clientY - b.top) / b.height) * 100;
+      const ch = changeParams();
+      if (!ch) return;
+      if (rsDrag === 'curve') {
+        const s0 = Math.log(60000 / bpmValue()), s1 = Math.log(ch.end_ms);
+        if (Math.abs(s1 - s0) < 1e-6) return;
+        const v = Math.min(0.5, Math.max(0.03, (Math.log(msOfY(pct)) - s0) / (s1 - s0)));   // where the middle of the change sits between the two speeds
+        setv('curveVal', +Math.min(1, Math.max(0, (Math.log(v) / Math.log(0.5) - 1) / 4)).toFixed(3));
+      } else {
+        const share = shareAt(u), ms = Math.round(clampMs(msOfY(pct)));
+        if (rsDrag === 'start') { setv('changeFrom', +Math.max(0, Math.min(ch.to - 0.02, share)).toFixed(4)); setv('bpmInput', Math.round(Math.min(BPM_RANGE[1], Math.max(BPM_RANGE[0], 60000 / ms)))); }
+        else { setv('changeTo', +Math.min(1, Math.max(ch.from + 0.02, share)).toFixed(4)); setv('endMsRange', ms); }
+      }
+      updateRhythm();
     }
-    function pointUp() { if (draggingPoint) { draggingPoint = false; rampTable = null; dragEndedAt = Date.now(); } }
-    ['rsH0', 'rsH1'].forEach(id => {
-      const d = document.getElementById(id);
-      d.addEventListener('pointerdown', pointDown);
-      d.addEventListener('pointermove', pointMove);
-      d.addEventListener('pointerup', pointUp);
-      d.addEventListener('pointercancel', pointUp);
-    });
-    // a click on the strip puts the playhead there
+    function rsPointUp() {
+      if (!rsDrag) return;
+      const what = rsDrag;
+      rsDrag = null; dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 0);
+      renderRhythmStrip();
+      commitSettings(what === 'curve' ? 'the curve of the change' : `the change's ${what === 'start' ? 'Start' : 'End'}`);
+    }
+    function showDragTip() {
+      const tip = document.getElementById('rsTip'), g = document.getElementById('rsGuides'), m = rsModel;
+      const p = m && rsDrag && rsDrag !== 'curve' ? m.points.find(q => q.id === rsDrag) : null;
+      const h = m && rsDrag === 'curve' ? m.handle : null;
+      tip.hidden = !(p || h); g.hidden = !p;
+      if (p) {
+        tip.innerHTML = `<b>${p.name} · ${p.sec.toFixed(1)} s</b><span>${p.ms} ms · ${Math.round(60000 / p.ms)} BPM</span>${m.mult !== 1 ? `<span class="pic">pictures ${p.pic} ms</span>` : ''}`;
+        tip.style.left = `${p.x / 10}%`; tip.style.top = `${p.y}%`; tip.classList.toggle('left', p.x > 700);
+        g.querySelector('.gx').style.cssText = `top:${p.y}%;width:${p.x / 10}%`;
+        g.querySelector('.gy').style.cssText = `left:${p.x / 10}%;top:${p.y}%`;
+      } else if (h) {
+        tip.innerHTML = `<b>Curve · ${h.curve < 0.01 ? 'even' : `${Math.round(h.curve * 100)}%`}</b>`;
+        tip.style.left = `${h.x / 10}%`; tip.style.top = `${h.y}%`; tip.classList.toggle('left', h.x > 700);
+      }
+    }
+    (() => {
+      const lane = document.getElementById('rsSpeed');
+      if (!lane || !lane.addEventListener) return;
+      lane.addEventListener('pointermove', rsLaneMove);
+      lane.addEventListener('pointerleave', rsLaneLeave);
+      lane.addEventListener('click', rsLaneClick);
+      for (const [id, which] of [['rsStart', 'start'], ['rsEnd', 'end'], ['rsCurveHandle', 'curve']]) {
+        const d = document.getElementById(id);
+        d.addEventListener('pointerdown', e => rsPointDown(which, e));
+        d.addEventListener('pointermove', rsPointMove);
+        d.addEventListener('pointerup', rsPointUp);
+        d.addEventListener('pointercancel', rsPointUp);
+        if (which !== 'curve') d.addEventListener('focus', () => { rsSel = which; renderRhythmStrip(); });
+      }
+    })();
+    // a click on the cut ticks or the ruler puts the playhead there
     function rhythmStripClick(e) {
-      if (draggingPoint || Date.now() - dragEndedAt < 300) return;             // the end of a drag is not a click
       const body = document.getElementById('rsBody');
       const n = activePlates().length;
       if (!n || !body.getBoundingClientRect) return;
@@ -1776,6 +1864,80 @@
       if (isPlaying && droneLive.playing) droneLive.seek(cutPos / 30);
       drawFrame();
     }
+    // ---- the tempo and the Multiple: values you drag up or down (Shift: finer), double-click (or Enter) to type, arrows to step ----
+    const VFIELDS = {
+      tempoField: {
+        label: 'Tempo',
+        get: () => bpmValue(),
+        drag: (v0, dy, fine) => v0 * Math.exp(-dy * (fine ? 0.0012 : 0.004)),
+        step: (v, d, big) => v + d * (big ? 10 : 1),
+        text: v => String(Math.round(v)),
+        parse: t => { const ms = /ms\s*$/i.test(t), x = parseFloat(t.replace(',', '.')); return Number.isFinite(x) && x > 0 ? (ms ? 60000 / x : x) : null; },   // "441 ms" works too
+        set: v => { setv('bpmInput', Math.round(Math.min(BPM_RANGE[1], Math.max(BPM_RANGE[0], v)))); updateTempo(); },
+      },
+      multField: {
+        label: 'Multiple',
+        values: () => [...document.getElementById('multSelect').options].map(o => o.value),
+        get: () => document.getElementById('multSelect').value,
+        set: v => { setv('multSelect', v); updateTempo(); },
+        parse: t => { const x = t.replace(/[×x\s]/g, ''); const map = { '¼': 0.25, '½': 0.5, '1⅓': 4 / 3, '1/4': 0.25, '1/2': 0.5, '4/3': 4 / 3 }; const n = map[x] ?? parseFloat(x); return Number.isFinite(n) ? n : null; },
+      },
+    };
+    function vfNearest(f, v) { const vals = f.values(); let best = 0; vals.forEach((x, i) => { if (Math.abs(+x - v) < Math.abs(+vals[best] - v)) best = i; }); return vals[best]; }
+    function vfStep(id, d, big) {
+      const f = VFIELDS[id];
+      if (f.values) { const vals = f.values(), i = vals.indexOf(f.get()); f.set(vals[Math.max(0, Math.min(vals.length - 1, i + d))]); }
+      else f.set(f.step(f.get(), d, big));
+    }
+    function vfType(el) {
+      const f = VFIELDS[el.id], val = el.querySelector('.vf-val');
+      if (el.classList.contains('typing')) return;
+      el.classList.add('typing');
+      const input = document.createElement('input');
+      input.className = 'vf-input'; input.setAttribute('aria-label', f.label);
+      input.value = f.values ? val.textContent.replace('×', '') : f.text(f.get());
+      val.hidden = true; val.after(input); input.focus(); input.select();
+      let done = false;
+      const finish = ok => {
+        if (done) return; done = true;
+        const n = ok ? f.parse(input.value) : null;
+        input.remove(); val.hidden = false; el.classList.remove('typing');
+        if (n !== null) { f.set(f.values ? vfNearest(f, n) : n); commitSettings(f.label === 'Tempo' ? 'the tempo' : 'the Multiple'); }
+        el.focus();
+      };
+      input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); });
+      input.addEventListener('blur', () => finish(true));
+      input.addEventListener('pointerdown', e => e.stopPropagation());
+    }
+    (() => {
+      for (const id of Object.keys(VFIELDS)) {
+        const el = document.getElementById(id), f = VFIELDS[id];
+        if (!el || !el.addEventListener) continue;
+        let drag = null;
+        el.addEventListener('pointerdown', e => {
+          if (e.button !== 0 || el.classList.contains('typing')) return;
+          e.preventDefault(); el.focus();
+          drag = { y0: e.clientY, v0: f.values ? f.values().indexOf(f.get()) : f.get(), moved: false };
+          if (el.setPointerCapture) el.setPointerCapture(e.pointerId);
+        });
+        el.addEventListener('pointermove', e => {
+          if (!drag) return;
+          const dy = e.clientY - drag.y0;
+          if (Math.abs(dy) < 2 && !drag.moved) return;
+          drag.moved = true; el.classList.add('dragging');
+          if (f.values) { const vals = f.values(); f.set(vals[Math.max(0, Math.min(vals.length - 1, drag.v0 + Math.round(-dy / (e.shiftKey ? 28 : 14))))]); }
+          else f.set(f.drag(drag.v0, dy, e.shiftKey));
+        });
+        const up = () => { if (!drag) return; const moved = drag.moved; drag = null; el.classList.remove('dragging'); if (moved) commitSettings(f.label === 'Tempo' ? 'the tempo' : 'the Multiple'); };
+        el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+        el.addEventListener('dblclick', () => vfType(el));
+        el.addEventListener('keydown', e => {
+          if (el.classList.contains('typing')) return;
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); vfStep(id, e.key === 'ArrowUp' ? 1 : -1, e.shiftKey); }
+          else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); vfType(el); }
+        });
+      }
+    })();
     // ---- while the drone plays it is the player's clock ----
     const droneLive = new window.Drone.Live();
     function stopMusic() {
@@ -1813,7 +1975,7 @@
         trail: (parseFloat(document.getElementById('trailRange').value) || 0) / 100,
       };
     }
-    // Trail: after a cut the previous image lingers on top for 4 whole frames, fading (mirrors cutplan.trail_alpha; shared vectors)
+    // Trail: after a cut the previous image lingers on top for 4 whole frames, fading (the preview and the export alike)
     const TRAIL_FRAMES = 4;
     function trailAlpha(framesSinceCut, amount) {
       const a = Math.max(0, Math.min(0.6, amount || 0)), k = Math.floor(framesSinceCut);
@@ -2022,10 +2184,10 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['rhythmSelect', 'startMsRange', 'endMsRange', 'rampRange', 'atSelect', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     function restoreSettings() {
       try {
-        const saved = JSON.parse(localStorage.getItem('studioSettings') || '{}');
+        const saved = migrateRhythm(JSON.parse(localStorage.getItem('studioSettings') || '{}'));
         PERSISTED.forEach(id => {
           const el = document.getElementById(id);
           if (!el || saved[id] === undefined) return;
@@ -2038,44 +2200,32 @@
       try {
         const out = {};
         PERSISTED.forEach(id => { const el = document.getElementById(id); out[id] = el.type === 'checkbox' ? el.checked : el.value; });
-        if (rampWanted !== null) out.rampRange = String(rampWanted);          // what was asked for, not what fits today
         localStorage.setItem('studioSettings', JSON.stringify(out));
       } catch (e) {}
       settingsChanged();
       renderEditBar();
     }
 
-    // the frames a picture cut lasts, next to the Multiple: one number (Flat) or from start to end (Variable)
-    function showSpeed() {
-      const mult = parseFloat(document.getElementById('multSelect').value) || 1;
-      const f = ms => Math.max(1, (ms * 30) / 1000 / mult);
-      const fmt = x => (x < 10 ? x.toFixed(1).replace(/\.0$/, '') : String(Math.round(x)));
-      const v = variableParams();
-      document.getElementById('speedVal').textContent = rhythmMode() === 'variable' ? `${fmt(f(v.start_ms))}→${fmt(f(v.end_ms))}f` : `${framesPerCut.toFixed(1)}f`;
+    // the timeline's two values: the tempo (BPM and its music cut in ms) and the Multiple
+    function showRhythm() {
+      const bpm = bpmValue(), sel = document.getElementById('multSelect');
+      document.getElementById('tempoVal').textContent = `${Math.round(bpm)} BPM`;
+      document.getElementById('tempoMs').textContent = `${Math.round(60000 / bpm)} ms`;
+      const opt = [...(sel.options || [])].find(o => o.value === sel.value);
+      document.getElementById('multVal').textContent = opt ? opt.textContent : `×${sel.value}`;
+      document.getElementById('tempoField').setAttribute('aria-valuetext', `${Math.round(bpm)} BPM, ${Math.round(60000 / bpm)} ms a music cut`);
+      document.getElementById('multField').setAttribute('aria-valuetext', `${opt ? opt.textContent : sel.value} picture cuts a music cut`);
     }
-    // flat or variable speed: which controls show, and the cuts follow
+    // a change of speed added, moved or removed
     function updateRhythm() {
-      syncRampRange();
-      const variable = rhythmMode() === 'variable';
-      document.getElementById('flatBox').hidden = variable;
-      document.getElementById('varBox').hidden = !variable;
-      showSpeed();
-      const v = variableParams();
-      document.getElementById('startMsVal').textContent = `${v.start_ms} ms`;
-      document.getElementById('endMsVal').textContent = `${v.end_ms} ms`;
-      syncSegs(); paintRanges();
+      showRhythm();
       saveSettings();
       restartLoop();
       musicChanged();
     }
     function updateTempo() {
+      showRhythm();
       saveSettings();
-      const bpm = bpmValue();
-      document.getElementById('bpmVal').textContent = `${Math.round(bpm)} BPM`;
-      const mult = parseFloat(document.getElementById('multSelect').value);
-      framesPerCut = Math.max(1, (30 * 60) / (bpm * mult));
-      showSpeed();
-      syncSegs(); paintRanges();
       restartLoop();
       musicChanged();
     }
@@ -2341,7 +2491,7 @@
     }
 
     // The export's frames, rendered here by the stage's own renderer (render.js) at 1080 x 1920 from the full-size plates, frame by frame as
-    // cutplan.py plans them (frame f shows the clip at f + 0.5), and sent to the server, which only encodes them. A frame that is the same
+    // planAt plans them (frame f shows the clip at f + 0.5), and sent to the server, which only encodes them. A frame that is the same
     // as the one before (a plain cut held) is sent as a reference, not drawn again. Without WebGL2 there is no export (it says so).
     async function exportFrames(progress) {
       const canvas = document.createElement('canvas');
@@ -2350,7 +2500,7 @@
       if (!r) throw new Error('this browser cannot draw the frames (WebGL2 is off)');
       const active = activePlates(), fx = fxSettings(), tl = timelineFor(active.length), n = active.length;
       const paired = fx.invert === 'mono' || fx.invert === 'colour', nCuts = n * (paired ? 2 : 1);
-      const total = Math.max(nCuts, Math.floor(tl[tl.length - 1] + 1e-9));     // cutplan.export_length
+      const total = Math.max(nCuts, Math.floor(tl[tl.length - 1] + 1e-9));     // every image once, never fewer frames than cuts
       const full = new Map();                                               // plate -> full-size image, the last few
       const load = async i => {
         const p = active[i];
@@ -2417,7 +2567,7 @@
             multiple: parseFloat(document.getElementById('multSelect').value),
             invert_mode: document.getElementById('invertSelect').value,
             rhythm: rhythmMode(),
-            ...variableParams(),
+            ...(changeParams() ? { end_ms: changeParams().end_ms } : {}),   // the change's end speed, for the file's name
             music: musicOn() ? 'synth' : 'off',
             zoom_mode: document.getElementById('zoomSelect').value,
             zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
@@ -2505,6 +2655,7 @@
 
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
+  removeChange,
   includeAll,
   startAiOrder,
   toggleAiPanel,

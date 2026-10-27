@@ -32,17 +32,15 @@ test('formatModelShort strips provider', () => {
   assert.equal(run(`formatModelShort('')`), 'nano-banana-2');
 });
 
-test('updateTempo computes frames per cut and persists', () => {
+test('the tempo and Multiple fields show their values (BPM and the music cut in ms) and persist', () => {
   const { run, $, store } = load({ routes: baseRoutes() });
   $('bpmInput').value = '120'; $('multSelect').value = '2';
   run('updateTempo()');
-  assert.equal(run('framesPerCut'), 7.5);                      // 1800 / (120*2)
-  assert.equal($('speedVal').textContent, '7.5f');
+  assert.equal($('tempoVal').textContent, '120 BPM'); assert.equal($('tempoMs').textContent, '500 ms');
+  assert.equal($('multVal').textContent, '×2');
+  assert.match($('tempoField')['aria-valuetext'], /^120 BPM, 500 ms a music cut$/);
   const saved = JSON.parse(store.studioSettings);
   assert.equal(saved.bpmInput, '120'); assert.equal(saved.multSelect, '2');
-  $('bpmInput').value = '220'; $('multSelect').value = '9';
-  run('updateTempo()');
-  assert.equal(run('framesPerCut'), 1);                        // never below one frame
 });
 
 test('restoreSettings brings back remembered values (and ignores unknown options)', () => {
@@ -349,7 +347,7 @@ test('the page entry is a module with a stylesheet, and markup has no inline scr
   assert.doesNotMatch(html, /<style>/);
 });
 
-// ---------- cut plan, zoom and invert (same vectors as tests/test_cutplan.py) ----------
+// ---------- cut plan, zoom and invert: fixed vectors (the old export had the same answers) ----------
 
 const PLAN_VECTORS = [
   [0.0, 3, 'off', 0, 0, false], [1.2, 3, 'off', 1, 1, false], [3.9, 3, 'off', 3, 0, false],
@@ -736,59 +734,55 @@ test('music choices are remembered', () => {
   assert.deepEqual([saved.musicSelect, saved.echoRange, saved.chordSelect], ['on', '30', '2']);
 });
 
-// ---------- variable speed (same vectors as tests/test_cutplan.py) ----------
+// ---------- the rhythm: one tempo, at most one change ----------
 
-test('variableStarts matches the server timeline', () => {
+test('baseStarts: one speed is the beat grid; a change holds the tempo before `from`, eases to the end by `to` (the curve waits, then changes), then holds', () => {
   const h = load({ routes: baseRoutes() });
   const near = (a, b) => assert.ok(a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 0.001), `${a} vs ${b}`);
-  for (const [n, a, b, ramp, at, exp] of [[6, 100, 600, 3, 'end', [0, 3, 6, 9, 14.451, 24.357, 42.357]], [6, 100, 600, 3, 'start', [0, 3, 10.348, 28.348, 46.348, 64.348, 82.348]],
-    [5, 200, 200, 12, 'end', [0, 6, 12, 18, 24, 30]], [1, 300, 100, 12, 'end', [0, 3]], [4, 400, 100, 99, 'end', [0, 8.485, 14.485, 18.728, 21.728]]]) {
-    near(JSON.parse(JSON.stringify(h.run(`variableStarts(${n}, ${a}, ${b}, ${ramp}, '${at}')`))), exp);
-  }
+  near(clean(h.run('baseStarts(4, 120, null)')), [0, 15, 30, 45, 60]);
+  const lens = (ch, n = 10) => { const t = clean(h.run(`baseStarts(${n}, 120, ${JSON.stringify(ch)})`)); return t.slice(1).map((v, i) => v - t[i]); };
+  const even = lens({ from: 0.5, to: 1, end_ms: 1000, curve: 0 });
+  assert.ok(even.slice(0, 5).every(l => Math.abs(l - 15) < 1e-9), 'before the change: the tempo (500 ms, 15 frames)');
+  assert.ok(even.slice(5).every((l, i, a) => i === 0 || l > a[i - 1]), 'then slower and slower');
+  assert.ok(Math.abs(even[9] - (500 * Math.pow(2, 0.9) * 30) / 1000) < 1e-6, 'geometric: the last cut (at 90% of the change) is 500 × 2^0.9 ms');
+  const sharp = lens({ from: 0.5, to: 1, end_ms: 1000, curve: 1 });
+  assert.ok(sharp[7] < even[7], 'a curve waits longer before changing');
+  const held = lens({ from: 0, to: 0.5, end_ms: 100, curve: 0 });
+  assert.ok(held.slice(5).every(l => Math.abs(l - 3) < 1e-9), 'after the change: the end speed (100 ms, 3 frames)');
+  const fastest = lens({ from: 0, to: 0.1, end_ms: 50, curve: 0 }, 4);
+  assert.ok(fastest.every(l => l >= 1), 'never under a frame');
+  assert.equal(h.run('msAtShare(0.3, 120, {from:0.5,to:1,end_ms:1000,curve:0})'), 500);
 });
 
-test('Variable speed swaps the controls, drives the timeline in frames, the sound and the export', async () => {
+test('a change on the timeline drives the cuts in frames, the summary, the sound and the export', async () => {
   const r = baseRoutes();
   r['/api/state'] = { plates: [mkPlate('a'), mkPlate('b'), mkPlate('c')] };
   r['/api/export-video'] = { ok: true, images: 3, seconds: 2, video_url: '/outputs/x.mp4', filename: 'x.mp4' };
   r['/api/export-audio'] = { ok: true, bytes: 44 };
   const h = load({ routes: r });
   await settle(); await settle();
-  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '100'; h.$('endMsRange').value = '600'; h.$('rampRange').value = '2'; h.$('atSelect').value = 'end';
+  h.$('bpmInput').value = '600'; h.$('multSelect').value = '1';                       // the tempo, 100 ms: where the change starts
+  h.$('rhythmSelect').value = 'variable'; h.$('changeFrom').value = '0.5'; h.$('changeTo').value = '1'; h.$('endMsRange').value = '600'; h.$('curveVal').value = '0';
   h.run('updateRhythm()');
-  assert.equal(h.$('flatBox').hidden, true); assert.equal(h.$('varBox').hidden, false);
-  assert.equal(h.$('startMsVal').textContent, '100 ms'); assert.equal(h.$('rampVal').textContent, '2 cuts');
-  assert.equal(h.$('rampRange').max, '3');                                    // 3 images = 3 cuts
-  assert.match(h.$('rhythmInfo').textContent, /^3 images · \d+(\.\d)? s · cuts 100 ms, then 600 ms over the last 2$/);
-  const starts = JSON.parse(JSON.stringify(h.run('timelineFor(3)')));
-  assert.equal(starts.length, 4);
-  assert.ok(starts[3] - starts[2] > starts[2] - starts[1]);                    // slowing down at the end
+  assert.deepEqual(clean(h.run('changeParams()')), { from: 0.5, to: 1, end_ms: 600, curve: 0 });
+  assert.match(h.$('rhythmInfo').textContent, /^3 images · \d+(\.\d)? s · pictures 100→\d+ ms$/);
+  const starts = clean(h.run('timelineFor(3)'));
+  assert.equal(starts.length, 4); assert.equal(starts[1], 3);
+  assert.ok(starts[3] - starts[2] > starts[2] - starts[1], 'slowing down at the end');
   h.$('musicSelect').value = 'on';
   await h.run('exportVideo()');
   const sent = h.ctx.__drone.exports[0].starts;
-  assert.ok(Math.abs(sent[1] - 0.1) < 1e-9);                                  // seconds, not frames
+  assert.ok(Math.abs(sent[1] - 0.1) < 1e-9, 'the sound gets seconds, not frames');
   assert.ok(Math.abs(sent[sent.length - 1] - starts[3] / 30) < 1e-9);
   const body = h.calls.find(c => c.url === '/api/export-video').body;
-  assert.deepEqual([body.rhythm, body.start_ms, body.end_ms, body.ramp, body.at], ['variable', 100, 600, 2, 'end']);
-  h.$('rhythmSelect').value = 'flat'; h.run('updateRhythm()');
-  assert.equal(h.$('flatBox').hidden, false); assert.equal(h.$('varBox').hidden, true);
+  assert.deepEqual([body.rhythm, body.bpm, body.end_ms], ['variable', 600, 600]);
+  h.run('removeChange()');
+  assert.equal(h.$('rhythmSelect').value, 'flat');
   h.$('bpmInput').value = '120'; h.$('multSelect').value = '2'; h.run('updateTempo()');
-  assert.equal(JSON.parse(JSON.stringify(h.run('timelineFor(3)'))).join(), '0,7.5,15,22.5');       // flat: 120 BPM x2 = 7.5 frames a cut, in frames
+  assert.equal(clean(h.run('timelineFor(3)')).join(), '0,7.5,15,22.5', 'one speed: 120 BPM ×2 = 7.5 frames a cut');
 });
 
-test('the info line says what variable speed does in plain words', async () => {
-  const r = baseRoutes();
-  r['/api/state'] = { plates: Array.from({ length: 40 }, (_, i) => mkPlate('p' + i)) };
-  const h = load({ routes: r });
-  await settle(); await settle();
-  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '100'; h.$('endMsRange').value = '700'; h.$('rampRange').value = '12';
-  h.run('updateRhythm()');
-  assert.match(h.$('rhythmInfo').textContent, /^40 images · .* cuts 100 ms, then 700 ms over the last 12$/);
-  h.$('atSelect').value = 'start'; h.run('updateRhythm()');
-  assert.match(h.$('rhythmInfo').textContent, /cuts 100 ms → 700 ms over the first 12$/);
-  h.$('rampRange').value = '60'; h.run('updateRhythm()');
-  assert.match(h.$('rhythmInfo').textContent, /cuts 100 ms → 700 ms$/);
-});
+
 
 test('Restart starts again from the first image and the start of the sound, and starts playing when stopped', async () => {
   const h = await playerWith();
@@ -804,22 +798,25 @@ test('Restart starts again from the first image and the start of the sound, and 
   assert.equal(h.ctx.__drone.restarts, restarts + 1);                        // the sound goes back to its start itself (an update with unchanged settings is skipped)
 });
 
-test('"Change over" follows the number of cuts: its range grows and shrinks with the selection and the invert pairs', async () => {
+test('settings from before the timeline (Flat / Variable with Start, End, Change over, Change at) open as the same film, saved and in snapshots', async () => {
   const r = baseRoutes();
   r['/api/state'] = { plates: Array.from({ length: 40 }, (_, i) => mkPlate('p' + i)) };
-  const h = load({ routes: r });
+  const old = { rhythmSelect: 'variable', startMsRange: '100', endMsRange: '700', rampRange: '10', atSelect: 'end', multSelect: '1', bpmInput: '20' };
+  const h = load({ routes: r, storage: { studioSettings: JSON.stringify(old) } });
   await settle(); await settle();
-  h.$('rampRange').value = '30'; h.run('updateRhythm()');
-  assert.equal(h.$('rampRange').max, '40'); assert.equal(h.$('rampVal').textContent, '30 cuts');
-  h.$('invertSelect').value = 'mono'; h.run('drawInfo()');
-  assert.equal(h.$('rampRange').max, '80');                                   // each image takes two cuts
-  h.$('rampRange').value = '80'; h.run('updateRhythm()');
-  assert.equal(h.$('rampVal').textContent, 'all 80');
-  h.$('invertSelect').value = 'off'; h.run('drawInfo()');                     // fewer cuts: the value comes down with the range
-  assert.equal(h.$('rampRange').max, '40'); assert.equal(h.$('rampRange').value, '40'); assert.equal(h.$('rampVal').textContent, 'all 40');
+  assert.equal(h.$('bpmInput').value, '600', 'Start 100 ms becomes the tempo');
+  assert.equal(h.$('endMsRange').value, '700');
+  assert.deepEqual([+h.$('changeFrom').value, +h.$('changeTo').value], [1 - 10 / 60, 1].map(v => +v.toFixed(4)), 'a landing over its last cuts (before the images load: 60 assumed)');
+  const m = clean(h.run(`migrateRhythm(${JSON.stringify({ ...old, atSelect: 'start' })})`));
+  assert.deepEqual([m.changeFrom, +m.changeTo], ['0', 0.25], 'a build-up: 10 of 40 music cuts at the start');
+  assert.equal('rampRange' in m || 'startMsRange' in m || 'atSelect' in m, false, 'the old keys go');
+  const flat = clean(h.run(`migrateRhythm(${JSON.stringify({ rhythmSelect: 'flat', bpmInput: '90', startMsRange: '100', rampRange: '3', atSelect: 'end' })})`));
+  assert.deepEqual(flat, { rhythmSelect: 'flat', bpmInput: '90' });
+  h.run(`applySnap(${JSON.stringify({ ...old, startMsRange: '200' })})`);         // a snapshot from before
+  assert.equal(h.$('bpmInput').value, '300');
 });
 
-test('the multiple only changes the picture: the music keeps the beat, in Flat and in Variable', async () => {
+test('the multiple only changes the picture: the music keeps its cuts, with one speed or a change', async () => {
   const r = baseRoutes();
   r['/api/state'] = { plates: Array.from({ length: 8 }, (_, i) => mkPlate('p' + i)) };
   const h = load({ routes: r });
@@ -832,7 +829,7 @@ test('the multiple only changes the picture: the music keeps the beat, in Flat a
   const flat1 = JSON.parse(JSON.stringify(h.run('rhythmFor(8)')));
   assert.ok(Math.abs(flat1.pic[1] - 15) < 1e-9);
   assert.deepEqual(flat1.audio.slice(0, 3), flat4.audio.slice(0, 3));                                   // same beat grid whatever the multiple
-  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '300'; h.$('endMsRange').value = '300'; h.$('multSelect').value = '3'; h.run('updateRhythm(); updateTempo()');
+  h.$('rhythmSelect').value = 'variable'; h.$('bpmInput').value = '200'; h.$('changeFrom').value = '0'; h.$('changeTo').value = '1'; h.$('endMsRange').value = '300'; h.$('multSelect').value = '3'; h.run('updateRhythm(); updateTempo()');
   const v = JSON.parse(JSON.stringify(h.run('rhythmFor(8)')));
   assert.ok(Math.abs(v.pic[1] - 3) < 1e-9);                                                             // 300 ms base cut / 3
   assert.ok(Math.abs(v.audio[1] - 0.3) < 1e-9);
@@ -842,15 +839,15 @@ test('the multiple only changes the picture: the music keeps the beat, in Flat a
 
 function clean(v) { return JSON.parse(JSON.stringify(v)); }
 
-test('rhythmFor is a clean timeline for every tempo, multiple, invert mode and number of images, in both speed modes', async () => {
+test('rhythmFor is a clean timeline for every tempo, multiple, invert mode and number of images, with one speed or a change', async () => {
   for (const nImages of [0, 1, 2, 9, 133, 500]) {
     const r = baseRoutes();
     r['/api/state'] = { plates: Array.from({ length: nImages }, (_, i) => mkPlate('p' + i)) };
     const h = load({ routes: r });
     await settle(); await settle();
-    for (const variable of [false, true]) for (const invert of ['off', 'mono', 'colour']) for (const bpm of [60, 136, 250, 500]) for (const mult of ['0.25', '1', '1.3333333', '4', '9']) {
+    for (const variable of [false, true]) for (const invert of ['off', 'mono', 'colour']) for (const bpm of [40, 136, 250, 1200]) for (const mult of ['0.25', '1', '1.3333333', '4', '9']) {
       h.$('rhythmSelect').value = variable ? 'variable' : 'flat'; h.$('invertSelect').value = invert; h.$('bpmInput').value = String(bpm); h.$('multSelect').value = mult;
-      h.$('startMsRange').value = '50'; h.$('endMsRange').value = '1000'; h.$('rampRange').value = '60'; h.$('atSelect').value = variable && bpm === 136 ? 'start' : 'end';
+      h.$('changeFrom').value = bpm === 136 ? '0' : '0.4'; h.$('changeTo').value = bpm === 136 ? '0.3' : '1'; h.$('endMsRange').value = bpm === 250 ? '50' : '1500'; h.$('curveVal').value = bpm === 40 ? '1' : '0.3';
       h.run('updateTempo(); updateRhythm()');
       const n = nImages * (invert === 'off' ? 1 : 2);
       const t = clean(h.run(`rhythmFor(${nImages})`));
@@ -871,19 +868,21 @@ test('with no images nothing plays, nothing throws, and the info line is empty',
   h.run('drawInfo()');
   h.$('musicSelect').value = 'on';
   assert.doesNotThrow(() => h.run('togglePlay(); togglePlay(); restartPlay(); restartPlay()'));
-  assert.doesNotThrow(() => h.run('syncRampRange(); updateRhythm(); updateTempo(); updateMusic()'));
+  assert.doesNotThrow(() => h.run('updateRhythm(); updateTempo(); updateMusic(); addChange(0.5); removeChange(); renderRhythmStrip()'));
 });
 
-test('extreme slider values keep the labels and the ranges sane', async () => {
+test('extreme values on the timeline stay sane: positions, speeds and the curve are kept inside their ranges', async () => {
   const r = baseRoutes();
   r['/api/state'] = { plates: [mkPlate('a')] };
   const h = load({ routes: r });
   await settle(); await settle();
-  h.$('rampRange').value = '999'; h.$('invertSelect').value = 'off'; h.run('updateRhythm()');
-  assert.equal(h.$('rampRange').max, '2');                                    // one image: at least 2 so the slider still has a range
-  assert.equal(h.$('rampRange').value, '2');
-  h.$('bpmInput').value = '500'; h.$('multSelect').value = '9'; h.run('updateTempo()');
-  assert.equal(h.run('framesPerCut'), 1);                                     // 1800 / (500 * 9) is below a frame: never below one
+  h.$('rhythmSelect').value = 'variable'; h.$('changeFrom').value = '5'; h.$('changeTo').value = '-1'; h.$('endMsRange').value = '99999'; h.$('curveVal').value = '9';
+  h.run('updateRhythm()');
+  assert.deepEqual(clean(h.run('changeParams()')), { from: 0.98, to: 1, end_ms: 1500, curve: 1 });
+  for (const v of ['abc', '', 'NaN']) { h.$('changeFrom').value = v; h.$('endMsRange').value = v; assert.ok(Number.isFinite(h.run('changeParams()').from) && h.run('changeParams()').end_ms === 600, v); }
+  h.$('bpmInput').value = '99999'; h.$('multSelect').value = '9'; h.run('updateTempo()');
+  assert.equal(h.run('bpmValue()'), 1200);
+  assert.ok(clean(h.run('timelineFor(1)')).every(Number.isFinite));
 });
 
 test('changing the Multiple while playing asks the sound for an update, from where the picture is, with the same beat grid', async () => {
@@ -905,18 +904,17 @@ test('changing the Multiple while playing asks the sound for an update, from whe
   assert.ok(Math.abs(grid[1] - 0.5) < 1e-9 && Math.abs(grid[2] - 1) < 1e-9);  // beats every 0.5 s at 120 BPM, whatever the multiple
 });
 
-test('the tempo slider is 1 to 500 BPM, and whatever it holds is kept inside that', () => {
+test('the tempo is 40 to 1200 BPM (1500 to 50 ms a music cut), and whatever it holds is kept inside that', () => {
   const { run, $, store } = load({ routes: baseRoutes() });
   $('multSelect').value = '1';
-  for (const [typed, bpm] of [['0', 1], ['-50', 1], ['500', 500], ['999', 500], ['12.5', 12.5], ['', 120], ['abc', 120], ['  90 ', 90], ['1e2', 100]]) {
+  for (const [typed, bpm] of [['0', 40], ['-50', 40], ['1200', 1200], ['9999', 1200], ['12.5', 40], ['', 120], ['abc', 120], ['  90 ', 90], ['1e2', 100], ['500', 500]]) {
     $('bpmInput').value = typed; run('updateTempo()');
     assert.equal(run('bpmValue()'), bpm, `value "${typed}"`);
-    assert.equal(run('framesPerCut'), Math.max(1, 1800 / bpm), `value "${typed}"`);
-    assert.equal($('bpmVal').textContent, `${Math.round(bpm)} BPM`);
+    assert.equal($('tempoVal').textContent, `${Math.round(bpm)} BPM`);
     const t = JSON.parse(JSON.stringify(run('rhythmFor(3)')));
     assert.ok(t.pic.every(Number.isFinite) && t.audio.every(Number.isFinite), `value "${typed}"`);
   }
-  assert.equal(JSON.parse(store.studioSettings).bpmInput, '1e2');
+  assert.equal(JSON.parse(store.studioSettings).bpmInput, '500');
 });
 
 test('the check "The Multiple also changes the music" puts the music on the picture cuts; unchecked it stays on the beat', async () => {
@@ -962,13 +960,13 @@ test('Random video: every draw is a valid speed and look inside the slider range
     const mode = h.$('rhythmSelect').value; seen[mode]++;
     if (mode === 'flat') { const b = +h.$('bpmInput').value; assert.ok(b >= 60 && b <= 200, `tempo ${b}`); }
     else {
-      const s = +h.$('startMsRange').value, e = +h.$('endMsRange').value, r = +h.$('rampRange').value;
-      assert.ok(s >= 60 && s <= 900 && e >= 60 && e <= 900 && r >= 2 && r <= 20, `variable ${s} ${e} ${r}`);
-      assert.ok(['end', 'start'].includes(h.$('atSelect').value));
+      const ch = h.run('changeParams()'), s = 60000 / +h.$('bpmInput').value;
+      assert.ok(s >= 55 && s <= 905 && ch.end_ms >= 60 && ch.end_ms <= 900, `a change ${s} → ${ch.end_ms}`);
+      assert.ok(ch.from >= 0 && ch.to <= 1 && ch.to > ch.from && (ch.from === 0 || ch.to === 1), `at the start or the end: ${ch.from}–${ch.to}`);
+      assert.ok([0, 0.15, 0.3].includes(ch.curve));
     }
     assert.ok(['off', 'mono', 'colour'].includes(h.$('invertSelect').value) && ['off', 'out', 'in'].includes(h.$('zoomSelect').value));
     const z = +h.$('zoomAmt').value; assert.ok(z >= 0.2 && z <= 3, `zoom ${z}`);
-    assert.ok(Number.isFinite(h.run('framesPerCut')) && h.run('framesPerCut') >= 1);
   }
   assert.ok(seen.flat > 60 && seen.variable > 60, `both speeds come up (${JSON.stringify(seen)})`);
   h.$('bpmInput').value = '77'; h.$('rhythmSelect').value = 'flat'; h.$('invertSelect').value = 'colour'; h.$('multSelect').value = '2';
@@ -1029,9 +1027,9 @@ test('each character keeps the rhythm and the look inside its own kind of film',
       assert.equal(h.$('rhythmSelect').value, c.rhythm.mode, key);
       if (c.rhythm.mode === 'flat') { const b = +h.$('bpmInput').value; assert.ok(b >= c.rhythm.bpm[0] && b <= c.rhythm.bpm[1], `${key} tempo ${b}`); }
       else {
-        const st = +h.$('startMsRange').value, en = +h.$('endMsRange').value;
+        const ch = h.run('changeParams()'), st = 60000 / +h.$('bpmInput').value, en = ch.end_ms;
         assert.ok(st >= c.rhythm.start[0] - 5 && st <= c.rhythm.start[1] + 5 && en >= c.rhythm.end[0] - 5 && en <= c.rhythm.end[1] + 5, `${key} ${st} → ${en}`);
-        assert.ok([].concat(c.rhythm.at).includes(h.$('atSelect').value));
+        assert.ok([].concat(c.rhythm.at).includes(ch.from === 0 && ch.to < 1 ? 'start' : 'end'), `${key}: a ${c.rhythm.at} (${ch.from}–${ch.to})`);
       }
       assert.ok(c.rhythm.mult.includes(h.$('multSelect').value), `${key} multiple`);
       assert.ok(c.look.invert.includes(h.$('invertSelect').value) && c.look.zoom.includes(h.$('zoomSelect').value), `${key} look`);
@@ -1312,57 +1310,37 @@ test('the check "The Multiple also changes the music" is remembered (a checkbox 
   assert.equal(again.$('followCuts').checked, true);
 });
 
-test('the frames readout next to the Multiple: one number for Flat, start → end for Variable', async () => {
-  const h = await playerWith();
-  h.$('bpmInput').value = '120'; h.$('multSelect').value = '2'; h.run('updateTempo()');
-  assert.equal(h.$('speedVal').textContent, '7.5f');
-  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '100'; h.$('endMsRange').value = '600'; h.$('multSelect').value = '1'; h.run('updateTempo(); updateRhythm()');
-  assert.equal(h.$('speedVal').textContent, '3→18f');
-});
 
-test('the rhythm strip is drawn from the real timeline: a tick per picture cut, the speed line, the band, the beats', async () => {
+test('the timeline is drawn from the real timeline: a tick per picture cut, the speed line on its log scale, the band, the points, the beats', async () => {
   const h = await playerWith();                                                  // 3 images, 120 BPM ×2
   const plain = o => JSON.parse(JSON.stringify(o));
-  // Flat: even ticks, a flat line, a beat on every second picture cut, no band and no handles
   let m = plain(h.run('rhythmStripModel(3)'));
   const pic = plain(h.run('timelineFor(3)'));
   assert.equal(m.ticks.length, 3);
   assert.deepEqual(m.ticks.map(x => +x.toFixed(3)), pic.slice(0, -1).map(f => +((f / pic.at(-1)) * 1000).toFixed(3)));
-  assert.ok(m.curve.every(([, y]) => y === 14), 'a flat speed is a flat line');
-  assert.equal(m.band, null); assert.deepEqual(m.handles, []);
-  assert.deepEqual(m.beats.map(Math.round), [0, 667], 'the music is on the beat: every second cut at ×2');
-  assert.equal(m.beatText, 'Music on the beat · 120 BPM');
+  const y500 = h.run('yOfMs(500)');
+  assert.ok(m.curve.every(([, y]) => Math.abs(y - y500) < 1e-9), 'one speed is a flat line at the tempo\'s height');
+  assert.ok(Math.abs(h.run('yOfMs(50)')) < 1e-9 && Math.abs(h.run('yOfMs(1500)') - 100) < 1e-9, '50 ms at the top, 1500 at the bottom');
+  assert.equal(m.band, null); assert.deepEqual(m.points, []); assert.equal(m.handle, null);
+  assert.deepEqual(m.beats.map(Math.round), [0, 667], 'the music on its cuts: every second picture cut at ×2');
   h.$('followCuts').checked = true; h.run('updateTempo()');
-  m = plain(h.run('rhythmStripModel(3)'));
-  assert.equal(m.beats.length, 3); assert.equal(m.beatText, 'Music on every picture cut');
-  h.$('followCuts').checked = false;
-  // Variable with a landing: the last cuts are long (low on the line), the band covers the change, Start and End marked
+  assert.equal(plain(h.run('rhythmStripModel(3)')).beats.length, 3, 'or on every picture cut');
   const r = baseRoutes();
   r['/api/state'] = { plates: Array.from({ length: 24 }, (_, i) => mkPlate('p' + i)) };
   const v = load({ routes: r }); await settle(); await settle();
-  v.$('rhythmSelect').value = 'variable'; v.$('startMsRange').value = '100'; v.$('endMsRange').value = '600'; v.$('rampRange').value = '8'; v.$('atSelect').value = 'end'; v.$('multSelect').value = '1';
+  v.$('bpmInput').value = '600'; v.$('rhythmSelect').value = 'variable'; v.$('changeFrom').value = '0.5'; v.$('changeTo').value = '1'; v.$('endMsRange').value = '600'; v.$('curveVal').value = '0'; v.$('multSelect').value = '1';
   v.run('updateTempo(); updateRhythm()');
   m = plain(v.run('rhythmStripModel(24)'));
-  const ys = m.curve.slice(1, -1).map(([, y]) => y);
-  assert.ok(ys.slice(0, 16).every(y => Math.abs(y - 10) < 1e-6), 'the fast hold sits at the top');
-  assert.ok(Math.abs(ys.at(-1) - 40) < 1e-6, 'the slowest cut at the bottom');
-  for (let i = 16; i < ys.length; i++) assert.ok(ys[i] > ys[i - 1], 'it slows down cut after cut');
+  const ys = m.curve.map(([, y]) => y);                                         // the speed, sampled over the film
+  assert.ok(ys.slice(0, 100).every(y => Math.abs(y - v.run('yOfMs(100)')) < 1e-9), 'the tempo holds until the change');
+  for (let i = 102; i < ys.length; i++) assert.ok(ys[i] > ys[i - 1], 'then it slows down all the way');
+  assert.ok(Math.abs(ys.at(-1) - v.run('yOfMs(600)')) < 1e-9, 'to the End speed');
+  assert.ok(Math.abs(m.handle.y - ys[150]) < 1e-9, 'the curve handle sits on the line');
   const vpic = plain(v.run('timelineFor(24)'));
-  assert.ok(Math.abs(m.band.left - (vpic[16] / vpic.at(-1)) * 100) < 1e-6 && Math.abs(m.band.left + m.band.width - 100) < 1e-6, 'the band starts where the change does');
-  assert.equal(m.band.label, 'Landing · 8 cuts');
-  assert.deepEqual(m.handles.map(x => x.label), ['Start 100 ms', 'End 600 ms']);
-  assert.ok(Math.abs(m.handles[0].top - 10) < 1e-6 && Math.abs(m.handles[1].top - 40) < 1e-6);
-  assert.match(m.beatText, /^Music on the run · 24 cuts$/);
-  v.$('atSelect').value = 'start'; v.$('startMsRange').value = '600'; v.$('endMsRange').value = '100'; v.run('updateRhythm()');
-  m = plain(v.run('rhythmStripModel(24)'));
-  assert.equal(m.band.left, 0); assert.equal(m.band.label, 'Build-up · 8 cuts');
-  // one frame a cut: flagged; no images: nothing to draw
-  h.$('bpmInput').value = '500'; h.$('multSelect').value = '9'; h.run('updateTempo()');
-  assert.equal(h.run('rhythmStripModel(3)').oneFrame, true);
-  assert.equal(h.run('rhythmStripModel(0)'), null);
-  // the axis is in seconds and ends inside the clip
-  m = plain(v.run('rhythmStripModel(24)'));
-  assert.equal(m.axis[0].text, '0 s'); assert.ok(m.axis.every(a => a.left >= 0 && a.left <= 100));
+  assert.ok(Math.abs(m.band.left - (vpic[12] / vpic.at(-1)) * 100) < 1e-6 && Math.abs(m.band.left + m.band.width - 100) < 1e-6, 'the band runs from Start to End');
+  assert.deepEqual(m.points.map(p => [p.name, p.ms]), [['Start', 100], ['End', 600]]);
+  assert.ok(m.handle && m.handle.x > m.points[0].x && m.handle.x < m.points[1].x, 'the curve handle sits inside the change');
+  assert.ok(Math.abs(v.run('shareAt(rsModel.points[1].x / 1000)') - 1) < 0.02 && Math.abs(v.run('shareAt(rsModel.points[0].x / 1000)') - 0.5) < 0.02, 'a point\'s place in time maps back to its share');
 });
 
 test('a click on the rhythm strip puts the playhead there, and the sound follows while playing', async () => {
@@ -1468,7 +1446,7 @@ test('keys: ← → step one image (wrapping), Delete never trashes, Cmd+Z undoe
     key('Delete'); key('Backspace'); await settle();
   }
   assert.equal(h.calls.filter(c => c.url === '/api/trash').length, 0, 'Delete and Backspace never trash');
-  const snap = () => ['rhythmSelect', 'bpmInput', 'startMsRange', 'multSelect', 'invertSelect', 'zoomSelect', 'pulseRange', 'chordSelect', 'seedVal', 'musicSelect'].map(id => h.$(id).value).join('|');
+  const snap = () => ['rhythmSelect', 'bpmInput', 'changeFrom', 'multSelect', 'invertSelect', 'zoomSelect', 'pulseRange', 'chordSelect', 'seedVal', 'musicSelect'].map(id => h.$(id).value).join('|');
   const before = snap();
   h.run('randomAll()');
   assert.notEqual(snap(), before);
@@ -1477,48 +1455,17 @@ test('keys: ← → step one image (wrapping), Delete never trashes, Cmd+Z undoe
   key('z', { metaKey: true });                                                     // nothing left: harmless
 });
 
-test('the inner point of the rhythm strip sets Change over when dragged sideways, snapping to the cuts of the run', async () => {
-  const r = baseRoutes();
-  r['/api/state'] = { plates: Array.from({ length: 24 }, (_, i) => mkPlate('p' + i)) };
-  const h = load({ routes: r }); await settle(); await settle();
-  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '100'; h.$('endMsRange').value = '600'; h.$('rampRange').value = '8'; h.$('atSelect').value = 'end'; h.$('multSelect').value = '1';
-  h.run('updateTempo(); updateRhythm()');
-  assert.equal(h.$('rsH0').classList.contains('inner'), true, 'landing: the Start point is the one to drag');
-  assert.equal(h.$('rsH1').classList.contains('inner'), false);
-  // wherever it is dropped, the point lands there: Change over is solved for that, since the change itself makes the film longer or shorter
-  const pointAt = () => JSON.parse(JSON.stringify(h.run('rhythmStripModel(24)'))).band.left / 100;
-  for (const u of [0.2, 0.35, 0.5, 0.7]) {
-    h.$('rampRange').value = String(h.run(`rampAt(${u})`)); h.run('updateRhythm()');
-    assert.ok(Math.abs(pointAt() - u) < 0.06, `dropped at ${u}, the point is at ${pointAt().toFixed(3)}`);
-  }
-  assert.equal(h.run('rampAt(-1)'), 24, 'all the way left: every cut');
-  assert.equal(h.run('rampAt(2)'), 2, 'all the way right: the least there is');
-  h.$('rsBody').getBoundingClientRect = () => ({ left: 0, width: 1000 });
-  const target = { classList: h.$('rsH0').classList, setPointerCapture() {} };
-  h.run('pointDown')({ currentTarget: target, preventDefault() {}, stopPropagation() {}, pointerId: 1 });
-  h.run('pointMove')({ clientX: 500 });
-  const k = h.$('rampRange').value;
-  assert.equal(k, String(h.run('rampAt(0.5)')));
-  assert.equal(h.run('rhythmStripModel(24)').band.label, `Landing · ${k} cuts`, 'the band follows while dragging');
-  h.run('pointUp')();
-  const before = h.run('cutPos');
-  h.run('rhythmStripClick({ clientX: 10 })');
-  assert.equal(h.run('cutPos'), before, 'letting go is not a click that jumps');
-  h.$('atSelect').value = 'start'; h.$('startMsRange').value = '600'; h.$('endMsRange').value = '100'; h.run('updateRhythm()');
-  assert.equal(h.$('rsH1').classList.contains('inner'), true, 'build-up: the End point is the one to drag');
-  h.$('rampRange').value = String(h.run('rampAt(0.4)')); h.run('updateRhythm()');
-  const m = JSON.parse(JSON.stringify(h.run('rhythmStripModel(24)')));
-  assert.ok(Math.abs(m.band.width / 100 - 0.4) < 0.06, `build-up: the End point lands where it is dropped (${m.band.width})`);
-});
 
-test('the Start and End points say what the picture does: with a Multiple, the cut the picture really makes', async () => {
+test('the Start and End labels give the music cut, and the picture cut beside it when there is a Multiple', async () => {
   const r = baseRoutes();
   r['/api/state'] = { plates: Array.from({ length: 24 }, (_, i) => mkPlate('p' + i)) };
   const h = load({ routes: r }); await settle(); await settle();
-  h.$('rhythmSelect').value = 'variable'; h.$('startMsRange').value = '840'; h.$('endMsRange').value = '110'; h.$('atSelect').value = 'start'; h.$('multSelect').value = '2';
+  h.$('bpmInput').value = '75'; h.$('rhythmSelect').value = 'variable'; h.$('changeFrom').value = '0'; h.$('changeTo').value = '0.5'; h.$('endMsRange').value = '110'; h.$('multSelect').value = '2';
   h.run('updateTempo(); updateRhythm()');
-  const m = JSON.parse(JSON.stringify(h.run('rhythmStripModel(24)')));
-  assert.deepEqual(m.handles.map(x => x.label), ['Start 420 ms', 'End 55 ms'], 'as in the line under the strip');
+  assert.equal(h.$('rsStartL').innerHTML, 'Start 800 ms<small> · pictures 400</small>');
+  assert.equal(h.$('rsEndL').innerHTML, 'End 110 ms<small> · pictures 55</small>');
+  h.$('multSelect').value = '1'; h.run('updateTempo()');
+  assert.equal(h.$('rsEndL').innerHTML, 'End 110 ms', 'no Multiple: the one value');
 });
 
 test('Export says how long it will take once it has seen one: the median of the last exports, per second of film', async () => {
@@ -1542,28 +1489,11 @@ test('menu labels in the page are what they should be (a bulk edit once renamed 
   const opts = id => { const m = html.match(new RegExp(`<select id="${id}"[\\s\\S]*?</select>`)); return [...m[0].matchAll(/<option value="([^"]*)"[^>]*>([^<]*)</g)].map(x => `${x[1]}=${x[2]}`); };
   assert.deepEqual(opts('batchCountSelect'), ['2=2 images', '4=4 images', '6=6 images', '8=8 images', '12=12 images', '16=16 images', '20=20 images']);
   assert.deepEqual(opts('multSelect'), ['0.25=×¼', '0.5=×½', '1=×1', '1.3333333=×1⅓', '2=×2', '3=×3', '4=×4', '6=×6', '8=×8', '9=×9']);
-  assert.deepEqual(opts('atSelect'), ['end=Landing', 'start=Build-up']);
+  assert.deepEqual(opts('rhythmSelect'), ['flat=One speed', 'variable=A change']);
 });
 
 // ---- bugs found by the code review of the redesign (each test reproduces the reported steps) ----
 
-test('review #1: Change over keeps its value across a reload and when the cut count dips (it was reset to 2 before the images loaded)', async () => {
-  const r = baseRoutes();
-  r['/api/state'] = { plates: Array.from({ length: 30 }, (_, i) => mkPlate('p' + i)) };
-  const saved = JSON.stringify({ rhythmSelect: 'variable', rampRange: '20', multSelect: '1' });
-  const h = load({ routes: r, storage: { studioSettings: saved } });
-  await settle(); await settle();
-  assert.equal(h.$('rampRange').value, '20');
-  assert.equal(JSON.parse(h.store.studioSettings).rampRange, '20', 'and it is saved as 20');
-  h.$('multSelect').value = '6'; h.run('updateTempo()');                            // 5 cuts of the run: the slider shows 5
-  assert.equal(h.$('rampRange').value, '5');
-  assert.equal(JSON.parse(h.store.studioSettings).rampRange, '20', 'but remembers 20');
-  h.$('multSelect').value = '1'; h.run('updateTempo()');
-  assert.equal(h.$('rampRange').value, '20', 'and goes back to it');
-  h.$('rampRange').value = '9'; h.run('updateRhythm()');                            // a new value by hand is the new request
-  h.$('multSelect').value = '6'; h.run('updateTempo()'); h.$('multSelect').value = '1'; h.run('updateTempo()');
-  assert.equal(h.$('rampRange').value, '9');
-});
 
 test('review #2: trashing (or undoing a trash) while playing updates the sound to the new length', async () => {
   const r = baseRoutes();
@@ -1674,12 +1604,12 @@ test('one undo history for the app: settings settle into one step each, trash an
   for (const v of ['100', '110', '120', '130']) { h.$('bpmInput').value = v; h.run('updateTempo()'); }
   h.run('commitSettings()');                                                     // what 0.7 s of quiet does
   assert.equal(h.run('history.length'), 1);
-  assert.equal(h.run('history[0].label'), 'a setting');
+  assert.equal(h.run('history[0].label'), 'the tempo');
   const inv0 = h.$('invertSelect').value;
   h.$('invertSelect').value = 'mono'; h.run('updateFx()');
   // trashing: a step, after the settings change (which is committed first)
   await h.run("setTrash({ stopPropagation() {} }, 'b', true)");
-  assert.deepEqual(JSON.parse(JSON.stringify(h.run('history.map(s => s.label)'))), ['a setting', 'a setting', 'Trash “b”'], 'the invert, committed before the trash: in the order they happened');
+  assert.deepEqual(JSON.parse(JSON.stringify(h.run('history.map(s => s.label)'))), ['the tempo', 'a setting', 'Trash “b”'], 'the invert, committed before the trash: in the order they happened');
   assert.match(h.$('undoRandomBtn').title, /Undo Trash “b”/);
   key(); await flush();
   assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['a', 'b', 'c'], '1: the trash');
@@ -1775,7 +1705,7 @@ test('groups: the grid, the film, AI re-order and export follow the group chosen
 });
 
 test('Trail: the same opacity curve as the export (shared vectors), and the stage overlays the previous cut as it ended', async () => {
-  const TRAIL_VECTORS = [[0.0, 0.4, 0.4], [0.9, 0.4, 0.4], [1.0, 0.4, 0.3], [3.5, 0.4, 0.1], [4.0, 0.4, 0.0], [-0.5, 0.4, 0.0], [0.0, 0.0, 0.0], [0.0, 5.0, 0.6]];   // = test_cutplan.TRAIL_VECTORS
+  const TRAIL_VECTORS = [[0.0, 0.4, 0.4], [0.9, 0.4, 0.4], [1.0, 0.4, 0.3], [3.5, 0.4, 0.1], [4.0, 0.4, 0.0], [-0.5, 0.4, 0.0], [0.0, 0.0, 0.0], [0.0, 5.0, 0.6]];   // the fade over 4 frames
   const h = await playerWith();
   for (const [k, a, want] of TRAIL_VECTORS) assert.ok(Math.abs(h.run(`trailAlpha(${k}, ${a})`) - want) < 1e-9, `${k} ${a}`);
   h.$('bpmInput').value = '60'; h.$('multSelect').value = '1'; h.$('invertSelect').value = 'mono'; h.$('zoomSelect').value = 'out'; h.$('zoomAmt').value = '2';

@@ -1,6 +1,6 @@
 // The picture renderer (WebGL2): one engine for the preview and the export, as drone.js is for the sound.
 // A frame is the current image (inverted or not, zoomed about the centre) with, after a cut, the previous one mixed over it (the Trail).
-// The numbers are the export's (cutplan.py) so frames keep their look: mono = 1 - luma (601, as Pillow's "L"), the trail a plain mix,
+// The numbers are the old Pillow export's, so frames kept their look when it moved here: mono = 1 - luma (601, as Pillow's "L"), the trail a plain mix,
 // the zoom a crop of the centre 1/scale. Images fill the frame (cover). Pixels are worked on as stored (sRGB values, no colour management),
 // like Pillow, so a frame here and the frame Pillow made from the same plate agree within a level or two.
 (() => {

@@ -12,7 +12,6 @@ import threading
 import pytest
 from PIL import Image
 
-import cutplan
 import sequences
 
 
@@ -446,15 +445,9 @@ def _three_plates(live):
         live("POST", "/api/generate-image", {"title": f"M{i}", "prompt": "p", "model": "m"})
 
 
-def _export(live, body):
-    """An export as the page makes it: every frame first (one drawn, the rest pointing at it in one request, as a held cut does), then the video.
-    The frame count comes from the server's own answer to a request without them."""
-    import re
-    status, res = live("POST", "/api/export-video", {**body, "frames": -1})
-    m = re.search(r"the film has (\d+)", res.get("error") or "")
-    if not m:
-        return status, res
-    total = int(m.group(1))
+def _export(live, body, total: int = 45):
+    """An export as the page makes it: the page plans the film and draws every frame (here one drawn, the rest pointing at it in one
+    request, as a held cut does), then asks for the video with how many it sent."""
     jpg = io.BytesIO()
     Image.new("RGB", (108, 192), (30, 90, 200)).save(jpg, "JPEG")
     live("POST", "/api/export-frame?i=0", raw=jpg.getvalue())
@@ -492,16 +485,15 @@ def test_export_with_music_has_an_audio_track_and_without_it_does_not(live, srv)
 
 def test_export_encodes_the_frames_the_page_drew(live, srv):
     """WebGL export: the page draws every frame (render.js) and sends them; the server only encodes. A frame can point at an earlier
-    one (a held cut). The count must match the film, a frame must be a JPEG, and the set is used once."""
-    import re
+    one (a held cut). Every frame up to the count must be there, a frame must be a JPEG, and the set is used once."""
     _three_plates(live)
     jpg = io.BytesIO()
     Image.new("RGB", (108, 192), (220, 30, 30)).save(jpg, "JPEG", quality=92)
     status, res = live("POST", "/api/export-frame?i=0", raw=jpg.getvalue())
     assert status == 200 and res["ok"]
-    status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "frames": 1})
-    assert status == 500 and "Press Export again" in res["error"]
-    total = int(re.search(r"the film has (\d+)", res["error"]).group(1))
+    total = 40
+    status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "frames": total})
+    assert status == 500 and "frame 1 is missing" in res["error"], "a frame short: it says which"
     for i in range(1, total):
         status, res = live("POST", f"/api/export-frame?i={i}&same={i - 1}", raw=b"")
         assert status == 200 and res["ok"], res
@@ -557,34 +549,27 @@ def test_purging_a_plate_removes_its_thumbnails(live, srv):
     assert not (srv.THUMBS_DIR / "360" / p["filename"]).exists() and not (srv.THUMBS_DIR / "540" / p["filename"]).exists()
 
 
-def test_export_with_variable_speed_runs_the_cuts_from_entry_to_exit(live, srv):
+def test_export_is_as_long_as_the_frames_the_page_drew_and_named_after_its_speeds(live, srv):
+    """The page plans the film (the timeline); the video is its frames at 30 fps. A change of speed names the file from the tempo to the end."""
     _three_plates(live)
-    status, res = _export(live, {"rhythm": "variable", "start_ms": 600, "end_ms": 200, "ramp": 2, "at": "end"})
+    status, res = _export(live, {"rhythm": "variable", "bpm": 100, "end_ms": 200}, total=54)
     assert status == 200 and "var600to200ms" in res["filename"] and "bpm" not in res["filename"]
-    expected = cutplan.variable_timeline(3, 600, 200, 2, "end")[-1] / 30
     kinds, seconds = _streams(srv.OUTPUTS_DIR / res["filename"])
-    assert kinds == ["video"] and seconds == pytest.approx(expected, abs=0.15)
+    assert kinds == ["video"] and seconds == pytest.approx(54 / 30, abs=0.05)
     status, flat = _export(live, {"rhythm": "flat", "bpm": 120, "multiple": 2})
-    assert status == 200 and "120bpm" in flat["filename"]
-    status, odd = _export(live, {"rhythm": "variable", "start_ms": "x", "end_ms": 99999, "ramp": 5000})      # nonsense is clamped
-    assert status == 200 and "var100to1500ms" in odd["filename"]
-
-
-def test_export_multiple_cuts_the_pictures_faster_in_both_speed_modes(live, srv):
-    _three_plates(live)
-    status, res = _export(live, {"rhythm": "variable", "start_ms": 600, "end_ms": 600, "ramp": 2, "multiple": 2})
-    pic, _ = cutplan.rhythm_timeline(3, 120, 2, (600.0, 600.0, 2, "end"))
-    assert status == 200 and _streams(srv.OUTPUTS_DIR / res["filename"])[1] == pytest.approx(pic[-1] / 30, abs=0.15)
-    assert pic[-1] / 30 == pytest.approx(0.9)                                   # 3 pictures at 300 ms each: the 600 ms base cut split in two
+    assert status == 200 and "120bpm-x2" in flat["filename"]
+    status, odd = _export(live, {"rhythm": "variable", "bpm": "x", "end_ms": 99999})      # nonsense is clamped
+    assert status == 200 and "var441to1500ms" in odd["filename"]
+    status, none = live("POST", "/api/export-video", {"bpm": 120, "frames": 0})
+    assert status == 500 and "did not all arrive" in none["error"]
 
 
 @pytest.mark.parametrize("body", [
     {"bpm": 0, "multiple": 0}, {"bpm": -120, "multiple": -4}, {"bpm": "abc", "multiple": "x"}, {"bpm": 1e9, "multiple": 1e9}, {"bpm": float("nan")},
     {"bpm": 250, "multiple": 16}, {"bpm": 30, "multiple": 0.125}, {"bpm": None, "multiple": None},
-    {"rhythm": "variable", "start_ms": 50, "end_ms": 50, "ramp": 0, "multiple": 0},
-    {"rhythm": "variable", "start_ms": -5, "end_ms": 1e12, "ramp": -9, "at": "start", "multiple": 16},
-    {"rhythm": "variable", "start_ms": None, "end_ms": "x", "ramp": "y", "at": 5, "multiple": [1]},
-    {"rhythm": "sideways", "bpm": 120}, {"rhythm": "variable", "invert_mode": "mono", "multiple": 0.25, "start_ms": 100, "end_ms": 1500, "ramp": 200},
+    {"rhythm": "variable", "end_ms": 50, "multiple": 0}, {"rhythm": "variable", "end_ms": 1e12, "multiple": 16},
+    {"rhythm": "variable", "end_ms": "x", "multiple": [1]}, {"rhythm": "variable", "end_ms": None},
+    {"rhythm": "sideways", "bpm": 120}, {"rhythm": "variable", "invert_mode": "mono", "multiple": 0.25, "end_ms": 1500},
 ])
 def test_export_survives_extreme_and_nonsense_settings(live, srv, body):
     _three_plates(live)
@@ -628,12 +613,9 @@ def test_groups_over_http_and_a_group_exports_alone(live, srv):
     assert all("look" in p for p in state["plates"])
     assert live("POST", "/api/groups", {"action": "create", "name": "two"})[0] == 400        # names are unique
     status, whole = _export(live, {"rhythm": "flat", "bpm": 120, "multiple": 2})
-    full = _streams(srv.OUTPUTS_DIR / whole["filename"])[1]                     # measured now: two exports in the same second share a file name
     status, part = _export(live, {"rhythm": "flat", "bpm": 120, "multiple": 2, "files": names[:2]})
     assert status == 200
-    two = _streams(srv.OUTPUTS_DIR / part["filename"])[1]
     assert whole["images"] == len(names) and part["images"] == 2, (whole, part)
-    assert two == pytest.approx(full * 2 / len(names), abs=0.12), (full, two, len(names))
     assert live("POST", "/api/groups", {"action": "delete", "id": gid})[1]["ok"]
     assert live("GET", "/api/state")[1]["groups"] == []
 

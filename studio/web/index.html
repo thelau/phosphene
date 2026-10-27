@@ -252,40 +252,85 @@
           </div>
         </div>
 
-        <div class="transport">
-          <button onclick="togglePlay()" id="playBtn" class="play-btn" aria-label="Play">Play</button>
-          <button onclick="restartPlay()" id="restartBtn" class="icon-btn" title="Back to the start (0)" aria-label="Back to the start">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6"></path><path d="M4 4v4h4"></path></svg>
-          </button>
-          <button onclick="toggleReticle()" id="targetBtn" class="icon-btn" title="Show where the logo must sit: dead-center, 18% of the width (T)" aria-label="Show logo target" aria-pressed="false">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 1v4M12 19v4M1 12h4M19 12h4"></path></svg>
-          </button>
-          <span class="timecode" id="timecode">0:00.0 <span>/ 0:00.0 · cut 1 / 0</span></span>
-        </div>
-
         <section class="timeline" aria-label="Timeline">
           <div class="tl-head">
-            <span class="tl-label">Film</span>
-            <select id="filmGroup" onchange="setGroup(this.value)" title="Which images the film plays: all, one of your groups, or an automatic one"></select>
+          <div class="transport">
+            <button onclick="togglePlay()" id="playBtn" class="play-btn" aria-label="Play">Play</button>
+            <button onclick="restartPlay()" id="restartBtn" class="icon-btn" title="Back to the start (0)" aria-label="Back to the start">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6"></path><path d="M4 4v4h4"></path></svg>
+            </button>
+            <button onclick="toggleReticle()" id="targetBtn" class="icon-btn" title="Show where the logo must sit: dead-center, 18% of the width (T)" aria-label="Show logo target" aria-pressed="false">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 1v4M12 19v4M1 12h4M19 12h4"></path></svg>
+            </button>
+            <span class="timecode" id="timecode">0:00.0 <span>/ 0:00.0 · cut 1 / 0</span></span>
+          </div>
             <span class="grow"></span>
+            <select id="filmGroup" onchange="setGroup(this.value)" title="Which images the film plays: all, one of your groups, or an automatic one"></select>
             <button class="icon-btn refresh-btn" id="refreshFilmBtn" onclick="refreshLibrary(true)" title="Check for new images now: the film and the library refresh together" aria-label="Refresh the film"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
           </div>
           <div class="filmstrip" id="filmstrip" onclick="filmstripClick(event)"></div>
           <div class="rstrip" id="rhythmStrip">
-            <div class="rs-labels" aria-hidden="true"><span class="l-cuts">Cuts</span><span class="l-speed">Speed</span><span class="l-beat">Beat</span></div>
-            <div class="rs-body" id="rsBody" onclick="rhythmStripClick(event)" title="The whole film: a tick per picture cut, the speed (higher is faster) and the music's beats. Click to jump.">
-              <svg class="rs-cuts" viewBox="0 0 1000 26" preserveAspectRatio="none" aria-hidden="true"><path id="rsTicks" d=""></path></svg>
-              <div class="rs-speed">
-                <div class="rs-band" id="rsBand" hidden><span id="rsBandLabel"></span></div>
-                <svg viewBox="0 0 1000 48" preserveAspectRatio="none" aria-hidden="true"><polygon id="rsArea" points=""></polygon><polyline id="rsCurve" points=""></polyline></svg>
-                <span class="rs-handle" id="rsH0" hidden></span><span class="rs-hlabel" id="rsH0L" hidden></span>
-                <span class="rs-handle" id="rsH1" hidden></span><span class="rs-hlabel" id="rsH1L" hidden></span>
-              </div>
-              <svg class="rs-beats" viewBox="0 0 1000 14" preserveAspectRatio="none" aria-hidden="true"><path id="rsBeats" d=""></path></svg>
-              <div class="rs-playhead" id="rsPlayhead"></div>
+            <div class="tl-fields">
+              <div class="vfield" id="tempoField" role="spinbutton" tabindex="0" aria-valuemin="40" aria-valuemax="1200" title="The tempo: the music's cut length, and the speed before a change. Drag up or down (Shift: finer), double-click to type (BPM or ms), arrows to step." aria-label="Tempo"><span class="vf-lbl">Tempo</span><span class="vf-val" id="tempoVal">136 BPM</span><span class="vf-sub" id="tempoMs">441 ms</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div>
+              <label class="lock" title="Lock the tempo: Random keeps it (and adds no change of speed)">
+                <input type="checkbox" id="bpmLock" onchange="saveSettings()" aria-label="Lock the tempo" />
+                <svg class="lk-open" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 7.5-2"></path></svg>
+                <svg class="lk-shut" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+              </label>
+              <div class="vfield mult" id="multField" role="spinbutton" tabindex="0" title="Picture cuts per music cut. Drag up or down, double-click to type, arrows to step." aria-label="Multiple"><span class="vf-lbl">Multiple</span><span class="vf-val" id="multVal">×4</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div>
+              <label class="check-line tl-follow" title="Unchecked: the Multiple only cuts the pictures faster, and the music stays on its cuts. Checked: the pump, hits and arpeggio fall on every picture cut too.">
+                <input type="checkbox" id="followCuts" onchange="updateTempo()" /> <span>Also changes the music</span>
+              </label>
+              <span class="grow"></span>
+              <span class="rs-readout"><span id="rhythmInfo"></span> <span id="rsFast" class="rs-fast"></span></span>
+              <span class="rhythm-src" hidden>
+                <input type="range" id="bpmInput" min="40" max="1200" step="1" value="136" oninput="updateTempo()" />
+                <select id="multSelect" onchange="updateTempo()">
+                  <option value="0.25">×¼</option>
+                  <option value="0.5">×½</option>
+                  <option value="1">×1</option>
+                  <option value="1.3333333">×1⅓</option>
+                  <option value="2">×2</option>
+                  <option value="3">×3</option>
+                  <option value="4" selected>×4</option>
+                  <option value="6">×6</option>
+                  <option value="8">×8</option>
+                  <option value="9">×9</option>
+                </select>
+                <select id="rhythmSelect" onchange="updateRhythm()"><option value="flat">One speed</option><option value="variable">A change</option></select>
+                <input type="number" id="changeFrom" value="0.6" step="any" />
+                <input type="number" id="changeTo" value="1" step="any" />
+                <input type="number" id="endMsRange" value="600" step="1" />
+                <input type="number" id="curveVal" value="0" step="any" />
+              </span>
             </div>
-            <div class="rs-axis" id="rsAxis"></div>
-            <div class="rs-readout"><span><span id="rhythmInfo"></span> <span id="rsFast" class="rs-fast"></span></span><span id="rsBeatText" class="rs-beat"></span></div>
+            <div class="rs-grid">
+              <div class="rs-labels" aria-hidden="true">
+                <span class="l-cuts">Cuts</span>
+                <span class="l-speed" id="rsMsLabels"><b>Speed</b></span>
+                <span class="l-beat">Beat</span>
+              </div>
+              <div class="rs-body" id="rsBody">
+                <div class="rs-lane rs-jump" id="rsCuts" onclick="rhythmStripClick(event)" title="Click to jump"><svg class="rs-cuts" viewBox="0 0 1000 26" preserveAspectRatio="none" aria-hidden="true"><path id="rsTicks" d=""></path></svg></div>
+                <div class="rs-speed" id="rsSpeed">
+                  <div class="rs-grid-lines" id="rsGridLines" aria-hidden="true"></div>
+                  <div class="rs-band" id="rsBand" hidden></div>
+                  <svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true"><polygon id="rsArea" points=""></polygon><line id="rsLinear" x1="0" y1="0" x2="0" y2="0" hidden></line><polyline id="rsCurve" points=""></polyline></svg>
+                  <div class="rs-hover" id="rsHover" hidden><i></i><span class="rs-hover-dot"></span><span class="rs-hover-tip">Click to add a change</span></div>
+                  <div class="rs-guides" id="rsGuides" hidden><i class="gx"></i><i class="gy"></i></div>
+                  <button type="button" class="rs-curve" id="rsCurveHandle" hidden aria-label="The curve of the change: drag up or down"></button>
+                  <button type="button" class="rs-point" id="rsStart" hidden aria-label="Start of the change: drag sideways for where, up or down for the speed"></button>
+                  <span class="rs-plabel" id="rsStartL" hidden></span>
+                  <button type="button" class="rs-point" id="rsEnd" hidden aria-label="End of the change: drag sideways for where, up or down for the speed"></button>
+                  <span class="rs-plabel" id="rsEndL" hidden></span>
+                  <button type="button" class="rs-x" id="rsRemove" hidden aria-label="Remove the change" onclick="removeChange(event)"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+                  <span class="rs-tip" id="rsTip" role="tooltip" hidden></span>
+                </div>
+                <svg class="rs-beats" viewBox="0 0 1000 14" preserveAspectRatio="none" aria-hidden="true"><path id="rsBeats" d=""></path></svg>
+                <div class="rs-axis rs-jump" id="rsAxis" onclick="rhythmStripClick(event)" title="Click to jump"></div>
+                <div class="rs-playhead" id="rsPlayhead"></div>
+              </div>
+            </div>
           </div>
         </section>
       </main>
@@ -327,97 +372,33 @@
         <div class="insp-scroll" id="inspScroll">
           <input type="hidden" id="seedVal" value="7" />
 
-          <div class="insp-col" id="inspPicture">
-          <!-- Rhythm -->
-          <section class="card-sec" aria-label="Rhythm">
-            <div class="sec-head"><h2>Rhythm</h2>
-            </div>
-            <div class="row"><span class="lbl">Speed</span>
-              <select id="rhythmSelect" class="seg-src" onchange="updateRhythm()" title="Flat: every cut the same length, set by a tempo. Variable: the cuts speed up or slow down from a start length to an end length.">
-                <option value="flat">Flat</option>
-                <option value="variable">Variable</option>
-              </select>
-            </div>
-            <div id="flatBox">
-              <div class="row with-lock"><label for="bpmInput" class="lbl">Tempo</label>
-                <input type="range" id="bpmInput" min="1" max="500" step="1" value="136" oninput="updateTempo()" title="Beats per minute, 1 to 500" />
-                <span class="val" id="bpmVal">136 BPM</span>
-                <label class="lock" title="Lock the tempo: Random keeps it (and stays on a Flat speed)">
-                  <input type="checkbox" id="bpmLock" onchange="saveSettings()" aria-label="Lock the tempo" />
-                  <svg class="lk-open" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 7.5-2"></path></svg>
-                  <svg class="lk-shut" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
-                </label>
-              </div>
-            </div>
-            <div id="varBox" hidden>
-              <label class="row"><span class="lbl">Start</span>
-                <input type="range" id="startMsRange" min="50" max="1000" step="10" value="100" oninput="updateRhythm()" title="How long the first cut is" />
-                <span class="val" id="startMsVal">100 ms</span>
-              </label>
-              <label class="row"><span class="lbl">End</span>
-                <input type="range" id="endMsRange" min="50" max="1000" step="10" value="600" oninput="updateRhythm()" title="How long the last cut is" />
-                <span class="val" id="endMsVal">600 ms</span>
-              </label>
-              <label class="row"><span class="lbl">Change over</span>
-                <input type="range" id="rampRange" min="2" max="60" step="1" value="12" oninput="updateRhythm()" title="How many cuts the change takes. The references hold one speed, then ease into the other over their last 12 or so cuts." />
-                <span class="val" id="rampVal">12 cuts</span>
-              </label>
-              <div class="row"><span class="lbl">Change at</span>
-                <select id="atSelect" class="seg-src" onchange="updateRhythm()" title="End: hold the start speed, then change over the last cuts (a landing, as in Ecwora and Soiltone). Start: change over the first cuts, then hold the end speed.">
-                  <option value="end" selected>Landing</option>
-                  <option value="start">Build-up</option>
+          <section class="look-band" id="inspPicture" aria-label="Look">
+            <h2>Look</h2>
+            <div class="lb-grid">
+              <div class="row"><span class="lbl">Invert</span>
+                <select id="invertSelect" class="seg-src" onchange="updateFx()" title="Soiltone-style: every image is followed by an inverted copy of itself (same hold)">
+                  <option value="off">Off</option>
+                  <option value="mono">Grey</option>
+                  <option value="colour">Colour</option>
                 </select>
               </div>
+              <div class="row"><span class="lbl">Zoom</span>
+                <select id="zoomSelect" class="seg-src" onchange="updateFx()" title="Moverunion-style: a slow zoom inside every cut">
+                  <option value="off">Off</option>
+                  <option value="out">Out</option>
+                  <option value="in">In</option>
+                </select>
+              </div>
+              <label class="row" id="zoomAmtRow"><span class="lbl">Amount</span>
+                <input type="range" id="zoomAmt" min="0.2" max="6" step="0.1" value="0.6" oninput="updateFx()" title="How far the zoom travels inside a cut" />
+                <span class="val" id="zoomAmtVal">0.6%</span>
+              </label>
+              <label class="row"><span class="lbl">Trail</span>
+                <input type="range" id="trailRange" min="0" max="60" step="1" value="0" oninput="updateFx()" title="After each cut the previous image lingers for a few frames: a soft overprint. 0 is off." />
+                <span class="val" id="trailVal">Off</span>
+              </label>
             </div>
-            <label class="row"><span class="lbl">Multiple</span>
-              <select id="multSelect" onchange="updateTempo()" title="How many picture cuts per beat (or per cut of the variable run). It only changes the pictures: the music stays on the beat.">
-                <option value="0.25">×¼</option>
-                <option value="0.5">×½</option>
-                <option value="1">×1</option>
-                <option value="1.3333333">×1⅓</option>
-                <option value="2">×2</option>
-                <option value="3">×3</option>
-                <option value="4" selected>×4</option>
-                <option value="6">×6</option>
-                <option value="8">×8</option>
-                <option value="9">×9</option>
-              </select>
-              <span class="val" id="speedVal"></span>
-            </label>
-            <label class="check-line indent" title="Unchecked: the Multiple only cuts the pictures faster, and the music stays on the beat. Checked: the pump, hits and arpeggio fall on every picture cut too.">
-              <input type="checkbox" id="followCuts" onchange="updateTempo()" /> <span>The Multiple also changes the music</span>
-            </label>
           </section>
-
-          <!-- Look -->
-          <section class="card-sec" aria-label="Look">
-            <div class="sec-head"><h2>Look</h2>
-            </div>
-            <div class="row"><span class="lbl">Invert</span>
-              <select id="invertSelect" class="seg-src" onchange="updateFx()" title="Soiltone-style: every image is followed by an inverted copy of itself (same hold)">
-                <option value="off">Off</option>
-                <option value="mono">Grey</option>
-                <option value="colour">Colour</option>
-              </select>
-            </div>
-            <div class="row"><span class="lbl">Zoom</span>
-              <select id="zoomSelect" class="seg-src" onchange="updateFx()" title="Moverunion-style: a slow zoom inside every cut">
-                <option value="off">Off</option>
-                <option value="out">Out</option>
-                <option value="in">In</option>
-              </select>
-            </div>
-            <label class="row" id="zoomAmtRow"><span class="lbl">Amount</span>
-              <input type="range" id="zoomAmt" min="0.2" max="6" step="0.1" value="0.6" oninput="updateFx()" title="How far the zoom travels inside a cut" />
-              <span class="val" id="zoomAmtVal">0.6%</span>
-            </label>
-            <label class="row"><span class="lbl">Trail</span>
-              <input type="range" id="trailRange" min="0" max="60" step="1" value="0" oninput="updateFx()" title="After each cut the previous image lingers for a few frames: a soft overprint. 0 is off." />
-              <span class="val" id="trailVal">Off</span>
-            </label>
-          </section>
-
-          </div>
           <div class="insp-col" id="inspSound">
           <!-- Sound -->
           <section class="card-sec" aria-label="Sound">
@@ -608,7 +589,7 @@
             <span class="exp-meta" id="exportMeta"></span>
           </div>
           <div class="exp-busy">
-            <div class="exp-bar"><i></i><span id="musicState">Rendering on the server…</span></div>
+            <div class="exp-bar"><i></i><span id="musicState">Exporting…</span></div>
             <span class="exp-meta">The file downloads by itself when it is ready</span>
           </div>
           <div class="exp-ready">

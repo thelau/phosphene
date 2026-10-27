@@ -98,6 +98,17 @@ const clickSeg = async label => { await page.locator('#orderSeg button', { hasTe
 const film = async () => { await page.click('#modeFilm'); await page.waitForSelector('#viewFilm', { state: 'visible' }); };
 const curate = async () => { await page.click('#modeCurate'); await page.waitForSelector('#viewCurate', { state: 'visible' }); };
 const choose = async (id, value) => { await page.click(`.segctl[data-for="${id}"] button[data-value="${value}"]`); };
+// the timeline's source values sit in hidden inputs that the fields, the points and Random drive: set one as they do
+const setHidden = (id, value, ev = 'input') => page.evaluate(([id, v, ev]) => { const el = document.getElementById(id); el.value = String(v); el.dispatchEvent(new Event(ev)); }, [id, value, ev]);
+const tempo = bpm => setHidden('bpmInput', bpm, 'input');
+const mult = v => setHidden('multSelect', v, 'change');
+// one change of speed on the timeline (from / to: shares of the film's music cuts; the tempo is its start), or none
+const change = ({ from = 0.6, to = 1, end = 600, curve = 0, start } = {}) => page.evaluate(([from, to, end, curve, start]) => {
+  const set = (id, v) => { document.getElementById(id).value = String(v); };
+  set('changeFrom', from); set('changeTo', to); set('endMsRange', end); set('curveVal', curve); if (start) set('bpmInput', Math.round(60000 / start));
+  const r = document.getElementById('rhythmSelect'); r.value = 'variable'; r.dispatchEvent(new Event('change'));
+}, [from, to, end, curve, start || 0]);
+const noChange = () => setHidden('rhythmSelect', 'flat', 'change');
 const aiSetup = (summary = 'Hook on k2, lands on k1.') => st => { st.sequences[0].order = ['k3', 'k1', 'k2', 't1', 't2', 't3', 't4']; addAi(st, ['k2', 'k3', 'k1'], { summary }); st.active = 's1'; };
 
-module.exports = { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, choose, skip, api, page, consoleErrors, addAi, makeState };
+module.exports = { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, choose, skip, api, page, consoleErrors, addAi, makeState, tempo, mult, change, noChange, setHidden };

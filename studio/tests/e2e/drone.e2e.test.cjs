@@ -1,5 +1,5 @@
 // The live and the offline sound engine (studio/web/src/drone.js) in a real browser: levels, swaps, scheduling, and extreme inputs.
-const { test, assert, register, fresh, page, consoleErrors, skip, api, film, choose } = require('./harness.cjs');
+const { test, assert, register, fresh, page, consoleErrors, skip, api, film, choose, tempo, mult, change, noChange } = require('./harness.cjs');
 register();
 
 const BASE = { pulse: 0.65, low: 0.93, bright: 0.3, width: 0.6, space: 0.6, power: 0.6, seed: 7 };
@@ -441,9 +441,8 @@ test('the page stays responsive while playing a big sequence with every sound la
     const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); e.dispatchEvent(new Event('change')); };
     for (const [id, v] of [['hitTypeSelect', '3'], ['hitRange', '70'], ['arpRange', '60'], ['arpRateSelect', '3'], ['arpStepsSelect', '3'], ['washRange', '50'], ['ringRange', '40'], ['shimmerRange', '40'], ['echoRange', '50'], ['dynSelect', '3'], ['spaceRange', '80'], ['powerRange', '90'], ['subWaveSelect', '2'], ['padWaveSelect', '3']]) set(id, v);
   });
-  await choose('rhythmSelect', 'variable');
-  await page.evaluate(() => { for (const [id, v] of [['startMsRange', '50'], ['endMsRange', '300'], ['rampRange', '40']]) { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); } });
-  await page.selectOption('#multSelect', '4');
+  await change({ start: 50, end: 300, from: 0.7, to: 1 });
+  await mult('4');
   await choose('invertSelect', 'mono'); await choose('zoomSelect', 'out');
   await page.evaluate(() => {                                                     // measure on the page: long tasks, and how late the frames are
     window.__perf = { long: [], frames: [] };
@@ -465,10 +464,20 @@ test('the page stays responsive while playing a big sequence with every sound la
     await page.waitForTimeout(50);
   }
   const dragging = await page.evaluate(() => ({ long: [...window.__perf.long], frames: [...window.__perf.frames] }));
+  await page.evaluate(() => { window.__perf.long.length = 0; window.__perf.frames.length = 0; });
+  const lane = await page.locator('#rsSpeed').boundingBox(), end = await page.locator('#rsEnd').boundingBox();   // the timeline by hand: the change's End, then the tempo
+  await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2); await page.mouse.down();
+  for (let i = 0; i < 30; i++) { await page.mouse.move(lane.x + lane.width * (0.8 + 0.15 * Math.sin(i / 3)), lane.y + lane.height * (0.3 + 0.5 * ((i % 10) / 10))); await page.waitForTimeout(50); }
+  await page.mouse.up();
+  const tf = await page.locator('#tempoField').boundingBox();
+  await page.mouse.move(tf.x + 40, tf.y + 15); await page.mouse.down();
+  for (let i = 0; i < 30; i++) { await page.mouse.move(tf.x + 40, tf.y + 15 - 40 * Math.sin(i / 5)); await page.waitForTimeout(50); }
+  await page.mouse.up();
+  const timeline = await page.evaluate(() => ({ long: [...window.__perf.long], frames: [...window.__perf.frames] }));
   const stats = f => { const s = [...f].sort((a, b) => a - b); return { p95: s[Math.floor(s.length * 0.95)], max: s[s.length - 1], n: s.length }; };
   const report = (name, m) => `${name}: ${m.long.length} long tasks (max ${Math.round(Math.max(0, ...m.long))} ms), frames p95 ${Math.round(stats(m.frames).p95)} ms max ${Math.round(stats(m.frames).max)} ms of ${m.frames.length}`;
-  console.log(report('steady', steady)); console.log(report('dragging', dragging));
-  for (const [name, m] of [['steady', steady], ['dragging', dragging]]) {
+  console.log(report('steady', steady)); console.log(report('dragging', dragging)); console.log(report('timeline', timeline));
+  for (const [name, m] of [['steady', steady], ['dragging', dragging], ['timeline', timeline]]) {
     assert.ok(m.frames.length > 40, `${name}: frames were drawn`);
     assert.ok(Math.max(0, ...m.long) < 250, `${name}: no main-thread block over 250 ms (${report(name, m)})`);
     assert.ok(stats(m.frames).p95 < 60, `${name}: frames keep up (${report(name, m)})`);
@@ -484,8 +493,8 @@ test('at one frame a cut with the sound on, every cut lasts the same number of s
   await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
   await film();
   await choose('musicSelect', 'on');
-  await page.fill('#bpmInput', '450'); await page.locator('#bpmInput').dispatchEvent('input');
-  await page.selectOption('#multSelect', '4');                                    // 1 frame (33 ms) a cut: 2 refreshes at 60 Hz
+  await tempo(450);
+  await mult('4');                                    // 1 frame (33 ms) a cut: 2 refreshes at 60 Hz
   await page.click('#playBtn');
   await page.waitForTimeout(1500);                                                // the first build and level settle
   // measured twice, the better kept: a busy machine (another browser, a build) can drop a few refreshes once; a real stutter fails both

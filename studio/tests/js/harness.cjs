@@ -20,6 +20,7 @@ class El {
   toBlob(cb) { cb({ size: 1, fakeJpeg: true }); }
   getAttribute(n) { return this[n] ?? null; }
   setAttribute(n, v) { this[n] = v; }
+  toggleAttribute(n, on) { if (on) this[n] = ""; else delete this[n]; return !!on; }
   querySelectorAll() { return []; }
   querySelector() { return null; }
   appendChild(c) { (this.options ||= []).push(c); return c; }
