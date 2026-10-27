@@ -130,6 +130,8 @@ def evaluate_plate_qa(image_path: Path, mark: MarkSpec | None = None) -> dict:
     im = Image.open(image_path).convert("RGB")
     im_std = im.resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
     gray = im_std.convert("L")
+    if mark is not None and mark is not DEMO_MARK:
+        return _check_project_mark(image_path, im, gray, mark)
 
     # 1. Multi-scale search around dead-center (540, 960) for best match to true mask
     best_corr = -1.0
@@ -241,6 +243,58 @@ def evaluate_plate_qa(image_path: Path, mark: MarkSpec | None = None) -> dict:
         "detected_diam_px": best_diam,
         "polarity": best_polarity,
         "issues": issues,
+    }
+
+
+# ---- a project's own mark (any shape): fitted at its size and at other sizes, as a flat mark and by its outline ----
+# What the DEMO check (tuned on its orbital mark) missed on another mark, seen on Nike's swoosh: a mark drawn twice too big still covers
+# the target with mark-like strokes and passed; an embossed one (cream on cream: only its edges show) failed. So the fit is measured
+# at 0.85-1.15x its size and at 1.45-2.6x: a mark that fits better bigger is too big; and by its outline too (edges against the mark's
+# edges), which is what an emboss, a deboss or a carving shows.
+OWN_CHECK_VERSION = 2       # in the QA cache's keys: a new version measures the images again
+OWN_FIT_MIN = 0.42          # the best fit at its size, a little off its place included: under this, the mark is not there
+OWN_SIZES = (0.85, 0.93, 1.0, 1.08, 1.15)
+OWN_BIG = (1.45, 1.8, 2.2, 2.6)
+OWN_SHIFT = (-24, -12, 0, 12, 24)
+
+
+def _outline(m: Image.Image) -> Image.Image:
+    return m.filter(ImageFilter.FIND_EDGES).filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(1.5))
+
+
+def _fit(gray: Image.Image, edges: Image.Image, mark: MarkSpec, scale: float) -> tuple[float, str]:
+    """How well the mark at this scale matches around its place: the best of the flat mark (either way round) and its outline."""
+    m = mark.mask(max(8, int(round(mark.width * scale))))
+    o = _outline(m)
+    best, how = -1.0, "flat"
+    for dx in OWN_SHIFT:
+        for dy in OWN_SHIFT:
+            c = (mark.center[0] + dx, mark.center[1] + dy)
+            flat = abs(normalized_corr(gray.crop(_box(c, m)), m))
+            edge = normalized_corr(edges.crop(_box(c, o)), o)
+            if flat > best:
+                best, how = flat, "flat"
+            if edge > best:
+                best, how = edge, "outline"
+    return best, how
+
+
+def _check_project_mark(image_path: Path, im: Image.Image, gray: Image.Image, mark: MarkSpec) -> dict:
+    edges = gray.filter(ImageFilter.GaussianBlur(1)).filter(ImageFilter.FIND_EDGES).filter(ImageFilter.GaussianBlur(1.5))
+    right = max((_fit(gray, edges, mark, s) + (s,) for s in OWN_SIZES), key=lambda t: t[0])
+    big = max((_fit(gray, edges, mark, s) + (s,) for s in OWN_BIG), key=lambda t: t[0])
+    issues = []
+    if big[0] > right[0]:
+        issues.append(f"The mark is too big (it fits best at about {big[2]:g}x its size)")
+    elif right[0] < OWN_FIT_MIN:
+        issues.append(f"The mark is not clearly at its place and size (fit {right[0]:.2f})")
+    score = max(0, min(100, int(round(min(right[0], 0.8) / 0.8 * 100)) - (40 if issues else 0)))
+    return {
+        "filename": image_path.name, "width": im.width, "height": im.height,
+        "qa_passed": not issues, "qa_score": score,
+        "center_corr": round(right[0], 3), "core_asymmetry": 0.0, "outer_ring_corr": round(big[0], 3),
+        "detected_diam_px": int(round(mark.width * (big[2] if big[0] > right[0] else right[2]))),
+        "polarity": right[1], "issues": issues,
     }
 
 

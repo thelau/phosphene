@@ -76,3 +76,52 @@ def test_result_shape(tmp_path):
     for key in ("filename", "qa_passed", "qa_score", "center_corr", "core_asymmetry", "outer_ring_corr", "detected_diam_px", "polarity", "issues"):
         assert key in r
     assert 0 <= r["qa_score"] <= 100
+
+
+# ---- a project's own mark (not DEMO): fitted at its size and bigger, flat and by its outline ----
+def _swoosh(path):
+    """A wide, asymmetric mark (a swoosh-like wedge) on transparency."""
+    from PIL import ImageDraw
+    m = Image.new("RGBA", (384, 134), (0, 0, 0, 0))
+    ImageDraw.Draw(m).polygon([(0, 100), (30, 60), (60, 105), (384, 0), (90, 134), (10, 125)], fill=(17, 17, 17, 255))
+    m.save(path)
+    return path
+
+
+def _plate_with_own_mark(path, mark_file, scale=1.0, bg=(230, 225, 215), fg=(20, 20, 20), emboss=False):
+    from PIL import ImageFilter
+    spec = qa.mark_spec(mark_file, 18)
+    m = spec.mask(int(spec.width * scale))
+    im = Image.new("RGB", (qa.TARGET_W, qa.TARGET_H), bg)
+    x, y = spec.center[0] - m.width // 2, spec.center[1] - m.height // 2
+    if emboss:                                   # the same colour as the paper: only a light and a dark edge show
+        im.paste(Image.new("RGB", m.size, tuple(min(255, c + 25) for c in bg)), (x - 2, y - 2), m.filter(ImageFilter.FIND_EDGES))
+        im.paste(Image.new("RGB", m.size, tuple(max(0, c - 40) for c in bg)), (x + 2, y + 2), m.filter(ImageFilter.FIND_EDGES))
+    else:
+        im.paste(Image.new("RGB", m.size, fg), (x, y), m)
+    im.save(path, "JPEG", quality=95)
+    return path, spec
+
+
+def test_own_mark_at_its_size_passes_and_twice_too_big_fails(tmp_path):
+    mark = _swoosh(tmp_path / "mark.png")
+    ok, spec = _plate_with_own_mark(tmp_path / "ok.jpg", mark)
+    r = qa.evaluate_plate_qa(ok, spec)
+    assert r["qa_passed"], r
+    big, spec = _plate_with_own_mark(tmp_path / "big.jpg", mark, scale=2.2)
+    r = qa.evaluate_plate_qa(big, spec)
+    assert not r["qa_passed"] and "too big" in r["issues"][0], "a mark drawn twice too big used to pass: it still covers the target"
+
+
+def test_own_mark_embossed_passes_by_its_outline(tmp_path):
+    mark = _swoosh(tmp_path / "mark.png")
+    plate, spec = _plate_with_own_mark(tmp_path / "emboss.jpg", mark, emboss=True)
+    r = qa.evaluate_plate_qa(plate, spec)
+    assert r["qa_passed"] and r["polarity"] == "outline", r
+
+
+def test_own_mark_missing_fails(tmp_path):
+    mark = _swoosh(tmp_path / "mark.png")
+    spec = qa.mark_spec(mark, 18)
+    Image.new("RGB", (qa.TARGET_W, qa.TARGET_H), (230, 225, 215)).save(tmp_path / "empty.jpg", "JPEG")
+    assert not qa.evaluate_plate_qa(tmp_path / "empty.jpg", spec)["qa_passed"]
