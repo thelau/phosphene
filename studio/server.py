@@ -755,6 +755,28 @@ EXPORT_FRAME_MAX_BYTES = 16 * 1024 * 1024
 EXPORT_FRAMES_MAX = 200000                 # about 1 h 50 at 30 fps
 
 
+def build_download_zip(files: list[str], label: str) -> tuple[Path, str]:
+    """The full-size images shown in Curate, numbered in their order, in one zip (stored as they are: JPEGs do not compress).
+    Kept in studio/.export/zips until fetched once (older ones are cleared). Returns (file, download name)."""
+    import zipfile
+    names = [f for f in files if f and "/" not in f and "\\" not in f and not f.startswith(".") and (PLATES_DIR / f).is_file()]
+    if not names:
+        raise ValueError("No images to download.")
+    folder = EXPORT_DIR / "zips"
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in folder.glob("*.zip"):
+        if time.time() - old.stat().st_mtime > 3600:
+            old.unlink(missing_ok=True)
+    head = re.sub(r"[^A-Za-z0-9]+", "-", f"{PROJECT['name']} {label}").strip("-")[:60] or "Phosphene"
+    name = f"{head}-{len(names)}-images-{time.strftime('%Y%m%d-%H%M%S')}.zip"
+    out = folder / f"{uuid.uuid4().hex}.zip"
+    width = max(3, len(str(len(names))))
+    with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_STORED) as z:
+        for i, f in enumerate(names, 1):
+            z.write(PLATES_DIR / f, f"{name[:-4]}/{i:0{width}d}-{f}")
+    return out, name
+
+
 def export_frames_dir() -> Path:
     """The export's frames, drawn by the page (render.js, WebGL2: the preview's renderer) and sent one by one before it asks for the video."""
     return EXPORT_DIR / "frames"
@@ -934,6 +956,23 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Length", str(len(html_bytes)))
             self.end_headers()
             self.wfile.write(html_bytes)
+            return
+
+        if parsed.path == "/api/download-zip":                                  # a zip made by POST /api/download-zip, fetched once
+            q = parse_qs(parsed.query)
+            zid, name = (q.get("id") or [""])[0], (q.get("name") or ["Phosphene.zip"])[0]
+            f = EXPORT_DIR / "zips" / f"{zid}.zip"
+            if not re.fullmatch(r"[0-9a-f]{32}", zid) or not f.is_file():
+                self.send_json({"ok": False, "error": "That download has expired. Press Download again."}, 404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Length", str(f.stat().st_size))
+            self.send_header("Content-Disposition", f"attachment; filename=\"{re.sub(r'[^A-Za-z0-9._-]', '-', name)}\"")
+            self.end_headers()
+            with f.open("rb") as fh:
+                shutil.copyfileobj(fh, self.wfile, 1 << 20)
+            f.unlink(missing_ok=True)
             return
 
         if parsed.path == "/api/busy":
@@ -1116,6 +1155,15 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 return
             gen_log.record("project", action=action, project=PROJECT["slug"])
             self.send_json({"ok": True, "active": PROJECT["slug"], "project": projects.public(PROJECT), "projects": [projects.public(p) for p in projects.all_projects()]})
+            return
+
+        if parsed.path == "/api/download-zip":
+            try:
+                f, name = build_download_zip([str(x) for x in (body.get("files") or [])][:5000], str(body.get("label") or "All"))
+            except ValueError as e:
+                self.send_json({"ok": False, "error": str(e)}, 400)
+                return
+            self.send_json({"ok": True, "url": f"/api/download-zip?id={f.stem}&name={quote(name)}", "filename": name, "bytes": f.stat().st_size})
             return
 
         if parsed.path == "/api/krea-auth":

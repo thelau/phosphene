@@ -498,7 +498,7 @@
       currentGroup = key;
       try { localStorage.setItem('studioGroup', key); } catch (e) {}
       pickSel = new Set();
-      renderGroups(); renderGrid(); renderFilmstrip(); renderEditBar();
+      renderGroups(); renderGrid(); renderFilmstrip(); renderEditBar(); renderSequences();
       cutPos = 0; clockPos = null; currentIdx = 0;                           // a new film: from its first image
       if (isPlaying && droneLive.playing) droneLive.restart(synthParams(), synthStartsSec());
       musicChanged();
@@ -669,7 +669,27 @@
     let activeSeq = null;
     function renderSequences() {
       document.getElementById('seqBox').hidden = showTrash;
+      const dl = document.getElementById('downloadBtn'), n = activePlates().length;   // the Selection only (All or the group), not the Trash
+      dl.hidden = showTrash; dl.disabled = !n || downloading;
+      dl.title = n ? `Download the ${n} image${n === 1 ? '' : 's'} shown, full size, in their order (a zip)` : 'No images to download';
       document.getElementById('aiBtn').disabled = aiRunning || generating;
+    }
+    // the images shown in Curate (All or the chosen group, in their order), full size, in one zip; the browser saves it
+    let downloading = false;
+    async function downloadShown() {
+      const list = activePlates();
+      if (showTrash || !list.length || downloading) return;
+      downloading = true; renderSequences();
+      setStatus(`Packing ${list.length} images…`);
+      try {
+        const label = currentGroup === 'all' ? 'All' : (groupChips().chips.concat(groupChips().auto).find(c => c.key === currentGroup) || { name: 'Group' }).name;
+        const r = await (await fetch('/api/download-zip', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files: list.map(p => p.filename), label }) })).json();
+        if (!r.ok) throw new Error(r.error || 'the zip was not made');
+        const a = document.createElement('a'); a.href = r.url; a.download = r.filename; document.body.appendChild(a); a.click(); a.remove();
+        setStatus(`Downloading ${r.filename} (${Math.round(r.bytes / 1e6)} MB).`);
+      } catch (e) {
+        setStatus(`Could not download: ${e.message}`);
+      } finally { downloading = false; renderSequences(); }
     }
     async function seqCall(payload) {
       const res = await (await fetch('/api/sequence', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
@@ -2807,6 +2827,7 @@
 
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
+  downloadShown,
   openProjectMenu, switchProject, openProjectForm, closeProjectForm, readProjectMark, drawProjectPreview, saveProject,
   removeChange,
   includeAll,

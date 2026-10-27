@@ -711,3 +711,21 @@ def test_krea_sign_in_over_http_opens_krea_and_the_callback_finishes_it(live, sr
     gone = []
     monkeypatch.setattr(srv, "krea_forget_login", lambda: gone.append(1))
     assert live("POST", "/api/krea-auth", {"action": "logout"})[1]["ok"] and gone
+
+
+def test_download_zip_has_the_images_shown_full_size_in_order_and_is_fetched_once(live, srv):
+    import zipfile
+    _three_plates(live)
+    names = [p["filename"] for p in live("GET", "/api/state")[1]["plates"] if not p["trashed"]]
+    pick = [names[2], names[0], "../curation_state.json", ".hidden", "nope.jpg"]
+    status, res = live("POST", "/api/download-zip", {"files": pick, "label": "Warm · dark"})
+    assert status == 200 and res["ok"] and res["filename"].startswith("Demo-Warm-dark-2-images-") and res["filename"].endswith(".zip")
+    status, data = live("GET", res["url"])
+    assert status == 200
+    z = zipfile.ZipFile(io.BytesIO(data))
+    folder = res["filename"][:-4]
+    assert z.namelist() == [f"{folder}/001-{names[2]}", f"{folder}/002-{names[0]}"], "in the order shown; nothing outside the plates"
+    assert z.read(f"{folder}/001-{names[2]}") == (srv.PLATES_DIR / names[2]).read_bytes(), "the full-size file as it is"
+    assert live("GET", res["url"])[0] == 404, "fetched once"
+    assert live("POST", "/api/download-zip", {"files": ["nope.jpg"]})[0] == 400
+    assert live("GET", "/api/download-zip?id=../../x&name=a.zip")[0] == 404

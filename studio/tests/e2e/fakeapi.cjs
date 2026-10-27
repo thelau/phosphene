@@ -93,6 +93,9 @@ function start(state = makeState()) {
         } else if (body.action === 'update') Object.assign(projectOf(state), { name: body.name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y, brief: body.brief, palette: body.palette });
         return send({ ok: true, active: state.project, project: projectOf(state), projects: state.projects });
       }
+      case '/api/download-zip':
+        if (req.method === 'POST') { state.zipAsked = body; return send({ ok: true, url: '/api/download-zip?id=0123456789abcdef0123456789abcdef&name=x.zip', filename: 'x.zip', bytes: 2e6 }); }
+        res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="x.zip"' }); return res.end('PK');
       case '/api/project-mark':
         res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
         return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="16" fill="none" stroke="#FEFFE7" stroke-width="4"/></svg>');

@@ -560,6 +560,24 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   await ctx.close();
 });
 
+test('Download in Curate: the images shown (All or the group), in their order, as one zip; not in the Trash', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  assert.equal(await page.locator('#downloadBtn').isVisible(), true);
+  assert.match(await page.locator('#downloadBtn').getAttribute('title'), /Download the 3 images shown/);
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#downloadBtn')]);
+  assert.equal(dl.suggestedFilename(), 'x.zip', 'the browser saves it');
+  assert.deepEqual(api.state.zipAsked, { files: ['k1', 'k2', 'k3'], label: 'All' });
+  await page.locator('#groupRow button.chip', { hasText: 'Warm' }).first().click();
+  await page.waitForFunction(() => /Download the 2 images/.test(document.getElementById('downloadBtn').title));
+  await Promise.all([page.waitForEvent('download'), page.click('#downloadBtn')]);
+  assert.deepEqual(api.state.zipAsked, { files: ['k2', 'k3'], label: 'Warm' }, 'just the group, named after it');
+  await page.click('#tabTrash');
+  await page.waitForSelector('#trashBar:not([hidden])');
+  assert.equal(await page.locator('#downloadBtn').isVisible(), false, 'not in the Trash');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('the film strip: one thumbnail per image in order, click jumps there; no key trashes from the Film', { skip }, async () => {
   const ctx = await fresh();
   await film();
