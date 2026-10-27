@@ -588,6 +588,23 @@ test('Download in Curate: the images shown (All or the group), in their order, a
   await ctx.close();
 });
 
+test('first run with no project: the welcome screen offers New project and Open a project file; the menu has no settings or export yet', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945, empty: true, setup: st => { st.project = null; st.plates = []; } });
+  assert.equal(await page.locator('#firstRun').isVisible(), true);
+  assert.equal(await text('#projectName'), 'No project');
+  assert.deepEqual(await page.locator('#firstRun .fr-main b').allTextContents(), ['New project', 'Open a project file']);
+  await page.click('#projectBtn');
+  await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');
+  assert.deepEqual(await page.locator('#projectMenu .gm-item').allTextContents(), ['Demo', 'New project…', 'Import project…']);
+  await page.keyboard.press('Escape'); await page.mouse.click(700, 500);
+  await page.locator('#firstRun .fr-main', { hasText: 'New project' }).click();
+  assert.equal(await page.locator('#projectModal').isVisible(), true, 'the form opens over it');
+  assert.equal(await text('#projectTitle'), 'New project');
+  await shot('33-first-run');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('the film strip: one thumbnail per image in order, click jumps there; no key trashes from the Film', { skip }, async () => {
   const ctx = await fresh();
   await film();

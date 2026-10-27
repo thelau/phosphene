@@ -6,6 +6,7 @@
 // Development (`npm run app`): the window opens the live page of `npm run dev` (Vite), which refreshes on every change.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -16,6 +17,21 @@ use tauri::webview::DownloadEvent;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 struct Server(Mutex<Option<Child>>);
+// the server's port once it answers (0 before), and .phosphene files opened before that (a double-click that launched the app)
+struct Opened { port: Mutex<u16>, waiting: Mutex<Vec<String>> }
+
+// a project file double-clicked in Finder: the server imports it from where it is, then the page reloads on it
+fn import_file(port: u16, path: &str, win: &tauri::WebviewWindow) {
+    let body = serde_json::json!({ "path": path }).to_string();
+    let ok = TcpStream::connect(("127.0.0.1", port)).and_then(|mut s| {
+        write!(s, "POST /api/project-import-path HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)?;
+        let mut answer = String::new();
+        s.read_to_string(&mut answer)?;
+        Ok(answer.contains("\"ok\": true"))
+    }).unwrap_or(false);
+    let js = if ok { "location.reload()".to_string() } else { format!("window.setStatus && setStatus({})", serde_json::json!(format!("Could not open {}: is it a Phosphene project file?", path))) };
+    let _ = win.eval(&js);
+}
 
 fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map(|a| a.port()).unwrap_or(8765)
@@ -46,7 +62,6 @@ fn start_server(app: &tauri::App, port: u16) -> std::io::Result<Child> {
         .env("PHOSPHENE_SUPPORT", &support)
         .env("PHOSPHENE_WEB", res.join("web"))
         .env("PHOSPHENE_FFMPEG", res.join("bin").join("ffmpeg"))
-        .env("PHOSPHENE_EXAMPLES", res.join("examples"))
         .stdout(Stdio::from(log.try_clone()?))
         .stderr(Stdio::from(log))
         .spawn()
@@ -64,9 +79,11 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Server(Mutex::new(None)))
+        .manage(Opened { port: Mutex::new(0), waiting: Mutex::new(Vec::new()) })
         .setup(|app| {
             let dev = cfg!(debug_assertions);
             let port = if dev { 0 } else { free_port() };
+            if dev { *app.state::<Opened>().port.lock().unwrap() = 8765; }      // npm run app:live: the dev server
             let downloads = app.path().download_dir().unwrap_or_else(|_| PathBuf::from("."));
             let first = if dev { WebviewUrl::External("http://localhost:5173".parse().unwrap()) } else { WebviewUrl::App("index.html".into()) };
             let win = WebviewWindowBuilder::new(app, "main", first)
@@ -91,6 +108,10 @@ fn main() {
                     let t0 = Instant::now();
                     loop {
                         if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                            let opened = handle.state::<Opened>();
+                            *opened.port.lock().unwrap() = port;
+                            let waiting: Vec<String> = opened.waiting.lock().unwrap().drain(..).collect();
+                            for path in &waiting { import_file(port, path, &win); }
                             let _ = win.navigate(format!("http://localhost:{port}/").parse().unwrap());
                             return;
                         }
@@ -108,6 +129,20 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("Phosphene could not start");
     app.run(|handle, event| {
+        #[cfg(target_os = "macos")]
+        if let RunEvent::Opened { urls } = &event {
+            let opened = handle.state::<Opened>();
+            let port = *opened.port.lock().unwrap();
+            for u in urls {
+                if let Ok(path) = u.to_file_path() {
+                    let path = path.to_string_lossy().to_string();
+                    match (port, handle.get_webview_window("main")) {
+                        (p, Some(win)) if p > 0 => import_file(p, &path, &win),
+                        _ => opened.waiting.lock().unwrap().push(path),   // the server is still starting: imported when it answers
+                    }
+                }
+            }
+        }
         if let RunEvent::Exit = event {
             if let Some(mut child) = handle.state::<Server>().0.lock().unwrap().take() {
                 let _ = child.kill();                         // the server goes with the app

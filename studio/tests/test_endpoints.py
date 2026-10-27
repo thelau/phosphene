@@ -737,7 +737,7 @@ def test_project_export_and_import_over_http_and_kimi_reads_a_mark(live, srv, mo
     from test_projects import star_png
     _three_plates(live)
     status, res = live("POST", "/api/project-export", {})
-    assert status == 200 and res["filename"] == "Demo-project.zip"
+    assert status == 200 and res["filename"] == "Demo.phosphene"
     status, data = live("GET", res["url"])
     assert status == 200 and data[:2] == b"PK"
     status, imp = live("POST", "/api/project-import", raw=data)
@@ -751,3 +751,23 @@ def test_project_export_and_import_over_http_and_kimi_reads_a_mark(live, srv, mo
     assert status == 200 and d["shape"] == "angular arrow mark" and d["noun"] == "arrow" and d["suggested"] == ["#123456"]
     assert d["colours"] == ["#F03C14"] and calls and calls[0][0][:2] == b"\xff\xd8", "its own colour, and Kimi saw it as an image"
     assert live("POST", "/api/describe-mark", {"mark": "data:image/png;base64,AAAA"})[0] == 400
+
+
+def test_with_no_project_the_server_runs_says_so_and_a_double_clicked_file_opens(live, srv, tmp_path):
+    """A new user (the Mac app with an empty Documents/Phosphene): no project, an empty library, the page shows its first screen;
+    what needs a project says so; a .phosphene file opened from Finder becomes the project."""
+    _three_plates(live)
+    status, res = live("POST", "/api/project-export", {})
+    data = live("GET", res["url"])[1]
+    f = tmp_path / "Demo.phosphene"; f.write_bytes(data)
+    srv.apply_no_project()
+    _, state = live("GET", "/api/state")
+    assert state["project"] is None and state["plates"] == [], "no project: the first screen"
+    assert live("GET", "/api/projects")[1]["active"] is None
+    status, r = live("POST", "/api/generate-image", {"title": "x", "prompt": "p", "model": "m"})
+    assert status == 409 and r["no_project"], "nothing that needs a project runs without one"
+    assert live("POST", "/api/project-import-path", {"path": str(tmp_path / "nope.txt")})[0] == 400
+    status, r = live("POST", "/api/project-import-path", {"path": str(f)})
+    assert status == 200 and r["project"]["name"] == "Demo"
+    assert len(live("GET", "/api/state")[1]["plates"]) == 3, "with its images"
+

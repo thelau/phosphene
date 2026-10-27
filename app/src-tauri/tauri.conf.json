@@ -31,13 +31,23 @@
     "resources": {
       "../build/resources/server/": "server/",
       "../build/resources/web/": "web/",
-      "../build/resources/bin/": "bin/",
-      "../build/resources/examples/": "examples/"
+      "../build/resources/bin/": "bin/"
     },
     "macOS": {
       "minimumSystemVersion": "13.0"
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "fileAssociations": [
+      {
+        "ext": [
+          "phosphene"
+        ],
+        "name": "Phosphene Project",
+        "description": "A Phosphene project: its mark, settings, images, groups and snapshots",
+        "role": "Editor",
+        "mimeType": "application/x-phosphene"
+      }
+    ]
   },
   "plugins": {
     "updater": {

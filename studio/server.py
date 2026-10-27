@@ -110,8 +110,20 @@ def apply_project(p: dict) -> None:
         qa_engine.LOGO_CREAM_PATH = p["mark_file"]
 
 
+def apply_no_project() -> None:
+    """No project yet (a new user, or every project moved away): an empty library in the support folder, so the page can show its
+    first screen (New project, Import project) and everything that needs a project says so (NEEDS_PROJECT)."""
+    global PROJECT, PLATES_DIR, CURATION_FILE, QA_CACHE_FILE, QA_CACHE, THUMBS_DIR
+    base = places.SUPPORT_DIR / ".no-project"
+    PROJECT, PLATES_DIR, CURATION_FILE, QA_CACHE_FILE, QA_CACHE, THUMBS_DIR = None, base / "plates", base / "state.json", base / ".qa_cache.json", {}, base / ".thumbs"
+    PLATES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+NEEDS_PROJECT = {"/api/generate-image", "/api/invent-prompts", "/api/order-ai", "/api/export-video", "/api/download-zip", "/api/reorder", "/api/trash", "/api/purge", "/api/groups", "/api/edits", "/api/sequence"}
+
+
 def is_demo() -> bool:
-    return PROJECT.get("qa") == "demo-tuned"
+    return bool(PROJECT) and PROJECT.get("qa") == "demo-tuned"
 
 
 def current_mark():
@@ -829,7 +841,7 @@ def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "
     fx = ("-invert" if invert_mode in ("mono", "colour") else "") + (f"-zoom{zoom_mode}" if zoom_mode != "off" else "")
     fx += "-music" if music == "synth" else ""
     pace = f"var{int(round(variable[0]))}to{int(round(variable[1]))}ms" if variable else f"{int(round(bpm))}bpm-x{mult}"
-    head = re.sub(r"[^A-Za-z0-9]+", "-", edit or PROJECT["name"]).strip("-")[:40] or "Phosphene"   # the edit, else the project
+    head = re.sub(r"[^A-Za-z0-9]+", "-", edit or (PROJECT or {}).get("name", "")).strip("-")[:40] or "Phosphene"   # the edit, else the project
     return f"{head}-{pace}{fx}-{time.strftime('%Y%m%d-%H%M%S', time.localtime(ts))}.mp4"
 
 
@@ -949,7 +961,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/api/projects":
-            self.send_json({"ok": True, "active": PROJECT["slug"], "projects": [projects.public(p) for p in projects.all_projects()]})
+            self.send_json({"ok": True, "active": PROJECT["slug"] if PROJECT else None, "projects": [projects.public(p) for p in projects.all_projects()]})
             return
 
         if parsed.path in ("/api/plate", "/api/project-mark"):                 # a full-size plate of this project, or a project's mark
@@ -959,7 +971,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     name = (q.get("f") or [""])[0]
                     f = PLATES_DIR / name if name and "/" not in name and "\\" not in name and not name.startswith(".") else None
                 else:
-                    f = projects.load((q.get("p") or [PROJECT["slug"]])[0])["mark_file"]
+                    f = projects.load((q.get("p") or [PROJECT["slug"] if PROJECT else ""])[0])["mark_file"]
             except Exception:
                 f = None
             if f is None or not f.is_file():
@@ -1068,7 +1080,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             kimi_key = st.get("kimi_api_key", "")
             self.send_json({
                 "state_sig": sig,
-                "project": projects.public(PROJECT),
+                "project": projects.public(PROJECT) if PROJECT else None,     # None: no project yet, the page shows its first screen
                 "plates": plates,
                 "krea_connected": bool(auth.get("connected") and not auth.get("expired")),
                 "kimi_configured": bool(kimi_key),
@@ -1176,6 +1188,27 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "active": PROJECT["slug"], "project": projects.public(PROJECT), "projects": [projects.public(x) for x in projects.all_projects()]})
             return
         body = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
+        if PROJECT is None and parsed.path in NEEDS_PROJECT:
+            self.send_json({"ok": False, "no_project": True, "error": "Make a project or import one first (the project menu, top left)."}, 409)
+            return
+        if parsed.path == "/api/project-import-path":
+            # the Mac app: a .phosphene file double-clicked in Finder (or dropped on the Dock icon), imported from where it is
+            f = Path(str(body.get("path") or ""))
+            if f.suffix.lower() not in (".phosphene", ".zip") or not f.is_file():
+                self.send_json({"ok": False, "error": "That is not a project file."}, 400)
+                return
+            if busy():
+                self.send_json({"ok": False, "busy": True, "error": "Something is running. Wait until it ends, then open the file again."}, 409)
+                return
+            try:
+                p = projects.import_zip(f)
+                apply_project(projects.set_active(p["slug"]))
+            except ValueError as e:
+                self.send_json({"ok": False, "error": str(e)}, 400)
+                return
+            gen_log.record("project", action="import", project=PROJECT["slug"], file=f.name)
+            self.send_json({"ok": True, "active": PROJECT["slug"], "project": projects.public(PROJECT)})
+            return
         if parsed.path in LOCKED_DURING_AI and ai_busy():
             self.send_json({"ok": False, "busy": True, "error": "The AI is ordering your selection. Wait until it finishes."}, 409)
             return
@@ -1191,7 +1224,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 except Exception:
                     self.send_json({"ok": False, "error": "The mark did not arrive as an image."}, 400)
                     return
-            touches_active = action in ("switch", "create") or (action == "update" and body.get("slug") == PROJECT["slug"])
+            touches_active = action in ("switch", "create") or (action == "update" and PROJECT and body.get("slug") == PROJECT["slug"])
             if touches_active and busy():
                 self.send_json({"ok": False, "busy": True, "error": "Something is running (images, an AI order or an export). Wait until it ends."}, 409)
                 return
@@ -1203,7 +1236,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     apply_project(projects.set_active(p["slug"]))
                 elif action == "update":
                     p = projects.update(str(body.get("slug") or ""), body, mark)
-                    if p["slug"] == PROJECT["slug"]:
+                    if PROJECT and p["slug"] == PROJECT["slug"]:
                         apply_project(p)
                 else:
                     self.send_json({"ok": False, "error": "Unknown action."}, 400)
@@ -1214,8 +1247,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
             except ValueError as e:
                 self.send_json({"ok": False, "error": str(e)}, 400)
                 return
-            gen_log.record("project", action=action, project=PROJECT["slug"])
-            self.send_json({"ok": True, "active": PROJECT["slug"], "project": projects.public(PROJECT), "projects": [projects.public(p) for p in projects.all_projects()]})
+            gen_log.record("project", action=action, project=PROJECT["slug"] if PROJECT else None)
+            self.send_json({"ok": True, "active": PROJECT["slug"] if PROJECT else None, "project": projects.public(PROJECT) if PROJECT else None, "projects": [projects.public(p) for p in projects.all_projects()]})
             return
 
         if parsed.path == "/api/download-zip":
@@ -1232,6 +1265,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
             try:
                 (EXPORT_DIR / "zips").mkdir(parents=True, exist_ok=True)
                 out = EXPORT_DIR / "zips" / f"{uuid.uuid4().hex}.zip"
+                if not (body.get("slug") or PROJECT):
+                    raise FileNotFoundError("none")
                 name = projects.export_zip(str(body.get("slug") or PROJECT["slug"]), out)
             except FileNotFoundError:
                 self.send_json({"ok": False, "error": "There is no such project."}, 404)
@@ -1619,9 +1654,10 @@ class QuietServer(ThreadingHTTPServer):
 if __name__ == "__main__":
     if os.environ.get("PHOSPHENE_EXAMPLES"):                                 # the Mac app's first launch: Demo, the sample, copied in once
         projects.seed_examples(Path(os.environ["PHOSPHENE_EXAMPLES"]))
-    if not projects.active_slug():
-        sys.exit(f"No project in {projects.PROJECTS_DIR}. Import one, or put Demo's folder back.")
-    apply_project(projects.load(projects.active_slug()))                     # the project open last time on this machine
+    if projects.active_slug():
+        apply_project(projects.load(projects.active_slug()))                 # the project open last time on this machine
+    else:
+        apply_no_project()                                                   # a new user: the page shows its first screen
     if places.APP:                                                           # the Mac app quit (even forced): the server goes too
         parent = os.getppid()
         def watch_app():
@@ -1631,7 +1667,7 @@ if __name__ == "__main__":
         threading.Thread(target=watch_app, daemon=True).start()
     port = int(os.environ.get("PORT", "8765"))
     server = QuietServer(("127.0.0.1", port), StudioHandler)
-    print(f"Studio running at http://localhost:{port} · project: {PROJECT['name']}")
+    print(f"Studio running at http://localhost:{port} · project: {PROJECT['name'] if PROJECT else 'none yet'}")
     gen_log.record("server_start", boot=BOOT_ID, port=port)
     try:
         server.serve_forever()

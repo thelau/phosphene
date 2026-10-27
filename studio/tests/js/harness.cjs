@@ -21,6 +21,7 @@ class El {
   getAttribute(n) { return this[n] ?? null; }
   setAttribute(n, v) { this[n] = v; }
   toggleAttribute(n, on) { if (on) this[n] = ""; else delete this[n]; return !!on; }
+  removeAttribute(n) { delete this[n]; }
   querySelectorAll() { return []; }
   querySelector() { return null; }
   appendChild(c) { (this.options ||= []).push(c); return c; }

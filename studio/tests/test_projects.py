@@ -134,7 +134,7 @@ def test_export_then_import_brings_the_project_back_as_it_was_and_never_carries_
     p["state_file"].write_text(json.dumps(state))
     (p["plates_dir"].parent / ".qa_cache.json").write_text("{}")
     out = tmp_path / "x.zip"
-    assert projects.export_zip("night-owl", out) == "Night-Owl-project.zip"
+    assert projects.export_zip("night-owl", out) == "Night Owl.phosphene"
     names = zipfile.ZipFile(out).namelist()
     assert sorted(names) == sorted(["night-owl/project.json", "night-owl/state.json", "night-owl/mark.png", "night-owl/guide_dark.png", "night-owl/guide_light.png",
                                     "night-owl/plates/00_shot.jpg", "night-owl/plates/01_shot.jpg", "night-owl/plates/02_shot.jpg"]), "everything it is, no caches"
@@ -146,7 +146,14 @@ def test_export_then_import_brings_the_project_back_as_it_was_and_never_carries_
     assert sorted(f.name for f in q["plates_dir"].iterdir()) == ["00_shot.jpg", "01_shot.jpg", "02_shot.jpg"]
     demo_out = tmp_path / "demo.zip"
     projects.export_zip("demo", demo_out)
-    assert "Demo/mark.png" in zipfile.ZipFile(demo_out).namelist() and "paths" not in json.loads(zipfile.ZipFile(demo_out).read("Demo/project.json")), "DEMO travels with its files inside"
+    raw = json.loads(zipfile.ZipFile(demo_out).read("Demo/project.json"))
+    assert "Demo/mark.png" in zipfile.ZipFile(demo_out).namelist() and "paths" not in raw and raw["format"] == 1, "DEMO travels with its files inside, and says its format"
+    newer = tmp_path / "newer.phosphene"
+    with zipfile.ZipFile(out) as src, zipfile.ZipFile(newer, "w") as dst:
+        for n in src.namelist():
+            dst.writestr(n, json.dumps({**json.loads(src.read(n)), "format": 99}) if n.endswith("project.json") else src.read(n))
+    with pytest.raises(ValueError, match="newer Phosphene"):
+        projects.import_zip(newer)
 
 
 def test_import_refuses_what_is_not_a_project_and_takes_nothing_outside_its_folder(pdir, tmp_path):

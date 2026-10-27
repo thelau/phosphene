@@ -91,6 +91,7 @@
       if (call !== stateCalls) return;                                       // a newer request is on its way: an older answer must not win
       const lengthBefore = activePlates().length;
       if (data.project) showProject(data.project);
+      showFirstRun(data);
       plates = data.plates || [];
       sequences = data.sequences || [];
       groups = data.groups || [];
@@ -231,6 +232,14 @@
     }
     // ---- projects: one per brand mark (projects.py); the server works on one at a time, switching reloads the page ----
     let project = null, projectForm = null;
+    // no project yet (a new user): the first screen; the header says so; the menu still offers New project and Import
+    function showFirstRun(data) {
+      const none = !data.project;
+      document.getElementById('firstRun').hidden = !none;
+      document.getElementById('frKrea').classList.toggle('done', !!data.krea_connected);
+      document.getElementById('frKimi').classList.toggle('done', !!data.kimi_configured);
+      if (none) { project = null; document.getElementById('projectName').textContent = 'No project'; document.getElementById('projectMark').removeAttribute('src'); }
+    }
     function showProject(p) {
       project = p;
       const img = document.getElementById('projectMark');
@@ -252,9 +261,9 @@
       try { list = (await (await fetch('/api/projects')).json()).projects || []; } catch (err) { list = project ? [project] : []; }
       m.innerHTML = list.map(x => `<button type="button" class="gm-item${project && x.slug === project.slug ? ' on' : ''}" data-slug="${escapeHtml(x.slug)}" onclick="switchProject(this.dataset.slug)"><img src="${escapeHtml(x.mark_url)}" alt="" />${escapeHtml(x.name)}</button>`).join('')
         + '<hr><button type="button" class="gm-item" onclick="openProjectForm(\'new\')">New project…</button>'
-        + '<button type="button" class="gm-item" onclick="openProjectForm(\'edit\')">Project settings…</button>'
-        + '<hr><button type="button" class="gm-item" onclick="exportProject()" title="This project as one file: its mark, settings, images, groups and snapshots, to send or keep">Export project…</button>'
-        + '<button type="button" class="gm-item" onclick="closeProjectMenu(); document.getElementById(\'pfImport\').click()" title="Open a project file someone exported: it comes in as a new project">Import project…</button>';
+        + (project ? '<button type="button" class="gm-item" onclick="openProjectForm(\'edit\')">Project settings…</button>' : '')
+        + '<hr>' + (project ? '<button type="button" class="gm-item" onclick="exportProject()" title="This project as one file (.phosphene): its mark, settings, images, groups and snapshots, to send or keep">Export project…</button>' : '')
+        + '<button type="button" class="gm-item" onclick="closeProjectMenu(); document.getElementById(\'pfImport\').click()" title="Open a .phosphene file someone exported: it comes in as a new project">Import project…</button>';
       const a = btn.getBoundingClientRect();
       m.hidden = false; btn.setAttribute('aria-expanded', 'true');
       m.style.top = `${a.bottom + 6}px`; m.style.left = `${Math.max(8, a.left)}px`;
@@ -367,7 +376,7 @@
         const r = await (await fetch('/api/project-export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug: project && project.slug }) })).json();
         if (!r.ok) throw new Error(r.error || 'it was not made');
         const a = document.createElement('a'); a.href = r.url; a.download = r.filename; document.body.appendChild(a); a.click(); a.remove();
-        setStatus(`Downloading ${r.filename} (${Math.round(r.bytes / 1e6)} MB): send it, and Import project opens it as it is.`);
+        setStatus(`Downloading ${r.filename} (${Math.round(r.bytes / 1e6)} MB): send it; a double-click (or Import project) opens it as it is.`);
       } catch (e) { setStatus(`Could not export the project: ${e.message}`); }
     }
     async function importProject(file) {
