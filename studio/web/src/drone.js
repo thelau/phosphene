@@ -764,12 +764,14 @@
   // Cheap by design: notes and hits are scheduled a short way ahead (not for the whole clip), settings changes are coalesced into one swap
   // every ~120 ms however fast a slider moves, and the exact loudness is worked out in the background (the old level carries on meanwhile).
   class Live {
-    constructor() { this.ctx = null; this.inst = null; this.params = null; this.starts = null; this.t0 = 0; this.total = 0; this.timer = null; this.playing = false; this.holding = 0; this.cal = 1; this.pending = null; this.swapAt = 0; this.calTimer = null; this.ticker = null; this.rooms = new Map(); this.buildMs = 20; this.master = null; }
+    constructor() { this.ctx = null; this.inst = null; this.params = null; this.starts = null; this.t0 = 0; this.total = 0; this.timer = null; this.playing = false; this.holding = 0; this.cal = 1; this.pending = null; this.swapAt = 0; this.calTimer = null; this.ticker = null; this.rooms = new Map(); this.buildMs = 20; this.master = null;
+      this.renewOnReturn = typeof navigator !== 'undefined' && /Apple/.test(navigator.vendor || '');   // WebKit (the Mac app, Safari) only: Chrome keeps its sound
+    }
     get playingNow() { return this.playing; }
     // where the sound is in the clip. Just after a start, a restart or a seek the new sound has not begun yet (it starts a build's time
     // ahead): that moment is the start position, not a negative one that would wrap to the end of the clip (the last frame flashed)
     pos() {
-      if (!this.playing || this.holding) return 0;
+      if (!this.playing || this.holding || !this.ctx) return 0;
       const p = Math.max(this.ctx.currentTime - this.t0, this.startOffset || 0);
       return ((p % this.total) + this.total) % this.total;
     }
@@ -780,19 +782,33 @@
         // WebKit (Safari, the Mac app) can stop a page's sound by itself ('interrupted' or 'suspended': another app's sound, an output
         // change, sleep) and never starts it again: the sound went silent while the picture played on. Asked back at once, and at
         // the next click or key (WebKit may want one), then put back where the picture is (onRevived)
-        this.ctx.onstatechange = () => { if (this.playing && this.ctx.state !== 'running' && this.ctx.state !== 'closed') this._revive(); };
-        if (typeof document !== 'undefined') {
+        this.ctx.onstatechange = () => { if (this.ctx && this.playing && this.ctx.state !== 'running' && this.ctx.state !== 'closed') this._revive(); };
+        if (typeof document !== 'undefined' && !this.listening) {
+          this.listening = true;
           const again = () => { if (this.playing && this.ctx && this.ctx.state !== 'running' && this.ctx.state !== 'closed') this._revive(); };
-          document.addEventListener('visibilitychange', again);
-          window.addEventListener('focus', again);
           document.addEventListener('pointerdown', again, true);
           document.addEventListener('keydown', again, true);
+          // In the Mac app the sound could go silent once the window had been in the background (another app in front) while the
+          // context still said 'running', so nothing above saw it. Back in front while playing: a new context, from where the picture is.
+          const away = () => { if (this.playing) this.wasAway = true; };
+          const back = () => { if (this.wasAway && this.playing && this.renewOnReturn && (document.visibilityState !== 'hidden')) { this.wasAway = false; this.renew(); } };
+          window.addEventListener('blur', away);
+          document.addEventListener('visibilitychange', () => (document.visibilityState === 'hidden' ? away() : back()));
+          window.addEventListener('focus', back);
         }
       }
       return this.ctx;
     }
+    // a fresh context and sound (the old one closed): the page plays it again from where the picture is (onRenew)
+    renew() {
+      const old = this.ctx;
+      this.stop();
+      this.ctx = null; this.master = null; this.inst = null; this.rooms = new Map();   // the rooms belong to the old context
+      if (old && old.close) old.close().catch(() => {});
+      if (this.onRenew) this.onRenew();
+    }
     async _revive() {
-      if (this.reviving) return;
+      if (this.reviving || !this.ctx) return;
       this.reviving = true;
       try { await this.ctx.resume(); } catch (e) {}
       this.reviving = false;

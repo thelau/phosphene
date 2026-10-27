@@ -563,3 +563,27 @@ test('the system stops the sound while it plays (WebKit does: another app, an ou
   assert.ok(r.revived >= 1, 'and the page is told, to put it back where the picture is');
   await ctx.close();
 });
+
+test('back to the window after another app was in front while playing: a fresh sound from where the picture is (the Mac app went silent, still "running")', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(async ({ BASE }) => {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const L = new window.Drone.Live(), starts = Array.from({ length: 200 }, (_, i) => i / 3);
+    L.renewOnReturn = true;                                                       // on in WebKit by itself (the test runs in Chromium too)
+    let renewed = 0; L.onRenew = () => { renewed++; L.play(BASE, starts, 4); };
+    await L.play(BASE, starts, 0);
+    await sleep(200);
+    const first = L.ctx;
+    window.dispatchEvent(new Event('blur')); await sleep(50); window.dispatchEvent(new Event('focus'));
+    for (let i = 0; i < 60 && !(L.playing && L.ctx && L.ctx !== first && L.ctx.state === 'running'); i++) await sleep(25);
+    const out = { renewed, fresh: L.ctx !== first, oldClosed: first.state, state: L.ctx && L.ctx.state, playing: L.playing, pos: L.pos() };
+    window.dispatchEvent(new Event('focus'));                                       // focus without having been away: nothing
+    await sleep(100); out.renewedAgain = renewed;
+    L.stop();
+    return out;
+  }, { BASE });
+  assert.equal(r.renewed, 1); assert.ok(r.fresh, 'a new context'); assert.equal(r.oldClosed, 'closed', 'the old one closed');
+  assert.equal(r.state, 'running'); assert.ok(r.playing && r.pos >= 3.9, `playing again from the picture's place (${r.pos})`);
+  assert.equal(r.renewedAgain, 1, 'only after being away');
+  await ctx.close();
+});
