@@ -2621,9 +2621,8 @@
     }
     // first run (or a missing sign-in): what is still needed before images can be made; hidden by hand once everything is there
     function showWelcome(data) {
-      const done = { wlKrea: !!data.krea_connected, wlKimi: !!data.kimi_configured, wlProject: false };
+      const done = { wlKrea: !!data.krea_connected, wlKimi: !!data.kimi_configured };
       for (const [id, ok] of Object.entries(done)) document.getElementById(id).classList.toggle('done', ok);
-      if (data.project) document.getElementById('wlProjectName').textContent = data.project.name;
       let dismissed = false;
       try { dismissed = localStorage.getItem('studioWelcome') === 'done'; } catch (e) {}
       const ready = done.wlKrea && done.wlKimi;
