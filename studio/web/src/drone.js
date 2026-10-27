@@ -271,7 +271,7 @@
     const prog = PROGRESSIONS[pick(p.prog, PROGRESSIONS.length)], progEvery = PROG_EVERY[pick(p.progEvery, PROG_EVERY.length)];
     const progSeq = !prog ? [0] : prog.steps || (() => { const r = mulberry32(seedN + 31), out = [0]; for (let k = 1; k < 8; k++) out.push(prog.walk[1 + Math.floor(r() * (prog.walk.length - 1))]); return out; })();
     const degreeAt = i => progSeq[Math.floor(i / progEvery) % progSeq.length];   // the chord at music cut i, in semitones from the root
-    const padAmt = clamp01(p.pad || 0), tape = clamp01(p.tape || 0), riseAmt = clamp01(p.rise || 0), stutterAmt = clamp01(p.stutter || 0);
+    const padAmt = clamp01(p.pad || 0), tape = clamp01(p.tape || 0), stutterAmt = clamp01(p.stutter || 0);
     const bassAmt = clamp01(p.bass || 0), bassPat = BASS_PATTERNS[pick(p.bassPattern, BASS_PATTERNS.length)], bassPer = BASS_PER_CUT[pick(p.bassRate, BASS_PER_CUT.length)];
     const arrange = pick(p.arrange, ARRANGEMENTS.length);
     const subWave = Math.max(0, Math.min(SUB_WAVES.length - 1, Math.round(+p.subWave || 0)));
@@ -681,37 +681,6 @@
         }
       }
     }
-    // rise and fall: a filtered noise swell into one moment, a deep impact there, then the noise turns over and falls with the slowing cuts. The moment comes from the film: where a landing
-    // begins or a build-up peaks (Variable), else every 16 music cuts
-    if (riseAmt > 0.01 && nCuts > 4) {
-      const lens = starts.slice(1).map((v, i) => v - starts[i]), whole = lens.length > 2 ? lens.slice(0, -1) : lens;
-      const lo = Math.min(...whole), hi = Math.max(...whole), drops = [];
-      if (hi > lo * 1.3) {
-        const landing = whole[0] < whole[whole.length - 1];
-        const c = whole.findIndex(l => (landing ? l > whole[0] * 1.15 : l <= lo * 1.1));
-        if (c > 0) drops.push(c);
-      } else for (let c = 16; c < nCuts - 1; c += 16) drops.push(c);
-      const noise = voiceNoise(1, 'bandpass', 400, 1.2, null), f = noise.__filter;
-      noise.connect(mix[0]); noise.connect(mix[1]); for (const sd of sends) noise.connect(gain(0.4, sd));
-      const boomO = osc('sine', f0 * 2), boomG = gain(0); boomO.connect(boomG); boomG.connect(mix[0]); boomG.connect(mix[1]);
-      let prev = 0;
-      for (const c of drops) {
-        const dropT = starts[c], riseFrom = Math.max(prev + 0.3, dropT - Math.min(2.5, Math.max(0.6, (dropT - prev) * 0.5)));
-        prev = dropT;
-        if (dropT <= offset) continue;
-        const go = () => {
-          const rs = Math.max(riseFrom, offset), d = at(dropT);
-          // up into the moment, then it turns over and falls as the cuts slow: one gesture with the film, never a hard stop
-          const fall = Math.min(2, Math.max(0.8, (total - dropT) * 0.5));
-          noise.gain.setValueAtTime(0, at(rs)); noise.gain.linearRampToValueAtTime(0.6 * riseAmt, d); noise.gain.setTargetAtTime(0, d, fall / 3);
-          f.frequency.setValueAtTime(350 * Math.pow(4500 / 350, (rs - riseFrom) / (dropT - riseFrom)), at(rs)); f.frequency.exponentialRampToValueAtTime(4500, d);
-          f.frequency.exponentialRampToValueAtTime(300, d + fall);
-          boomO.frequency.setValueAtTime(f0 * 3, d); boomO.frequency.setTargetAtTime(f0, d, 0.08); strike(boomG, d, 1.8 * riseAmt, 1.4);
-        };
-        const rc = cutAtTime(starts, riseFrom);
-        if (rc >= cursor) perCut.push(i => { if (i === rc) go(); }); else go();   // scheduled as the rise begins (live), or now if it already has
-      }
-    }
     // chord changes: one control signal (cents) into the bed's oscillators' detune, so it adds to whatever else moves the pitch;
     // a short glide at each change, as a modular's portamento
     if (prog) {
@@ -735,7 +704,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   const cutSignature = starts => { const head = []; for (const t of starts) { head.push(Math.round(t * 1000)); if (t > 4) break; } return head.join(','); };   // the cuts of the window the level is measured on: faster cuts pump differently
-  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.tape, p.rise, p.stutter]);
+  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.tape, p.stutter]);
   async function level(p, starts) {
     starts = cleanStarts(starts);
     const key = levelKey(p, starts);
