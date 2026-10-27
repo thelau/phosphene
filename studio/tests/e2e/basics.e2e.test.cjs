@@ -509,8 +509,18 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   await page.waitForSelector('#projectMenu:not([hidden])');
   assert.deepEqual(await page.locator('#projectMenu .gm-item').allTextContents(), ['Demo', 'New project…', 'Project settings…']);
   assert.equal(await page.locator('#projectMenu .gm-item.on').textContent(), 'Demo');
-  assert.equal(await page.locator('#projectMenu .gm-item', { hasText: 'Project settings' }).isDisabled(), true, 'DEMO keeps its mark, size and place');
+  await page.locator('#projectMenu .gm-item', { hasText: 'Project settings' }).click();       // DEMO: name, brand and colours; its mark, place and words locked
+  assert.equal(await page.locator('#projectModal').isVisible(), true);
+  for (const id of ['#pfMark', '#pfSize', '#pfX', '#pfY', '#pfShape', '#pfNoun']) assert.equal(await page.locator(id).isDisabled(), true, id);
+  assert.equal(await page.locator('#pfName').isDisabled(), false);
+  assert.equal(await page.locator('#pfLocked').isVisible(), true);
+  await page.fill('#pfBrief', 'Demo, a toolkit');
+  await page.click('#pfSave');
+  await page.waitForSelector('#loader', { state: 'detached' });
+  assert.deepEqual(Object.keys(api.state.calls.filter(c => c.path === '/api/projects').pop().body).sort(), ['action', 'brief', 'name', 'palette', 'slug'], 'only what DEMO lets change');
+  await page.click('#projectBtn');
   await page.locator('#projectMenu .gm-item', { hasText: 'New project' }).click();
+  for (const id of ['#pfMark', '#pfSize', '#pfShape']) assert.equal(await page.locator(id).isDisabled(), false, `a new project sets ${id}`);
   assert.equal(await page.locator('#projectModal').isVisible(), true);
   await page.fill('#pfName', 'Night Owl');
   await page.click('#pfSave');

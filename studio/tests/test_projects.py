@@ -79,6 +79,9 @@ def test_changing_the_size_remakes_the_guides_and_forgets_krea_copies_cos_keeps_
     assert projects.update("owl", {"mark_size": 999})["mark_size"] == 60, "kept inside what makes sense"
     with pytest.raises(ValueError):
         projects.update("demo", {}, star_png())
+    demo = projects.update("demo", {"name": "DEMO", "brief": "Demo, a toolkit", "mark_size": 30, "mark_shape": "square", "palette": ["#111111"]})
+    assert (demo["name"], demo["brief"], demo["palette"]) == ("DEMO", "Demo, a toolkit", ["#111111"])
+    assert (demo["mark_size"], demo["mark_shape"]) == (18, "circular orbital logo"), "DEMO keeps its size and the words of its prompt sentence"
     with pytest.raises(FileNotFoundError):
         projects.load("../etc")
 

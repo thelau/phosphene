@@ -641,3 +641,6 @@
     .wl-steps li.done { color: var(--faint); text-decoration: line-through; }
     .wl-steps li.done button { display: none; }
     .wl-close { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; }
+    .pf-locked { margin-top: 10px; font-size: 12px !important; color: var(--muted) !important; }
+    .pf-locked[hidden] { display: none; }
+    .project-form input:disabled { opacity: .45; cursor: not-allowed; }

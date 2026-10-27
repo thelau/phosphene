@@ -239,6 +239,8 @@ def create(body: dict, mark_png: bytes) -> dict:
 def update(slug: str, body: dict, mark_png: bytes | None = None) -> dict:
     """Change a project's settings (and its mark). The guides are made again and Krea's copies forgotten when the mark moves."""
     raw = json.loads(_project_file(slug).read_text())
+    if raw.get("qa") == "demo-tuned":                 # DEMO: its mark, size, place and the words of its fixed prompt sentence stay
+        body = {k: v for k, v in body.items() if k in ("name", "brief", "palette")}
     before = {k: raw.get(k) for k in ("mark_size", "mark_x", "mark_y")}
     raw = _fields(body, raw)
     p = load(slug)

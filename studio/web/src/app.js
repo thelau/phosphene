@@ -252,8 +252,7 @@
       try { list = (await (await fetch('/api/projects')).json()).projects || []; } catch (err) { list = project ? [project] : []; }
       m.innerHTML = list.map(x => `<button type="button" class="gm-item${project && x.slug === project.slug ? ' on' : ''}" data-slug="${escapeHtml(x.slug)}" onclick="switchProject(this.dataset.slug)"><img src="${escapeHtml(x.mark_url)}" alt="" />${escapeHtml(x.name)}</button>`).join('')
         + '<hr><button type="button" class="gm-item" onclick="openProjectForm(\'new\')">New project…</button>'
-        + (project && project.fixed ? `<button type="button" class="gm-item" disabled title="${escapeHtml(project.name)} keeps its mark, size and place: make a new project to change them">Project settings…</button>`
-          : '<button type="button" class="gm-item" onclick="openProjectForm(\'edit\')">Project settings…</button>');
+        + '<button type="button" class="gm-item" onclick="openProjectForm(\'edit\')">Project settings…</button>';
       const a = btn.getBoundingClientRect();
       m.hidden = false; btn.setAttribute('aria-expanded', 'true');
       m.style.top = `${a.bottom + 6}px`; m.style.left = `${Math.max(8, a.left)}px`;
@@ -280,6 +279,9 @@
       set('pfName', edit ? project.name : ''); set('pfSize', edit ? project.mark_size : 18); set('pfX', edit ? project.mark_x : 50); set('pfY', edit ? project.mark_y : 50);
       set('pfShape', edit ? project.mark_shape : ''); set('pfNoun', edit ? project.mark_noun : ''); set('pfBrief', edit ? project.brief : ''); set('pfPalette', edit ? (project.palette || []).join(' ') : '');
       document.getElementById('pfMark').value = '';
+      const locked = !!(edit && project.fixed);                                  // DEMO: name, brand and colours change; its mark, place and words stay
+      for (const id of ['pfMark', 'pfSize', 'pfX', 'pfY', 'pfShape', 'pfNoun']) document.getElementById(id).disabled = locked;
+      document.getElementById('pfLocked').hidden = !locked;
       document.getElementById('projectTitle').textContent = edit ? `${project.name}: settings` : 'New project';
       document.getElementById('pfSave').textContent = edit ? 'Save' : 'Create project';
       document.getElementById('pfError').textContent = '';
@@ -329,7 +331,7 @@
       const val = id => document.getElementById(id).value;
       const err = document.getElementById('pfError');
       if (projectForm.kind === 'new' && !projectForm.mark) { err.textContent = 'Choose the mark: a PNG or SVG with a transparent background works best.'; return; }
-      const body = { action: projectForm.kind === 'new' ? 'create' : 'update', slug: project && project.slug, name: val('pfName'),
+      const body = projectForm.kind === 'edit' && project.fixed ? { action: 'update', slug: project.slug, name: val('pfName'), brief: val('pfBrief'), palette: val('pfPalette').match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g) || [] } : { action: projectForm.kind === 'new' ? 'create' : 'update', slug: project && project.slug, name: val('pfName'),
         mark_size: +val('pfSize'), mark_x: +val('pfX'), mark_y: +val('pfY'), mark_shape: val('pfShape'), mark_noun: val('pfNoun'), brief: val('pfBrief'),
         palette: val('pfPalette').match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g) || [], ...(projectForm.mark ? { mark: projectForm.mark } : {}) };
       document.getElementById('pfSave').disabled = true;
