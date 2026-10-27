@@ -1397,3 +1397,34 @@ test('the project menu in a real browser: Import project… opens the file choos
   assert.deepEqual(consoleErrors, [], 'no handler fails (the tempo lock called an unshared saveSettings too)');
   await ctx.close();
 });
+
+test('the curve handle stays under the pointer while it is dragged, on a film that speeds up and on one that slows down (it slid sideways)', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945, setup: st => { for (let i = 4; i <= 24; i++) st.plates.push({ ...st.plates[0], filename: `k${i}`, url: st.plates[0].url, title: `K${i}` }); st.sequences[0].order.push(...Array.from({ length: 21 }, (_, i) => `k${i + 4}`)); } });
+  await film();
+  const lane = await page.locator('#rsSpeed').boundingBox();
+  const report = [];
+  for (const [label, bpm, from, to, endMs] of [['slows down', 300, 0.2, 0.8, 900], ['speeds up', 60, 0.15, 0.7, 120], ['late and short', 200, 0.6, 0.95, 1200]]) {
+    await page.evaluate(([bpm, from, to, endMs]) => {
+      const set = (id, v) => { document.getElementById(id).value = String(v); };
+      set('bpmInput', bpm); set('rhythmSelect', 'variable'); set('changeFrom', from); set('changeTo', to); set('endMsRange', endMs); set('curveVal', 0);
+      updateTempo(); updateRhythm();
+    }, [bpm, from, to, endMs]);
+    const h = await page.locator('#rsCurveHandle').boundingBox();
+    const x0 = h.x + h.width / 2, y0 = h.y + h.height / 2;
+    await page.mouse.move(x0, y0); await page.mouse.down();
+    const s = await page.locator('#rsStart').boundingBox(), e = await page.locator('#rsEnd').boundingBox();
+    const ys = s.y + s.height / 2, ye = e.y + e.height / 2;
+    for (const f of [0.15, 0.3, 0.45, 0.2, 0.05]) {                   // towards the Start speed (the change waits) and back
+      const py = ye + (ys - ye) * (1 - f) * 0.5 + (ys - ye) * f;        // between the straight middle and the Start's height
+      await page.mouse.move(x0 + 3, py, { steps: 3 });
+      const b = await page.locator('#rsCurveHandle').boundingBox(), hx = b.x + b.width / 2, hy = b.y + b.height / 2;
+      const c = +(await page.evaluate(() => document.getElementById('curveVal').value));
+      const atLimit = c <= 0.001 || c >= 0.999;                          // past what the curve can do, it stops on the curve
+      if (Math.abs(hx - x0) > 4 || (!atLimit && Math.abs(hy - py) > 4)) report.push(`${label} f=${f}: handle at (${(hx - x0).toFixed(0)}, ${(hy - py).toFixed(0)}) from the pointer`);
+    }
+    await page.mouse.up();
+  }
+  assert.deepEqual(report, []);
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

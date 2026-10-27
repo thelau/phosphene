@@ -1343,7 +1343,10 @@ test('the timeline is drawn from the real timeline: a tick per picture cut, the 
   assert.ok(ys.slice(0, 100).every(y => Math.abs(y - v.run('yOfMs(100)')) < 1e-9), 'the tempo holds until the change');
   for (let i = 102; i < ys.length; i++) assert.ok(ys[i] > ys[i - 1], 'then it slows down all the way');
   assert.ok(Math.abs(ys.at(-1) - v.run('yOfMs(600)')) < 1e-9, 'to the End speed');
-  assert.ok(Math.abs(m.handle.y - ys[150]) < 1e-9, 'the curve handle sits on the line');
+  const k = m.curve.findIndex(([x]) => x >= m.handle.x), [xa, ya] = m.curve[k - 1], [xb, yb] = m.curve[k];
+  assert.ok(Math.abs(m.handle.y - (ya + ((yb - ya) * (m.handle.x - xa)) / (xb - xa))) < 0.5, 'the curve handle sits on the line');
+  const band = m.points.map(q => q.x);
+  assert.ok(Math.abs(m.handle.x - (band[0] + band[1]) / 2) < 1e-6, 'at the middle of the change as drawn');
   const vpic = plain(v.run('timelineFor(24)'));
   assert.ok(Math.abs(m.band.left - (vpic[12] / vpic.at(-1)) * 100) < 1e-6 && Math.abs(m.band.left + m.band.width - 100) < 1e-6, 'the band runs from Start to End');
   assert.deepEqual(m.points.map(p => [p.name, p.ms]), [['Start', 100], ['End', 600]]);

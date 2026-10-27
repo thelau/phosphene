@@ -1496,6 +1496,14 @@
       const e = easeChange((x - change.from) / (change.to - change.from), change.curve);
       return Math.exp(Math.log(start) + (Math.log(change.end_ms) - Math.log(start)) * e);
     }
+    // the music's cut length at a moment of the film (frames), for this change: the share of the music cuts reached by then, then its speed
+    function msAtFrame(t, nBase, nMusic, bpm, change, base) {
+      base = base || baseStarts(nBase, bpm, change, nMusic);
+      let i = 0;
+      while (i < nBase - 1 && base[i + 1] <= t) i++;
+      const frac = Math.max(0, Math.min(1, (t - base[i]) / Math.max(1e-9, base[i + 1] - base[i])));
+      return msAtShare((i + frac) / nMusic, bpm, change);
+    }
     // where each music cut starts, in frames: every cut the tempo, or the change, cut i taken at its middle. Shares count the music cuts
     // the film holds (nMusic: with a Multiple the last one can run past the film's end)
     function baseStarts(nBase, bpm, change, nMusic = nBase) {
@@ -1956,7 +1964,7 @@
     const yOfMs = ms => ((Math.log(clampMs(ms)) - Math.log(MS_RANGE[0])) / (Math.log(MS_RANGE[1]) - Math.log(MS_RANGE[0]))) * 100;
     const msOfY = pct => Math.exp(Math.log(MS_RANGE[0]) + Math.max(0, Math.min(1, pct / 100)) * (Math.log(MS_RANGE[1]) - Math.log(MS_RANGE[0])));
     let rsSel = null;                                                        // the selected point: 'start', 'end' or null
-    let rsDrag = null;                                                       // what is being dragged: 'start', 'end', 'curve' or null
+    let rsDrag = null, curvePinX = null;   // curvePinX: where across the lane (0-1) the curve handle was grabbed, while it is dragged                                                       // what is being dragged: 'start', 'end', 'curve' or null
     function rhythmStripModel(n) {
       if (!n) return null;
       const r = rhythmFor(n), pic = r.pic, base = r.base, nBase = r.nBase, nMusic = r.nMusic, total = pic[pic.length - 1];
@@ -1975,7 +1983,8 @@
           { id: 'end', name: 'End', x: xe, y: yOfMs(ch.end_ms), ms: ch.end_ms, pic: picMs(ch.end_ms), sec: tAt(ch.to) / 30 },
         ];
         band = { left: xs / 10, width: Math.max(0, xe - xs) / 10 };
-        handle = { x: X(tAt(mid)), y: yOfMs(msAtShare(mid, bpm, ch)), curve: ch.curve };
+        const ht = rsDrag === 'curve' && curvePinX != null ? curvePinX * total : (tAt(ch.from) + tAt(ch.to)) / 2;   // the change's visual middle; while shaped, where it was grabbed
+        handle = { x: X(ht), y: yOfMs(msAtFrame(ht, nBase, nMusic, bpm, ch, base)), curve: ch.curve, t: ht };
         linear = [xs, points[0].y, xe, points[1].y];
       }
       const beats = r.audio.slice(0, -1).map(t => X(t * 30)).filter(x => x < 1000).slice(0, 2000);
@@ -2093,6 +2102,7 @@
       if (e.button !== undefined && e.button !== 0) return;
       e.preventDefault(); e.stopPropagation();
       rsDrag = which; rsSel = which === 'curve' ? rsSel : which; rsLaneLeave();
+      curvePinX = which === 'curve' && rsModel && rsModel.handle ? rsModel.handle.x / 1000 : null;   // the handle stays at this spot while it is dragged
       if (e.currentTarget.setPointerCapture && e.pointerId !== undefined) e.currentTarget.setPointerCapture(e.pointerId);
       renderRhythmStrip();
     }
@@ -2102,10 +2112,19 @@
       const ch = changeParams();
       if (!ch) return;
       if (rsDrag === 'curve') {
-        const s0 = Math.log(60000 / bpmValue()), s1 = Math.log(ch.end_ms);
-        if (Math.abs(s1 - s0) < 1e-6) return;
-        const v = Math.min(0.5, Math.max(0.03, (Math.log(msOfY(pct)) - s0) / (s1 - s0)));   // where the middle of the change sits between the two speeds
-        setv('curveVal', +Math.min(1, Math.max(0, (Math.log(v) / Math.log(0.5) - 1) / 4)).toFixed(3));
+        // the curve that passes through the pointer where the handle was grabbed: bending it changes how long each cut lasts (the film
+        // gets longer or shorter, the lane rescales), so it is solved at that spot of the lane (the handle used to slide from under the pointer)
+        const bpm = bpmValue(), s0 = Math.log(60000 / bpm), s1 = Math.log(ch.end_ms), m = rsModel;
+        if (Math.abs(s1 - s0) < 1e-6 || !m || curvePinX == null) return;
+        const want = Math.abs(Math.log(msOfY(pct)) - s0);                      // how far from the Start's speed, at that spot
+        const away = c => {                                                    // falls as the change waits more
+          const cc = { ...ch, curve: c }, base = baseStarts(m.nBase, bpm, cc, m.nMusic);
+          return Math.abs(Math.log(msAtFrame(curvePinX * base[m.nBase], m.nBase, m.nMusic, bpm, cc, base)) - s0);
+        };
+        let lo = 0, hi = 1;
+        if (want >= away(0)) hi = 0; else if (want <= away(1)) lo = 1;
+        else for (let k = 0; k < 18; k++) { const c = (lo + hi) / 2; if (away(c) > want) lo = c; else hi = c; }
+        setv('curveVal', +((lo + hi) / 2).toFixed(3));
       } else {
         const share = shareAt(u), ms = Math.round(clampMs(msOfY(pct)));
         if (rsDrag === 'start') { setv('changeFrom', +Math.max(0, Math.min(ch.to - 0.02, share)).toFixed(4)); setv('bpmInput', Math.round(Math.min(BPM_RANGE[1], Math.max(BPM_RANGE[0], 60000 / ms)))); }
@@ -2116,7 +2135,7 @@
     function rsPointUp() {
       if (!rsDrag) return;
       const what = rsDrag;
-      rsDrag = null; dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 0);
+      rsDrag = null; curvePinX = null; dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 0);
       renderRhythmStrip();
       commitSettings(what === 'curve' ? 'the curve of the change' : `the change's ${what === 'start' ? 'Start' : 'End'}`);
     }
