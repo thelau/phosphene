@@ -264,6 +264,35 @@ async function spectra(variants) {
   }, [BASE, variants]);
 }
 
+test('Tape grows gently: barely on is barely there (no clipped peaks), 30 a touch, 100 the full warmth', { skip }, async () => {
+  const ctx = await fresh();
+  const amounts = [0, 0.011, 0.1, 0.3, 0.6, 1];
+  const rows = await page.evaluate(async ([BASE, amounts]) => {
+    const starts = Array.from({ length: 21 }, (_, i) => i * 0.25), n = 1 << 16;
+    const bands = async t => {                                                // power in third-octave bands, 40 Hz to 16 kHz, in dB
+      const r = await window.Drone.renderExport({ ...BASE, pitch: 0.5, arp: 0.4, arpRate: 1, tape: t }, starts);
+      const re = new Float64Array(n), im = new Float64Array(n);
+      for (let i = 0; i < n; i++) re[i] = (r.left[i + 22050] + r.right[i + 22050]) / 2 * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)));
+      for (let i = 1, j = 0; i < n; i++) { let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) [re[i], re[j]] = [re[j], re[i]]; }
+      for (let len = 2; len <= n; len <<= 1) { const ang = (-2 * Math.PI) / len, wr = Math.cos(ang), wi = Math.sin(ang);
+        for (let i = 0; i < n; i += len) { let cr = 1, ci = 0; for (let k = 0; k < len / 2; k++) { const a = i + k, b = i + k + len / 2, tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr; re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti; const q = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = q; } } }
+      const out = [];
+      for (let f = 40; f < 16000; f *= Math.pow(2, 1 / 3)) { let p = 1e-20; for (let k = Math.ceil((f * n) / 44100); k < (f * Math.pow(2, 1 / 3) * n) / 44100; k++) p += re[k] ** 2 + im[k] ** 2; out.push(10 * Math.log10(p)); }
+      return out;
+    };
+    const plain = await bands(0), out = [];
+    { const b = await bands(0.011); console.log(JSON.stringify(b.map((v, i) => [Math.round(40 * Math.pow(2, i / 3)), +(v - plain[i]).toFixed(1), +plain[i].toFixed(0)]))); }
+    for (const t of amounts) { const b = await bands(t); out.push(b.reduce((a, v, i) => a + Math.abs(v - plain[i]), 0) / b.length); }   // mean change per band, dB
+    return out;
+  }, [BASE, amounts]);
+  const [off, barely, ten, thirty, sixty, full] = rows;
+  assert.ok(off < 0.01 && barely < 0.1 * full, `off is off, barely on is barely there: ${off.toFixed(2)}, ${barely.toFixed(2)}`);
+  assert.ok(ten < thirty && thirty < sixty && sixty < full, `it grows with the slider: ${rows.map(x => x.toFixed(2))}`);
+  assert.ok(ten < 0.12 * full, `10 is a touch: ${ten.toFixed(2)} of ${full.toFixed(2)} dB`);
+  assert.ok(thirty < 0.3 * full, `30 is moderate: ${thirty.toFixed(2)} of ${full.toFixed(2)} dB`);
+  await ctx.close();
+});
+
 test('Choir and Industrial over the drone: the same level, still sub-heavy, each audible (measured, not heard)', { skip }, async () => {
   const ctx = await fresh();
   const rows = await spectra([{}, { choir: 0.5 }, { industrial: 0.5 }]);

@@ -41,6 +41,12 @@
     if (!satCache.has(k)) { const n = 1024, c = new Float32Array(n); for (let i = 0; i < n; i++) c[i] = Math.tanh(k * ((i / (n - 1)) * 2 - 1)) / Math.tanh(k); satCache.set(k, c); }
     return satCache.get(k);
   }
+  // the same drive over -4..4 for a signal scaled by 1/4 going in and by 4 coming out: loud peaks bend instead of clipping at 1 (tape)
+  function wideSatCurve(k) {
+    const key = `w${k}`;
+    if (!satCache.has(key)) { const n = 4097, c = new Float32Array(n); for (let i = 0; i < n; i++) c[i] = Math.tanh(4 * k * ((i / (n - 1)) * 2 - 1)) / Math.tanh(k) / 4; satCache.set(key, c); }
+    return satCache.get(key);
+  }
   function tanhCurve(k, norm) {
     const n = 4097, c = new Float32Array(n);
     for (let i = 0; i < n; i++) c[i] = Math.tanh(k * 4 * ((i / (n - 1)) * 2 - 1)) / norm;
@@ -634,13 +640,14 @@
     merger.connect(dyn);
     let out = dyn;
     if (tape > 0.01) {                                                      // tape: wow and flutter, saturation, a darker top, a little dust
+      const t = Math.pow(tape, 1.6);                                        // a gentle start: 30 is a touch of it, 100 the full warmth
       const wow = ctx.createDelay(0.1); wow.delayTime.value = 0.012;
-      lfo(0.55, 0.0018 * tape, wow.delayTime); lfo(6.5, 0.00022 * tape, wow.delayTime);
-      const sat = shaper(satCurve(1 + 0.6 * tape));                          // warmth, not drive
-      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 14000 - 9500 * tape; lp.Q.value = 0.5;
-      dyn.connect(wow); wow.connect(sat); sat.connect(lp);
+      lfo(0.55, 0.0018 * t, wow.delayTime); lfo(6.5, 0.00022 * t, wow.delayTime);
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 14000 - 9500 * t; lp.Q.value = 0.5;
+      const satOut = gain(4, lp), sat = gain(0.25, shaper(wideSatCurve(Math.round((0.05 + 1.55 * t) * 100) / 100), satOut));   // warmth, not drive, from straight up;
+      dyn.connect(wow); wow.connect(sat);                                   // in at 1/4, out at 4: the drone peaks past 1 before it is levelled, and a curve over -1..1 clipped them
       const dust = ctx.createBufferSource(); dust.buffer = dustBuffer(ctx); dust.loop = true; keep(dust);
-      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500; dust.connect(hp); hp.connect(gain(0.025 * tape, lp));
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500; dust.connect(hp); hp.connect(gain(0.025 * t, lp));
       out = lp;
     }
     if (opts.tap === 'sub') subBus.connect(dest); else if (opts.tap === 'dry') { mix[0].connect(dest); } else out.connect(dest);
