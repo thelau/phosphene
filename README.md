@@ -6,7 +6,18 @@ synthesized drone. Curate the images, cut the film, export an MP4.
 It runs on your own computer. You sign in with your own Krea account (images use its credits) and your own Kimi key
 (it writes the image ideas).
 
-## Install (once)
+## The Mac app (easiest)
+
+Download **Phosphene.dmg** from the link you were sent, open it and drag Phosphene into Applications.
+The first time, right-click Phosphene › **Open** › **Open** (the app is not signed by Apple yet). After that it opens normally,
+and it updates itself: when a new version is out it says so, and **Restart to update** installs it.
+
+- Your projects are in **Documents › Phosphene**, one folder each. Updates never touch them, and deleting the app leaves them.
+  Back them up like any document. Demo, the sample, is copied there the first time.
+- To send a project to someone: the project menu (next to Phosphene) › **Export project…**; they use **Import project…**.
+- Needs a Mac with Apple silicon (M1 or newer).
+
+## Install from the code (for developers)
 
 You need a Mac (or Linux) with [Homebrew](https://brew.sh), and Git.
 

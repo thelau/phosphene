@@ -7,7 +7,7 @@ const fs = require('fs');
 const net = require('net');
 const path = require('path');
 const { spawn } = require('child_process');
-const { chromium } = require('playwright-core');
+const { chromium, webkit } = require('playwright-core');   // E2E_ENGINE=webkit: the engine inside the Mac app's window
 const { start, makeState, addAi } = require('./fakeapi.cjs');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -58,7 +58,7 @@ function register() {
     env.port = await freePort();
     env.vite = spawn(process.execPath, [path.join(ROOT, 'node_modules/vite/bin/vite.js'), 'studio/web', '--port', String(env.port), '--strictPort'], { cwd: ROOT, env: { ...process.env, API_URL: api.url }, stdio: 'ignore' });
     await waitForUrl(`http://localhost:${env.port}/`);
-    env.browser = await chromium.launch({ executablePath: browserPath, headless: true });
+    env.browser = process.env.E2E_ENGINE === 'webkit' ? await webkit.launch({ headless: true }) : await chromium.launch({ executablePath: browserPath, headless: true });
   });
   test.after(async () => {
     await env.browser?.close();

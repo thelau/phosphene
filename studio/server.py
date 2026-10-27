@@ -1622,6 +1622,13 @@ if __name__ == "__main__":
     if not projects.active_slug():
         sys.exit(f"No project in {projects.PROJECTS_DIR}. Import one, or put Demo's folder back.")
     apply_project(projects.load(projects.active_slug()))                     # the project open last time on this machine
+    if places.APP:                                                           # the Mac app quit (even forced): the server goes too
+        parent = os.getppid()
+        def watch_app():
+            while os.getppid() == parent:
+                time.sleep(2)
+            os._exit(0)
+        threading.Thread(target=watch_app, daemon=True).start()
     port = int(os.environ.get("PORT", "8765"))
     server = QuietServer(("127.0.0.1", port), StudioHandler)
     print(f"Studio running at http://localhost:{port} · project: {PROJECT['name']}")

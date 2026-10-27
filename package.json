@@ -10,9 +10,13 @@
     "build": "vite build studio/web",
     "log": "python3 studio/gen_log.py",
     "test": "node --test studio/tests/js/ui.test.cjs",
-    "test:e2e": "node --test studio/tests/e2e/*.e2e.test.cjs"
+    "test:e2e": "node --test studio/tests/e2e/*.e2e.test.cjs",
+    "app": "cd app && tauri dev",
+    "app:build": ".venv/bin/python app/build.py && cd app && tauri build",
+    "release": "bash scripts/release.sh"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
     "concurrently": "^9.0.0",
     "playwright-core": "^1.64.1",
     "vite": "^7.0.0"

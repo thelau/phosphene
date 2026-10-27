@@ -20,3 +20,6 @@ studio/.local.json
 projects/*
 !projects/demo/
 studio/.krea_auth.json
+app/build/
+app/src-tauri/target/
+app/src-tauri/gen/

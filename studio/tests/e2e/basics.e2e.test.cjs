@@ -516,8 +516,9 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   assert.equal(await page.locator('#pfLocked').isVisible(), true);
   await page.fill('#pfBrief', 'Demo, a toolkit');
   await page.click('#pfSave');
+  for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/projects' && c.body && c.body.action === 'update'); i++) await page.waitForTimeout(100);
   await page.waitForSelector('#loader', { state: 'detached' });
-  assert.deepEqual(Object.keys(api.state.calls.filter(c => c.path === '/api/projects').pop().body).sort(), ['action', 'brief', 'name', 'palette', 'slug'], 'only what DEMO lets change');
+  assert.deepEqual(Object.keys(api.state.calls.filter(c => c.path === '/api/projects' && c.body && c.body.action).pop().body).sort(), ['action', 'brief', 'name', 'palette', 'slug'], 'only what DEMO lets change');
   await page.click('#projectBtn');
   await page.locator('#projectMenu .gm-item', { hasText: 'New project' }).click();
   for (const id of ['#pfMark', '#pfSize', '#pfShape']) assert.equal(await page.locator(id).isDisabled(), false, `a new project sets ${id}`);
@@ -657,7 +658,7 @@ test('the timeline is the rhythm control: drag or type the tempo and the Multipl
   await page.mouse.up();
   assert.equal(await page.locator('#rsTip').isVisible(), false);
   const end = +(await val('endMsRange'));
-  assert.ok(Math.abs(end - 1068) < 15, `End dragged 90% down the log scale is ~1068 ms: ${end}`);
+  assert.ok(Math.abs(end - 1068) < 35, `End dragged 90% down the log scale is ~1068 ms: ${end}`);   // a pixel's rounding is ~2% on a log scale
   const endBox = await page.locator('#rsEnd').boundingBox();
   assert.ok(Math.abs(endBox.x + endBox.width / 2 - (lane.x + lane.width * 0.85)) < 12, 'the point sits under the pointer');
   // drag Start up: faster, and it is the tempo

@@ -91,7 +91,8 @@ def test_every_post_endpoint_exists(live, path):
 
 def test_the_page_or_a_pointer_to_it_is_served_at_the_root(live):
     status, data = live("GET", "/")
-    assert status == 200 and b"Match-Cut Studio" in (data if isinstance(data, bytes) else b"")
+    page = data if isinstance(data, bytes) else b""
+    assert status == 200 and (b"Match-Cut Studio" in page or b"<title>Phosphene" in page), "the built page when there is one, else a pointer to it"
 
 
 def test_generate_trash_restore_delete_through_the_real_server(live, srv):

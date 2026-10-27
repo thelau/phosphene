@@ -1090,6 +1090,7 @@
       else if (e.key === '0' || e.key === 'Home') { e.preventDefault(); flash('restartBtn'); toStart(); }
       else if (e.key === '?') { e.preventDefault(); toggleKeys(); }
       else if ((e.key === 'Delete' || e.key === 'Backspace') && mode === 'film' && rsSel) { e.preventDefault(); removeChange(); }   // a selected point of the change: the change goes (never an image)
+      else if (e.key === 'Backspace' || e.key === 'Delete') e.preventDefault();       // nothing else: and WebKit (the Mac app) must not take Backspace for "go back"
       else if (e.key === 'Escape') { document.getElementById('keysPanel').hidden = true; if (pickSel.size) clearPicks(); if (rsSel) { rsSel = null; renderRhythmStrip(); } }
       else if (e.key === 't' || e.key === 'T') { e.preventDefault(); flash(mode === 'film' ? 'targetBtn' : 'gridTargetBtn'); toggleReticle(); }
       else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); flash('randomAllBtn'); randomAll(); }
@@ -2684,11 +2685,12 @@
     // Krea: sign in from here (MCP OAuth). The sign-in page opens in a new tab; Krea sends it back to the app, and the page
     // learns it is connected from the state it polls
     async function reconnectKrea() {
-      const tab = window.open('', '_blank');                                    // opened now, on the click: a popup blocker lets it through
+      const tab = TAURI ? null : window.open('', '_blank');                      // opened now, on the click: a popup blocker lets it through (the app opens the browser)
       try {
         const r = await (await fetch('/api/krea-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
         if (!r.ok) throw new Error(r.error || 'Krea did not answer');
-        if (tab) tab.location.href = r.url; else location.href = r.url;
+        if (TAURI) await TAURI.opener.openUrl(r.url);                            // the Mac app: Krea's sign-in in the usual browser, it comes back here
+        else if (tab) tab.location.href = r.url; else location.href = r.url;
         setStatus('Sign in to Krea in the new tab, then come back here.');
         const until = Date.now() + 5 * 60 * 1000;
         const check = async () => { await loadState(); if (!kreaConnected && Date.now() < until) setTimeout(check, 3000); else if (kreaConnected) setStatus('Krea is connected.'); };
@@ -2713,6 +2715,29 @@
       try { if (kreaConnected && kimiConfigured) localStorage.setItem('studioWelcome', 'done'); } catch (e) {}
       document.getElementById('welcome').hidden = true;
     }
+    // ---- the Mac app: updates. On opening it asks GitHub for a newer version; one click installs it and restarts ----
+    const TAURI = window.__TAURI__ || null;
+    if (TAURI && document.body) document.body.classList.add('app');
+    let pendingUpdate = null;
+    async function checkForUpdate() {
+      if (!TAURI || !TAURI.updater || location.port === '5173') return;          // not while developing
+      try {
+        const u = await TAURI.updater.check();
+        if (!u) return;
+        pendingUpdate = u;
+        document.getElementById('updateMsg').textContent = `Phosphene ${u.version} is ready.`;
+        document.getElementById('updateBar').hidden = false;
+      } catch (e) { /* offline, or GitHub unreachable: try again next time */ }
+    }
+    async function installUpdate() {
+      if (!pendingUpdate) return;
+      if (isBusy()) { setStatus('Wait until the running job ends, then update.'); return; }
+      const btn = document.getElementById('updateBtn');
+      btn.disabled = true; btn.textContent = 'Updating…';
+      try { await pendingUpdate.downloadAndInstall(); await TAURI.process.relaunch(); }
+      catch (e) { btn.disabled = false; btn.textContent = 'Restart to update'; setStatus(`The update did not install: ${e.message || e}`); }
+    }
+    setTimeout(checkForUpdate, 4000);
     async function signOutKrea() {
       await fetch('/api/krea-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) });
       await loadState();
@@ -2884,6 +2909,7 @@
 
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
+  installUpdate,
   exportProject, importProject,
   downloadShown,
   openProjectMenu, switchProject, openProjectForm, closeProjectForm, readProjectMark, drawProjectPreview, saveProject,

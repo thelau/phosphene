@@ -9,6 +9,7 @@
 </head>
 <body data-mode="curate">
   <div id="loader"><div class="spin"></div><div class="msg" id="loaderMsg">Loading library…</div></div>
+  <div class="update-bar" id="updateBar" hidden role="status"><span id="updateMsg"></span><button type="button" class="small-btn" id="updateBtn" onclick="installUpdate()">Restart to update</button><button type="button" class="icon-btn" onclick="document.getElementById('updateBar').hidden = true" aria-label="Later">×</button></div>
   <div id="cover" hidden role="status"><div class="spin"></div><div class="msg" id="coverMsg"></div></div>
 
   <div class="too-small" id="tooSmall" role="alert">
@@ -18,7 +19,7 @@
     </div>
   </div>
 
-  <header class="topbar">
+  <header class="topbar" data-tauri-drag-region>
     <div class="brand">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#EC540C" aria-hidden="true"><circle cx="12" cy="12" r="2.6" fill="#EC540C" stroke="none"></circle><circle cx="12" cy="12" r="6" stroke-width="1.6" opacity=".7"></circle><circle cx="12" cy="12" r="9.6" stroke-width="1.2" opacity=".35"></circle></svg>
       <span>Phosphene</span>
