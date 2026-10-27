@@ -553,7 +553,7 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   assert.deepEqual(await page.evaluate(async u => { const i = new Image(); i.src = u; await i.decode(); return [i.width, i.height]; }, api.state.markSent), [120, 60], 'trimmed to the mark itself');
   assert.equal(await page.locator('.card').count(), 0, 'a new project starts empty');
   const vars = await page.evaluate(() => ['--mark-w', '--mark-y', '--mark-ar', '--mark-r'].map(v => document.documentElement.style.getPropertyValue(v)));
-  assert.deepEqual(vars, ['30%', '40%', '0.5', '4px'], 'the logo target takes the mark\'s size, place and shape');
+  assert.deepEqual(vars, ['30%', '40%', '0.5', '2px'], 'the logo target takes the mark\'s size, place and proportions: always its box');
   assert.equal(await text('#retLabel'), 'logo · 50%, 40% · 30%');
   await page.click('#projectBtn');
   await page.locator('#projectMenu .gm-item', { hasText: 'Demo' }).click();

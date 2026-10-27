@@ -107,7 +107,7 @@
 
     /* ---------- header ---------- */
     .topbar { height: 56px; flex: none; display: flex; align-items: center; gap: 20px; padding: 0 20px; border-bottom: 1px solid var(--line); background: var(--panel); position: relative; z-index: 30; }
-    :root { --mark-w: 18%; --mark-x: 50%; --mark-y: 50%; --mark-ar: 1; --mark-r: 50%; }   /* the project's mark: size, place, shape (loadState) */
+    :root { --mark-w: 18%; --mark-x: 50%; --mark-y: 50%; --mark-ar: 1; --mark-r: 2px; }   /* the project's mark: size, place, shape (loadState) */
     .brand { display: flex; align-items: center; gap: 10px; min-width: 210px; font-weight: 700; font-size: 15px; letter-spacing: -0.01em; white-space: nowrap; }
     .modes { display: flex; align-items: center; gap: 12px; }
     .mode-seg { display: inline-flex; padding: 3px; background: var(--field); border: 1px solid var(--line-2); border-radius: 9px; }

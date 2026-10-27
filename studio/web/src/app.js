@@ -252,7 +252,7 @@
       const r = document.documentElement.style;                               // the logo target: the mark's size, place and shape
       if (r && r.setProperty) {
         r.setProperty('--mark-w', `${p.mark_size}%`); r.setProperty('--mark-x', `${p.mark_x}%`); r.setProperty('--mark-y', `${p.mark_y}%`);
-        r.setProperty('--mark-ar', String(p.mark_ratio || 1)); r.setProperty('--mark-r', p.round ? '50%' : '4px');
+        r.setProperty('--mark-ar', String(p.mark_ratio || 1)); r.setProperty('--mark-r', '2px');   // always the mark's box (a round mark fits its square): the user's call
       }
       const centred = p.mark_x === 50 && p.mark_y === 50;
       document.getElementById('retLabel').textContent = `logo · ${centred ? 'centre' : `${p.mark_x}%, ${p.mark_y}%`} · ${p.mark_size}%`;
