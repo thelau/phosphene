@@ -45,7 +45,7 @@ function load({ routes = {}, storage = {} } = {}) {
     body: new El('body'),
     documentElement: new El('html'),
   };
-  const store = { ...storage };
+  const store = { studioProject: 'demo', ...storage };                     // as someone back on the project they had open (films are per project)
   const ctx = {
     document, console,
     localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } },

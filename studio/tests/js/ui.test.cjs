@@ -8,6 +8,8 @@ const baseRoutes = () => ({
   '/api/worlds': { worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', examples: ['poster', 'open magazine spread'], n: 21, kept: 2, wildcard: false }, { name: 'Harbor & Signal', brief: 'Ports.', n: 0, kept: 0, wildcard: true }] },
 });
 const settle = () => new Promise(r => setImmediate(r));
+// what the page saved: the shared settings and the open project's film (films are per project, `studioFilm:<slug>`)
+const savedOf = store => ({ ...JSON.parse(store.studioSettings || '{}'), ...JSON.parse(store['studioFilm:demo'] || '{}') });
 const mkPlate = (name, trashed = false) => ({ filename: name, url: `/p/${name}`, trashed, title: name, prompt: 'p', model: 'm' });
 
 // ---------- helpers ----------
@@ -39,7 +41,7 @@ test('the tempo and Multiple fields show their values (BPM and the music cut in 
   assert.equal($('tempoVal').textContent, '120 BPM'); assert.equal($('tempoMs').textContent, '500 ms');
   assert.equal($('multVal').textContent, '×2');
   assert.match($('tempoField')['aria-valuetext'], /^120 BPM, 500 ms a music cut$/);
-  const saved = JSON.parse(store.studioSettings);
+  const saved = savedOf(store);
   assert.equal(saved.bpmInput, '120'); assert.equal(saved.multSelect, '2');
 });
 
@@ -395,7 +397,7 @@ test('updateFx shows the amount, disables it when zoom is off, and remembers the
   run('updateFx()');
   assert.equal($('zoomAmtVal').textContent, '1.5%');
   assert.equal($('zoomAmt').disabled, false);
-  const saved = JSON.parse(store.studioSettings);
+  const saved = savedOf(store);
   assert.deepEqual([saved.zoomSelect, saved.zoomAmt, saved.invertSelect], ['out', '1.5', 'mono']);
   $('zoomSelect').value = 'off';
   run('updateFx()');
@@ -738,7 +740,7 @@ test('music choices are remembered', () => {
   const h = load({ routes: baseRoutes() });
   h.$('musicSelect').value = 'on'; h.$('echoRange').value = '30'; h.$('chordSelect').value = '2';
   h.run('updateMusic()');
-  const saved = JSON.parse(h.store.studioSettings);
+  const saved = savedOf(h.store);
   assert.deepEqual([saved.musicSelect, saved.echoRange, saved.chordSelect], ['on', '30', '2']);
 });
 
@@ -922,7 +924,7 @@ test('the tempo is 40 to 1200 BPM (1500 to 50 ms a music cut), and whatever it h
     const t = JSON.parse(JSON.stringify(run('rhythmFor(3)')));
     assert.ok(t.pic.every(Number.isFinite) && t.audio.every(Number.isFinite), `value "${typed}"`);
   }
-  assert.equal(JSON.parse(store.studioSettings).bpmInput, '500');
+  assert.equal(savedOf(store).bpmInput, '500');
 });
 
 test('the check "The Multiple also changes the music" puts the music on the picture cuts; unchecked it stays on the beat', async () => {
@@ -938,7 +940,7 @@ test('the check "The Multiple also changes the music" puts the music on the pict
   assert.equal(follow.audio.length, 9);                                       // every picture cut
   assert.ok(follow.audio.every((v, i) => Math.abs(v - follow.pic[i] / 30) < 1e-9));
   assert.deepEqual(follow.pic, beat.pic);                                     // the pictures do not change
-  assert.equal(JSON.parse(h.store.studioSettings).followCuts !== undefined, true);
+  assert.equal(savedOf(h.store).followCuts !== undefined, true);
   h.$('followCuts').checked = false; h.run('updateTempo()');
   assert.equal(JSON.parse(JSON.stringify(h.run('rhythmFor(8)'))).audio.length, 3);
 });
@@ -1130,7 +1132,7 @@ test('Choir and Industrial: layers over the drone that Random adds now and then,
   h.run('updateMusic()');
   assert.equal(h.run('synthParams()').choir, 0.4);
   h.run('saveSettings()');
-  assert.equal(JSON.parse(h.store.studioSettings).choirRange, '40', 'remembered');
+  assert.equal(savedOf(h.store).choirRange, '40', 'remembered');
 });
 
 test('the logo target: one switch for the Film preview and every Curate card (T or either button), remembered', async () => {
@@ -1171,7 +1173,7 @@ test('arpeggio moods: Random draws them all (Pluck often), a type keeps to its o
   h.$('arpMoodSelect').value = '3'; h.run('updateMusic()');
   assert.equal(h.run('synthParams()').arpMood, 3);
   h.run('saveSettings()');
-  assert.equal(JSON.parse(h.store.studioSettings).arpMoodSelect, '3', 'remembered');
+  assert.equal(savedOf(h.store).arpMoodSelect, '3', 'remembered');
 });
 
 test('chord changes: Random turns them on now and then, each chord 1 to 4 seconds long whatever the speed; sent and remembered', async () => {
@@ -1188,7 +1190,7 @@ test('chord changes: Random turns them on now and then, each chord 1 to 4 second
   h.$('progSelect').value = '1'; h.$('progEverySelect').value = '2'; h.run('updateMusic()');
   assert.deepEqual([h.run('synthParams()').prog, h.run('synthParams()').progEvery], [1, 2]);
   h.run('saveSettings()');
-  assert.equal(JSON.parse(h.store.studioSettings).progSelect, '1');
+  assert.equal(savedOf(h.store).progSelect, '1');
 });
 
 test('bassline and arrangement: Random brings them in by type, an arrangement always has layers to move, Follows needs a changing speed; sent', async () => {
@@ -1310,9 +1312,9 @@ test('one sound switch: Source (no second one in the transport), and the sound g
 test('the check "The Multiple also changes the music" is remembered (a checkbox saves its state, not its value)', async () => {
   const h = await playerWith();
   h.$('followCuts').type = 'checkbox'; h.$('followCuts').checked = true; h.run('updateTempo()');
-  const saved = JSON.parse(h.store.studioSettings);
+  const saved = savedOf(h.store);
   assert.equal(saved.followCuts, true);
-  const again = load({ routes: baseRoutes(), storage: { studioSettings: h.store.studioSettings } });
+  const again = load({ routes: baseRoutes(), storage: { ...h.store } });
   again.$('followCuts').type = 'checkbox';
   again.run('restoreSettings()');
   assert.equal(again.$('followCuts').checked, true);
@@ -1680,7 +1682,7 @@ test('the tempo lock: Random (any type, the R key, Random rhythm) keeps the temp
     }
   }
   assert.ok(mults.size > 2, 'the Multiple still changes');
-  assert.equal(JSON.parse(h.store.studioSettings).bpmLock, true, 'remembered');
+  assert.equal(savedOf(h.store).bpmLock, true, 'remembered');
   h.$('bpmLock').checked = false;
   const seen = new Set(); for (let i = 0; i < 30; i++) { h.$('characterSelect').value = 'any'; h.run('randomAll()'); seen.add(h.$('bpmInput').value + h.$('rhythmSelect').value); }
   assert.ok(seen.size > 5, 'unlocked: Random changes it again');
@@ -1838,4 +1840,41 @@ test('the film strip and ← →: every image can be reached, at any tempo (a cu
     for (let i = 1; i < 19; i++) { h.run('stepImage(1)'); const got = h.run('currentIdx'); if (got !== i) { bad.push(`${bpm} x${mult} ${inv}: right to ${i} gave ${got}`); break; } }
   }
   assert.deepEqual(bad, []);
+});
+
+test('each project keeps its own film and sound; one never opened here gets its own Random; Undo never crosses projects', async () => {
+  const demo = { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', round: true, fixed: true };
+  const nike = { ...cos, slug: 'nike', name: 'Nike', fixed: false };
+  const plates = Array.from({ length: 12 }, (_, i) => mkPlate('p' + i));
+  // on DEMO: a film is made, it is saved as DEMO's
+  let r = baseRoutes(); r['/api/state'] = { plates, project: demo, krea_connected: true, kimi_configured: true };
+  let h = load({ routes: r, storage: { studioProject: 'demo' } }); await settle(); await settle();
+  h.$('bpmInput').value = '97'; h.$('echoRange').value = '31'; h.$('worldSelect').value = '';
+  h.run('updateTempo(); updateMusic(); saveSettings()');
+  const store = { ...h.store };
+  assert.equal(JSON.parse(store['studioFilm:demo']).bpmInput, '97');
+  assert.equal(JSON.parse(store.studioSettings).bpmInput, undefined, 'the shared settings hold no film');
+  // the server opens Nike, never opened here: a Random of its own, not DEMO's film
+  r = baseRoutes(); r['/api/state'] = { plates, project: nike, krea_connected: true, kimi_configured: true };
+  h = load({ routes: r, storage: store }); await settle(); await settle();
+  const nikeFilm = JSON.parse(h.store['studioFilm:nike']);
+  assert.ok(nikeFilm.bpmInput !== '97' || nikeFilm.echoRange !== '31', 'its own Random');
+  assert.equal(h.store.studioProject, 'nike');
+  assert.equal(h.run('history.length'), 0, 'Undo does not go back to DEMO\'s film');
+  h.$('bpmInput').value = '144'; h.run('updateTempo(); saveSettings()');
+  // back on DEMO: DEMO's film as it was left
+  r = baseRoutes(); r['/api/state'] = { plates, project: demo, krea_connected: true, kimi_configured: true };
+  const h2 = load({ routes: r, storage: { ...h.store } }); await settle(); await settle();
+  assert.equal(h2.$('bpmInput').value, '97'); assert.equal(h2.$('echoRange').value, '31');
+  assert.equal(JSON.parse(h2.store['studioFilm:nike']).bpmInput, '144', 'and Nike keeps its own');
+});
+
+test('settings saved before films were per project become the first project\'s, not a Random', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: [mkPlate('a'), mkPlate('b')], project: { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m' }, krea_connected: true, kimi_configured: true };
+  const h = load({ routes: r, storage: { studioProject: undefined, studioSettings: JSON.stringify({ bpmInput: '88', echoRange: '12', thumbSizeVal: 'L' }) } });
+  await settle(); await settle();
+  assert.equal(h.$('bpmInput').value, '88'); assert.equal(h.$('echoRange').value, '12');
+  assert.equal(JSON.parse(h.store['studioFilm:demo']).bpmInput, '88');
+  assert.equal(JSON.parse(h.store.studioSettings).thumbSizeVal, 'L', 'the shared ones stay shared');
 });

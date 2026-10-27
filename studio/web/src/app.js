@@ -112,6 +112,7 @@
       sequences = data.sequences || [];
       groups = data.groups || [];
       editsList = data.edits || [];
+      if (data.project) useProjectFilm(data.project.slug);                  // each project its own film and sound
       if (currentEdit && !editsList.some(x => x.id === currentEdit)) setCurrentEdit(null);   // deleted elsewhere
       renderEditBar();
       if (!groupMembers(currentGroup)) currentGroup = 'all';                // a group that is gone (deleted, emptied by the library)
@@ -203,8 +204,9 @@
     // ---- edits: named ways of cutting this curation (Film only). An edit keeps the group it plays and every Film setting, never images or
     // an order, so it follows the curation. Stored on the server with the groups (/api/edits). ----
     let editsList = [], currentEdit = null;
-    try { currentEdit = localStorage.getItem('studioEdit') || null; } catch (e) {}
-    function setCurrentEdit(id) { currentEdit = id; try { if (id) localStorage.setItem('studioEdit', id); else localStorage.removeItem('studioEdit'); } catch (e) {} }
+    // the snapshot open, per project (snapshots are a project's own)
+    const editKey = () => `studioEdit:${filmSlug || ''}`;
+    function setCurrentEdit(id) { currentEdit = id; try { if (id) localStorage.setItem(editKey(), id); else localStorage.removeItem(editKey()); } catch (e) {} }
     const editOf = id => editsList.find(x => x.id === id) || null;
     function editSnap() { return { group: currentGroup, settings: { ...settingsSnap(), characterSelect: document.getElementById('characterSelect').value } }; }
     function editDirty() {
@@ -2519,25 +2521,63 @@
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
     const PERSISTED = ['rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
+    // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
+    // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved
+    // before this was per project become those of the first project opened after it.
+    const GLOBAL_SETTINGS = ['batchCountSelect', 'modelSelect', 'soundGroupVal', 'thumbSizeVal'];
+    const FILM_SETTINGS = PERSISTED.filter(id => !GLOBAL_SETTINGS.includes(id));
+    const filmKey = slug => `studioFilm:${slug}`;
+    let filmSlug = null, legacyFilm = null;
+    try { filmSlug = localStorage.getItem('studioProject') || null; } catch (e) {}
+    function readJson(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; } }
+    function putSettings(saved, ids) {
+      saved = migrateRhythm({ ...saved });
+      ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el || saved[id] === undefined) return;
+        if (el.type === 'checkbox') el.checked = saved[id] === true;
+        else if ([...(el.options || [{ value: saved[id] }])].some(o => o.value === saved[id] || el.type === 'range')) el.value = saved[id];
+      });
+    }
     function restoreSettings() {
       try {
-        const saved = migrateRhythm(JSON.parse(localStorage.getItem('studioSettings') || '{}'));
-        PERSISTED.forEach(id => {
-          const el = document.getElementById(id);
-          if (!el || saved[id] === undefined) return;
-          if (el.type === 'checkbox') el.checked = saved[id] === true;
-          else if ([...(el.options || [{ value: saved[id] }])].some(o => o.value === saved[id] || el.type === 'range')) el.value = saved[id];
-        });
+        const glob = readJson('studioSettings') || {};
+        if (FILM_SETTINGS.some(id => id in glob)) legacyFilm = glob;      // saved before films were per project
+        putSettings(glob, GLOBAL_SETTINGS);
+        const film = (filmSlug && readJson(filmKey(filmSlug))) || legacyFilm;
+        if (film) putSettings(film, FILM_SETTINGS);
+        currentEdit = localStorage.getItem(editKey()) || null;
       } catch (e) {}
     }
     function saveSettings() {
       try {
-        const out = {};
-        PERSISTED.forEach(id => { const el = document.getElementById(id); out[id] = el.type === 'checkbox' ? el.checked : el.value; });
+        const out = {}, film = {};
+        PERSISTED.forEach(id => { const el = document.getElementById(id); (GLOBAL_SETTINGS.includes(id) ? out : film)[id] = el.type === 'checkbox' ? el.checked : el.value; });
+        if (filmSlug) localStorage.setItem(filmKey(filmSlug), JSON.stringify(film));
+        else Object.assign(out, film);                                       // no project yet: kept with the rest, the first project opened takes them
         localStorage.setItem('studioSettings', JSON.stringify(out));
       } catch (e) {}
       settingsChanged();
       renderEditBar();
+    }
+    // the project the server has open: its film in the controls (only when it is another than the one they hold)
+    function useProjectFilm(slug) {
+      if (!slug || slug === filmSlug) return;
+      filmSlug = slug;
+      try { localStorage.setItem('studioProject', slug); currentEdit = localStorage.getItem(editKey()) || null; } catch (e) { currentEdit = null; }
+      const saved = readJson(filmKey(slug));
+      if (saved) {
+        applyingHistory = true;
+        try { putSettings(saved, FILM_SETTINGS); updateTempo(); updateRhythm(); updateFx(); updateMusic(); syncSegs(); syncSelects(); updateDirectionHint(); } finally { applyingHistory = false; }
+      } else if (legacyFilm) {
+        legacyFilm = null;                                                   // the settings from before: this project's now (they are in the controls)
+      } else {
+        randomAll();                                                         // never opened here: a film of its own
+      }
+      history.length = 0; future.length = 0; settled = settingsSnap(); showUndo();   // Undo never goes back into another project's film
+      saveSettings();
+      if (isPlaying) musicChanged();
     }
 
     // the timeline's two values: the tempo (BPM and its music cut in ms) and the Multiple

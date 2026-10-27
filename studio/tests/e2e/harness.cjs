@@ -78,6 +78,7 @@ async function fresh(opts = {}) {
   api.state.genCount = 0;
   api.state.calls.length = 0;
   const ctx = await env.browser.newContext({ viewport: { width: opts.width || 1500, height: opts.height || 900 } });
+  if (!opts.firstVisit) await ctx.addInitScript(() => { try { if (!localStorage.getItem('studioProject')) localStorage.setItem('studioProject', 'demo'); } catch (e) {} });   // back on the project they had open (films are per project; a project never opened gets a Random)
   env.page = await ctx.newPage();
   consoleErrors.length = 0;
   env.page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text() + ' ' + (m.location().url || '')); });
