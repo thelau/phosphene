@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::webview::DownloadEvent;
-use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, Wry};
+use tauri::{AppHandle, Listener, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, Wry};
 use tauri_plugin_dialog::DialogExt;
 
 struct Server(Mutex<Option<Child>>);
@@ -177,6 +177,9 @@ fn main() {
         .manage(Server(Mutex::new(None)))
         .manage(Opened(Mutex::new((0, Vec::new()))))
         .setup(|app| {
+            // the page's Import project…: the same macOS file dialog and import as the menu's Open Project File… (⌘O)
+            let handle = app.handle().clone();
+            app.listen_any("open-project-file", move |_| on_menu(&handle, "open_project"));
             let dev = cfg!(debug_assertions);
             let port = if dev { 0 } else { free_port() };
             if dev { app.state::<Opened>().0.lock().unwrap().0 = 8765; }       // npm run app:live: the dev server

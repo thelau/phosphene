@@ -447,11 +447,9 @@
     }
     // Import project…: in the Mac app the macOS file dialog (WebKit there opens no window for a hidden file field) and the file is
     // imported from where it is, as a double-click does (nothing uploaded through the page); in a browser the page's file field
-    const PROJECT_EXTS = ['phos', 'phosphene', 'zip'];                    // .phos (.phosphene: the files made before the shorter name)
     async function chooseProjectFile() {
-      if (TAURI && TAURI.dialog) {
-        const path = await TAURI.dialog.open({ multiple: false, directory: false, filters: [{ name: 'Phosphene project', extensions: PROJECT_EXTS }] });
-        if (path) importProjectPath(String(path));
+      if (TAURI && TAURI.event) {                                             // the app opens its file dialog and imports, as ⌘O does
+        try { await TAURI.event.emit('open-project-file'); } catch (e) { setStatus(`Could not open the file dialog: ${(e && e.message) || e}`); }
         return;
       }
       document.getElementById('pfImport').click();
