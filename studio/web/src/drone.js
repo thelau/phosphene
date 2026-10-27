@@ -777,8 +777,26 @@
       if (!this.ctx) {
         const C = window.AudioContext || window.webkitAudioContext; this.ctx = new C({ latencyHint: 'interactive' });
         this.master = this.ctx.createGain(); this.master.connect(this.ctx.destination);   // every live sound goes out through here
+        // WebKit (Safari, the Mac app) can stop a page's sound by itself ('interrupted' or 'suspended': another app's sound, an output
+        // change, sleep) and never starts it again: the sound went silent while the picture played on. Asked back at once, and at
+        // the next click or key (WebKit may want one), then put back where the picture is (onRevived)
+        this.ctx.onstatechange = () => { if (this.playing && this.ctx.state !== 'running' && this.ctx.state !== 'closed') this._revive(); };
+        if (typeof document !== 'undefined') {
+          const again = () => { if (this.playing && this.ctx && this.ctx.state !== 'running' && this.ctx.state !== 'closed') this._revive(); };
+          document.addEventListener('visibilitychange', again);
+          window.addEventListener('focus', again);
+          document.addEventListener('pointerdown', again, true);
+          document.addEventListener('keydown', again, true);
+        }
       }
       return this.ctx;
+    }
+    async _revive() {
+      if (this.reviving) return;
+      this.reviving = true;
+      try { await this.ctx.resume(); } catch (e) {}
+      this.reviving = false;
+      if (this.ctx.state === 'running' && this.playing && this.onRevived) this.onRevived();
     }
     // Builds a new sound and schedules it to begin a moment from now (the time the build takes plus a margin), so that everything in it, its
     // automation, its fade-in and the old sound's fade-out, is timed from the instant it really starts. Returns when that is.

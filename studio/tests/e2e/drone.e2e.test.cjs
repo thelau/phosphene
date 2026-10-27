@@ -543,3 +543,23 @@ test('the first Play does not freeze the page: the audio engine and the room are
   await page.click('#playBtn');
   await ctx.close();
 });
+
+test('the system stops the sound while it plays (WebKit does: another app, an output change, sleep): it comes back by itself, from where the picture is', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(async ({ BASE }) => {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const L = new window.Drone.Live();
+    let revived = 0; L.onRevived = () => { revived++; };
+    await L.play(BASE, Array.from({ length: 200 }, (_, i) => i / 3), 0);
+    await sleep(300);
+    await L.ctx.suspend();                                                         // as WebKit does by itself
+    for (let i = 0; i < 40 && L.ctx.state !== 'running'; i++) await sleep(25);
+    const state = L.ctx.state;
+    await sleep(100);
+    L.stop();
+    return { state, revived };
+  }, { BASE });
+  assert.equal(r.state, 'running', 'the sound is asked back at once');
+  assert.ok(r.revived >= 1, 'and the page is told, to put it back where the picture is');
+  await ctx.close();
+});

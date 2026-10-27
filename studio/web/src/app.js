@@ -2272,6 +2272,7 @@
     })();
     // ---- while the drone plays it is the player's clock ----
     const droneLive = new window.Drone.Live();
+    droneLive.onRevived = () => { if (isPlaying) droneLive.seek(cutPos / 30); };   // WebKit stopped the sound and it came back: from where the picture is
     function stopMusic() {
       droneLive.stop();
       setPlayLabel();
