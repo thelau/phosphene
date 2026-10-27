@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Phosphene's icon, Direction B "Landing" (Claude Design, "Phosphene — Curate & Film"): the cut ticks of a landing, spreading apart as the film slows down, the playhead in orange -->
+  <defs>
+    <clipPath id="sq"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000000" flood-opacity="0.32"/></filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#1A1A1A" filter="url(#sh)"/>
+  <g clip-path="url(#sq)">
+    <g fill="#FEFFE7">
+      <rect x="188" y="302" width="24" height="420" rx="3"/><rect x="228" y="302" width="24" height="420" rx="3"/><rect x="268" y="302" width="24" height="420" rx="3"/>
+      <rect x="348" y="302" width="24" height="420" rx="3"/><rect x="392" y="302" width="24" height="420" rx="3"/><rect x="442" y="302" width="24" height="420" rx="3"/>
+      <rect x="502" y="302" width="24" height="420" rx="3"/><rect x="578" y="302" width="24" height="420" rx="3"/><rect x="678" y="302" width="24" height="420" rx="3"/>
+      <rect x="812" y="302" width="24" height="420" rx="3"/>
+    </g>
+    <rect x="306" y="236" width="28" height="552" rx="3" fill="#EC540C"/>
+  </g>
+  <rect x="101" y="101" width="822" height="822" rx="184" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="2"/>
+</svg>

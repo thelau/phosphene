@@ -260,8 +260,8 @@
       m.innerHTML = list.map(x => `<button type="button" class="gm-item${project && x.slug === project.slug ? ' on' : ''}" data-slug="${escapeHtml(x.slug)}" onclick="switchProject(this.dataset.slug)"><img src="${escapeHtml(x.mark_url)}" alt="" />${escapeHtml(x.name)}</button>`).join('')
         + (list.length ? '<hr>' : '') + '<button type="button" class="gm-item" onclick="openProjectForm(\'new\')">New project…</button>'
         + (project ? '<button type="button" class="gm-item" onclick="openProjectForm(\'edit\')">Project settings…</button>' : '')
-        + '<hr>' + (project ? '<button type="button" class="gm-item" onclick="exportProject()" title="This project as one file (.phosphene): its mark, settings, images, groups and snapshots, to send or keep">Export project…</button>' : '')
-        + '<button type="button" class="gm-item" onclick="closeProjectMenu(); document.getElementById(\'pfImport\').click()" title="Open a .phosphene file someone exported: it comes in as a new project">Import project…</button>';
+        + '<hr>' + (project ? '<button type="button" class="gm-item" onclick="exportProject()" title="This project as one file (.phos): its mark, settings, images, groups and snapshots, to send or keep">Export project…</button>' : '')
+        + '<button type="button" class="gm-item" onclick="closeProjectMenu(); chooseProjectFile()" title="Open a .phos file someone exported: it comes in as a new project">Import project…</button>';
       const a = btn.getBoundingClientRect();
       m.hidden = false; btn.setAttribute('aria-expanded', 'true');
       m.style.top = `${a.bottom + 6}px`; m.style.left = `${Math.max(8, a.left)}px`;
@@ -376,6 +376,26 @@
         const a = document.createElement('a'); a.href = r.url; a.download = r.filename; document.body.appendChild(a); a.click(); a.remove();
         setStatus(`Downloading ${r.filename} (${Math.round(r.bytes / 1e6)} MB): send it; a double-click (or Import project) opens it as it is.`);
       } catch (e) { setStatus(`Could not export the project: ${e.message}`); }
+    }
+    // Import project…: in the Mac app the macOS file dialog (WebKit there opens no window for a hidden file field) and the file is
+    // imported from where it is, as a double-click does (nothing uploaded through the page); in a browser the page's file field
+    const PROJECT_EXTS = ['phos', 'phosphene', 'zip'];                    // .phos (.phosphene: the files made before the shorter name)
+    async function chooseProjectFile() {
+      if (TAURI && TAURI.dialog) {
+        const path = await TAURI.dialog.open({ multiple: false, directory: false, filters: [{ name: 'Phosphene project', extensions: PROJECT_EXTS }] });
+        if (path) importProjectPath(String(path));
+        return;
+      }
+      document.getElementById('pfImport').click();
+    }
+    async function importProjectPath(path) {
+      if (isBusy()) { setStatus('Wait until the running job ends, then import.'); return; }
+      cover(`Importing ${path.split('/').pop()}…`);
+      try {
+        const r = await (await fetch('/api/project-import-path', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) })).json();
+        if (!r.ok) throw new Error(r.error || 'it was not imported');
+        reopen(r.project && r.project.name);
+      } catch (e) { cover(null); setStatus(`Could not import: ${e.message}`); }
     }
     async function importProject(file) {
       if (!file) return;
@@ -2911,7 +2931,7 @@
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
   installUpdate,
-  exportProject, importProject,
+  exportProject, importProject, chooseProjectFile,
   downloadShown,
   openProjectMenu, switchProject, openProjectForm, closeProjectForm, readProjectMark, drawProjectPreview, saveProject,
   removeChange,

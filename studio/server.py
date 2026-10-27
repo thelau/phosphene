@@ -1241,9 +1241,9 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "no_project": True, "error": "Make a project or import one first (the project menu, top left)."}, 409)
             return
         if parsed.path == "/api/project-import-path":
-            # the Mac app: a .phosphene file double-clicked in Finder (or dropped on the Dock icon), imported from where it is
+            # the Mac app: a .phos file double-clicked in Finder (or dropped on the Dock icon), imported from where it is
             f = Path(str(body.get("path") or ""))
-            if f.suffix.lower() not in (".phosphene", ".zip") or not f.is_file():
+            if f.suffix.lower() not in (".phos", ".phosphene", ".zip") or not f.is_file():
                 self.send_json({"ok": False, "error": "That is not a project file."}, 400)
                 return
             if busy():

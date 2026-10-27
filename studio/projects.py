@@ -280,7 +280,7 @@ def rebrand(text: str, p: dict) -> str:
     return DEMO_COLOUR.sub(lambda m: f"brand colour {pal[DEMO_PALETTE.index(m.group(1).upper()) % len(pal)]}", text)
 
 
-# ---- a project as one file, NAME.phosphene: its folder zipped (mark, guides, curation, images), to send to someone or keep. An open
+# ---- a project as one file, NAME.phos (.phosphene before 2026-10-27, still opened): its folder zipped (mark, guides, curation, images), to send to someone or keep. An open
 # format on purpose: renamed .zip it is JSON and the original images, so nothing is ever locked in. "format" is its version ----
 PROJECT_FORMAT = 1
 EXPORT_NAMES = ("project.json", "mark.png", "guide_dark.png", "guide_light.png", "state.json")
@@ -312,7 +312,7 @@ def export_zip(slug: str, out: Path) -> str:
                 z.write(f, f"{top}/guide_{kind}.png")
         for img in sorted(p["plates_dir"].glob("*.jpg")):
             z.write(img, f"{top}/plates/{img.name}")
-    return f"{re.sub(r'[^A-Za-z0-9 ._-]+', '', p['name']).strip() or 'Project'}.phosphene"
+    return f"{re.sub(r'[^A-Za-z0-9 ._-]+', '', p['name']).strip() or 'Project'}.phos"
 
 
 def import_zip(path: Path) -> dict:
@@ -322,7 +322,7 @@ def import_zip(path: Path) -> dict:
     try:
         z = zipfile.ZipFile(path)
     except zipfile.BadZipFile:
-        raise ValueError("That is not a project file (a .phosphene file made by Export project).")
+        raise ValueError("That is not a project file (a .phos file made by Export project).")
     with z:
         names = [n for n in z.namelist() if not n.endswith("/") and not n.startswith("__MACOSX/") and not Path(n).name.startswith(".")]   # Finder's Compress adds __MACOSX/ and ._ files
         tops = {n.split("/", 1)[0] for n in names}

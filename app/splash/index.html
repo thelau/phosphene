@@ -3,8 +3,9 @@
 <style>
   html, body { margin: 0; height: 100%; background: #121110; color: #A8A390; font: 13px -apple-system, system-ui, sans-serif; }
   body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; -webkit-user-select: none; }
-  .dot { width: 14px; height: 14px; border-radius: 50%; background: #EC540C; box-shadow: 0 0 0 10px rgba(236, 84, 12, .18), 0 0 0 22px rgba(236, 84, 12, .07); animation: p 1.6s ease-in-out infinite; }
-  @keyframes p { 50% { box-shadow: 0 0 0 14px rgba(236, 84, 12, .12), 0 0 0 30px rgba(236, 84, 12, .04); } }
+  .mark { width: 65px; height: 56px; }
+  .mark .head { animation: p 1.6s ease-in-out infinite; }
+  @keyframes p { 50% { opacity: .35; } }
   #msg { max-width: 420px; text-align: center; line-height: 1.6; }
 </style></head>
-<body><div class="dot"></div><div id="msg">Starting Phosphene…</div></body></html>
+<body><svg class="mark" viewBox="0 0 130 112" aria-hidden="true"><g fill="#FEFFE7"><rect x="0" y="14" width="5" height="84"></rect><rect x="8" y="14" width="5" height="84"></rect><rect x="16" y="14" width="5" height="84"></rect><rect x="32" y="14" width="5" height="84"></rect><rect x="40.8" y="14" width="5" height="84"></rect><rect x="50.8" y="14" width="5" height="84"></rect><rect x="62.8" y="14" width="5" height="84"></rect><rect x="78" y="14" width="5" height="84"></rect><rect x="98" y="14" width="5" height="84"></rect><rect x="124.8" y="14" width="5" height="84"></rect></g><rect x="23.6" y="0" width="5.6" height="112" class="head" fill="#EC540C"></rect></svg><div id="msg">Starting Phosphene…</div></body></html>

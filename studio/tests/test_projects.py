@@ -134,7 +134,7 @@ def test_export_then_import_brings_the_project_back_as_it_was_and_never_carries_
     p["state_file"].write_text(json.dumps(state))
     (p["plates_dir"].parent / ".qa_cache.json").write_text("{}")
     out = tmp_path / "x.zip"
-    assert projects.export_zip("night-owl", out) == "Night Owl.phosphene"
+    assert projects.export_zip("night-owl", out) == "Night Owl.phos"
     names = zipfile.ZipFile(out).namelist()
     assert sorted(names) == sorted(["night-owl/project.json", "night-owl/state.json", "night-owl/mark.png", "night-owl/guide_dark.png", "night-owl/guide_light.png",
                                     "night-owl/plates/00_shot.jpg", "night-owl/plates/01_shot.jpg", "night-owl/plates/02_shot.jpg"]), "everything it is, no caches"

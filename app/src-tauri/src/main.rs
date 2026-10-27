@@ -19,7 +19,7 @@ use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, Wry}
 use tauri_plugin_dialog::DialogExt;
 
 struct Server(Mutex<Option<Child>>);
-// the server's port once it answers (0 before), and .phosphene files opened before that (a double-click that launched the app)
+// the server's port once it answers (0 before), and .phos files opened before that (a double-click that launched the app)
 // one lock for both, so a file opened while the server starts is never lost between "not ready yet" and "ready"
 struct Opened(Mutex<(u16, Vec<String>)>);
 
@@ -121,7 +121,7 @@ fn on_menu(app: &AppHandle, id: &str) {
         "keys" => "toggleKeys()",
         "open_project" => {
             let handle = app.clone();
-            app.dialog().file().add_filter("Phosphene project", &["phosphene", "zip"]).pick_file(move |file| {
+            app.dialog().file().add_filter("Phosphene project", &["phos", "phosphene", "zip"]).pick_file(move |file| {
                 let Some(path) = file.and_then(|f| f.into_path().ok()) else { return };
                 let port = handle.state::<Opened>().0.lock().unwrap().0;
                 if let Some(win) = handle.get_webview_window("main") {

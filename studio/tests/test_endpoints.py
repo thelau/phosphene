@@ -738,7 +738,7 @@ def test_project_export_and_import_over_http_and_kimi_reads_a_mark(live, srv, mo
     from test_projects import star_png
     _three_plates(live)
     status, res = live("POST", "/api/project-export", {})
-    assert status == 200 and res["filename"] == "Demo.phosphene"
+    assert status == 200 and res["filename"] == "Demo.phos"
     status, data = live("GET", res["url"])
     assert status == 200 and data[:2] == b"PK"
     status, imp = live("POST", "/api/project-import", raw=data)
