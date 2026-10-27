@@ -234,3 +234,13 @@ def test_purge_removes_images_from_every_sequence(srv, make_plate):
     sequences.add_ai(st, ["21_b.jpg", "20_a.jpg"])
     srv.purge_plates(st, ["20_a.jpg"])
     assert all("20_a.jpg" not in s["order"] for s in st["sequences"])
+
+
+def test_plate_key_of_another_mark_follows_its_size_and_place(srv, make_plate, monkeypatch):
+    """Changed in Project settings, the mark's size or place: every image is measured again against the new ones (DEMO's keys stay)."""
+    p = make_plate(srv.PLATES_DIR / "a.jpg")
+    monkeypatch.setattr(srv, "is_demo", lambda: False)
+    monkeypatch.setattr(srv, "PROJECT", {**srv.PROJECT, "mark_size": 18.0, "mark_x": 50.0, "mark_y": 50.0})
+    k18 = srv._plate_key(p)
+    srv.PROJECT["mark_size"] = 24.0
+    assert srv._plate_key(p) != k18

@@ -168,7 +168,8 @@ def mark_words(p: dict | None = None) -> dict:
 def _plate_key(path: Path) -> str:
     # size, not mtime: git checkouts rewrite mtimes and used to invalidate every cached result. Another project's mark: the check's
     # version too (2: fitted at other sizes and by its outline), so results from an older check are measured again; DEMO's keys stay
-    return f"{path.name}:{path.stat().st_size}" + ("" if is_demo() else f":{qa_engine.OWN_CHECK_VERSION}")
+    # and the mark's size and place: changed in Project settings, every image is measured again against the new ones
+    return f"{path.name}:{path.stat().st_size}" + ("" if is_demo() else f":{qa_engine.OWN_CHECK_VERSION}:{PROJECT['mark_size']:g}:{PROJECT['mark_x']:g}:{PROJECT['mark_y']:g}")
 
 
 QA_LOCK = threading.Lock()
