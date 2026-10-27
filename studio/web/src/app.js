@@ -2279,6 +2279,15 @@
     const droneLive = new window.Drone.Live();
     droneLive.onRevived = () => { if (isPlaying) droneLive.seek(cutPos / 30); };   // WebKit stopped the sound and it came back: from where the picture is
     droneLive.onRenew = () => { if (isPlaying && musicOn()) startMusic(cutPos / 30); };   // back from the background: a fresh sound, from where the picture is
+    // the sound's clock stopped (WebKit lost the output): a fresh sound first; stopped again soon after, a reload (the one cure seen
+    // to work), which plays on from the same place (studioResume)
+    let lastStallFix = 0;
+    droneLive.onStall = () => {
+      if (!isPlaying || !musicOn()) return;
+      if (Date.now() - lastStallFix > 20000) { lastStallFix = Date.now(); droneLive.renew(); return; }
+      try { sessionStorage.setItem('studioResume', JSON.stringify({ pos: cutPos, mode })); } catch (e) {}
+      location.reload();
+    };
     function stopMusic() {
       droneLive.stop();
       setPlayLabel();
@@ -3067,6 +3076,11 @@
         clearTimeout(slow);
       }
       warmSound();
+      try {                                                                  // back from a reload that mended the sound: playing on, from there
+        const resume = JSON.parse(sessionStorage.getItem('studioResume') || 'null');
+        sessionStorage.removeItem('studioResume');
+        if (resume && activePlates().length) { setMode(resume.mode || 'film'); cutPos = +resume.pos || 0; lastTick = performance.now(); if (!isPlaying) togglePlay(); }
+      } catch (e) {}
       const l = document.getElementById('loader');
       l.classList.add('done');
       setTimeout(() => l.remove(), 400);

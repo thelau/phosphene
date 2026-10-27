@@ -878,6 +878,7 @@
       this.cal = await level(params, starts);
       soundLog(`level measured in ${Math.round(performance.now() - t0)} ms`);
       this.playing = true;
+      this._watch();
       const old = this.inst;
       const startAt = this._spawn(offset % this.total);
       if (old) this._retire(old, startAt);
@@ -954,7 +955,29 @@
         this.inst.level.gain.setTargetAtTime(g, this.ctx.currentTime, 0.15);
       };
     }
+    // WebKit can lose the page's sound output while every context still says 'running' (seen in the Mac app: a clack, then silence,
+    // new contexts silent too, only a reload helped). What shows it: the sound's clock stops moving. Checked every second while
+    // the page is in front; two stopped seconds in a row tell the page (onStall), which makes a fresh sound, then reloads if needed
+    _watch() {
+      clearInterval(this.watchdog);
+      let lastT = this.ctx.currentTime, lastW = performance.now(), stalls = 0, n = 0;
+      this.watchdog = setInterval(() => {
+        if (!this.playing || !this.ctx) { clearInterval(this.watchdog); return; }
+        const t = this.ctx.currentTime, w = performance.now(), dt = t - lastT, dw = (w - lastW) / 1000;
+        lastT = t; lastW = w;
+        const front = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+        if (dw > 0.5 && dt < 0.1 * dw) {
+          stalls++;
+          soundLog(`the sound's clock stopped: ${dt.toFixed(2)} s in ${dw.toFixed(1)} s`, front ? '' : '(window hidden)');
+          if (stalls >= 2 && front && this.onStall) { clearInterval(this.watchdog); this.onStall(); }
+        } else {
+          stalls = 0;
+          if (++n % 15 === 0) soundLog(`clock fine: ${dt.toFixed(2)} s in ${dw.toFixed(1)} s`);
+        }
+      }, 1000);
+    }
     stop() {
+      clearInterval(this.watchdog);
       this.playing = false;
       this.pending = null; this.holding = 0;
       clearTimeout(this.timer); clearTimeout(this.calTimer); clearInterval(this.ticker);

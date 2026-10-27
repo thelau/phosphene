@@ -603,3 +603,29 @@ test('Sound › Source Off then Synthesized is a full reset: a new sound connect
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('the sound\'s clock stops while the page is in front (WebKit lost the output, the context still "running"): the page is told; a reload plays on from the same place', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(async ({ BASE }) => {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const L = new window.Drone.Live();
+    let stalled = 0; L.onStall = () => { stalled++; };
+    await L.play(BASE, Array.from({ length: 200 }, (_, i) => i / 3), 0);
+    await sleep(1300);
+    const fine = stalled;
+    const frozen = L.ctx.currentTime; Object.defineProperty(L.ctx, 'currentTime', { get: () => frozen, configurable: true });   // the clock stops
+    await sleep(3300);
+    L.stop();
+    return { fine, stalled };
+  }, { BASE });
+  assert.equal(r.fine, 0, 'a moving clock is left alone');
+  assert.equal(r.stalled, 1, 'two stopped seconds tell the page, once');
+  // the page's cure, a reload, plays on from the same place
+  await film();
+  await page.evaluate(() => sessionStorage.setItem('studioResume', JSON.stringify({ pos: 30, mode: 'film' })));
+  await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
+  assert.equal(await page.evaluate(() => document.getElementById('playBtn').classList.contains('playing')), true, 'playing again after the reload');
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('studioResume')), null, 'once');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
