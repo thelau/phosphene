@@ -53,6 +53,9 @@
     return c;
   }
 
+  // what happened to the live sound, in the console (Safari / the app: right-click › Inspect Element › Console), to see why it stopped
+  function soundLog(...a) { try { console.info(`[sound ${new Date().toTimeString().slice(0, 8)}]`, ...a.filter(Boolean)); } catch (e) {} }
+
   function makeRoom(ctx, seedN, i, roomSeconds) {
     const conv = ctx.createConvolver(); conv.normalize = false;
     const data = cachedData(ctx.sampleRate, `room|${seedN}|${i}|${roomSeconds}`, () => roomData(ctx.sampleRate, mulberry32(seedN + 7919 * (i + 1)), roomSeconds));
@@ -782,7 +785,8 @@
         // WebKit (Safari, the Mac app) can stop a page's sound by itself ('interrupted' or 'suspended': another app's sound, an output
         // change, sleep) and never starts it again: the sound went silent while the picture played on. Asked back at once, and at
         // the next click or key (WebKit may want one), then put back where the picture is (onRevived)
-        this.ctx.onstatechange = () => { if (this.ctx && this.playing && this.ctx.state !== 'running' && this.ctx.state !== 'closed') this._revive(); };
+        const born = this.ctx;
+        this.ctx.onstatechange = () => { soundLog(`context ${born.state}`, this.playing ? 'while playing' : ''); if (this.ctx && this.playing && this.ctx.state !== 'running' && this.ctx.state !== 'closed') this._revive(); };
         if (typeof document !== 'undefined' && !this.listening) {
           this.listening = true;
           const again = () => { if (this.playing && this.ctx && this.ctx.state !== 'running' && this.ctx.state !== 'closed') this._revive(); };
@@ -790,7 +794,7 @@
           document.addEventListener('keydown', again, true);
           // In the Mac app the sound could go silent once the window had been in the background (another app in front) while the
           // context still said 'running', so nothing above saw it. Back in front while playing: a new context, from where the picture is.
-          const away = () => { if (this.playing) this.wasAway = true; };
+          const away = () => { if (this.playing) { this.wasAway = true; soundLog('window behind another'); } };
           const back = () => { if (this.wasAway && this.playing && this.renewOnReturn && (document.visibilityState !== 'hidden')) { this.wasAway = false; this.renew(); } };
           window.addEventListener('blur', away);
           document.addEventListener('visibilitychange', () => (document.visibilityState === 'hidden' ? away() : back()));
@@ -801,6 +805,7 @@
     }
     // a fresh context and sound (the old one closed): the page plays it again from where the picture is (onRenew)
     renew() {
+      soundLog('back in front: a fresh sound');
       this.fresh();
       if (this.onRenew) this.onRenew();
     }
@@ -814,7 +819,8 @@
     async _revive() {
       if (this.reviving || !this.ctx) return;
       this.reviving = true;
-      try { await this.ctx.resume(); } catch (e) {}
+      soundLog('asking the sound back');
+      try { await this.ctx.resume(); } catch (e) { soundLog('refused', e && e.message); }
       this.reviving = false;
       if (this.ctx.state === 'running' && this.playing && this.onRevived) this.onRevived();
     }
@@ -867,7 +873,10 @@
       if (ctx.state !== 'running') { try { await ctx.resume(); } catch (e) {} }
       starts = cleanStarts(starts);
       this.params = params; this.starts = starts; this.total = starts[starts.length - 1];
+      soundLog(`play from ${(+offset).toFixed(1)} s`, `context ${ctx.state}`);
+      const t0 = performance.now();
       this.cal = await level(params, starts);
+      soundLog(`level measured in ${Math.round(performance.now() - t0)} ms`);
       this.playing = true;
       const old = this.inst;
       const startAt = this._spawn(offset % this.total);
