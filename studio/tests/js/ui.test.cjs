@@ -1760,3 +1760,12 @@ test('the AI critic boxes show what the server does from the start (scoring on u
   assert.equal(h.$('criticOn').checked, true, 'they showed unticked until a save, while the critic was scoring');
   assert.equal(h.$('criticTrash').checked, false);
 });
+
+test('AI re-order is off under two images and says why', async () => {
+  const h = load({ routes: baseRoutes() });
+  await settle(); await settle();
+  assert.equal(h.$('aiBtn').disabled, true);
+  assert.match(h.$('aiBtn').title, /at least two images/);
+  h.run(`plates = [{ filename: 'a.jpg', trashed: false }, { filename: 'b.jpg', trashed: false }]; renderSequences()`);
+  assert.equal(h.$('aiBtn').disabled, false);
+});

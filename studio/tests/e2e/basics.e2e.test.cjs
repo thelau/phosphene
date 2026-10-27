@@ -592,7 +592,17 @@ test('no project (a first launch): the usual page, empty, says where to start; t
   const ctx = await fresh({ width: 1512, height: 945, empty: true, setup: st => { st.project = null; st.plates = []; } });
   assert.equal(await page.locator('#firstRun').count(), 0, 'no welcome screen over the page');
   assert.equal(await text('#projectName'), 'No project');
-  assert.equal(await page.locator('#gridEmpty').isVisible(), false, 'no message in the empty grid');
+  assert.equal(await text('#gridEmpty'), 'No images yet');
+  const box = await page.locator('#gridEmpty').boundingBox(), vp = page.viewportSize();
+  assert.ok(Math.abs(box.x + box.width / 2 - (vp.width - 0) / 2) < vp.width * 0.2 && box.height > 300, 'in the middle of the page');
+  assert.equal(await page.locator('#miniPlayBtn').isDisabled(), true, 'nothing to play');
+  await page.keyboard.press('Space');
+  assert.equal(await page.locator('#playBtn').textContent(), 'Play', 'Space plays nothing either');
+  assert.equal(await page.locator('#gridTargetBtn').isDisabled(), true, 'no mark: no logo target');
+  await film();
+  assert.equal(await page.locator('#reticle').isVisible(), false);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('filmstrip'), '::after').content), '"No images selected"');
+  await curate();
   await page.click('#projectBtn');
   await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');
   assert.equal(await page.locator('#projectMenu').isVisible(), true, 'the menu shows, nothing over it');

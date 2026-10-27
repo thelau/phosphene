@@ -239,9 +239,13 @@
       project = null;
       document.getElementById('projectName').textContent = 'No project';
       document.getElementById('projectMark').removeAttribute('src');
+      document.body.classList.add('no-project');                             // no mark yet: no logo target to show
+      for (const id of ['targetBtn', 'gridTargetBtn']) { const b = document.getElementById(id); if (!b.dataset.title) b.dataset.title = b.title; b.disabled = true; b.title = 'The logo target: make or import a project first'; }
     }
     function showProject(p) {
       project = p;
+      document.body.classList.remove('no-project');
+      for (const id of ['targetBtn', 'gridTargetBtn']) { const b = document.getElementById(id); b.disabled = false; if (b.dataset.title) b.title = b.dataset.title; }
       const img = document.getElementById('projectMark');
       if (img.getAttribute('src') !== p.mark_url) img.src = p.mark_url;
       document.getElementById('projectName').textContent = p.name;
@@ -758,7 +762,14 @@
       const dl = document.getElementById('downloadBtn'), n = activePlates().length;   // the Selection only (All or the group), not the Trash
       dl.hidden = showTrash; dl.disabled = !n || downloading;
       dl.title = n ? `Download the ${n} image${n === 1 ? '' : 's'} shown, full size, in their order (a zip)` : 'No images to download';
-      document.getElementById('aiBtn').disabled = aiRunning || generating;
+      syncAiBtn();
+      for (const id of ['playBtn', 'fsPlayBtn', 'miniPlayBtn']) document.getElementById(id).disabled = !n;
+      if (!n && isPlaying) togglePlay();                                     // the last image went (trashed, another group): stop
+    }
+    function syncAiBtn() {                                                   // nothing to order under two images
+      const b = document.getElementById('aiBtn'), few = activePlates().length < 2;
+      b.disabled = aiRunning || generating || few;
+      b.title = few ? 'AI re-order needs at least two images' : 'Let the AI rearrange your order (⌘Z puts it back)';
     }
     // the images shown in Curate (All or the chosen group, in their order), full size, in one zip; the browser saves it
     let downloading = false;
@@ -900,8 +911,8 @@
       gridView = showTrash;
       patchChildren(grid, items);
       const empty = document.getElementById('gridEmpty');
-      empty.hidden = items.length > 0 || !project;                          // no project: nothing to say (the project menu is the way in)
-      empty.textContent = showTrash ? 'The Trash is empty.' : 'No images yet. Choose a territory and press Generate.';
+      empty.hidden = items.length > 0;
+      empty.textContent = showTrash ? 'The Trash is empty.' : project ? 'No images yet. Choose a territory and press Generate.' : 'No images yet';
       if (grid.querySelectorAll) grid.querySelectorAll('.card[data-filename]').forEach((el, i) => {   // the place in the order lives outside the markup, so a reorder only moves cards
         const num = el.querySelector('.card-num'), txt = String(i + 1).padStart(2, '0');
         if (num && num.textContent !== txt) num.textContent = txt;
@@ -2389,6 +2400,7 @@
     }
     // play carries on from where the playhead is (Restart goes back to the start)
     function togglePlay() {
+      if (!isPlaying && !activePlates().length) return;                      // nothing to play: no film, no sound
       const stageImg = document.getElementById('stageImg');
       stageImg.style.display = 'block';
       isPlaying = !isPlaying;
@@ -2572,7 +2584,7 @@
     function applyLocks() {
       const lockGen = generating || aiRunning;
       ['worldSelect', 'directionInput', 'batchCountSelect', 'modelSelect', 'generateBtn'].forEach(id => { document.getElementById(id).disabled = lockGen; });
-      document.getElementById('aiBtn').disabled = lockGen;
+      syncAiBtn();
       document.getElementById('exportBtn').disabled = aiRunning || !activePlates().length;
       ['trashSelAll', 'trashEmpty'].forEach(id => { document.getElementById(id).disabled = aiRunning; });
       document.body.classList.toggle('ai-running', aiRunning);
