@@ -436,7 +436,7 @@
                 <button role="tab" id="soundTabBed" data-group="bed" onclick="showSoundGroup('bed')">Bed <span>6</span></button>
                 <button role="tab" id="soundTabTone" data-group="tone" onclick="showSoundGroup('tone')">Tone <span>8</span></button>
                 <button role="tab" id="soundTabTexture" data-group="texture" onclick="showSoundGroup('texture')">Texture <span>7</span></button>
-                <button role="tab" id="soundTabNotes" data-group="notes" onclick="showSoundGroup('notes')">Notes <span>13</span></button>
+                <button role="tab" id="soundTabNotes" data-group="notes" onclick="showSoundGroup('notes')">Notes <span>12</span></button>
               </div>
               <input type="hidden" id="soundGroupVal" value="bed" />
 
@@ -582,7 +582,6 @@
                     <option value="3">Follows the speed</option>
                   </select>
                 </label>
-                <label class="row"><span class="lbl">Stutter</span><input type="range" id="stutterRange" min="0" max="100" value="0" oninput="updateMusic()" title="Now and then, on the last cut of a phrase, the sound repeats a slice of itself" /><span class="val" id="stutterVal">0</span></label>
 
                 <label class="row"><span class="lbl">Dynamics</span>
                   <select id="dynSelect" onchange="updateMusic()" title="Off: steady. Rise / Fall: the notes climb or sink over the whole clip. Follows the speed: higher and brighter while the cuts are fast (with Variable speed).">

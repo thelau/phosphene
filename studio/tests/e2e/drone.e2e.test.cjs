@@ -379,24 +379,12 @@ test('pad, acid and tape: the pad voices each chord in the key (VI gets its majo
   await ctx.close();
 });
 
-test('polyrhythm and stutter: 3 notes over 2 cuts, a stuttering cut repeats one slice; the level holds', { skip }, async () => {
+test('polyrhythm: 3 notes over 2 cuts, in phase from any cut', { skip }, async () => {
   const ctx = await fresh();
   const poly = await page.evaluate(() => [0, 1, 2, 3].map(i => window.Drone.notesIn(i, 1.5).map(([k, f]) => [k, +f.toFixed(3)])));
   assert.equal(JSON.stringify(poly), '[[[0,0],[1,0.667]],[[2,0.333]],[[3,0],[4,0.667]],[[5,0.333]]]', '3 against 2: notes at 0, 2/3, 4/3 cuts...');
-  const r = await page.evaluate(async BASE => {
-    const sr = 44100;
-    const lvl = x => { let s2 = 0; for (let i = 0; i < x.left.length; i++) s2 += x.left[i] ** 2; return Math.sqrt(s2 / x.left.length); };
-    const st = Array.from({ length: 33 }, (_, i) => i * 0.25), stut = await window.Drone.renderExport({ ...BASE, arp: 0.4, arpRate: 3, stutter: 1 }, st), plain = await window.Drone.renderExport({ ...BASE, arp: 0.4, arpRate: 3 }, st);
-    const corr = (x, a, lag) => { let n = 0, d1 = 0, d2 = 0; const L = Math.round(lag * sr); for (let i = Math.round(a * sr); i < Math.round((a + 0.08) * sr); i++) { n += x.left[i] * x.left[i + L]; d1 += x.left[i] ** 2; d2 += x.left[i + L] ** 2; } return n / Math.sqrt(d1 * d2); };
-    const phraseEnds = [7, 15, 23].map(c => ({ c, stut: corr(stut, c * 0.25 + 0.07, 0.0625), plain: corr(plain, c * 0.25 + 0.07, 0.0625) }));
-    return { stutLevel: lvl(stut), phraseEnds };
-  }, BASE);
-  const looped = r.phraseEnds.filter(p => p.stut > 0.9 && p.plain < 0.6);
-  assert.ok(looped.length >= 1, `at least one phrase end repeats one slice: ${JSON.stringify(r.phraseEnds)}`);
-  assert.ok(Math.abs(r.stutLevel - 0.17) < 0.015, `the level holds: ${r.stutLevel}`);
   await ctx.close();
 });
-
 test('the engine finds no console errors across all of this', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(async (BASE) => {

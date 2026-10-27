@@ -271,7 +271,7 @@
     const prog = PROGRESSIONS[pick(p.prog, PROGRESSIONS.length)], progEvery = PROG_EVERY[pick(p.progEvery, PROG_EVERY.length)];
     const progSeq = !prog ? [0] : prog.steps || (() => { const r = mulberry32(seedN + 31), out = [0]; for (let k = 1; k < 8; k++) out.push(prog.walk[1 + Math.floor(r() * (prog.walk.length - 1))]); return out; })();
     const degreeAt = i => progSeq[Math.floor(i / progEvery) % progSeq.length];   // the chord at music cut i, in semitones from the root
-    const padAmt = clamp01(p.pad || 0), tape = clamp01(p.tape || 0), stutterAmt = clamp01(p.stutter || 0);
+    const padAmt = clamp01(p.pad || 0), tape = clamp01(p.tape || 0);
     const bassAmt = clamp01(p.bass || 0), bassPat = BASS_PATTERNS[pick(p.bassPattern, BASS_PATTERNS.length)], bassPer = BASS_PER_CUT[pick(p.bassRate, BASS_PER_CUT.length)];
     const arrange = pick(p.arrange, ARRANGEMENTS.length);
     const subWave = Math.max(0, Math.min(SUB_WAVES.length - 1, Math.round(+p.subWave || 0)));
@@ -631,21 +631,7 @@
     const cross = (a, b, ch) => { const g1 = gain((1 + w) / 2); const g2 = gain((1 - w) / 2); mix[a].connect(g1); mix[b].connect(g2); g1.connect(merger, 0, ch); g2.connect(merger, 0, ch); };
     cross(0, 1, 0); cross(1, 0, 1);
     const dyn = ctx.createGain();                                           // the volume is never touched by Dynamics: it shapes the notes (see arc)
-    let pre = merger;
-    // stutter: now and then, on the last cut of a phrase of 8, the whole sound repeats a slice of itself (a quarter of the cut) until the next
-    if (stutterAmt > 0.01) {
-      const dry = gain(1), inGate = gain(0), dl = ctx.createDelay(1), fb = gain(0), wet = gain(0), sum = gain(1);
-      pre.connect(dry); pre.connect(inGate); inGate.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(wet); dry.connect(sum); wet.connect(sum);
-      pre = sum;
-      perCut.push((i, t) => {
-        if (i % 8 !== 7 || i >= nCuts - 1 || mulberry32(seedN * 31 + i)() >= 0.6 * stutterAmt) return;   // seeded: the same stutters every time
-        const len = starts[i + 1] - starts[i], slice = Math.min(0.25, Math.max(0.03, len / 4)), end = t + len;
-        dl.delayTime.setValueAtTime(slice - 128 / ctx.sampleRate, t);                      // a feedback loop adds one render block (128 samples): the loop is exactly the slice
-        inGate.gain.setValueAtTime(1, t); inGate.gain.setValueAtTime(0, t + slice);        // take one slice...
-        for (const [g, v] of [[fb, 1], [wet, 1], [dry, 0]]) { g.gain.setTargetAtTime(v, t + slice, 0.002); g.gain.setTargetAtTime(v ? 0 : 1, end, 0.003); }   // ...and loop it to the next cut
-      });
-    }
-    pre.connect(dyn);
+    merger.connect(dyn);
     let out = dyn;
     if (tape > 0.01) {                                                      // tape: wow and flutter, saturation, a darker top, a little dust
       const wow = ctx.createDelay(0.1); wow.delayTime.value = 0.012;
@@ -704,7 +690,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   const cutSignature = starts => { const head = []; for (const t of starts) { head.push(Math.round(t * 1000)); if (t > 4) break; } return head.join(','); };   // the cuts of the window the level is measured on: faster cuts pump differently
-  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.tape, p.stutter]);
+  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.tape]);
   async function level(p, starts) {
     starts = cleanStarts(starts);
     const key = levelKey(p, starts);
