@@ -39,8 +39,11 @@ import projects
 import taste
 
 from krea_mcp_client import (
+    finish_login as krea_finish_login,
+    forget_login as krea_forget_login,
     generate_plate_via_krea_mcp,
     get_krea_oauth_token,
+    start_login as krea_start_login,
 )
 from qa_engine import (
     DEMO_MARK,
@@ -906,6 +909,25 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.wfile.write(data)
             return
 
+        if parsed.path == "/api/krea-callback":                                  # Krea sends the browser back here after the sign-in
+            q = parse_qs(parsed.query)
+            try:
+                if q.get("error"):
+                    raise RuntimeError((q.get("error_description") or q["error"])[0])
+                krea_finish_login((q.get("code") or [""])[0], (q.get("state") or [""])[0])
+                title, text = "Krea is connected", "You can close this tab and go back to Phosphene."
+            except Exception as e:
+                title, text = "Krea is not connected", str(e)[:300]
+            gen_log.record("krea_login", ok=title == "Krea is connected", error=None if title == "Krea is connected" else text)
+            html_bytes = (f"<!doctype html><meta charset=utf-8><title>{title}</title><body style='font:15px system-ui;background:#121110;color:#FEFFE7;padding:48px;line-height:1.6'>"
+                          f"<h2 style='margin:0 0 8px'>{title}</h2><p style='color:#A8A390'>{text.replace('<', '&lt;')}</p>").encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html_bytes)))
+            self.end_headers()
+            self.wfile.write(html_bytes)
+            return
+
         if parsed.path == "/api/busy":
             self.send_json({"ok": True, "busy": busy()})
             return
@@ -1089,8 +1111,17 @@ class StudioHandler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/api/krea-auth":
-            subprocess.Popen(["/opt/homebrew/bin/opencode", "mcp", "auth", "krea"], cwd=str(ROOT_DIR))
-            self.send_json({"ok": True})
+            # sign in to Krea from this app (MCP OAuth): the page opens the URL; Krea sends the browser back to /api/krea-callback
+            if body.get("action") == "logout":
+                krea_forget_login()
+                self.send_json({"ok": True})
+                return
+            try:
+                url = krea_start_login(f"http://localhost:{self.server.server_address[1]}/api/krea-callback")
+            except Exception as e:
+                self.send_json({"ok": False, "error": f"Could not reach Krea: {str(e)[:200]}"}, 502)
+                return
+            self.send_json({"ok": True, "url": url})
             return
 
         if parsed.path == "/api/save-settings":

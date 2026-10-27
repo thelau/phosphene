@@ -691,3 +691,22 @@ def test_switching_projects_waits_while_something_runs(live, srv):
     assert status == 409 and res["busy"]
     assert live("POST", "/api/projects", {"action": "switch", "slug": "demo"})[0] == 200
 
+
+
+def test_krea_sign_in_over_http_opens_krea_and_the_callback_finishes_it(live, srv, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(srv, "krea_start_login", lambda redirect: seen.setdefault("redirect", redirect) and "https://www.krea.ai/auth/v1/oauth/authorize?x=1")
+    monkeypatch.setattr(srv, "krea_finish_login", lambda code, state: seen.update(code=code, state=state))
+    status, res = live("POST", "/api/krea-auth", {})
+    assert status == 200 and res["url"].startswith("https://www.krea.ai/") and seen["redirect"].endswith("/api/krea-callback")
+    status, page = live("GET", "/api/krea-callback?code=C&state=S")
+    assert status == 200 and b"Krea is connected" in page and (seen["code"], seen["state"]) == ("C", "S")
+    status, page = live("GET", "/api/krea-callback?error=access_denied&error_description=The+user+said+no")
+    assert b"Krea is not connected" in page and b"The user said no" in page
+    def refuse(code, state):
+        raise RuntimeError("This sign-in was not started here")
+    monkeypatch.setattr(srv, "krea_finish_login", refuse)
+    assert b"not started here" in live("GET", "/api/krea-callback?code=C&state=X")[1]
+    gone = []
+    monkeypatch.setattr(srv, "krea_forget_login", lambda: gone.append(1))
+    assert live("POST", "/api/krea-auth", {"action": "logout"})[1]["ok"] and gone

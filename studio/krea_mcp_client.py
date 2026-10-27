@@ -1,66 +1,125 @@
 #!/usr/bin/env python3
 """
 Direct Streamable-HTTP MCP Client for https://api.krea.ai/mcp
-- Uses the Krea MCP OAuth token (stored in ~/.local/share/opencode/mcp-auth.json)
-- Automatically refreshes the accessToken via https://www.krea.ai/auth/v1/oauth/token
+- Signs in to Krea itself, as an MCP client does (OAuth 2.1: dynamic client registration, PKCE, a redirect back to this app's
+  /api/krea-callback). The client and its tokens are kept in studio/.krea_auth.json (gitignored: each machine signs in once).
+- Refreshes the access token with the refresh token when it is about to expire, or after a 401.
 - Formats model-specific input payloads (`openai/gpt-image-2.5-flare`, `openai/gpt-image-2.5-sunburst`,
   `openai/gpt-image-2`, `google/nano-banana-pro`, `google/nano-banana-2.1`, `krea/krea-3`, `bytedance/seedream-5-pro`).
 """
 
+import base64
+import hashlib
 import json
+import secrets
 import subprocess
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
-MCP_AUTH_FILE = Path.home() / ".local" / "share" / "opencode" / "mcp-auth.json"
+AUTH_FILE = Path(__file__).resolve().parent / ".krea_auth.json"
 KREA_MCP_URL = "https://api.krea.ai/mcp"
+KREA_AUTHORIZE_URL = "https://www.krea.ai/auth/v1/oauth/authorize"     # from https://www.krea.ai/.well-known/oauth-authorization-server
 KREA_TOKEN_URL = "https://www.krea.ai/auth/v1/oauth/token"
+KREA_REGISTER_URL = "https://www.krea.ai/auth/v1/oauth/clients/register"
 ROOT_DIR = Path(__file__).resolve().parent.parent
 GUIDE_CACHE_FILE = Path(__file__).resolve().parent / "krea_guide_urls.json"
 
 PREUPLOADED_DARK = "https://app-uploads.krea.ai/abe41024-3231-495a-9044-e48d99c94a02/1792760523391-a0895499-4248-4797-b22c-a19852d69a2a-guide_dark_1080x1920.png"
 
 
-def refresh_krea_oauth_token() -> bool:
-    """Automatically refreshes the Krea MCP OAuth token using the stored refreshToken."""
-    if not MCP_AUTH_FILE.exists():
-        return False
+def _read_auth() -> dict:
     try:
-        full = json.loads(MCP_AUTH_FILE.read_text())
-        krea = full.get("krea", {})
-        tokens = krea.get("tokens", {})
-        refresh_token = tokens.get("refreshToken")
-        client_id = (krea.get("clientInfo") or {}).get("clientId")
-        if not refresh_token or not client_id:
-            return False
+        return json.loads(AUTH_FILE.read_text())
+    except FileNotFoundError:
+        return {}
 
-        proc = subprocess.run(
-            [
-                "/usr/bin/curl",
-                "-s",
-                "-X",
-                "POST",
-                KREA_TOKEN_URL,
-                "-d",
-                f"grant_type=refresh_token&refresh_token={refresh_token}&client_id={client_id}",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        resp = json.loads(proc.stdout.strip())
+
+def _write_auth(data: dict) -> None:
+    tmp = AUTH_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    tmp.chmod(0o600)                                  # tokens: readable by this user only
+    tmp.replace(AUTH_FILE)
+
+
+def _post(url: str, fields: dict, as_json: bool = False) -> dict:
+    data = json.dumps(fields).encode() if as_json else urllib.parse.urlencode(fields).encode()
+    req = urllib.request.Request(url, data=data, method="POST", headers={
+        "Content-Type": "application/json" if as_json else "application/x-www-form-urlencoded", "Accept": "application/json", "User-Agent": "Phosphene"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read().decode() or "{}")
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read().decode() or "{}") | {"_status": e.code}
+        except Exception:
+            return {"error": f"http_{e.code}", "_status": e.code}
+
+
+def start_login(redirect_uri: str) -> str:
+    """The Krea sign-in page to open: registers this app as a client the first time (or when its address changed), and keeps
+    what is needed to finish the sign-in (the PKCE verifier, under a random state) until Krea sends the browser back."""
+    auth = _read_auth()
+    if not auth.get("client_id") or auth.get("redirect_uri") != redirect_uri:
+        reg = _post(KREA_REGISTER_URL, {"client_name": "Phosphene", "redirect_uris": [redirect_uri], "grant_types": ["authorization_code", "refresh_token"],
+                                        "response_types": ["code"], "token_endpoint_auth_method": "none", "scope": "profile email"}, as_json=True)
+        if not reg.get("client_id"):
+            raise RuntimeError(f"Krea did not register the app: {reg.get('error_description') or reg.get('error') or reg}")
+        auth = {"client_id": reg["client_id"], "redirect_uri": redirect_uri}
+    verifier = secrets.token_urlsafe(64)
+    state = secrets.token_urlsafe(24)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    auth["pending"] = {"state": state, "verifier": verifier, "at": time.time()}
+    _write_auth(auth)
+    return KREA_AUTHORIZE_URL + "?" + urllib.parse.urlencode({
+        "response_type": "code", "client_id": auth["client_id"], "redirect_uri": redirect_uri, "scope": "profile email",
+        "state": state, "code_challenge": challenge, "code_challenge_method": "S256", "resource": KREA_MCP_URL})
+
+
+def _keep_tokens(auth: dict, resp: dict) -> dict:
+    auth["access_token"] = resp["access_token"]
+    if resp.get("refresh_token"):
+        auth["refresh_token"] = resp["refresh_token"]
+    auth["expires_at"] = time.time() + float(resp.get("expires_in", 3600))
+    return auth
+
+
+def finish_login(code: str, state: str) -> None:
+    """Krea sent the browser back: trade the code for tokens. Raises if the sign-in is not the one this app started."""
+    auth = _read_auth()
+    pending = auth.get("pending") or {}
+    if not code or not state or state != pending.get("state") or time.time() - pending.get("at", 0) > 900:
+        raise RuntimeError("This sign-in was not started here, or took longer than 15 minutes. Connect again from Settings.")
+    resp = _post(KREA_TOKEN_URL, {"grant_type": "authorization_code", "code": code, "redirect_uri": auth["redirect_uri"],
+                                  "client_id": auth["client_id"], "code_verifier": pending["verifier"], "resource": KREA_MCP_URL})
+    if "access_token" not in resp:
+        raise RuntimeError(f"Krea refused the sign-in: {resp.get('error_description') or resp.get('error') or resp}")
+    auth.pop("pending", None)
+    _write_auth(_keep_tokens(auth, resp))
+    print("[KREA MCP] Signed in.", flush=True)
+
+
+def forget_login() -> None:
+    """Sign out on this machine (the registered client stays, so the next sign-in is quicker)."""
+    auth = _read_auth()
+    for k in ("access_token", "refresh_token", "expires_at", "pending"):
+        auth.pop(k, None)
+    if auth:
+        _write_auth(auth)
+
+
+def refresh_krea_oauth_token() -> bool:
+    """A new access token from the refresh token. False if there is none or Krea refuses it (then: sign in again)."""
+    try:
+        auth = _read_auth()
+        if not auth.get("refresh_token") or not auth.get("client_id"):
+            return False
+        resp = _post(KREA_TOKEN_URL, {"grant_type": "refresh_token", "refresh_token": auth["refresh_token"], "client_id": auth["client_id"], "resource": KREA_MCP_URL})
         if "access_token" not in resp:
             return False
-
-        tokens["accessToken"] = resp["access_token"]
-        if "refresh_token" in resp:
-            tokens["refreshToken"] = resp["refresh_token"]
-        tokens["expiresAt"] = time.time() + float(resp.get("expires_in", 3600))
-        krea["tokens"] = tokens
-        full["krea"] = krea
-        MCP_AUTH_FILE.write_text(json.dumps(full, indent=2))
+        _write_auth(_keep_tokens(auth, resp))
         print("[KREA MCP] OAuth access token refreshed automatically.", flush=True)
         return True
     except Exception as e:
@@ -69,28 +128,15 @@ def refresh_krea_oauth_token() -> bool:
 
 
 def get_krea_oauth_token() -> dict:
-    if not MCP_AUTH_FILE.exists():
-        return {"connected": False, "token": None}
     try:
-        data = json.loads(MCP_AUTH_FILE.read_text())
-        krea = data.get("krea", {})
-        tokens = krea.get("tokens", {})
-        token = tokens.get("accessToken")
-        expires_at = float(tokens.get("expiresAt", 0) or 0)
-
-        if token and expires_at and time.time() > (expires_at - 120):
-            if refresh_krea_oauth_token():
-                data = json.loads(MCP_AUTH_FILE.read_text())
-                tokens = data.get("krea", {}).get("tokens", {})
-                token = tokens.get("accessToken")
-                expires_at = float(tokens.get("expiresAt", 0) or 0)
-
-        return {
-            "connected": bool(token),
-            "token": token,
-            "expires_at": expires_at,
-            "expired": time.time() > expires_at if expires_at else False,
-        }
+        auth = _read_auth()
+        token, expires_at = auth.get("access_token"), float(auth.get("expires_at", 0) or 0)
+        if token and expires_at and time.time() > (expires_at - 120) and refresh_krea_oauth_token():
+            auth = _read_auth()
+            token, expires_at = auth.get("access_token"), float(auth.get("expires_at", 0) or 0)
+        if not token:
+            return {"connected": False, "token": None}
+        return {"connected": True, "token": token, "expires_at": expires_at, "expired": time.time() > expires_at if expires_at else False}
     except Exception as e:
         return {"connected": False, "token": None, "error": str(e)}
 

@@ -66,76 +66,80 @@ def test_extract_urls_output_list_and_empty():
     assert k.extract_urls_from_mcp_result({"result": {"content": [{"type": "text", "text": "not json"}]}}) == ([], "")
 
 
-# ---------- auth file ----------
+# ---------- signing in (MCP OAuth from this app) and the token file ----------
 
-def write_auth(path, **tokens):
-    path.write_text(json.dumps({"krea": {"tokens": tokens, "clientInfo": {"clientId": "c"}}}))
-
-
-def test_token_missing_file(tmp_path, monkeypatch):
-    monkeypatch.setattr(k, "MCP_AUTH_FILE", tmp_path / "none.json")
-    assert k.get_krea_oauth_token() == {"connected": False, "token": None}
+@pytest.fixture
+def auth(tmp_path, monkeypatch):
+    f = tmp_path / ".krea_auth.json"
+    monkeypatch.setattr(k, "AUTH_FILE", f)
+    return f
 
 
-def test_token_valid(tmp_path, monkeypatch):
-    f = tmp_path / "a.json"
-    write_auth(f, accessToken="T", expiresAt=time.time() + 3600)
-    monkeypatch.setattr(k, "MCP_AUTH_FILE", f)
+def test_sign_in_registers_once_opens_krea_with_pkce_and_keeps_the_tokens(auth, monkeypatch):
+    import base64, hashlib, urllib.parse as up
+    posts = []
+
+    def fake_post(url, fields, as_json=False):
+        posts.append((url, fields, as_json))
+        if url == k.KREA_REGISTER_URL:
+            return {"client_id": "C1"}
+        return {"access_token": "A1", "refresh_token": "R1", "expires_in": 3600}
+    monkeypatch.setattr(k, "_post", fake_post)
+    url = k.start_login("http://localhost:8765/api/krea-callback")
+    q = dict(up.parse_qsl(up.urlparse(url).query))
+    assert url.startswith(k.KREA_AUTHORIZE_URL) and q["client_id"] == "C1" and q["redirect_uri"] == "http://localhost:8765/api/krea-callback"
+    assert q["code_challenge_method"] == "S256" and q["resource"] == k.KREA_MCP_URL and q["response_type"] == "code"
+    reg = posts[0]
+    assert reg[0] == k.KREA_REGISTER_URL and reg[2] and reg[1]["token_endpoint_auth_method"] == "none" and reg[1]["redirect_uris"] == ["http://localhost:8765/api/krea-callback"]
+    saved = json.loads(auth.read_text())
+    verifier = saved["pending"]["verifier"]
+    assert base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode() == q["code_challenge"], "PKCE: the challenge is the verifier's hash"
+    assert oct(auth.stat().st_mode & 0o777) == "0o600", "readable by this user only"
+    with pytest.raises(RuntimeError, match="not started here"):
+        k.finish_login("CODE", "someone-else")
+    k.finish_login("CODE", q["state"])
+    tok = posts[-1][1]
+    assert tok["grant_type"] == "authorization_code" and tok["code"] == "CODE" and tok["code_verifier"] == verifier and tok["client_id"] == "C1"
     t = k.get_krea_oauth_token()
-    assert t["connected"] and t["token"] == "T" and not t["expired"]
+    assert t["connected"] and t["token"] == "A1" and not t["expired"]
+    assert "pending" not in json.loads(auth.read_text())
+    k.start_login("http://localhost:8765/api/krea-callback")
+    assert sum(1 for p in posts if p[0] == k.KREA_REGISTER_URL) == 1, "registered once"
+    k.start_login("http://localhost:9000/api/krea-callback")
+    assert sum(1 for p in posts if p[0] == k.KREA_REGISTER_URL) == 2, "again when the app's address changed"
+    k.forget_login()
+    assert k.get_krea_oauth_token()["connected"] is False and json.loads(auth.read_text())["client_id"] == "C1"
 
 
-def test_token_refreshes_when_close_to_expiry(tmp_path, monkeypatch):
-    f = tmp_path / "a.json"
-    write_auth(f, accessToken="OLD", expiresAt=time.time() + 10)
-    monkeypatch.setattr(k, "MCP_AUTH_FILE", f)
+def test_sign_in_errors_say_what_happened(auth, monkeypatch):
+    monkeypatch.setattr(k, "_post", lambda url, fields, as_json=False: {"error": "invalid_client_metadata"})
+    with pytest.raises(RuntimeError, match="did not register"):
+        k.start_login("http://localhost:8765/api/krea-callback")
+    monkeypatch.setattr(k, "_post", lambda url, fields, as_json=False: {"client_id": "C"} if as_json else {"error": "invalid_grant", "error_description": "code expired"})
+    import urllib.parse as up
+    state = dict(up.parse_qsl(up.urlparse(k.start_login("http://x/cb")).query))["state"]
+    with pytest.raises(RuntimeError, match="code expired"):
+        k.finish_login("C", state)
 
-    def fake_refresh():
-        write_auth(f, accessToken="NEW", expiresAt=time.time() + 3600)
-        return True
-    monkeypatch.setattr(k, "refresh_krea_oauth_token", fake_refresh)
-    assert k.get_krea_oauth_token()["token"] == "NEW"
 
-
-def test_token_corrupt_file(tmp_path, monkeypatch):
-    f = tmp_path / "a.json"
-    f.write_text("{oops")
-    monkeypatch.setattr(k, "MCP_AUTH_FILE", f)
+def test_token_missing_or_corrupt_file(auth):
+    assert k.get_krea_oauth_token() == {"connected": False, "token": None}
+    auth.write_text("{oops")
     t = k.get_krea_oauth_token()
     assert t["connected"] is False and "error" in t
 
 
-def test_refresh_needs_refresh_token_and_client_id(tmp_path, monkeypatch):
-    f = tmp_path / "a.json"
-    f.write_text(json.dumps({"krea": {"tokens": {"accessToken": "x"}}}))
-    monkeypatch.setattr(k, "MCP_AUTH_FILE", f)
+def test_token_refreshes_when_close_to_expiry_and_after_refusal_asks_to_sign_in(auth, monkeypatch):
+    auth.write_text(json.dumps({"client_id": "C", "access_token": "OLD", "refresh_token": "R", "expires_at": time.time() + 10}))
+    sent = []
+    monkeypatch.setattr(k, "_post", lambda url, fields, as_json=False: sent.append(fields) or {"access_token": "NEW", "expires_in": 100})
+    assert k.get_krea_oauth_token()["token"] == "NEW"
+    assert sent[0]["grant_type"] == "refresh_token" and sent[0]["refresh_token"] == "R" and sent[0]["client_id"] == "C"
+    assert json.loads(auth.read_text())["refresh_token"] == "R", "kept when Krea sends no new one"
+    monkeypatch.setattr(k, "_post", lambda url, fields, as_json=False: {"error": "invalid_grant"})
     assert k.refresh_krea_oauth_token() is False
-    monkeypatch.setattr(k, "MCP_AUTH_FILE", tmp_path / "none.json")
-    assert k.refresh_krea_oauth_token() is False
-
-
-def test_refresh_success_rewrites_tokens(tmp_path, monkeypatch):
-    f = tmp_path / "a.json"
-    write_auth(f, accessToken="OLD", refreshToken="R", expiresAt=1)
-    monkeypatch.setattr(k, "MCP_AUTH_FILE", f)
-
-    class P:
-        stdout = json.dumps({"access_token": "NEW", "refresh_token": "R2", "expires_in": 100})
-    monkeypatch.setattr(k.subprocess, "run", lambda *a, **kw: P())
-    assert k.refresh_krea_oauth_token() is True
-    t = json.loads(f.read_text())["krea"]["tokens"]
-    assert t["accessToken"] == "NEW" and t["refreshToken"] == "R2" and t["expiresAt"] > time.time()
-
-
-def test_refresh_failure_response(tmp_path, monkeypatch):
-    f = tmp_path / "a.json"
-    write_auth(f, accessToken="OLD", refreshToken="R", expiresAt=1)
-    monkeypatch.setattr(k, "MCP_AUTH_FILE", f)
-
-    class P:
-        stdout = json.dumps({"error": "invalid_grant"})
-    monkeypatch.setattr(k.subprocess, "run", lambda *a, **kw: P())
-    assert k.refresh_krea_oauth_token() is False
+    auth.write_text(json.dumps({"access_token": "x"}))
+    assert k.refresh_krea_oauth_token() is False, "no refresh token or client"
 
 
 # ---------- rpc ----------

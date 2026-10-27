@@ -19,3 +19,4 @@ studio/.local.json
 # projects: new ones stay on this machine; Demo is shared (its plates and curation live where they always did)
 projects/*
 !projects/demo/
+studio/.krea_auth.json

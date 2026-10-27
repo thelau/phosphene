@@ -116,7 +116,9 @@
       </div>
 
       <div class="setting-row">
-        <button onclick="reconnectKrea()">Reconnect Krea MCP OAuth</button>
+        <div class="setting-label"><span>Krea</span></div>
+        <div class="setting-note">Sign in to your own Krea account: images are made with its credits. The sign-in stays on this computer.</div>
+        <div class="krea-actions"><button onclick="reconnectKrea()" id="kreaConnectBtn">Connect Krea</button><button onclick="signOutKrea()" id="kreaSignOutBtn" hidden>Sign out</button></div>
       </div>
     </div>
   </header>

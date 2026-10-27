@@ -132,6 +132,8 @@
     .setting-row { display: flex; flex-direction: column; gap: 5px; }
     .setting-label { font-size: 11px; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
     .setting-note { font-size: 11px; line-height: 1.6; color: var(--faint); }
+    .krea-actions { display: flex; gap: 8px; margin-top: 8px; }
+    .krea-actions [hidden] { display: none; }
     .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-right: 5px; }
     .dot.off { background: var(--red); }
 

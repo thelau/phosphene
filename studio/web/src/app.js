@@ -83,7 +83,7 @@
       return modelStr.includes('/') ? modelStr.split('/')[1] : modelStr;
     }
 
-    let stateCalls = 0;
+    let stateCalls = 0, kreaConnected = false;
     async function loadState() {
       const call = ++stateCalls;
       const res = await fetch('/api/state');
@@ -104,6 +104,9 @@
       const kreaLbl = document.getElementById('kreaStatusLabel');
       kreaDot.className = 'dot' + (data.krea_connected ? '' : ' off');
       kreaLbl.textContent = data.krea_connected ? 'Connected' : 'Disconnected';
+      kreaConnected = Boolean(data.krea_connected);
+      document.getElementById('kreaConnectBtn').textContent = kreaConnected ? 'Sign in again' : 'Connect Krea';
+      document.getElementById('kreaSignOutBtn').hidden = !kreaConnected;
 
       kimiConfigured = Boolean(data.kimi_configured);
       updateKimiIndicator();
@@ -2598,9 +2601,27 @@
       } catch (e) {}
     }
 
+    // Krea: sign in from here (MCP OAuth). The sign-in page opens in a new tab; Krea sends it back to the app, and the page
+    // learns it is connected from the state it polls
     async function reconnectKrea() {
-      await fetch('/api/krea-auth', { method: 'POST', body: '{}' });
-      setStatus('Opened browser for Krea MCP OAuth...');
+      const tab = window.open('', '_blank');                                    // opened now, on the click: a popup blocker lets it through
+      try {
+        const r = await (await fetch('/api/krea-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
+        if (!r.ok) throw new Error(r.error || 'Krea did not answer');
+        if (tab) tab.location.href = r.url; else location.href = r.url;
+        setStatus('Sign in to Krea in the new tab, then come back here.');
+        const until = Date.now() + 5 * 60 * 1000;
+        const check = async () => { await loadState(); if (!kreaConnected && Date.now() < until) setTimeout(check, 3000); else if (kreaConnected) setStatus('Krea is connected.'); };
+        setTimeout(check, 3000);
+      } catch (e) {
+        if (tab) tab.close();
+        setStatus(`Could not start the Krea sign-in: ${e.message}`);
+      }
+    }
+    async function signOutKrea() {
+      await fetch('/api/krea-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) });
+      await loadState();
+      setStatus('Signed out of Krea on this computer.');
     }
 
     // The export's frames, rendered here by the stage's own renderer (render.js) at 1080 x 1920 from the full-size plates, frame by frame as
@@ -2788,6 +2809,7 @@ Object.assign(window, {
   onDrop,
   previewPlate,
   reconnectKrea,
+  signOutKrea,
   saveCritic,
   saveKimiSettings,
   saveKimiSettingsDebounced,
