@@ -118,6 +118,8 @@
       if (data.kimi_model) {
         document.getElementById('kimiModelSelect').value = data.kimi_model;
       }
+      document.getElementById('criticOn').checked = data.critic_enabled !== false;      // as the server has them (they showed unticked until a save)
+      document.getElementById('criticTrash').checked = Boolean(data.critic_autotrash);
 
       const trashedCount = plates.filter(p => p.trashed).length;
       document.getElementById('trashCount').textContent = trashedCount;
@@ -2509,8 +2511,9 @@
         input.placeholder = 'Optional: hint for the new territory';
         say = 'New territory: Kimi invents a fresh area we don\'t cover yet.';
       } else {
-        input.placeholder = `Optional: focus inside ${v}, e.g. fog, rain, lightning (every image follows it)`;
         const opt = sel.selectedOptions[0];
+        const eg = opt && opt.dataset.examples;                                   // the territory's own subjects: what typed here changes
+        input.placeholder = `Optional: focus inside ${v}${eg ? `, e.g. ${eg}` : ''} (every image follows it)`;
         say = `${v}: ${(opt && opt.dataset.brief) || ''}`;
       }
       sel.title = say;
@@ -2527,6 +2530,7 @@
           o.className = 'w';
           o.value = w.name;
           o.dataset.brief = w.brief || '';
+          o.dataset.examples = (w.examples || []).join(', ');
           o.textContent = `${w.wildcard ? '✨ ' : ''}${w.name} (${w.kept} of ${w.n} kept)`;
           sel.appendChild(o);
         });
@@ -2739,6 +2743,10 @@
     // ---- the Mac app: updates. On opening it asks GitHub for a newer version; one click installs it and restarts ----
     const TAURI = window.__TAURI__ || null;
     if (TAURI && document.body) document.body.classList.add('app');
+    async function syncFullscreen() {                                       // full screen hides the window's buttons: the top bar takes back their room
+      try { document.body.classList.toggle('fullscreen', await TAURI.window.getCurrentWindow().isFullscreen()); } catch (e) {}
+    }
+    if (TAURI && TAURI.window) { syncFullscreen(); window.addEventListener('resize', syncFullscreen); }
     let pendingUpdate = null;
     async function checkForUpdate() {
       if (!TAURI || !TAURI.updater || location.port === '5173') return;          // not while developing

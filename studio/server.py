@@ -220,6 +220,21 @@ def apply_critic(filename: str) -> None:
     print(f"[CRITIC] {filename} {r['mean']} {r['verdict']} - {r['reason']}", flush=True)
 
 
+def world_examples(w: dict, n: int = 2) -> list[str]:
+    """What to type to focus a territory, for its field's placeholder: two of its own subjects, without the article."""
+    out = []
+    for a in w.get("applications") or []:
+        a = re.sub(r"^(a|an|the) ", "", a)
+        a = re.split(r" (?:with|in|on|against|at|of|for|from|to|and|under|over|inside|by|off|lit|half|\w+ing|\w+ed)\b", a)[0]
+        a = " ".join(a.split()[:3])                                # short, as someone would type it: "puffer jacket collar"
+        last = a.split()[-1] if a else ""
+        if last and last not in ("a", "an", "the", "seen", "stack", "pair", "set", "row", "black", "white", "cream", "grey") and not last.endswith("'s") and a not in out:
+            out.append(a)
+        if len(out) == n:
+            break
+    return out
+
+
 def build_full_prompt(raw_prompt: str, project: dict | None = None) -> str:
     m = mark_words(project)
     return (
@@ -1077,7 +1092,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             st = load_state()
             stats = chapters.world_stats(st)
             self.send_json({"ok": True, "worlds": [
-                {"name": w["name"], "brief": w["brief"], "n": stats.get(w["name"], {}).get("n", 0), "kept": stats.get(w["name"], {}).get("kept", 0), "wildcard": bool(w.get("wildcard"))}
+                {"name": w["name"], "brief": w["brief"], "examples": world_examples(w), "n": stats.get(w["name"], {}).get("n", 0), "kept": stats.get(w["name"], {}).get("kept", 0), "wildcard": bool(w.get("wildcard"))}
                 for w in chapters.all_worlds(st)
                 if not w.get("wildcard") or stats.get(w["name"], {}).get("n", 0) > 0  # invented worlds only list once they have images
             ]})

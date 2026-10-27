@@ -105,3 +105,16 @@ def test_the_rule_reaches_kimi_in_the_prompt_for_this_territory(monkeypatch):
         {"title": f"T{i}", "idea": "i", "guide": "dark", "prompt": " ".join("".join(chr(97 + ((i * 11 + j) // 26 ** q) % 26) for q in range(4)) for j in range(6))} for i in range(4)]))
     server.ask_kimi_for_prompts({"titles": {}, "prompts": {}}, "k", "m", count=2, world="Fashion & Apparel")
     assert "LEGIBILITY RULE" in seen[0] and "it disappears" in seen[0]
+
+
+def test_world_examples_are_short_subjects_of_that_territory():
+    """The direction field's placeholder: what typed there changes the images, taken from the territory's own subjects."""
+    import server
+    for w in chapters.WORLDS:
+        eg = server.world_examples(w)
+        assert len(eg) == 2, w["name"]
+        for e in eg:
+            assert 1 <= len(e.split()) <= 3 and not e.startswith(("a ", "an ", "the ")), (w["name"], e)
+            assert any(e in a for a in w["applications"]), (w["name"], e)
+    fashion = next(w for w in chapters.WORLDS if w["name"] == "Fashion & Apparel")
+    assert server.world_examples(fashion) == ["heavy hoodie chest", "puffer jacket collar"]

@@ -5,7 +5,7 @@ const fs = require('fs');
 
 const baseRoutes = () => ({
   '/api/state': { plates: [], krea_connected: true, kimi_configured: true, project: { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', round: true, fixed: true } },
-  '/api/worlds': { worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', n: 21, kept: 2, wildcard: false }, { name: 'Harbor & Signal', brief: 'Ports.', n: 0, kept: 0, wildcard: true }] },
+  '/api/worlds': { worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', examples: ['poster', 'open magazine spread'], n: 21, kept: 2, wildcard: false }, { name: 'Harbor & Signal', brief: 'Ports.', n: 0, kept: 0, wildcard: true }] },
 });
 const settle = () => new Promise(r => setImmediate(r));
 const mkPlate = (name, trashed = false) => ({ filename: name, url: `/p/${name}`, trashed, title: name, prompt: 'p', model: 'm' });
@@ -97,7 +97,8 @@ test('direction placeholder follows the territory selection', async () => {
   assert.match($('directionInput').placeholder, /Describe your territory \(required\)/);
   $('worldSelect').value = 'Editorial Print';
   run('updateDirectionHint()');
-  assert.match($('directionInput').placeholder, /focus inside Editorial Print/);
+  assert.match($('directionInput').placeholder, /focus inside Editorial Print, e\.g\. poster, open magazine spread \(/, 'the territory\'s own subjects');
+  assert.doesNotMatch($('directionInput').placeholder, /fog|rain|lightning/);
 });
 
 test('loadWorlds fills the dropdown with "X of Y kept" and wildcard marker', async () => {
@@ -1749,4 +1750,13 @@ test('Generate without Krea or Kimi opens Settings on what is missing; without a
   await h.run('generateImages()');
   assert.equal(h.$('settingsPopover').classList.contains('open'), false);
   assert.match(h.$('toast').textContent, /Make a project or import one first/);
+});
+
+test('the AI critic boxes show what the server does from the start (scoring on unless turned off, auto-trash off)', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { ...r['/api/state'], critic_enabled: true, critic_autotrash: false };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  assert.equal(h.$('criticOn').checked, true, 'they showed unticked until a save, while the critic was scoring');
+  assert.equal(h.$('criticTrash').checked, false);
 });

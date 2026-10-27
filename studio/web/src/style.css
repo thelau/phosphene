@@ -644,6 +644,7 @@
     /* ---------- the Mac app (body.app): the window's buttons sit over the top bar, which drags the window; updates ---------- */
     body.app .topbar { padding-left: 96px; -webkit-user-select: none; }
     body.app .topbar > * { -webkit-app-region: no-drag; }
+    body.app.fullscreen .topbar { padding-left: 20px; }
     .update-bar { position: fixed; z-index: 160; top: 64px; right: 20px; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 16px 40px rgba(0,0,0,.5); font-size: 13px; }
     .update-bar[hidden] { display: none; }
     .update-bar .small-btn { background: var(--text); color: #1A1A1A; border-color: var(--text); }
