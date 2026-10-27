@@ -302,6 +302,12 @@
     function openProjectForm(kind) {
       closeProjectMenu();
       const edit = kind === 'edit' && project;
+      if (!edit && !kimiConfigured) {                                         // a new project starts from Kimi reading the mark: the key first
+        toggleSettings(true);
+        document.getElementById('kimiKeyInput').focus();
+        setStatus('A new project needs your Kimi key (⚙️ Settings): Kimi reads the mark and fills in the project.');
+        return;
+      }
       projectForm = { kind: edit ? 'edit' : 'new', mark: null, markUrl: edit ? project.mark_url : null, typed: new Set() };
       document.getElementById('pfKimi').hidden = true;
       const set = (id, v) => { document.getElementById(id).value = v; };

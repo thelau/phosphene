@@ -1769,3 +1769,14 @@ test('AI re-order is off under two images and says why', async () => {
   h.run(`plates = [{ filename: 'a.jpg', trashed: false }, { filename: 'b.jpg', trashed: false }]; renderSequences()`);
   assert.equal(h.$('aiBtn').disabled, false);
 });
+
+test('New project needs the Kimi key: without it Settings opens on the key, not the form', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { ...r['/api/state'], kimi_configured: false };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.run("openProjectForm('new')");
+  assert.equal(h.$('settingsPopover').classList.contains('open'), true);
+  assert.match(h.$('toast').textContent, /needs your Kimi key/);
+  assert.equal(h.$('projectModal').classList.contains('open'), false, 'the form stays closed');
+});
