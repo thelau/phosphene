@@ -115,6 +115,44 @@ def zoom_scale(mode: str, amount_pct: float, p: float) -> float:
 TRAIL_FRAMES = 4          # how long the previous image lingers after a cut
 TRAIL_MAX = 0.6
 
+# Chord colour: with the chord changes on, each chord lays a brand colour lightly over the picture (the home chord none), switching on the
+# cut where the chord changes. A plain mix, out = picture * (1 - TINT_ALPHA) + colour * TINT_ALPHA: the page does the same with an overlay.
+TINT_ALPHA = 0.16
+CHORD_TINTS = {-2: "#5D8FF4", 5: "#5D8FF4", -4: "#EC540C", 3: "#EC540C", -5: "#F64570"}
+
+
+def tinted(img, colour: str):
+    """The picture with the chord's colour mixed over it."""
+    solid = Image.new("RGB", img.size, colour)
+    return Image.blend(img, solid, TINT_ALPHA)
+
+
+def clean_tints(value) -> list:
+    """[[start second, "#rrggbb" or None], ...] from the page, checked: numbers in order, known colours only, at most 4000."""
+    out = []
+    if not isinstance(value, list):
+        return out
+    known = set(CHORD_TINTS.values())
+    for item in value[:4000]:
+        try:
+            t, c = float(item[0]), item[1]
+        except (TypeError, ValueError, IndexError):
+            continue
+        if math.isfinite(t) and (c is None or c in known) and (not out or t >= out[-1][0]):
+            out.append([t, c])
+    return out
+
+
+def tint_at(tints: list, t: float):
+    """The colour at clip second t from [[start second, colour or None], ...] in order."""
+    colour = None
+    for start, c in tints or []:
+        if start <= t + 1e-9:
+            colour = c
+        else:
+            break
+    return colour
+
 
 def trail_alpha(frames_since_cut: float, amount: float) -> float:
     """Trail: after a cut the previous image lingers on top, fading out over TRAIL_FRAMES frames (whole frames, as in the export).

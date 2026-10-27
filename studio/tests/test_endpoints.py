@@ -621,6 +621,20 @@ def test_ai_reorder_of_a_group_moves_only_its_images_among_their_own_places(live
     assert [p["filename"] for p in state["plates"] if not p["trashed"]][:3] == [names[2], names[1], names[0]], "n1 kept its place; the group swapped"
 
 
+def test_export_frames_take_the_chord_colour_from_the_tints(srv, tmp_path):
+    """Colour follows the chords: frames from 0.2 s on are mixed with the chord's colour; before, untouched."""
+    from PIL import Image
+    grey = tmp_path / "g.jpg"
+    Image.new("RGB", (40, 72), (100, 100, 100)).save(grey)
+    out = tmp_path / "frames"
+    out.mkdir()
+    srv.write_export_frames([grey, grey], out, 12, 1.0, "off", "off", 0.6, [0, 6, 12], tints=[[0, None], [0.2, "#EC540C"]])
+    px = lambda f: Image.open(out / f"f_{f:04d}.jpg").convert("RGB").resize((1, 1)).getpixel((0, 0))
+    assert abs(px(0)[0] - 100) < 4 and abs(px(0)[2] - 100) < 4, "before the chord: as it was"
+    r, _, b = px(8)
+    assert r > 110 and b < 92, f"after: warmer, the orange mixed in ({px(8)})"
+
+
 def test_export_frames_trail_blends_the_previous_image_after_each_cut(srv, tmp_path):
     """Trail: on the first frames of a cut the previous image shows through, fading over 4 frames; the first cut has none."""
     from PIL import Image

@@ -237,6 +237,7 @@
           <div class="stage" id="stage">
             <img id="stageImg" alt="" />
             <img id="stageGhost" alt="" aria-hidden="true" />
+            <div id="stageTint" aria-hidden="true"></div>
             <div class="reticle" id="reticle">
               <i class="ret-v"></i><i class="ret-h"></i>
               <div class="reticle-circle"></div>
@@ -414,6 +415,7 @@
               <input type="range" id="trailRange" min="0" max="60" step="1" value="0" oninput="updateFx()" title="After each cut the previous image lingers for a few frames: a soft overprint. 0 is off." />
               <span class="val" id="trailVal">Off</span>
             </label>
+            <label class="check-line" id="tintRow"><input type="checkbox" id="tintChords" onchange="updateFx()" /> <span>Colour follows the chords</span></label>
           </section>
 
           </div>

@@ -437,6 +437,40 @@ test('snapshots: ＋ Snapshot keeps the film under a name it picks, switching br
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+test('colour follows the chords: off without chord changes; with them, the stage takes each chord\'s colour as it plays and the export carries the timing', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  await film();
+  await choose('musicSelect', 'on');
+  assert.equal(await page.locator('#tintChords').isDisabled(), true, 'no chord changes: nothing to follow');
+  await page.click('#soundTabTone');
+  await page.selectOption('#progSelect', '1'); await page.selectOption('#progEverySelect', '0');   // Descend, a chord every 2 cuts
+  assert.equal(await page.locator('#tintChords').isDisabled(), false);
+  await page.check('#tintChords');
+  await page.fill('#bpmInput', '60'); await page.locator('#bpmInput').dispatchEvent('input');
+  await page.selectOption('#multSelect', '1');
+  await page.click('#playBtn');
+  const seen = new Set();
+  for (let k = 0; k < 40; k++) {
+    await page.waitForTimeout(150);
+    seen.add(await page.evaluate(() => { const el = document.getElementById('stageTint'); return `${el.style.background || 'none'}|${el.style.opacity}`; }));
+  }
+  await page.waitForFunction(() => document.getElementById('stageTint').style.opacity === '0.16');
+  await shot('30-chord-colour');
+  await page.click('#playBtn');
+  const colours = [...seen].filter(x => !x.startsWith('none'));
+  assert.ok(colours.length >= 1 && seen.size >= 2, `the colour changes with the chords: ${[...seen]}`);
+  assert.ok(colours.every(x => x.endsWith('|0.16')), 'mixed lightly, as the export');
+  let sent = null;
+  page.on('request', r => { if (r.url().endsWith('/api/export-video')) sent = JSON.parse(r.postData()); });
+  await page.click('#exportBtn');
+  await page.waitForFunction(() => document.getElementById('exportDock').dataset.state === 'ready', null, { timeout: 15000 });
+  assert.ok(Array.isArray(sent.tints) && sent.tints.length >= 2 && sent.tints.some(t => t[1]), `the export carries where each chord starts: ${JSON.stringify(sent.tints)}`);
+  await page.uncheck('#tintChords');
+  assert.equal(await page.evaluate(() => document.getElementById('stageTint').style.opacity), '0', 'off: the picture as it was');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('the film strip: one thumbnail per image in order, click jumps there; no key trashes from the Film', { skip }, async () => {
   const ctx = await fresh();
   await film();

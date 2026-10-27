@@ -335,3 +335,19 @@ def test_trail_alpha(k, amount, expected):
 def test_cut_plate_follows_the_invert_pairs():
     assert cutplan.cut_plate(3, 3, "off") == (0, False)
     assert cutplan.cut_plate(3, 3, "mono") == (1, True)
+
+
+def test_chord_tint_is_a_plain_mix_the_page_can_match():
+    """Colour follows the chords: out = picture * (1 - 0.16) + colour * 0.16, the same mix as the page's overlay at opacity 0.16."""
+    img = Image.new("RGB", (4, 4), (100, 100, 100))
+    got = cutplan.tinted(img, "#EC540C").getpixel((0, 0))
+    want = (100 * 0.84 + 0xEC * 0.16, 100 * 0.84 + 0x54 * 0.16, 100 * 0.84 + 0x0C * 0.16)
+    assert all(abs(a - b) <= 1 for a, b in zip(got, want)), (got, want)            # PIL truncates, the browser rounds: a level at most
+    assert cutplan.TINT_ALPHA == 0.16
+
+
+def test_tint_at_and_clean_tints():
+    segs = cutplan.clean_tints([[0, None], [1.0, "#5D8FF4"], [2.0, "#EC540C"], [1.5, "#5D8FF4"], [3, "#123456"], ["x", None], [4.0, None]])
+    assert segs == [[0.0, None], [1.0, "#5D8FF4"], [2.0, "#EC540C"], [4.0, None]], "out of order, unknown colours and junk are dropped"
+    assert [cutplan.tint_at(segs, t) for t in (0.5, 1.0, 1.9, 2.5, 9)] == [None, "#5D8FF4", "#5D8FF4", "#EC540C", None]
+    assert cutplan.clean_tints("nope") == [] and cutplan.tint_at([], 1) is None
