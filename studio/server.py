@@ -685,6 +685,15 @@ def purge_plates(st: dict, requested) -> tuple[int, int]:
 EXPORT_AUDIO_MAX_BYTES = 80 * 1024 * 1024
 
 
+EXPORT_FRAME_MAX_BYTES = 16 * 1024 * 1024
+EXPORT_FRAMES_MAX = 20000
+
+
+def export_frames_dir() -> Path:
+    """The export's frames, drawn by the page (render.js, WebGL2: the preview's renderer) and sent one by one before it asks for the video."""
+    return EXPORT_DIR / "frames"
+
+
 def export_audio_file() -> Path:
     """The drone rendered by the page (WebAudio) for the next export: the page sends it just before it asks for the video."""
     return EXPORT_DIR / "export-music.wav"
@@ -952,6 +961,37 @@ class StudioHandler(SimpleHTTPRequestHandler):
             EXPORT_DIR.mkdir(parents=True, exist_ok=True)
             export_audio_file().write_bytes(raw)
             self.send_json({"ok": True, "bytes": len(raw)})
+            return
+        if parsed.path == "/api/export-frame":
+            # one frame of the export, a JPEG from the page; ?same=k: the same picture as frame k (a held cut). Frame 0 starts a new set.
+            raw = self.rfile.read(min(max(length, 0), EXPORT_FRAME_MAX_BYTES + 1))
+            q = parse_qs(parsed.query)
+            try:
+                i = int(q.get("i", [""])[0])
+                same = int(q["same"][0]) if "same" in q else None
+            except ValueError:
+                self.send_json({"ok": False, "error": "Which frame?"}, 400)
+                return
+            if not 0 <= i < EXPORT_FRAMES_MAX or (same is not None and not 0 <= same < i):
+                self.send_json({"ok": False, "error": "That frame is out of range."}, 400)
+                return
+            frames = export_frames_dir()
+            if i == 0:
+                shutil.rmtree(frames, ignore_errors=True)
+            frames.mkdir(parents=True, exist_ok=True)
+            dest = frames / f"f_{i:05d}.jpg"
+            if same is not None:
+                src = frames / f"f_{same:05d}.jpg"
+                if not src.exists():
+                    self.send_json({"ok": False, "error": f"Frame {same} has not arrived."}, 400)
+                    return
+                shutil.copyfile(src, dest)
+            elif length > EXPORT_FRAME_MAX_BYTES or raw[:2] != b"\xff\xd8":
+                self.send_json({"ok": False, "error": "That is not a JPEG frame."}, 400)
+                return
+            else:
+                dest.write_bytes(raw)
+            self.send_json({"ok": True})
             return
         body = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
         if parsed.path in LOCKED_DURING_AI and ai_busy():
@@ -1262,11 +1302,18 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         trail = max(0.0, min(cutplan.TRAIL_MAX, float(body.get("trail") or 0)))
                     except (TypeError, ValueError):
                         trail = 0.0
-                    write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount, starts, trail)
+                    frames_in = tmp_dir / "f_%04d.jpg"
+                    if body.get("frames"):                                  # drawn by the page (render.js): every frame must be there
+                        sent = export_frames_dir()
+                        if body.get("frames") != total_frames or not all((sent / f"f_{f:05d}.jpg").exists() for f in range(total_frames)):
+                            raise ValueError(f"The page sent {body.get('frames')} frames, the film has {total_frames}. Press Export again.")
+                        frames_in = sent / "f_%05d.jpg"
+                    else:                                                   # no WebGL in the page: drawn here
+                        write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount, starts, trail)
 
                     out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode, music_mode, variable, str(body.get("edit") or ""))
                     # cut length follows the tempo, multiple, rhythm and effects chosen in the player; music only when asked for
-                    cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(tmp_dir / "f_%04d.jpg")]
+                    cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(frames_in)]
                     if music_mode != "off":
                         if export_audio_file().exists():
                             wav = export_audio_file().read_bytes()
@@ -1280,6 +1327,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     subprocess.run(cmd, check=True, capture_output=True)
                     export_audio_file().unlink(missing_ok=True)           # the next export gets its own sound
                     shutil.rmtree(tmp_dir, ignore_errors=True)
+                    shutil.rmtree(export_frames_dir(), ignore_errors=True)   # the next export draws its own
                     prune_exports(OUTPUTS_DIR, keep=12)
                     self.send_json({"ok": True, "video_url": f"/outputs/{out_mp4.name}", "filename": out_mp4.name, "frames_per_cut": round(frames_per_cut, 2),
                                     "images": len(active_files), "cuts": n_cuts, "seconds": round(total_frames / fps, 1), "music": music_mode != "off", "music_mode": music_mode})

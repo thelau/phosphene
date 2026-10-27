@@ -174,6 +174,12 @@ function start(state = makeState()) {
         const n = Array.isArray(body.files) && body.files.length ? body.files.length : state.plates.filter(p => !p.trashed).length;
         return send({ ok: true, video_url: '/outputs/Demo-test.mp4', filename: 'Demo-test.mp4', images: n, seconds: n * 0.5, cuts: n });
       }
+      case '/api/export-frame': {    // a frame drawn by the page's renderer: kept so a test can look at it
+        const i = +url.searchParams.get('i'), same = url.searchParams.get('same');
+        if (i === 0) state.frames = [];
+        state.frames[i] = same === null ? req.raw : state.frames[+same];
+        return send({ ok: true });
+      }
       case '/api/export-audio': {    // the drone rendered in the page: keep what arrived so a test can look at it
         state.exportAudio = req.raw;
         return send({ ok: true, bytes: req.raw.length });

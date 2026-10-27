@@ -186,6 +186,10 @@
     #stageGhost { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; pointer-events: none; transform-origin: 50% 50%; }   /* Trail: the previous image, fading over a few frames */
     #stageGhost:not([src]) { display: none; }
     .stage:fullscreen #stageGhost { object-fit: contain; }
+    #stageCanvas { display: none; position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }   /* the picture, drawn by render.js (WebGL2) */
+    body.gl #stageCanvas { display: block; }
+    body.gl #stageImg, body.gl #stageGhost { visibility: hidden; }                       /* with WebGL the images only feed the canvas */
+    .stage:fullscreen #stageCanvas { object-fit: contain; }
     .reticle { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .15s; }
     .reticle.visible { opacity: 1; }
     .reticle .ret-v { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(236, 84, 12, .55); }

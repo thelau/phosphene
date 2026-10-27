@@ -856,6 +856,7 @@
       clearFx();
       const p = plates.find(x => x.filename === filename);
       if (p) stageImg.src = p.preview || p.url;
+      paintGl();
     }
 
     // ---- the two modes: Curate (the images) and Film (the result); switching keeps everything ----
@@ -1830,7 +1831,9 @@
         g.style.filter = paired && prev % 2 === 1 ? (fx.invert === 'mono' ? 'invert(1) grayscale(1)' : 'invert(1)') : '';
         const s = zoomScale(fx.zoom, fx.amount, 1);
         g.style.transform = s > 1.0005 ? `scale(${s.toFixed(5)})` : '';
+        glLook.ghost = { url: g.src, invert: paired && prev % 2 === 1 ? fx.invert : 'off', scale: s };
       }
+      glLook.alpha = alpha;
       const o = alpha > 0 ? alpha.toFixed(3) : '0';
       if (o !== ghostOpacity) { ghostOpacity = o; g.style.opacity = o; }
     }
@@ -1839,12 +1842,38 @@
       img.style.transform = '';
       img.style.filter = '';
       document.getElementById('stageGhost').style.opacity = '0'; ghostOpacity = '0'; ghostCut = -1;
+      glLook = { cur: { invert: 'off', scale: 1 }, ghost: null, alpha: 0 };
     }
     function applyFx(plan, fx) {
       const img = document.getElementById('stageImg');
       const s = zoomScale(fx.zoom, fx.amount, plan.p);
       img.style.transform = s > 1.0005 ? `scale(${s.toFixed(5)})` : '';
       img.style.filter = plan.inverted ? (fx.invert === 'mono' ? 'invert(1) grayscale(1)' : 'invert(1)') : '';
+      glLook.cur = { invert: plan.inverted ? fx.invert : 'off', scale: s };
+    }
+    // ---- the picture on the GPU (render.js, the same renderer as the export): with WebGL2 the stage draws on #stageCanvas from the
+    // look applyFx / drawTrail / clearFx set (the CSS above then only drives hidden images); without it, the CSS is what shows ----
+    let glStage = null, glLook = { cur: { invert: 'off', scale: 1 }, ghost: null, alpha: 0 };
+    function initGl() {
+      const c = document.getElementById('stageCanvas');
+      try { glStage = c && window.Render ? window.Render.create(c) : null; } catch (e) { glStage = null; }
+      document.body.classList.toggle('gl', !!glStage);
+      if (!glStage) return;
+      for (const id of ['stageImg', 'stageGhost']) document.getElementById(id).addEventListener('load', () => paintGl());
+      if (typeof ResizeObserver === 'function') new ResizeObserver(() => paintGl()).observe(c);
+      document.addEventListener('fullscreenchange', () => paintGl());
+    }
+    const decoded = (url, el) => ready.get(url) || (el.getAttribute('src') && el.complete && el.naturalWidth ? el : null);   // a decoded image to upload, never one still arriving
+    function paintGl() {
+      if (!glStage) return;
+      const c = glStage.canvas, img = document.getElementById('stageImg'), g = document.getElementById('stageGhost');
+      const url = img.getAttribute('src'), src = url && decoded(url, img);
+      if (!src) return;                                                     // its load event paints it
+      const r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+      const h = Math.max(16, Math.min(1920, Math.round(Math.min(r.height, (r.width * 16) / 9) * dpr))), w = Math.round((h * 9) / 16);   // 9:16, the screen's pixels, at most the export's
+      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+      const gUrl = glLook.ghost && glLook.alpha > 0 ? g.getAttribute('src') : null, gSrc = gUrl && decoded(gUrl, g);
+      glStage.draw({ cur: { key: url, img: src, ...glLook.cur }, ghost: gSrc ? { key: gUrl, img: gSrc, invert: glLook.ghost.invert, scale: glLook.ghost.scale, alpha: glLook.alpha } : null });
     }
     function updateFx() {
       saveSettings();
@@ -1940,6 +1969,7 @@
       }
       if (!isPlaying) clearFx(); else if (!held) applyFx(plan, fx);        // a held frame keeps its own look
       if (!held) drawTrail(plan, fx, tl, active);
+      paintGl();
       markFilmstrip(plan.plate);
       movePlayhead();
       const total = tl[tl.length - 1], t = ((cutPos % total) + total) % total;
@@ -2310,6 +2340,52 @@
       setStatus('Opened browser for Krea MCP OAuth...');
     }
 
+    // The export's frames, rendered here by the stage's own renderer (render.js) at 1080 x 1920 from the full-size plates, frame by frame as
+    // cutplan.py plans them (frame f shows the clip at f + 0.5), and sent to the server, which only encodes them. A frame that is the same
+    // as the one before (a plain cut held) is sent as a reference, not drawn again. null when WebGL2 is not there: the server draws them.
+    async function exportFrames(progress) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1080; canvas.height = 1920;
+      const r = window.Render && window.Render.create(canvas, { keep: true, textures: 4 });
+      if (!r) return null;
+      const active = activePlates(), fx = fxSettings(), tl = timelineFor(active.length), n = active.length;
+      const paired = fx.invert === 'mono' || fx.invert === 'colour', nCuts = n * (paired ? 2 : 1);
+      const total = Math.max(nCuts, Math.floor(tl[tl.length - 1] + 1e-9));     // cutplan.export_length
+      const full = new Map();                                               // plate -> full-size image, the last few
+      const load = async i => {
+        const p = active[i];
+        if (full.has(p.url)) return full.get(p.url);
+        const im = new Image(); im.src = p.url; await im.decode();
+        full.set(p.url, im); while (full.size > 4) full.delete(full.keys().next().value);
+        return im;
+      };
+      const shown = cut => ({ plate: (paired ? Math.floor(cut / 2) : cut) % n, invert: paired && cut % 2 === 1 ? fx.invert : 'off' });
+      const send = (f, body, same) => fetch(`/api/export-frame?i=${f}${same === undefined ? '' : `&same=${same}`}`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: body || '' })
+        .then(res => res.json()).then(d => { if (!d.ok) throw new Error(d.error || 'a frame was not accepted'); });
+      const inFlight = new Set();
+      let lastKey = '', lastSent = -1, lastJob = null;
+      for (let f = 0; f < total; f++) {
+        const plan = planAt(f + 0.5, n, fx.invert, tl), cur = shown(plan.cut);
+        const scale = zoomScale(fx.zoom, fx.amount, plan.p), alpha = plan.cut > 0 ? trailAlpha(f + 0.5 - tl[plan.cut], fx.trail) : 0;
+        const prev = alpha > 0 ? shown(plan.cut - 1) : null, prevScale = zoomScale(fx.zoom, fx.amount, 1);
+        const key = JSON.stringify([cur, scale > 1.0005 ? scale : 1, prev, alpha]);
+        let job;
+        if (key === lastKey && f > 0) { const k = lastSent; job = lastJob.then(() => send(f, null, k)); }   // after the frame it points at has arrived
+        else {
+          const curImg = await load(cur.plate), prevImg = prev ? await load(prev.plate) : null;
+          r.draw({ cur: { key: active[cur.plate].url, img: curImg, invert: cur.invert, scale }, ghost: prev ? { key: active[prev.plate].url, img: prevImg, invert: prev.invert, scale: prevScale, alpha } : null });
+          const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.92));
+          job = send(f, blob); lastKey = key; lastSent = f; lastJob = job;
+        }
+        if (f === 0) await job;                                             // the first frame starts a new set on the server
+        else { inFlight.add(job); job.then(() => inFlight.delete(job), () => {}); if (inFlight.size >= 6) await Promise.race(inFlight); }
+        if (progress && f % 10 === 0) progress(f, total);
+      }
+      await Promise.all(inFlight);
+      r.forget();
+      return total;
+    }
+
     async function exportVideo() {
       if (blockedByAi()) return;
       if (exporting) return;
@@ -2327,6 +2403,8 @@
           if (!sent.ok) throw new Error(sent.error || 'the sound was not accepted');
           setMusicState('busy', 'Rendering on the server…');
         }
+        const frames = await exportFrames((f, total) => setMusicState('busy', `Rendering frames ${f} / ${total}…`));
+        if (frames) setMusicState('busy', 'Encoding…');
         const res = await fetch('/api/export-video', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -2340,6 +2418,7 @@
             zoom_mode: document.getElementById('zoomSelect').value,
             zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
             trail: (parseFloat(document.getElementById('trailRange').value) || 0) / 100,
+            ...(frames ? { frames } : {}),                                   // drawn here: the server encodes these
             ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // a group: just its images
             ...(editOf(currentEdit) ? { edit: editOf(currentEdit).name } : {}),   // the file is named after the edit
           })
@@ -2368,6 +2447,7 @@
     }
 
     restoreSettings();
+    initGl();
     buildSegs();
     enhanceSelects();
     updateFx();

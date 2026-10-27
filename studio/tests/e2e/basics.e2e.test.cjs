@@ -141,7 +141,7 @@ test('export: preview is untouched, the panel shows the work, then Downloaded wi
   assert.match(await text('#exportMeta'), /^1080 × 1920 · \d+ s · silent$/);
   await page.click('#exportBtn');
   await page.waitForSelector('#exportDock[data-state="busy"]');
-  assert.match(await text('#musicState'), /Rendering on the server/);
+  assert.match(await text('#musicState'), /Rendering/);
   const link = page.locator('#downloadLink');
   await link.waitFor({ state: 'visible' });
   assert.equal(await page.locator('#exportDock').getAttribute('data-state'), 'ready');
@@ -149,13 +149,72 @@ test('export: preview is untouched, the panel shows the work, then Downloaded wi
   assert.equal(await link.getAttribute('href'), '/outputs/Demo-test.mp4');
   assert.equal(await text('#exportFile'), 'Demo-test.mp4');
   assert.equal(await page.locator('#stageImg').getAttribute('src'), before);
-  assert.equal(await page.locator('#stageImg').isVisible(), true);
+  assert.equal(await page.locator('#stageCanvas').isVisible(), true, 'the stage draws with WebGL');
   const body = api.state.calls.find(c => c.path === '/api/export-video').body;
   assert.equal('total_seconds' in body, false);
   await shot('09-export');
   await page.click('#exportAgainBtn');                                            // a second export straight from the ready panel
   await page.waitForSelector('#exportDock[data-state="ready"]');
   assert.equal(api.state.calls.filter(c => c.path === '/api/export-video').length, 2);
+  await ctx.close();
+});
+
+test('WebGL renderer: invert (colour, grey), zoom about the centre and the trail mix give the export\'s numbers', { skip }, async () => {
+  const ctx = await fresh();
+  const got = await page.evaluate(() => {
+    const src = document.createElement('canvas'); src.width = 90; src.height = 160;          // left 30% (200,100,50), the rest (20,40,60)
+    const x = src.getContext('2d'); x.fillStyle = 'rgb(20,40,60)'; x.fillRect(0, 0, 90, 160); x.fillStyle = 'rgb(200,100,50)'; x.fillRect(0, 0, 27, 160);
+    const ghost = document.createElement('canvas'); ghost.width = 90; ghost.height = 160;
+    const y = ghost.getContext('2d'); y.fillStyle = 'rgb(0,0,250)'; y.fillRect(0, 0, 90, 160);
+    const c = document.createElement('canvas'); c.width = 90; c.height = 160;
+    const r = window.Render.create(c, { keep: true });
+    const at = (f, px) => { r.draw(f); const out = new Uint8Array(4); r.gl.readPixels(px, 80, 1, 1, r.gl.RGBA, r.gl.UNSIGNED_BYTE, out); return [...out].slice(0, 3); };
+    const cur = (o = {}) => ({ cur: { key: 's', img: src, invert: 'off', scale: 1, ...o } });
+    return {
+      plain: at(cur(), 10), right: at(cur(), 70),
+      colour: at(cur({ invert: 'colour' }), 10),
+      mono: at(cur({ invert: 'mono' }), 10),
+      zoom: at(cur({ scale: 2 }), 18),                    // x = 0.2 samples 0.35 at twice the size: past the band
+      unzoomed: at(cur(), 18),
+      trail: at({ ...cur(), ghost: { key: 'g', img: ghost, invert: 'off', scale: 1, alpha: 0.3 } }, 10),
+    };
+  });
+  const near = (a, b, label) => assert.ok(a.every((v, i) => Math.abs(v - b[i]) <= 2), `${label}: ${a} vs ${b.map(Math.round)}`);
+  near(got.plain, [200, 100, 50], 'plain'); near(got.right, [20, 40, 60], 'the other side');
+  near(got.colour, [55, 155, 205], 'colour invert');
+  const L = 0.299 * 200 + 0.587 * 100 + 0.114 * 50; near(got.mono, [255 - L, 255 - L, 255 - L], 'grey invert: Pillow\'s L, inverted');
+  near(got.zoom, [20, 40, 60], 'zoomed about the centre'); near(got.unzoomed, [200, 100, 50], 'not zoomed');
+  near(got.trail, [200 * 0.7, 100 * 0.7, 50 * 0.7 + 250 * 0.3], 'the trail: a plain mix, as Image.blend');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
+test('export with WebGL: the page draws every frame as cutplan plans them and the server is only asked to encode', { skip }, async () => {
+  const ctx = await fresh();
+  await film();
+  await choose('invertSelect', 'colour');
+  await page.fill('#bpmInput', '60'); await page.locator('#bpmInput').dispatchEvent('input');
+  await page.selectOption('#multSelect', '1');                                     // a cut a second: 30 frames each, 3 images x 2 = 180 frames
+  await page.click('#exportBtn');
+  await page.waitForFunction(() => document.getElementById('exportDock').dataset.state === 'ready', null, { timeout: 30000 });
+  const body = api.state.calls.find(c => c.path === '/api/export-video').body;
+  assert.equal(body.frames, 180);
+  assert.equal(api.state.frames.length, 180);
+  assert.ok(api.state.frames.every(f => f && f.length > 1000 && f[0] === 0xff && f[1] === 0xd8), 'every frame a JPEG');
+  const px = async i => page.evaluate(async b64 => {
+    const bmp = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${b64}`)).blob());
+    const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height; const x = c.getContext('2d'); x.drawImage(bmp, 0, 0);
+    return { size: [bmp.width, bmp.height], rgb: [...x.getImageData(40, 40, 1, 1).data].slice(0, 3) };
+  }, api.state.frames[i].toString('base64'));
+  const hex = h => [1, 2, 3].map(k => parseInt(h[k] + h[k], 16));
+  const COLORS = ['#c44', '#4a6', '#46c', '#ca4', '#a4c', '#4cc', '#888'], colour = n => hex(COLORS[[...n].reduce((a, ch) => a + ch.charCodeAt(0), 0) % COLORS.length]);
+  const first = await px(15), twin = await px(45), second = await px(75);
+  assert.deepEqual(first.size, [1080, 1920]);
+  const near = (a, b, label) => assert.ok(a.every((v, i) => Math.abs(v - b[i]) <= 4), `${label}: ${a} vs ${b}`);
+  near(first.rgb, colour('k1'), 'cut 1: the first image');
+  near(twin.rgb, colour('k1').map(v => 255 - v), 'cut 2: its inverted copy');
+  near(second.rgb, colour('k2'), 'cut 3: the next image');
+  assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
 

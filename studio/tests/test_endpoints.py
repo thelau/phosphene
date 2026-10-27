@@ -74,7 +74,7 @@ def live(srv, monkeypatch):
 
 
 GET_ENDPOINTS = ["/api/state", "/api/worlds", "/api/stats", "/api/version"]
-POST_ENDPOINTS = ["/api/save-settings", "/api/reorder", "/api/sequence", "/api/trash", "/api/purge", "/api/invent-prompts", "/api/generate-image", "/api/order-ai", "/api/export-video", "/api/export-audio", "/api/groups", "/api/edits"]
+POST_ENDPOINTS = ["/api/save-settings", "/api/reorder", "/api/sequence", "/api/trash", "/api/purge", "/api/invent-prompts", "/api/generate-image", "/api/order-ai", "/api/export-video", "/api/export-audio", "/api/export-frame", "/api/groups", "/api/edits"]
 
 
 @pytest.mark.parametrize("path", GET_ENDPOINTS)
@@ -471,6 +471,34 @@ def test_export_with_music_has_an_audio_track_and_without_it_does_not(live, srv)
     assert gen_log.read(None)[-1]["music"] == "synth"
     status, again = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth"})   # the sound is used once
     assert status == 500 and "did not arrive" in again["error"]
+
+
+def test_export_encodes_the_frames_the_page_drew(live, srv):
+    """WebGL export: the page draws every frame (render.js) and sends them; the server only encodes. A frame can point at an earlier
+    one (a held cut). The count must match the film, a frame must be a JPEG, and the set is used once."""
+    import re
+    _three_plates(live)
+    jpg = io.BytesIO()
+    Image.new("RGB", (108, 192), (220, 30, 30)).save(jpg, "JPEG", quality=92)
+    status, res = live("POST", "/api/export-frame?i=0", raw=jpg.getvalue())
+    assert status == 200 and res["ok"]
+    status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "frames": 1})
+    assert status == 500 and "Press Export again" in res["error"]
+    total = int(re.search(r"the film has (\d+)", res["error"]).group(1))
+    for i in range(1, total):
+        status, res = live("POST", f"/api/export-frame?i={i}&same={i - 1}", raw=b"")
+        assert status == 200 and res["ok"], res
+    status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "frames": total})
+    assert status == 200 and res["ok"], res
+    out = srv.OUTPUTS_DIR / res["filename"]
+    frame = subprocess.run(["/opt/homebrew/bin/ffmpeg", "-v", "error", "-i", str(out), "-frames:v", "1", "-vf", "scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                           capture_output=True, check=True).stdout
+    assert frame[0] > 180 and frame[2] < 70, f"the page's red frames, not the plates' blue: {list(frame)}"
+    assert _streams(out)[1] == pytest.approx(total / 30, abs=0.05)
+    assert not srv.export_frames_dir().exists(), "the frames are used once"
+    assert live("POST", "/api/export-frame?i=0", raw=b"not a jpeg")[0] == 400
+    assert live("POST", "/api/export-frame?i=3&same=5", raw=b"")[0] == 400
+    assert live("POST", "/api/export-frame?i=x", raw=b"")[0] == 400
 
 
 def test_export_audio_refuses_what_is_not_a_wav(live):
