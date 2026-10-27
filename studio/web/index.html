@@ -146,6 +146,15 @@
       </div>
 
       <div class="gallery-col">
+        <section class="welcome" id="welcome" hidden aria-label="Getting started">
+          <div class="wl-text"><b>Welcome to Phosphene.</b> Before making images:</div>
+          <ol class="wl-steps">
+            <li id="wlKrea"><span>Sign in to your Krea account (images use its credits)</span><button type="button" class="small-btn" onclick="reconnectKrea()">Connect Krea</button></li>
+            <li id="wlKimi"><span>Add your Kimi key (it writes the image ideas)</span><button type="button" class="small-btn" onclick="toggleSettings(true)">Open settings</button></li>
+            <li id="wlProject"><span>Work on <b id="wlProjectName">Demo</b>, or make a project for your own mark</span><button type="button" class="small-btn" onclick="openProjectForm('new')">New project</button></li>
+          </ol>
+          <button type="button" class="icon-btn wl-close" onclick="dismissWelcome()" aria-label="Hide">×</button>
+        </section>
         <div class="gallery-head">
           <div class="seg">
             <button id="tabSelection" onclick="setTrashView(false)">Selection (<span id="selCount">0</span>)</button>

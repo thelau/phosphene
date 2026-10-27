@@ -13,6 +13,7 @@ import pytest
 from PIL import Image
 
 import sequences
+from server import find_tool as srv_tool
 
 
 @pytest.fixture
@@ -434,7 +435,7 @@ def test_soften_prompt_refuses_empty_or_failed_rewrites(srv):
 
 
 def _streams(path):
-    out = subprocess.run(["/opt/homebrew/bin/ffprobe", "-v", "error", "-show_entries", "stream=codec_type:format=duration", "-of", "json", str(path)],
+    out = subprocess.run([srv_tool("ffprobe"), "-v", "error", "-show_entries", "stream=codec_type:format=duration", "-of", "json", str(path)],
                          capture_output=True, text=True, check=True).stdout
     data = json.loads(out)
     return [x["codec_type"] for x in data["streams"]], float(data["format"]["duration"])
@@ -500,7 +501,7 @@ def test_export_encodes_the_frames_the_page_drew(live, srv):
     status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "frames": total})
     assert status == 200 and res["ok"], res
     out = srv.OUTPUTS_DIR / res["filename"]
-    frame = subprocess.run(["/opt/homebrew/bin/ffmpeg", "-v", "error", "-i", str(out), "-frames:v", "1", "-vf", "scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+    frame = subprocess.run([srv_tool("ffmpeg"), "-v", "error", "-i", str(out), "-frames:v", "1", "-vf", "scale=1:1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
                            capture_output=True, check=True).stdout
     assert frame[0] > 180 and frame[2] < 70, f"the page's red frames, not the plates' blue: {list(frame)}"
     assert _streams(out)[1] == pytest.approx(total / 30, abs=0.05)

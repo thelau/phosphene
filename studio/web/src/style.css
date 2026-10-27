@@ -631,3 +631,13 @@
     .pf-preview::after { top: var(--pf-y, 50%); left: 0; right: 0; height: 1px; }
     .pf-error { min-height: 18px; margin-top: 10px; color: var(--orange-soft) !important; font-size: 12px !important; }
     .project-form .confirm-foot button.solid { background: var(--text); color: #1A1A1A; border-color: var(--text); }
+
+    /* ---------- first run: what is missing before images can be made ---------- */
+    .welcome { position: relative; flex: none; margin: 16px 24px 0; padding: 14px 44px 14px 16px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line-3); font-size: 13px; }
+    .welcome[hidden] { display: none; }
+    .wl-text { margin-bottom: 8px; color: var(--text-2); }
+    .wl-steps { display: flex; flex-direction: column; gap: 6px; padding-left: 18px; margin: 0; color: var(--muted); }
+    .wl-steps li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .wl-steps li.done { color: var(--faint); text-decoration: line-through; }
+    .wl-steps li.done button { display: none; }
+    .wl-close { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; }

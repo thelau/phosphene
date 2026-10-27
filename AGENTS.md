@@ -17,6 +17,7 @@ A project is a folder `projects/<slug>/` with a `project.json`: name, the mark (
 - `assets/ai-plates/` — generated plates (committed). `outputs/*.mp4` is gitignored.
 
 ## Run
+`README.md` is the guide for someone setting it up on their own computer (a colleague): `npm run setup` (`scripts/setup.sh`: checks Python 3.10+, Node 20+, ffmpeg and git-lfs, offers `brew install` for what is missing, `git lfs pull`, `.venv` + pip, `npm install`; safe to run again), then Settings › Connect Krea and the Kimi key; the Curate page shows a welcome listing what is still missing (`showWelcome`: hidden for the visit when closed, for good once Krea and Kimi are set and there are images). ffmpeg is found on PATH or Homebrew's places (`find_tool`).
 ```fish
 npm install        # once
 npm run dev        # API with auto-restart (studio/dev.py) + Vite with hot reload -> http://localhost:5173

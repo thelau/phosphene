@@ -1729,3 +1729,19 @@ test('Trail: the same opacity curve as the export (shared vectors), and the stag
   assert.equal(h.$('trailVal').textContent, 'Off');
   h.run('isPlaying = false');
 });
+
+test('first run: the welcome lists what is missing, and goes once Krea and Kimi are set and there are images (or it is closed)', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: [], krea_connected: false, kimi_configured: false, project: { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', round: true, fixed: true } };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  assert.equal(h.$('welcome').hidden, false);
+  assert.equal(h.$('wlKrea').classList.contains('done'), false); assert.equal(h.$('wlKimi').classList.contains('done'), false);
+  h.run('dismissWelcome()');
+  assert.equal(h.$('welcome').hidden, true, 'closed for this visit');
+  assert.equal(h.store.studioWelcome, undefined, 'but not for good while something is missing');
+  h.run('welcomeClosed = false');
+  h.run(`showWelcome(${JSON.stringify({ krea_connected: true, kimi_configured: true, plates: [{}] })})`);
+  assert.equal(h.$('welcome').hidden, true, 'ready, with images: no welcome');
+  assert.equal(h.$('wlKrea').classList.contains('done'), true);
+});

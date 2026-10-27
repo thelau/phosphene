@@ -105,6 +105,7 @@
       kreaDot.className = 'dot' + (data.krea_connected ? '' : ' off');
       kreaLbl.textContent = data.krea_connected ? 'Connected' : 'Disconnected';
       kreaConnected = Boolean(data.krea_connected);
+      showWelcome(data);
       document.getElementById('kreaConnectBtn').textContent = kreaConnected ? 'Sign in again' : 'Connect Krea';
       document.getElementById('kreaSignOutBtn').hidden = !kreaConnected;
 
@@ -2540,7 +2541,7 @@
             })
           });
           const genData = await genRes.json();
-          if (genData.needs_auth) { authFailed = true; prog.slots[idx] = 'err'; lastRejectReason = 'Krea login needed'; prog.why[idx] = lastRejectReason; reasons.push(lastRejectReason); return; }
+          if (genData.needs_auth) { authFailed = true; prog.slots[idx] = 'err'; lastRejectReason = 'Krea login needed: Settings › Connect Krea'; prog.why[idx] = lastRejectReason; reasons.push(lastRejectReason); return; }
           if (!genData.ok) { prog.slots[idx] = 'err'; lastRejectReason = genData.error || 'Generation failed'; prog.why[idx] = lastRejectReason; reasons.push(lastRejectReason); return; }
           if (genData.qa_passed) {
             added++;
@@ -2617,6 +2618,22 @@
         if (tab) tab.close();
         setStatus(`Could not start the Krea sign-in: ${e.message}`);
       }
+    }
+    // first run (or a missing sign-in): what is still needed before images can be made; hidden by hand once everything is there
+    function showWelcome(data) {
+      const done = { wlKrea: !!data.krea_connected, wlKimi: !!data.kimi_configured, wlProject: false };
+      for (const [id, ok] of Object.entries(done)) document.getElementById(id).classList.toggle('done', ok);
+      if (data.project) document.getElementById('wlProjectName').textContent = data.project.name;
+      let dismissed = false;
+      try { dismissed = localStorage.getItem('studioWelcome') === 'done'; } catch (e) {}
+      const ready = done.wlKrea && done.wlKimi;
+      document.getElementById('welcome').hidden = welcomeClosed || (ready && (dismissed || (data.plates || []).length > 0));   // closed: for this visit; once ready, for good
+    }
+    let welcomeClosed = false;
+    function dismissWelcome() {
+      welcomeClosed = true;
+      try { if (kreaConnected && kimiConfigured) localStorage.setItem('studioWelcome', 'done'); } catch (e) {}
+      document.getElementById('welcome').hidden = true;
     }
     async function signOutKrea() {
       await fetch('/api/krea-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) });
@@ -2810,6 +2827,7 @@ Object.assign(window, {
   previewPlate,
   reconnectKrea,
   signOutKrea,
+  dismissWelcome,
   saveCritic,
   saveKimiSettings,
   saveKimiSettingsDebounced,

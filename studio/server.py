@@ -67,6 +67,14 @@ SECRETS_FILE = STUDIO_DIR / ".secrets.json"  # gitignored; holds kimi_api_key
 PLATES_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
+
+def find_tool(name: str) -> str:
+    """A command line tool wherever it is installed (PATH first; Homebrew's places when the server was started without them)."""
+    return shutil.which(name) or next((p for p in (f"/opt/homebrew/bin/{name}", f"/usr/local/bin/{name}") if Path(p).exists()), name)
+
+
+FFMPEG = find_tool("ffmpeg")
+
 QA_CACHE_FILE = STUDIO_DIR / "qa_cache.json"
 try:
     QA_CACHE = json.loads(QA_CACHE_FILE.read_text()) if QA_CACHE_FILE.exists() else {}
@@ -1238,9 +1246,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/generate-image":
             auth = get_krea_oauth_token()
             if not auth.get("connected") or auth.get("expired"):
-                subprocess.Popen(["/opt/homebrew/bin/opencode", "mcp", "auth", "krea"], cwd=str(ROOT_DIR))
                 gen_log.record("image", ok=False, title=body.get("title"), model=body.get("model"), seconds=0, error="Krea login needed", needs_auth=True)
-                self.send_json({"ok": False, "needs_auth": True, "error": "Approve Krea MCP OAuth in browser first"})
+                self.send_json({"ok": False, "needs_auth": True, "error": "Connect Krea first (Settings › Connect Krea)."})
                 return
 
             title = body.get("title", "Outdoor Plate").strip()
@@ -1429,7 +1436,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
                     out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode, music_mode, variable, str(body.get("edit") or ""))
                     # cut length follows the tempo, multiple, rhythm and effects chosen in the player; music only when asked for
-                    cmd = ["/opt/homebrew/bin/ffmpeg", "-y", "-framerate", str(fps), "-i", str(frames_in)]
+                    cmd = [FFMPEG, "-y", "-framerate", str(fps), "-i", str(frames_in)]
                     if music_mode != "off":
                         if export_audio_file().exists():
                             wav = export_audio_file().read_bytes()

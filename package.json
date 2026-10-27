@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "setup": "bash scripts/setup.sh",
     "dev": "concurrently -k -n api,web -c yellow,cyan \"python3 studio/dev.py\" \"vite studio/web\"",
     "web": "vite studio/web",
     "api": "python3 studio/dev.py",
