@@ -246,6 +246,10 @@
   const ARP_PER_CUT = [0.5, 1, 2, 4, 1.5, 0.75];                      // arpeggio notes per cut; 1.5 and 0.75 are 3 against 2 and 3 against 4: polyrhythms that drift against the picture
   // the notes falling in cut i at `per` notes a cut: note k sits at k / per cuts (so the pattern stays in phase from any offset)
   const notesIn = (i, per) => { const out = []; for (let k = Math.ceil(i * per - 1e-9); k < (i + 1) * per - 1e-9; k++) out.push([k, k / per - i]); return out; };
+  // where the notes of cut i fall: [step, clip second, the length they are spread over]. The film's end cuts the last music cut
+  // short: it keeps the length of the one before (it is never played faster) and the notes past the end are left out
+  const cutNoteLen = (starts, i) => { const n = starts.length - 1, len = starts[i + 1] - starts[i]; return i === n - 1 && i > 0 ? Math.max(len, starts[i] - starts[i - 1]) : len; };
+  const noteTimes = (starts, i, per) => { const len = cutNoteLen(starts, i), end = starts[starts.length - 1] - 0.002; return notesIn(i, per).map(([k, frac]) => [k, starts[i] + frac * len, len]).filter(([, t]) => t < end); };
   const rootHz = pitch => 38 * Math.pow(2, 0.9 * pitch);                // 38..71 Hz
 
   // Builds the drone into ctx and connects it to `dest` (stereo, before the final glue).
@@ -491,10 +495,10 @@
       const oscs = [['sawtooth', -0.003, 1], ['square', 0.003, 0.5]].map(([w, det, g]) => { const o = osc(w, f0 * 2); o.connect(gain(g, lp)); return [o, det]; });
       const L = bassPat.notes.length;
       perCut.push((i, tc) => {
-        const len = starts[i + 1] - starts[i], stepLen = len / bassPer;
+        const len = cutNoteLen(starts, i), stepLen = len / bassPer;
         for (let k = 0; k < bassPer; k++) {
           const st = i * bassPer + k, note = bassPat.notes[st % L];
-          if (note === null) continue;
+          if (note === null || starts[i] + k * stepLen >= starts[nCuts] - 0.002) continue;   // the short last cut: no squeeze, nothing past the end
           const t = tc + k * stepLen, s = arc(starts[i] + k * stepLen), accent = 0.65 + 0.35 * bassPat.acc[st % L];
           const f = f0 * 2 * Math.pow(2, note / 12), decay = Math.min(0.35, Math.max(0.06, stepLen * 0.8));
           for (const [o, det] of oscs) o.frequency.setValueAtTime(f * (1 + det), t);
@@ -567,9 +571,8 @@
       const noteAt = st => m.accumulate ? pattern[accPos[st % accPos.length]] : m.mutate ? (mutateTo(Math.floor(st / L)), mutated[st % L]) : pattern[st % L];
       const per = ARP_PER_CUT[arpRate];
       perCut.push((i, tc) => {
-        const len = starts[i + 1] - starts[i];
-        for (const [step, frac] of notesIn(i, per)) {
-          const t = tc + frac * len, at0 = starts[i] + frac * len;
+        for (const [step, at0, len] of noteTimes(starts, i, per)) {
+          const t = tc + (at0 - starts[i]);
           const s = arc(at0);
           const stepLen = len / per;
           const decay = Math.min(1.6, Math.max(0.08, stepLen * 0.9 * m.sustain)) * (1.5 - s), f = noteAt(step) * lift(s, 1.2);
@@ -600,10 +603,9 @@
       env.connect(gain(0.6, arpBus[0])); env.connect(gain(0.6, arpBus[1]));
       const per = ARP_PER_CUT[arpRate];
       perCut.push((i, tc) => {
-        const len = starts[i + 1] - starts[i];
-        for (const [step, frac] of notesIn(i, per)) {
-          const t = tc + frac * len;
-          const s = arc(starts[i] + frac * len);
+        for (const [step, at0, len] of noteTimes(starts, i, per)) {
+          const t = tc + (at0 - starts[i]);
+          const s = arc(at0);
           const stepLen = len / per, decay = Math.min(0.5, Math.max(0.05, stepLen * 0.9)) * (1.5 - s), f = pattern[step % arpSteps] * lift(s, 1.2);
           for (const [o, det] of voices) o.frequency.setValueAtTime(f * (1 + det), t);
           lp.frequency.setValueAtTime(1900 * lift(s, 0.8), t); lp.frequency.setTargetAtTime(420 * lift(s, 1.2), t + 0.003, decay / 3);
@@ -913,5 +915,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, notesIn, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz };
 })();

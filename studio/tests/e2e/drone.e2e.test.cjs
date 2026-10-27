@@ -408,6 +408,21 @@ test('pad, acid and tape: the pad voices each chord in the key (VI gets its majo
   await ctx.close();
 });
 
+test('the last music cut, cut short by the film\'s end, keeps the beat: no faster notes before the loop, none past the end', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(() => {
+    const starts = [0, 0.5, 1, 1.5, 1.625];                                    // a flat film whose end falls a quarter into its last music cut
+    return [4, 2, 1.5].map(per => starts.slice(0, -1).flatMap((_, i) => window.Drone.noteTimes(starts, i, per).map(([, t]) => +t.toFixed(4))));
+  });
+  for (const times of r) {
+    const gaps = times.slice(1).map((t, i) => +(t - times[i]).toFixed(4));
+    assert.ok(gaps.every(g => Math.abs(g - gaps[0]) < 1e-3), `even spacing to the very end: ${gaps}`);
+    assert.ok(times.every(t => t < 1.625), `nothing past the end: ${times}`);
+  }
+  assert.deepEqual(r[0].slice(-2), [1.375, 1.5], '4 a cut: the last cut gets the one note that fits (at its start)');
+  await ctx.close();
+});
+
 test('polyrhythm: 3 notes over 2 cuts, in phase from any cut', { skip }, async () => {
   const ctx = await fresh();
   const poly = await page.evaluate(() => [0, 1, 2, 3].map(i => window.Drone.notesIn(i, 1.5).map(([k, f]) => [k, +f.toFixed(3)])));
