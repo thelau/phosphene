@@ -900,8 +900,8 @@
       gridView = showTrash;
       patchChildren(grid, items);
       const empty = document.getElementById('gridEmpty');
-      empty.hidden = items.length > 0;
-      empty.textContent = showTrash ? 'The Trash is empty.' : !project ? 'No project yet: New project… or Import project… in the project menu, at the top.' : 'No images yet. Choose a territory and press Generate.';
+      empty.hidden = items.length > 0 || !project;                          // no project: nothing to say (the project menu is the way in)
+      empty.textContent = showTrash ? 'The Trash is empty.' : 'No images yet. Choose a territory and press Generate.';
       if (grid.querySelectorAll) grid.querySelectorAll('.card[data-filename]').forEach((el, i) => {   // the place in the order lives outside the markup, so a reorder only moves cards
         const num = el.querySelector('.card-num'), txt = String(i + 1).padStart(2, '0');
         if (num && num.textContent !== txt) num.textContent = txt;
@@ -2746,7 +2746,11 @@
     async function syncFullscreen() {                                       // full screen hides the window's buttons: the top bar takes back their room
       try { document.body.classList.toggle('fullscreen', await TAURI.window.getCurrentWindow().isFullscreen()); } catch (e) {}
     }
-    if (TAURI && TAURI.window) { syncFullscreen(); window.addEventListener('resize', syncFullscreen); }
+    if (TAURI && TAURI.window) {                                          // asked again once macOS's full-screen animation is over: during it the window still says full screen
+      syncFullscreen();
+      let fsTimer = 0;
+      window.addEventListener('resize', () => { syncFullscreen(); clearTimeout(fsTimer); fsTimer = setTimeout(syncFullscreen, 800); });
+    }
     let pendingUpdate = null;
     async function checkForUpdate() {
       if (!TAURI || !TAURI.updater || location.port === '5173') return;          // not while developing

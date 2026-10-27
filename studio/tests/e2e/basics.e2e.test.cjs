@@ -592,7 +592,7 @@ test('no project (a first launch): the usual page, empty, says where to start; t
   const ctx = await fresh({ width: 1512, height: 945, empty: true, setup: st => { st.project = null; st.plates = []; } });
   assert.equal(await page.locator('#firstRun').count(), 0, 'no welcome screen over the page');
   assert.equal(await text('#projectName'), 'No project');
-  assert.match(await text('#gridEmpty'), /New project… or Import project… in the project menu/);
+  assert.equal(await page.locator('#gridEmpty').isVisible(), false, 'no message in the empty grid');
   await page.click('#projectBtn');
   await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');
   assert.equal(await page.locator('#projectMenu').isVisible(), true, 'the menu shows, nothing over it');
