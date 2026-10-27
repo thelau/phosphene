@@ -90,6 +90,7 @@
       const data = await res.json();
       if (call !== stateCalls) return;                                       // a newer request is on its way: an older answer must not win
       const lengthBefore = activePlates().length;
+      if (data.project) showProject(data.project);
       plates = data.plates || [];
       sequences = data.sequences || [];
       groups = data.groups || [];
@@ -224,6 +225,118 @@
       await loadState();
       return res;
     }
+    // ---- projects: one per brand mark (projects.py); the server works on one at a time, switching reloads the page ----
+    let project = null, projectForm = null;
+    function showProject(p) {
+      project = p;
+      const img = document.getElementById('projectMark');
+      if (img.getAttribute('src') !== p.mark_url) img.src = p.mark_url;
+      document.getElementById('projectName').textContent = p.name;
+      const r = document.documentElement.style;                               // the logo target: the mark's size, place and shape
+      if (r && r.setProperty) {
+        r.setProperty('--mark-w', `${p.mark_size}%`); r.setProperty('--mark-x', `${p.mark_x}%`); r.setProperty('--mark-y', `${p.mark_y}%`);
+        r.setProperty('--mark-ar', String(p.mark_ratio || 1)); r.setProperty('--mark-r', p.round ? '50%' : '4px');
+      }
+      const centred = p.mark_x === 50 && p.mark_y === 50;
+      document.getElementById('retLabel').textContent = `logo · ${centred ? 'centre' : `${p.mark_x}%, ${p.mark_y}%`} · ${p.mark_size}%`;
+    }
+    async function openProjectMenu(e) {
+      if (e && e.stopPropagation) e.stopPropagation();
+      const m = document.getElementById('projectMenu'), btn = document.getElementById('projectBtn');
+      if (!m.hidden) { closeProjectMenu(); return; }
+      let list = [];
+      try { list = (await (await fetch('/api/projects')).json()).projects || []; } catch (err) { list = project ? [project] : []; }
+      m.innerHTML = list.map(x => `<button type="button" class="gm-item${project && x.slug === project.slug ? ' on' : ''}" data-slug="${escapeHtml(x.slug)}" onclick="switchProject(this.dataset.slug)"><img src="${escapeHtml(x.mark_url)}" alt="" />${escapeHtml(x.name)}</button>`).join('')
+        + '<hr><button type="button" class="gm-item" onclick="openProjectForm(\'new\')">New project…</button>'
+        + (project && project.fixed ? `<button type="button" class="gm-item" disabled title="${escapeHtml(project.name)} keeps its mark, size and place: make a new project to change them">Project settings…</button>`
+          : '<button type="button" class="gm-item" onclick="openProjectForm(\'edit\')">Project settings…</button>');
+      const a = btn.getBoundingClientRect();
+      m.hidden = false; btn.setAttribute('aria-expanded', 'true');
+      m.style.top = `${a.bottom + 6}px`; m.style.left = `${Math.max(8, a.left)}px`;
+    }
+    function closeProjectMenu() { const m = document.getElementById('projectMenu'); if (m) m.hidden = true; const b = document.getElementById('projectBtn'); if (b) b.setAttribute('aria-expanded', 'false'); }
+    document.addEventListener('click', e => { if (!(e.target.closest && (e.target.closest('#projectMenu') || e.target.closest('#projectBtn')))) closeProjectMenu(); });
+    async function projectsCall(body) {
+      const res = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return res.json();
+    }
+    async function switchProject(slug) {
+      closeProjectMenu();
+      if (project && slug === project.slug) return;
+      if (isBusy()) { setStatus('Wait until the running job ends, then switch project.'); return; }
+      const r = await projectsCall({ action: 'switch', slug });
+      if (r.ok) location.reload(); else setStatus(r.error || 'Could not switch project.');
+    }
+    // the form: a new project, or this one's settings; the mark is drawn into a PNG here (an SVG too), at most 1600 px
+    function openProjectForm(kind) {
+      closeProjectMenu();
+      const edit = kind === 'edit' && project;
+      projectForm = { kind: edit ? 'edit' : 'new', mark: null, markUrl: edit ? project.mark_url : null };
+      const set = (id, v) => { document.getElementById(id).value = v; };
+      set('pfName', edit ? project.name : ''); set('pfSize', edit ? project.mark_size : 18); set('pfX', edit ? project.mark_x : 50); set('pfY', edit ? project.mark_y : 50);
+      set('pfShape', edit ? project.mark_shape : ''); set('pfNoun', edit ? project.mark_noun : ''); set('pfBrief', edit ? project.brief : ''); set('pfPalette', edit ? (project.palette || []).join(' ') : '');
+      document.getElementById('pfMark').value = '';
+      document.getElementById('projectTitle').textContent = edit ? `${project.name}: settings` : 'New project';
+      document.getElementById('pfSave').textContent = edit ? 'Save' : 'Create project';
+      document.getElementById('pfError').textContent = '';
+      document.getElementById('projectModal').classList.add('open');
+      drawProjectPreview();
+      document.getElementById('pfName').focus();
+    }
+    function closeProjectForm() { document.getElementById('projectModal').classList.remove('open'); projectForm = null; }
+    async function readProjectMark(file) {
+      if (!file || !projectForm) return;
+      const url = URL.createObjectURL(file);
+      try {
+        const im = new Image(); im.src = url; await im.decode();
+        let w = im.naturalWidth || 1024, h = im.naturalHeight || 1024;
+        const k = file.type === 'image/svg+xml' ? 1600 / Math.max(w, h) : Math.min(1, 1600 / Math.max(w, h));
+        w = Math.max(1, Math.round(w * k)); h = Math.max(1, Math.round(h * k));
+        let c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d').drawImage(im, 0, 0, w, h);
+        const px = c.getContext('2d').getImageData(0, 0, w, h).data;           // trimmed to the mark, as the server does: its size is the mark's
+        let x0 = w, y0 = h, x1 = -1, y1 = -1;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (px[(y * w + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        if (x1 < 0) throw new Error('empty');
+        if (x1 - x0 + 1 < w || y1 - y0 + 1 < h) {
+          const t = document.createElement('canvas'); t.width = x1 - x0 + 1; t.height = y1 - y0 + 1;
+          t.getContext('2d').drawImage(c, -x0, -y0); c = t;
+        }
+        projectForm.mark = c.toDataURL('image/png'); projectForm.markUrl = projectForm.mark;
+        document.getElementById('pfError').textContent = '';
+      } catch (err) {
+        document.getElementById('pfError').textContent = err.message === 'empty' ? 'That image is empty: the mark needs to show on a transparent or plain background.' : 'That file could not be read as an image.';
+      } finally { URL.revokeObjectURL(url); }
+      drawProjectPreview();
+    }
+    function drawProjectPreview() {
+      const v = id => parseFloat(document.getElementById(id).value);
+      const size = v('pfSize'), x = v('pfX'), y = v('pfY');
+      document.getElementById('pfSizeVal').textContent = `${size}%`; document.getElementById('pfXVal').textContent = `${x}%`; document.getElementById('pfYVal').textContent = `${y}%`;
+      const box = document.getElementById('pfPreview'), img = document.getElementById('pfPreviewMark');
+      box.style.setProperty('--pf-x', `${x}%`); box.style.setProperty('--pf-y', `${y}%`);
+      if (projectForm && projectForm.markUrl) { if (img.getAttribute('src') !== projectForm.markUrl) img.src = projectForm.markUrl; } else img.removeAttribute('src');
+      img.style.left = `${x}%`; img.style.top = `${y}%`; img.style.width = `${size}%`;
+      const cols = document.getElementById('pfPalette').value.match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g) || [];
+      document.getElementById('pfSwatches').innerHTML = cols.slice(0, 8).map(c => `<i style="background:${c}"></i>`).join('');
+    }
+    async function saveProject() {
+      if (!projectForm) return;
+      const val = id => document.getElementById(id).value;
+      const err = document.getElementById('pfError');
+      if (projectForm.kind === 'new' && !projectForm.mark) { err.textContent = 'Choose the mark: a PNG or SVG with a transparent background works best.'; return; }
+      const body = { action: projectForm.kind === 'new' ? 'create' : 'update', slug: project && project.slug, name: val('pfName'),
+        mark_size: +val('pfSize'), mark_x: +val('pfX'), mark_y: +val('pfY'), mark_shape: val('pfShape'), mark_noun: val('pfNoun'), brief: val('pfBrief'),
+        palette: val('pfPalette').match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g) || [], ...(projectForm.mark ? { mark: projectForm.mark } : {}) };
+      document.getElementById('pfSave').disabled = true;
+      try {
+        const r = await projectsCall(body);
+        if (r.ok) { location.reload(); return; }
+        err.textContent = r.error || 'Could not save the project.';
+      } catch (e) { err.textContent = `Could not save the project: ${e.message}`; }
+      finally { document.getElementById('pfSave').disabled = false; }
+    }
+
     function openEditMenu(e, form) {
       if (e && e.stopPropagation) e.stopPropagation();
       const m = document.getElementById('editMenu');
@@ -2655,6 +2768,7 @@
 
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
+  openProjectMenu, switchProject, openProjectForm, closeProjectForm, readProjectMark, drawProjectPreview, saveProject,
   removeChange,
   includeAll,
   startAiOrder,

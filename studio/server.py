@@ -35,6 +35,7 @@ import edits
 import features
 import sequences
 import diversity
+import projects
 import taste
 
 from krea_mcp_client import (
@@ -42,11 +43,13 @@ from krea_mcp_client import (
     get_krea_oauth_token,
 )
 from qa_engine import (
+    DEMO_MARK,
     PLATES_DIR,
     ROOT_DIR,
     TARGET_H,
     TARGET_W,
     evaluate_plate_qa,
+    mark_spec,
 )
 
 STUDIO_DIR = Path(__file__).resolve().parent
@@ -66,6 +69,48 @@ try:
     QA_CACHE = json.loads(QA_CACHE_FILE.read_text()) if QA_CACHE_FILE.exists() else {}
 except Exception:
     QA_CACHE = {}
+
+# ---- the project the server works on (projects.py): its plates, curation, caches, mark and words ----
+PROJECT: dict = projects.load(projects.DEFAULT)
+
+
+def apply_project(p: dict) -> None:
+    """Point every path at project `p` (on start and when the page switches). Nothing may be running: the caller checks busy()."""
+    global PROJECT, PLATES_DIR, CURATION_FILE, QA_CACHE_FILE, QA_CACHE, THUMBS_DIR
+    PROJECT, PLATES_DIR, CURATION_FILE, QA_CACHE_FILE, THUMBS_DIR = p, p["plates_dir"], p["state_file"], p["qa_cache_file"], p["thumbs_dir"]
+    PLATES_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        QA_CACHE = json.loads(QA_CACHE_FILE.read_text()) if QA_CACHE_FILE.exists() else {}
+    except Exception:
+        QA_CACHE = {}
+    features.use_cache(p["features_file"])
+
+
+def is_demo() -> bool:
+    return PROJECT.get("qa") == "demo-tuned"
+
+
+def current_mark():
+    """What the logo check looks for in this project: DEMO's orbital mask, or the project's own mark at its size and place."""
+    return DEMO_MARK if is_demo() else mark_spec(PROJECT["mark_file"], PROJECT["mark_size"], PROJECT["mark_x"], PROJECT["mark_y"])
+
+
+def current_guide():
+    """The guide image Krea draws from: None for DEMO (its originals, one pre-uploaded), else this project's, uploaded once and cached."""
+    return None if is_demo() else {"files": PROJECT["guides"], "cache": PROJECT["guide_cache_file"]}
+
+
+def mark_words(p: dict | None = None) -> dict:
+    """The words the prompts use for the mark, its size and its place. DEMO: exactly the words it has always had."""
+    p = p or PROJECT
+    size, x, y = p["mark_size"], p["mark_x"], p["mark_y"]
+    centred = abs(x - 50) < 0.01 and abs(y - 50) < 0.01
+    return {
+        "shape": p["mark_shape"], "noun": p["mark_noun"], "size": f"{size:g}",
+        "where": "EXACT DEAD-CENTER (50% horizontal, 50% vertical)" if centred else f"EXACT POINT {x:g}% from the left and {y:g}% from the top",
+        "at": "exact dead-center (50%, 50%)" if centred else f"exact point ({x:g}% across, {y:g}% down)",
+        "short": "dead-center" if centred else f"the point {x:g}% across and {y:g}% down",
+    }
 
 
 def _plate_key(path: Path) -> str:
@@ -90,7 +135,7 @@ def get_cached_qa(path: Path) -> dict:
         return QA_CACHE[key]
     with QA_LOCK:  # each plate is evaluated once, even when several requests ask at the same time
         if key not in QA_CACHE:
-            QA_CACHE[key] = evaluate_plate_qa(path)
+            QA_CACHE[key] = evaluate_plate_qa(path, current_mark())
             if time.time() - _QA_LAST_FLUSH > 5:  # throttle: not a full rewrite per plate
                 _QA_LAST_FLUSH = time.time()
                 try:
@@ -109,7 +154,7 @@ def apply_critic(filename: str) -> None:
     if not st.get("critic_enabled", True) or not st.get("kimi_api_key"):
         return
     try:
-        r = critic.review_plate(PLATES_DIR / filename, call_kimi_llm, st["kimi_api_key"], st.get("kimi_model", "kimi-k3"))
+        r = critic.review_plate(PLATES_DIR / filename, call_kimi_llm, st["kimi_api_key"], st.get("kimi_model", "kimi-k3"), mark=None if is_demo() else f"small {PROJECT['mark_noun']} sits at {mark_words()['short']}")
     except Exception as e:
         print(f"[CRITIC] {filename}: {str(e)[:120]}", flush=True)
         return
@@ -123,11 +168,12 @@ def apply_critic(filename: str) -> None:
     print(f"[CRITIC] {filename} {r['mean']} {r['verdict']} - {r['reason']}", flush=True)
 
 
-def build_full_prompt(raw_prompt: str) -> str:
+def build_full_prompt(raw_prompt: str, project: dict | None = None) -> str:
+    m = mark_words(project)
     return (
         f"{raw_prompt}. 9:16 vertical frame. "
-        f"At the EXACT DEAD-CENTER (50% horizontal, 50% vertical) of the 9:16 frame at ~18% frame width "
-        f"(matching the exact circular orbital logo SHAPE and position of the reference guide image) is the SINGLE circular mark, "
+        f"At the {m['where']} of the 9:16 frame at ~{m['size']}% frame width "
+        f"(matching the exact {m['shape']} SHAPE and position of the reference guide image) is the SINGLE {m['noun']}, "
         f"physically integrated into the scene's exact perspective, lighting, and medium (whether 3D extruded sculpture, CAD wireframe, isometric object, nature formation, UI, or apparel — never a flat 2D sticker pasted over an unrelated angle, and no extra outer rings)."
     )
 
@@ -295,6 +341,10 @@ def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", i
     raise RuntimeError("Kimi API call failed (" + " | ".join(errors[:6]) + ")")
 
 
+def quality_bar() -> str:
+    return QUALITY_BAR.replace("Demo, a creative toolkit for creatives at an agency group", PROJECT["brief"], 1)
+
+
 QUALITY_BAR = (
     "QUALITY BAR: this is for Demo, a creative toolkit for creatives at an agency group, and it must look like a top design studio's identity reel "
     "(Pentagram-level): one idea per frame, one hero subject, restrained composition with confident negative space, a disciplined palette (max 3 colors), "
@@ -318,12 +368,12 @@ def invent_world(st: dict, api_key: str, kimi_model: str, direction: str = "") -
     known = ", ".join(w["name"] for w in chapters.all_worlds(st))
     ref = chapters.WORLDS[0]
     steer = f"The director asked for: \"{direction}\". Build the world around that." if direction else "Pick a discipline or phenomenon NOT covered by the existing worlds."
-    out = call_kimi_llm(
-        f"Invent ONE new creative world for a 9:16 match-cut film where a small circular mark sits at dead-center in every shot. {steer}\n"
+    out = call_kimi_llm(projects.rebrand(
+        f"Invent ONE new creative world for a 9:16 match-cut film where a small {mark_words()['noun']} sits at {mark_words()['short']} in every shot. {steer}\n"
         f"Existing worlds (do not repeat): {known}.\n"
         f"It must be authored like a design-studio identity (Pentagram quality): one idea, a restrained palette (max 3 colors), a rigorous visual language, a dark and a light register. "
-        f"Return ONLY raw JSON (no fences) with keys: name (2-4 words, 'X & Y' style ok), brief (2 sentences), palette (one sentence, may use #EC540C #F64570 #5D8FF4 #381313 #1A1A1A #FEFFE7), "
-        f"applications (10 concrete photographable subjects), marks (5 ways the mark physically emerges from the scene). Example format: {json.dumps({k: ref[k] for k in ('name', 'brief', 'palette', 'marks')})[:400]}",
+        f"Return ONLY raw JSON (no fences) with keys: name (2-4 words, 'X & Y' style ok), brief (2 sentences), palette (one sentence, may use {' '.join(PROJECT['palette']) or 'the brand colours'}), "
+        f"applications (10 concrete photographable subjects), marks (5 ways the mark physically emerges from the scene). Example format: {json.dumps({k: ref[k] for k in ('name', 'brief', 'palette', 'marks')})[:400]}", PROJECT),
         api_key=api_key, preferred_model=kimi_model,
     )
     w = parse_llm_json(out, "{")
@@ -388,9 +438,10 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
         )
     liked = "\n".join(f"- {t}: {p[:200]}" for t, p in brief["liked"]) or "(none yet)"
     disliked = ", ".join(brief["disliked"]) or "(none yet)"
+    mw = mark_words()
     llm_prompt = (
         f"Return ONLY a raw JSON array (no markdown fences) of {n_ask} objects with keys \"title\", \"subject\" (the shot's main subject in 2-6 words), \"idea\", \"guide\" ('dark' or 'light' = whether the frame is mostly dark or mostly light) and \"prompt\". "
-        f"They are shots for a 9:16 vertical match-cut film where one small circular mark sits at the exact dead-center (50%, 50%) at 18% frame width.\n\n"
+        f"They are shots for a 9:16 vertical match-cut film where one small {mw['noun']} sits at the {mw['at']} at {mw['size']}% frame width.\n\n"
         f"WORLD: {w['name']}. {w['brief']}\n"
         + (f"DIRECTOR'S DIRECTION (a HARD REQUIREMENT): \"{direction}\". Every shot's central subject must plainly be this; nothing in a shot may belong to a different subject area "
            f"(for example if the direction is weather, do not show plants, sand or webs). The world below only supplies the palette, finish and how the mark emerges.\n" if direction else "")
@@ -399,7 +450,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
         f"For each shot first write \"idea\": ONE line on how the mark physically emerges from the scene (inspirations: {'; '.join(w['marks'])}; or something better). "
         f"Reject gimmicks like 'logo on a thing'. Then write \"prompt\" from that idea.\n\n"
         f"Alternate registers: odd-numbered shots are DARK register (mostly black or deep tones, luminous emitted light, \"guide\":\"dark\"); even-numbered shots are LIGHT register (mostly bone or pale tones, soft light, \"guide\":\"light\"). "
-        f"Each register uses the world's palette for that register.\n\n{avoid_block}Shots:\n{shot_lines}\n\n{QUALITY_BAR}\n\n"
+        f"Each register uses the world's palette for that register.\n\n{avoid_block}Shots:\n{shot_lines}\n\n{quality_bar()}\n\n"
         f"TASTE (learned from what the director kept):\nLiked:\n{liked}\nSteer away from the feel of: {disliked}\n\n"
         f"RULES:\n"
         f"1. The mark is physically part of the scene (same perspective, light, material). Never a flat sticker, no outer rings, exactly one mark.\n"
@@ -407,6 +458,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
         f"3. All shots must look clearly different from each other and from these past scenes: [{ban_str}]."
     )
     print(f"[KIMI] world='{w['name']}': asking Kimi for {n_ask} scenes ({count} wanted + {n_ask - count} spare in case some are near-duplicates), model {kimi_model}...", flush=True)
+    llm_prompt = projects.rebrand(llm_prompt, PROJECT)                       # another brand: DEMO's colours in the worlds become its own
     out = call_kimi_llm(llm_prompt, api_key=api_key, preferred_model=kimi_model)
     s_idx, e_idx = out.find("["), out.rfind("]")
     if s_idx == -1 or e_idx == -1:
@@ -594,10 +646,14 @@ SOFTEN_ASK = (
 )
 
 
+def soften_ask() -> str:
+    return SOFTEN_ASK if is_demo() else SOFTEN_ASK.replace("single circular mark at the exact dead-center", f"single {PROJECT['mark_noun']} and where it sits")
+
+
 def soften_prompt(raw_prompt: str, api_key: str, model: str, call_llm=None) -> str | None:
     """A more neutral wording of a prompt that moderation refused, or None if Kimi cannot provide one."""
     try:
-        out = (call_llm or call_kimi_llm)(SOFTEN_ASK + raw_prompt, api_key=api_key, preferred_model=model).strip().strip('"').strip()
+        out = (call_llm or call_kimi_llm)(soften_ask() + raw_prompt, api_key=api_key, preferred_model=model).strip().strip('"').strip()
     except Exception as e:
         print(f"[GENERATE] could not soften the prompt: {e!r}", flush=True)
         return None
@@ -705,7 +761,7 @@ def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "
     fx = ("-invert" if invert_mode in ("mono", "colour") else "") + (f"-zoom{zoom_mode}" if zoom_mode != "off" else "")
     fx += "-music" if music == "synth" else ""
     pace = f"var{int(round(variable[0]))}to{int(round(variable[1]))}ms" if variable else f"{int(round(bpm))}bpm-x{mult}"
-    head = re.sub(r"[^A-Za-z0-9]+", "-", edit).strip("-")[:40] or "Phosphene"
+    head = re.sub(r"[^A-Za-z0-9]+", "-", edit or PROJECT["name"]).strip("-")[:40] or "Phosphene"   # the edit, else the project
     return f"{head}-{pace}{fx}-{time.strftime('%Y%m%d-%H%M%S', time.localtime(ts))}.mp4"
 
 
@@ -824,6 +880,32 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "summary": gen_log.summarize(events), "events": events[-n:], "lines": [gen_log.describe(e) for e in events[-n:]]})
             return
 
+        if parsed.path == "/api/projects":
+            self.send_json({"ok": True, "active": PROJECT["slug"], "projects": [projects.public(p) for p in projects.all_projects()]})
+            return
+
+        if parsed.path in ("/api/plate", "/api/project-mark"):                 # a full-size plate of this project, or a project's mark
+            q = parse_qs(parsed.query)
+            try:
+                if parsed.path == "/api/plate":
+                    name = (q.get("f") or [""])[0]
+                    f = PLATES_DIR / name if name and "/" not in name and "\\" not in name and not name.startswith(".") else None
+                else:
+                    f = projects.load((q.get("p") or [PROJECT["slug"]])[0])["mark_file"]
+            except Exception:
+                f = None
+            if f is None or not f.is_file():
+                self.send_json({"ok": False, "error": "No such image"}, 404)
+                return
+            data = f.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png" if f.suffix.lower() == ".png" else "image/jpeg")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable" if parsed.path == "/api/plate" else "no-cache")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         if parsed.path == "/api/busy":
             self.send_json({"ok": True, "busy": busy()})
             return
@@ -858,7 +940,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 qa = get_cached_qa(p)
                 plates.append({
                     "filename": p.name,
-                    "url": f"/assets/ai-plates/{p.name}?t={int(p.stat().st_mtime)}",
+                    "url": f"/api/plate?f={quote(p.name)}&t={int(p.stat().st_mtime)}",   # the project's own folder
                     "thumb": f"/api/thumb?f={quote(p.name)}&w=360",       # the grid: 134 full-size plates would be over 1 GB decoded
                     "preview": f"/api/thumb?f={quote(p.name)}&w=540",     # the player: the stage is ~250 px wide
                     "title": titles.get(p.name, p.stem.split("_", 1)[-1].replace("_", " ").title()),
@@ -882,6 +964,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             kimi_key = st.get("kimi_api_key", "")
             self.send_json({
                 "state_sig": sig,
+                "project": projects.public(PROJECT),
                 "plates": plates,
                 "krea_connected": bool(auth.get("connected") and not auth.get("expired")),
                 "kimi_configured": bool(kimi_key),
@@ -965,6 +1048,44 @@ class StudioHandler(SimpleHTTPRequestHandler):
         body = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
         if parsed.path in LOCKED_DURING_AI and ai_busy():
             self.send_json({"ok": False, "busy": True, "error": "The AI is ordering your selection. Wait until it finishes."}, 409)
+            return
+
+        if parsed.path == "/api/projects":
+            # switch to a project, make one (the mark comes as a PNG data URL: the page turns an SVG into one), or change one
+            action = body.get("action")
+            mark = None
+            if body.get("mark"):
+                try:
+                    import base64
+                    mark = base64.b64decode(str(body["mark"]).split(",", 1)[-1], validate=False)
+                except Exception:
+                    self.send_json({"ok": False, "error": "The mark did not arrive as an image."}, 400)
+                    return
+            touches_active = action in ("switch", "create") or (action == "update" and body.get("slug") == PROJECT["slug"])
+            if touches_active and busy():
+                self.send_json({"ok": False, "busy": True, "error": "Something is running (images, an AI order or an export). Wait until it ends."}, 409)
+                return
+            try:
+                if action == "switch":
+                    apply_project(projects.set_active(str(body.get("slug") or "")))
+                elif action == "create":
+                    p = projects.create(body, mark or b"")
+                    apply_project(projects.set_active(p["slug"]))
+                elif action == "update":
+                    p = projects.update(str(body.get("slug") or ""), body, mark)
+                    if p["slug"] == PROJECT["slug"]:
+                        apply_project(p)
+                else:
+                    self.send_json({"ok": False, "error": "Unknown action."}, 400)
+                    return
+            except FileNotFoundError:
+                self.send_json({"ok": False, "error": "There is no such project."}, 404)
+                return
+            except ValueError as e:
+                self.send_json({"ok": False, "error": str(e)}, 400)
+                return
+            gen_log.record("project", action=action, project=PROJECT["slug"])
+            self.send_json({"ok": True, "active": PROJECT["slug"], "project": projects.public(PROJECT), "projects": [projects.public(p) for p in projects.all_projects()]})
             return
 
         if parsed.path == "/api/krea-auth":
@@ -1094,6 +1215,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             title = body.get("title", "Outdoor Plate").strip()
             raw_prompt = body.get("prompt", "").strip()
             guide_type = body.get("guide", "dark")
+            guide_kw = {"guide": current_guide()} if current_guide() else {}   # another project: its own guide image
             model = body.get("model", "google/nano-banana-pro")
             if model == "auto":
                 model = taste.pick_model(load_state())
@@ -1109,7 +1231,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             try:
                 with inflight():
                     try:
-                        img_bytes = generate_with_retry(prompt=full_prompt, guide_type=guide_type, model=model, trace=trace)
+                        img_bytes = generate_with_retry(prompt=full_prompt, guide_type=guide_type, model=model, trace=trace, **guide_kw)
                     except Exception as refused:
                         key = load_state().get("kimi_api_key", "")
                         if getattr(refused, "code", None) != "content_policy" or not key:
@@ -1119,7 +1241,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         if not softened:
                             raise
                         print(f"[GENERATE] moderation rejected '{title}': retrying once with a softened prompt", flush=True)
-                        img_bytes = generate_with_retry(attempts=1, prompt=build_full_prompt(softened), guide_type=guide_type, model=model, trace=trace)
+                        img_bytes = generate_with_retry(attempts=1, prompt=build_full_prompt(softened), guide_type=guide_type, model=model, trace=trace, **guide_kw)
                         trace[-1]["softened"] = True
                         raw_prompt = softened
                 im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
@@ -1314,9 +1436,10 @@ class QuietServer(ThreadingHTTPServer):
 
 
 if __name__ == "__main__":
+    apply_project(projects.load(projects.active_slug()))                     # the project open last time on this machine
     port = int(os.environ.get("PORT", "8765"))
     server = QuietServer(("127.0.0.1", port), StudioHandler)
-    print(f"Studio running at http://localhost:{port}")
+    print(f"Studio running at http://localhost:{port} · project: {PROJECT['name']}")
     gen_log.record("server_start", boot=BOOT_ID, port=port)
     try:
         server.serve_forever()

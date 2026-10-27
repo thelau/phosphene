@@ -107,7 +107,8 @@
 
     /* ---------- header ---------- */
     .topbar { height: 56px; flex: none; display: flex; align-items: center; gap: 20px; padding: 0 20px; border-bottom: 1px solid var(--line); background: var(--panel); position: relative; z-index: 30; }
-    .brand { display: flex; align-items: center; gap: 10px; width: 210px; font-weight: 700; font-size: 15px; letter-spacing: -0.01em; white-space: nowrap; }
+    :root { --mark-w: 18%; --mark-x: 50%; --mark-y: 50%; --mark-ar: 1; --mark-r: 50%; }   /* the project's mark: size, place, shape (loadState) */
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 210px; font-weight: 700; font-size: 15px; letter-spacing: -0.01em; white-space: nowrap; }
     .modes { display: flex; align-items: center; gap: 12px; }
     .mode-seg { display: inline-flex; padding: 3px; background: var(--field); border: 1px solid var(--line-2); border-radius: 9px; }
     .mode-seg button { transition: none; height: 32px; padding: 0 20px; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); font-size: 14px; }
@@ -194,9 +195,9 @@
     .stage:fullscreen #stageCanvas { object-fit: contain; }
     .reticle { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .15s; }
     .reticle.visible { opacity: 1; }
-    .reticle .ret-v { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(236, 84, 12, .55); }
-    .reticle .ret-h { position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: rgba(236, 84, 12, .55); }
-    .reticle-circle { position: absolute; left: 50%; top: 50%; width: 18%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; border: 1.5px dashed var(--orange); }
+    .reticle .ret-v { position: absolute; left: var(--mark-x); top: 0; bottom: 0; width: 1px; background: rgba(236, 84, 12, .55); }
+    .reticle .ret-h { position: absolute; top: var(--mark-y); left: 0; right: 0; height: 1px; background: rgba(236, 84, 12, .55); }
+    .reticle-circle { position: absolute; left: var(--mark-x); top: var(--mark-y); width: var(--mark-w); aspect-ratio: 1 / var(--mark-ar); transform: translate(-50%, -50%); border-radius: var(--mark-r); border: 1.5px dashed var(--orange); }
     .stage:fullscreen { background: #000; border-radius: 0; box-shadow: none; }       /* the whole frame, letterboxed */
     .stage:fullscreen img { object-fit: contain; }
     .stage:fullscreen .reticle { display: none; }
@@ -411,7 +412,7 @@
     /* the logo target on every card (the T switch): the same crosshair and 18% dashed circle as the Film's reticle */
     body.target-on .card-thumb::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
       background: linear-gradient(rgba(236, 84, 12, .55), rgba(236, 84, 12, .55)) center / 1px 100% no-repeat, linear-gradient(rgba(236, 84, 12, .55), rgba(236, 84, 12, .55)) center / 100% 1px no-repeat; }
-    body.target-on .card-thumb::after { content: ''; position: absolute; left: 50%; top: 50%; z-index: 1; width: 18%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; border: 1.5px dashed var(--orange); pointer-events: none; }
+    body.target-on .card-thumb::after { content: ''; position: absolute; left: var(--mark-x); top: var(--mark-y); z-index: 1; width: var(--mark-w); aspect-ratio: 1 / var(--mark-ar); transform: translate(-50%, -50%); border-radius: var(--mark-r); border: 1.5px dashed var(--orange); pointer-events: none; }
     body.target-on .pending-card .card-thumb::before, body.target-on .pending-card .card-thumb::after { display: none; }
     .card-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
     body:has(#tabTrash.on) .card-num { display: none; }   /* a place in the order means nothing in the Trash */
@@ -591,3 +592,40 @@
     @keyframes pressflash { 0% { background: var(--orange); color: #1A1A1A; transform: scale(.96); } 100% { } }
     .flash { animation: pressflash .4s ease-out; }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+    /* ---------- projects: one per brand mark (the switcher in the header, the form) ---------- */
+    .brand-sep { color: var(--off); font-weight: 400; }
+    .project-btn { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text); font-size: 14px; font-weight: 600; max-width: 260px; transition: none; }
+    .project-btn:hover, .project-btn[aria-expanded="true"] { border-color: var(--line-3); background: var(--field); }
+    .project-btn img { width: 20px; height: 20px; object-fit: contain; flex: none; }
+    .project-btn img:not([src]) { visibility: hidden; }
+    .project-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .project-btn svg { flex: none; color: var(--muted); }
+    .project-menu { min-width: 240px; }
+    .project-menu .gm-item { display: flex; align-items: center; gap: 10px; }
+    .project-menu .gm-item img { width: 18px; height: 18px; object-fit: contain; flex: none; }
+    .project-menu .gm-item.on { color: var(--text); }
+    .project-menu .gm-item.on::after { content: '✓'; margin-left: auto; font-size: 11px; color: var(--orange); }
+    .project-menu hr { border: 0; border-top: 1px solid var(--line-2); margin: 4px 2px; }
+    .project-menu .gm-item:disabled { color: var(--off); background: transparent; }
+    .project-form { width: min(720px, 94vw); }
+    .pf-note { margin-bottom: 14px; }
+    .pf-body { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 20px; align-items: start; }
+    .pf-fields { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .pf-row { display: grid; grid-template-columns: 74px minmax(0, 1fr) 44px; align-items: center; gap: 10px; min-height: 30px; font-size: 13px; color: var(--text-2); }
+    .pf-row:has(> input[type="text"]:last-child), .pf-row:has(> input[type="file"]:last-child) { grid-template-columns: 74px minmax(0, 1fr); }
+    .pf-row input[type="text"] { height: 30px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--line-3); background: var(--field); color: var(--text); font-size: 13px; min-width: 0; }
+    .pf-row input[type="text"]:focus { border-color: var(--orange); outline: none; }
+    .pf-row input[type="file"] { font-size: 12px; color: var(--muted); min-width: 0; }
+    .pf-row b { font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--muted); text-align: right; }
+    .pf-hint { margin: -2px 0 4px 84px; font-size: 11px !important; color: var(--faint) !important; }
+    .pf-swatches { display: flex; gap: 6px; padding-left: 84px; min-height: 16px; }
+    .pf-swatches i { width: 16px; height: 16px; border-radius: 4px; box-shadow: 0 0 0 1px var(--line-3); }
+    .pf-preview { position: relative; width: 150px; aspect-ratio: 9 / 16; border-radius: 8px; background: #141416; box-shadow: 0 0 0 1px var(--line-2); overflow: hidden; }
+    .pf-preview img { position: absolute; transform: translate(-50%, -50%); object-fit: contain; }
+    .pf-preview img:not([src]) { display: none; }
+    .pf-preview::before, .pf-preview::after { content: ''; position: absolute; background: rgba(236, 84, 12, .35); }
+    .pf-preview::before { left: var(--pf-x, 50%); top: 0; bottom: 0; width: 1px; }
+    .pf-preview::after { top: var(--pf-y, 50%); left: 0; right: 0; height: 1px; }
+    .pf-error { min-height: 18px; margin-top: 10px; color: var(--orange-soft) !important; font-size: 12px !important; }
+    .project-form .confirm-foot button.solid { background: var(--text); color: #1A1A1A; border-color: var(--text); }

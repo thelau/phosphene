@@ -25,6 +25,17 @@ def srv(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "PLATES_DIR", plates)
     monkeypatch.setattr(server, "THUMBS_DIR", tmp_path / "thumbs")
     monkeypatch.setattr(server, "EXPORT_DIR", tmp_path / "export")
+    monkeypatch.setattr(server, "PROJECT", server.PROJECT)                           # a test that switches project gets DEMO back after
+    monkeypatch.setattr(server.features, "CACHE_FILE", server.features.CACHE_FILE)
+    monkeypatch.setattr(server.projects, "PROJECTS_DIR", tmp_path / "projects")      # projects made by a test live in tmp
+    monkeypatch.setattr(server.projects, "LOCAL_FILE", tmp_path / ".local.json")
+    import json, shutil
+    demo = tmp_path / "projects" / "demo"                                               # DEMO as a project, but its library is the test's
+    shutil.copytree(Path(__file__).resolve().parents[2] / "projects" / "demo", demo)
+    raw = json.loads((demo / "project.json").read_text())
+    raw["paths"].update({"plates": str(plates), "state": str(tmp_path / "curation_state.json"), "qa_cache": str(tmp_path / "qa_cache.json"),
+                         "thumbs": str(tmp_path / "thumbs"), "features": str(tmp_path / "feat.json"), "guide_cache": str(tmp_path / "guides.json")})
+    (demo / "project.json").write_text(json.dumps(raw))
     for var in ("KIMI_API_KEY", "MOONSHOT_API_KEY"):
         monkeypatch.delenv(var, raising=False)
     return server

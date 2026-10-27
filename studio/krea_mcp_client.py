@@ -198,7 +198,20 @@ def upload_file_to_krea_mcp(file_path: Path, sid: str = None) -> str:
         raise RuntimeError(f"Unexpected upload response: {out}")
 
 
-def get_or_upload_guide_url(guide_type: str = "dark", sid: str = None) -> str:
+def get_or_upload_guide_url(guide_type: str = "dark", sid: str = None, guide: dict | None = None) -> str:
+    """The guide image's Krea URL. `guide` (another project): {"files": {"dark": path, "light": path}, "cache": path}, uploaded once
+    and remembered in its cache (a guide made again after the mark changed is forgotten there). None: Demo's own."""
+    if guide:
+        cache_file, f = Path(guide["cache"]), Path(guide["files"]["light" if guide_type == "light" else "dark"])
+        try:
+            cache = json.loads(cache_file.read_text()) if cache_file.exists() else {}
+        except Exception:
+            cache = {}
+        key = f"{guide_type}:{f.stat().st_mtime}"
+        if not (cache.get(key) or {}).get("url"):
+            cache = {key: {"url": upload_file_to_krea_mcp(f, sid=sid), "ts": time.time()}} | {k: v for k, v in cache.items() if not k.startswith(guide_type + ":")}
+            cache_file.write_text(json.dumps(cache, indent=2))
+        return cache[key]["url"]
     if guide_type == "dark":
         return PREUPLOADED_DARK
     cache = {}
@@ -363,12 +376,14 @@ def generate_plate_via_krea_mcp(
     prompt: str,
     guide_type: str = "dark",
     model: str = "google/nano-banana-pro",
+    guide: dict | None = None,
 ) -> bytes:
     """
-    Generates a 9:16 image via Krea MCP using the center-locked Demo guide image and returns the raw image bytes.
+    Generates a 9:16 image via Krea MCP using the project's guide image (the mark at its size and place; Demo's by default)
+    and returns the raw image bytes.
     """
     sid = init_mcp_session()
-    guide_url = get_or_upload_guide_url(guide_type=guide_type, sid=sid)
+    guide_url = get_or_upload_guide_url(guide_type=guide_type, sid=sid, guide=guide)
     input_payload = build_model_input(model=model, prompt=prompt, guide_url=guide_url)
 
     print(f"[KREA MCP] Calling generate_image model={model} guide={guide_type}", flush=True)

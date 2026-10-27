@@ -24,8 +24,12 @@ function makeState() {
     genCount: 0,
     groups: [],
     edits: [],
+    projects: [{ slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_shape: 'circular orbital logo', mark_noun: 'circular mark',
+      brief: 'Demo, a creative toolkit for creatives at an agency group', palette: ['#EC540C'], mark_ratio: 1, round: true, fixed: true, mark_url: '/api/project-mark?p=demo' }],
+    project: 'demo',
   };
 }
+const projectOf = st => st.projects.find(p => p.slug === st.project);
 
 // the same rules as studio/sequences.py: one Manual order, at most one AI order (redo replaces it), both editable in place
 const seqOf = (st, id) => st.sequences.find(s => s.id === id);
@@ -74,8 +78,24 @@ function start(state = makeState()) {
     switch (url.pathname) {
       case '/api/state': {
         const visible = new Set(state.plates.filter(p => !p.trashed).map(p => p.filename));
-        return send({ plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, groups: (state.groups || []).map(g => ({ ...g, files: g.files.filter(f => state.plates.some(p => p.filename === f)) })), edits: state.edits || [], krea_connected: true, kimi_configured: true, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3', critic_enabled: false, critic_autotrash: false });
+        return send({ plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, groups: (state.groups || []).map(g => ({ ...g, files: g.files.filter(f => state.plates.some(p => p.filename === f)) })), edits: state.edits || [], project: projectOf(state), krea_connected: true, kimi_configured: true, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3', critic_enabled: false, critic_autotrash: false });
       }
+      case '/api/projects': {    // the projects (projects.py): list, switch, make one (the mark arrives as a PNG data URL), change one
+        if (req.method === 'GET') return send({ ok: true, active: state.project, projects: state.projects });
+        if (body.action === 'switch') { if (!state.projects.some(p => p.slug === body.slug)) return send({ ok: false, error: 'There is no such project.' }, 404); state.project = body.slug; }
+        else if (body.action === 'create') {
+          if (!String(body.name || '').trim()) return send({ ok: false, error: 'A project needs a name.' }, 400);
+          if (!/^data:image\/png;base64,/.test(body.mark || '')) return send({ ok: false, error: 'The mark must be a PNG or JPEG image.' }, 400);
+          const slug = body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          state.projects.push({ slug, name: body.name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y, mark_shape: body.mark_shape, mark_noun: body.mark_noun, brief: body.brief, palette: body.palette, mark_ratio: 0.5, round: false, fixed: false, mark_url: `/api/project-mark?p=${slug}` });
+          state.project = slug; state.markSent = body.mark;
+          state.plates = []; state.sequences[0].order = [];                    // a new project starts empty
+        } else if (body.action === 'update') Object.assign(projectOf(state), { name: body.name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y, brief: body.brief, palette: body.palette });
+        return send({ ok: true, active: state.project, project: projectOf(state), projects: state.projects });
+      }
+      case '/api/project-mark':
+        res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+        return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="16" fill="none" stroke="#FEFFE7" stroke-width="4"/></svg>');
       case '/api/worlds':
         return send({ ok: true, worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', n: 7, kept: 3, wildcard: false }, { name: 'Matter & Elements', brief: 'Fluids and fire.', n: 10, kept: 2, wildcard: false }] });
       case '/api/version': return send({ boot: state.boot || 'fake', html: 0 });

@@ -21,7 +21,13 @@
     <div class="brand">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#EC540C" aria-hidden="true"><circle cx="12" cy="12" r="2.6" fill="#EC540C" stroke="none"></circle><circle cx="12" cy="12" r="6" stroke-width="1.6" opacity=".7"></circle><circle cx="12" cy="12" r="9.6" stroke-width="1.2" opacity=".35"></circle></svg>
       <span>Phosphene</span>
+      <span class="brand-sep" aria-hidden="true">/</span>
+      <button type="button" class="project-btn" id="projectBtn" onclick="openProjectMenu(event)" aria-haspopup="menu" title="The project: the brand mark these films are made for">
+        <img id="projectMark" alt="" /><span id="projectName">Demo</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+      </button>
     </div>
+    <div class="group-menu project-menu" id="projectMenu" role="menu" hidden></div>
     <nav class="modes" aria-label="Mode">
       <div class="mode-seg">
         <button id="modeCurate" onclick="setMode('curate')" aria-pressed="true">Curate</button>
@@ -241,7 +247,7 @@
             <div class="reticle" id="reticle">
               <i class="ret-v"></i><i class="ret-h"></i>
               <div class="reticle-circle"></div>
-              <span class="ret-label">logo · centre · 18%</span>
+              <span class="ret-label" id="retLabel">logo · centre · 18%</span>
             </div>
             <div class="fs-bar" id="fsBar">
               <button onclick="togglePlay()" id="fsPlayBtn" class="play-btn" aria-label="Play">Play</button>
@@ -610,6 +616,34 @@
 
   <div class="busy-bg" id="busy" hidden>
     <div class="busy"><div class="spin"></div><div id="busyMsg">Working…</div></div>
+  </div>
+
+  <div class="confirm-bg" id="projectModal" role="dialog" aria-labelledby="projectTitle">
+    <form class="confirm project-form" id="projectForm" onsubmit="event.preventDefault(); saveProject()">
+      <h3 id="projectTitle">New project</h3>
+      <p class="pf-note">A project is one brand mark: its images, groups and snapshots are its own. The mark sits at the same place in every shot, and every image is checked for it.</p>
+      <div class="pf-body">
+        <div class="pf-fields">
+          <label class="pf-row"><span>Name</span><input type="text" id="pfName" maxlength="60" required autocomplete="off" placeholder="Night Owl" /></label>
+          <label class="pf-row"><span>Mark</span><input type="file" id="pfMark" accept="image/png,image/svg+xml,image/jpeg,image/webp" onchange="readProjectMark(this.files[0])" /></label>
+          <p class="pf-hint" id="pfMarkHint">A PNG or SVG with a transparent background works best (a mark on a plain background works too).</p>
+          <label class="pf-row"><span>Size</span><input type="range" id="pfSize" min="4" max="60" step="0.5" value="18" oninput="drawProjectPreview()" /><b id="pfSizeVal">18%</b></label>
+          <label class="pf-row"><span>Across</span><input type="range" id="pfX" min="10" max="90" step="0.5" value="50" oninput="drawProjectPreview()" /><b id="pfXVal">50%</b></label>
+          <label class="pf-row"><span>Down</span><input type="range" id="pfY" min="10" max="90" step="0.5" value="50" oninput="drawProjectPreview()" /><b id="pfYVal">50%</b></label>
+          <label class="pf-row"><span>Its shape</span><input type="text" id="pfShape" maxlength="80" placeholder="circular orbital logo" autocomplete="off" title="How the prompts describe the mark's shape" /></label>
+          <label class="pf-row"><span>Called</span><input type="text" id="pfNoun" maxlength="40" placeholder="mark" autocomplete="off" title="What the prompts call the mark itself" /></label>
+          <label class="pf-row"><span>Brand</span><input type="text" id="pfBrief" maxlength="200" placeholder="Night Owl, a late-night bar in Lisbon" autocomplete="off" title="Who the films are for, in one line: the image prompts start from it" /></label>
+          <label class="pf-row"><span>Colours</span><input type="text" id="pfPalette" maxlength="80" placeholder="#EC540C #1A1A1A #FEFFE7" autocomplete="off" oninput="drawProjectPreview()" title="The brand colours, in order of importance" /></label>
+          <div class="pf-swatches" id="pfSwatches"></div>
+        </div>
+        <div class="pf-preview" id="pfPreview" title="Where the mark sits in every shot"><img id="pfPreviewMark" alt="" /></div>
+      </div>
+      <p class="pf-error" id="pfError" role="alert"></p>
+      <div class="confirm-foot">
+        <button type="button" onclick="closeProjectForm()">Cancel</button>
+        <button type="submit" class="solid" id="pfSave">Create project</button>
+      </div>
+    </form>
   </div>
 
   <div class="confirm-bg" id="confirmModal">

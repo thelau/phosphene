@@ -32,9 +32,10 @@ def _jpeg(path, size=(540, 960)) -> bytes:
     return b.getvalue()
 
 
-def review_plate(path, call_llm, api_key: str, model: str) -> dict:
-    """call_llm = server.call_kimi_llm. Returns scores, mean, verdict and reason."""
-    out = call_llm(RUBRIC, api_key, model, images=[_jpeg(path)], system=SYSTEM)
+def review_plate(path, call_llm, api_key: str, model: str, mark: str | None = None) -> dict:
+    """call_llm = server.call_kimi_llm. Returns scores, mean, verdict and reason. `mark`: how another project's mark sits (DEMO: None)."""
+    rubric = RUBRIC.replace("small circular orbital mark sits at the dead center", mark) if mark else RUBRIC
+    out = call_llm(rubric, api_key, model, images=[_jpeg(path)], system=SYSTEM)
     s, e = out.find("{"), out.rfind("}")
     data = json.loads(out[s : e + 1])
     keys = ("hero", "craft", "idea", "mark", "design")

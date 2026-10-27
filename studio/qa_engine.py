@@ -56,6 +56,47 @@ def make_symmetric_impostor_mask(size: int = LOGO_DIAM) -> Image.Image:
     return Image.blend(b1, b2, 0.5)
 
 
+class MarkSpec:
+    """What the logo check looks for: the mark as a mask at a given width (`mask(w)`, its height in proportion), the width it
+    should have, and its centre in the 1080 x 1920 frame. DEMO is its orbital mask at 190 px, at (540, 960)."""
+
+    def __init__(self, mask, width: int, center: tuple, impostor=None, size_pct: float = 18):
+        self.mask, self.width, self.center, self.size_pct = mask, width, center, size_pct
+        self.impostor = impostor or (lambda w: _symmetric(mask(w)))
+
+
+def _symmetric(m: Image.Image) -> Image.Image:
+    b1 = Image.blend(m, m.rotate(180), 0.5)
+    b2 = Image.blend(ImageOps.mirror(m), ImageOps.flip(m), 0.5)
+    return Image.blend(b1, b2, 0.5)
+
+
+DEMO_MARK = MarkSpec(load_clean_orbital_mask, LOGO_DIAM, (CENTER_X, CENTER_Y), make_symmetric_impostor_mask, 18)
+_SPECS: dict = {}
+
+
+def mark_spec(mark_file: Path, size_pct: float, x_pct: float = 50, y_pct: float = 50) -> MarkSpec:
+    """A project's mark as the logo check sees it (cached while the file is unchanged)."""
+    from projects import mark_alpha
+    key = (str(mark_file), Path(mark_file).stat().st_mtime, size_pct, x_pct, y_pct)
+    if key not in _SPECS:
+        alpha = mark_alpha(Image.open(mark_file))
+        ratio = alpha.height / alpha.width
+        sized: dict = {}
+        def mask(w: int, alpha=alpha, ratio=ratio, sized=sized) -> Image.Image:
+            if w not in sized:
+                sized[w] = alpha.resize((w, max(1, int(round(w * ratio)))), Image.Resampling.LANCZOS)
+            return sized[w]
+        _SPECS.clear()
+        _SPECS[key] = MarkSpec(mask, int(round(TARGET_W * size_pct / 100)), (int(round(TARGET_W * x_pct / 100)), int(round(TARGET_H * y_pct / 100))), size_pct=size_pct)
+    return _SPECS[key]
+
+
+def _box(center: tuple, m: Image.Image) -> tuple:
+    cx, cy = center
+    return (cx - m.width // 2, cy - m.height // 2, cx - m.width // 2 + m.width, cy - m.height // 2 + m.height)
+
+
 def normalized_corr(patch_l: Image.Image, ref_l: Image.Image) -> float:
     """Computes Pearson correlation coefficient between two grayscale PIL images of identical size."""
     p_bytes = patch_l.tobytes()
@@ -79,9 +120,9 @@ def normalized_corr(patch_l: Image.Image, ref_l: Image.Image) -> float:
     return num / math.sqrt(den_p * den_r)
 
 
-def evaluate_plate_qa(image_path: Path) -> dict:
+def evaluate_plate_qa(image_path: Path, mark: MarkSpec | None = None) -> dict:
     """
-    Evaluates a 9:16 plate for Demo logo fidelity:
+    Evaluates a 9:16 plate for the project's mark (DEMO by default: its orbital mask, 190 px at the dead centre):
       - Asymmetry & shape fidelity against ground-truth logo-cream.png
       - Detection of 'logo-in-logo' outer rings or oversized logo scale
       - Center lock accuracy at (50%, 50%)
@@ -93,7 +134,9 @@ def evaluate_plate_qa(image_path: Path) -> dict:
     # 1. Multi-scale search around dead-center (540, 960) for best match to true mask
     best_corr = -1.0
     best_sym_corr = -1.0
-    best_diam = LOGO_DIAM
+    mark = mark or DEMO_MARK
+    W = mark.width
+    best_diam = W
     best_polarity = "light_on_dark"
 
     # Check luminance, RGB channels, color-difference channels, and edge magnitude
@@ -112,11 +155,10 @@ def evaluate_plate_qa(image_path: Path) -> dict:
     )
     best_ch_img = gray
 
-    for diam in (176, 190, 215, 250, 290):
-        true_m = load_clean_orbital_mask(diam)
-        sym_m = make_symmetric_impostor_mask(diam)
-        half = diam // 2
-        box = (CENTER_X - half, CENTER_Y - half, CENTER_X - half + diam, CENTER_Y - half + diam)
+    for diam in [int(round(W * d / LOGO_DIAM)) for d in (176, 190, 215, 250, 290)]:   # a little smaller to half as big again
+        true_m = mark.mask(diam)
+        sym_m = mark.impostor(diam)
+        box = _box(mark.center, true_m)
 
         for ch_name, ch_img in channels:
             patch = ch_img.crop(box)
@@ -140,16 +182,14 @@ def evaluate_plate_qa(image_path: Path) -> dict:
 
     # 2. Check asymmetry preservation: true Demo mask has a distinct diagonal swoosh
     # Compare correlation inside the inner core (r < 68px) where the asymmetric swoosh lives
-    core_diam = int(best_diam * 0.68)
-    core_half = core_diam // 2
-    true_full = load_clean_orbital_mask(best_diam)
-    sym_full = make_symmetric_impostor_mask(best_diam)
-    c_off = (best_diam - core_diam) // 2
-    true_core = true_full.crop((c_off, c_off, c_off + core_diam, c_off + core_diam))
-    sym_core = sym_full.crop((c_off, c_off, c_off + core_diam, c_off + core_diam))
+    true_full = mark.mask(best_diam)
+    sym_full = mark.impostor(best_diam)
+    core_w, core_h = int(true_full.width * 0.68), int(true_full.height * 0.68)
+    c_x, c_y = (true_full.width - core_w) // 2, (true_full.height - core_h) // 2
+    true_core = true_full.crop((c_x, c_y, c_x + core_w, c_y + core_h))
+    sym_core = sym_full.crop((c_x, c_y, c_x + core_w, c_y + core_h))
 
-    core_box = (CENTER_X - core_half, CENTER_Y - core_half, CENTER_X - core_half + core_diam, CENTER_Y - core_half + core_diam)
-    core_patch = best_ch_img.crop(core_box)
+    core_patch = best_ch_img.crop(_box(mark.center, true_core))
 
     sign = 1.0 if best_polarity.startswith("light") else -1.0
     core_true_corr = sign * normalized_corr(core_patch, true_core)
@@ -159,10 +199,9 @@ def evaluate_plate_qa(image_path: Path) -> dict:
     # 3. Check for oversized logo (>40% width) or "logo-in-logo" outer concentric ring
     outer_max_corr = 0.0
     outer_best_diam = 0
-    for big_diam in (420, 480, 540, 600):
-        big_m = load_clean_orbital_mask(big_diam)
-        b_half = big_diam // 2
-        b_box = (CENTER_X - b_half, CENTER_Y - b_half, CENTER_X - b_half + big_diam, CENTER_Y - b_half + big_diam)
+    for big_diam in [int(round(W * d / LOGO_DIAM)) for d in (420, 480, 540, 600)]:
+        big_m = mark.mask(big_diam)
+        b_box = _box(mark.center, big_m)
         b_patch = gray.crop(b_box)
         b_corr = abs(normalized_corr(b_patch, big_m))
         b_warm_corr = abs(normalized_corr(warm_ch.crop(b_box), big_m))
@@ -175,7 +214,7 @@ def evaluate_plate_qa(image_path: Path) -> dict:
     # Allow slightly angled 3D perspective logos, CAD wireframes, and nature reliefs
     if best_corr < 0.14:
         if outer_max_corr > 0.38:
-            issues.append(f"Wrong logo scale (~{int(outer_best_diam / TARGET_W * 100)}% width instead of 18%)")
+            issues.append(f"Wrong logo scale (~{int(outer_best_diam / TARGET_W * 100)}% width instead of {mark.size_pct:g}%)")
         else:
             issues.append(f"Low center logo fidelity (corr={best_corr:.2f})")
 

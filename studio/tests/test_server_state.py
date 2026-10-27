@@ -99,7 +99,7 @@ def test_plate_key_uses_size_not_mtime(srv, make_plate):
 def test_get_cached_qa_evaluates_once_and_writes_atomically(srv, make_plate, monkeypatch):
     p = make_plate(srv.PLATES_DIR / "a.jpg")
     calls = []
-    monkeypatch.setattr(srv, "evaluate_plate_qa", lambda path: calls.append(1) or {"qa_passed": True, "qa_score": 99})
+    monkeypatch.setattr(srv, "evaluate_plate_qa", lambda path, mark=None: calls.append(1) or {"qa_passed": True, "qa_score": 99})
     monkeypatch.setattr(srv, "_QA_LAST_FLUSH", 0.0)
     assert srv.get_cached_qa(p)["qa_score"] == 99
     assert srv.get_cached_qa(p)["qa_score"] == 99
@@ -112,7 +112,7 @@ def test_get_cached_qa_concurrent_requests_evaluate_once(srv, make_plate, monkey
     p = make_plate(srv.PLATES_DIR / "a.jpg")
     calls = []
 
-    def slow(path):
+    def slow(path, mark=None):
         calls.append(1)
         time.sleep(0.15)
         return {"qa_passed": True}
@@ -125,7 +125,7 @@ def test_get_cached_qa_concurrent_requests_evaluate_once(srv, make_plate, monkey
 
 
 def test_get_cached_qa_flush_is_throttled(srv, make_plate, monkeypatch):
-    monkeypatch.setattr(srv, "evaluate_plate_qa", lambda path: {"qa_passed": True})
+    monkeypatch.setattr(srv, "evaluate_plate_qa", lambda path, mark=None: {"qa_passed": True})
     flushes = []
     monkeypatch.setattr(srv, "_flush_qa_cache", lambda: flushes.append(1))
     monkeypatch.setattr(srv, "_QA_LAST_FLUSH", 0.0)

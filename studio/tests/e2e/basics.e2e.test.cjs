@@ -502,6 +502,54 @@ test('snapshots: ＋ Snapshot keeps the film under a name it picks, switching br
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+test('projects: the header shows the brand; New project takes a mark (drawn to a PNG here), places it, makes it the open project; the logo target follows', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  assert.equal(await text('#projectName'), 'Demo');
+  await page.click('#projectBtn');
+  await page.waitForSelector('#projectMenu:not([hidden])');
+  assert.deepEqual(await page.locator('#projectMenu .gm-item').allTextContents(), ['Demo', 'New project…', 'Project settings…']);
+  assert.equal(await page.locator('#projectMenu .gm-item.on').textContent(), 'Demo');
+  assert.equal(await page.locator('#projectMenu .gm-item', { hasText: 'Project settings' }).isDisabled(), true, 'DEMO keeps its mark, size and place');
+  await page.locator('#projectMenu .gm-item', { hasText: 'New project' }).click();
+  assert.equal(await page.locator('#projectModal').isVisible(), true);
+  await page.fill('#pfName', 'Night Owl');
+  await page.click('#pfSave');
+  assert.match(await text('#pfError'), /Choose the mark/, 'a mark is needed');
+  const png = await page.evaluate(async () => {                               // a wide mark on a transparent background
+    const c = document.createElement('canvas'); c.width = 200; c.height = 100; const x = c.getContext('2d');
+    x.fillStyle = '#f0a020'; x.fillRect(10, 20, 120, 60); return c.toDataURL('image/png').split(',')[1];
+  });
+  await page.setInputFiles('#pfMark', { name: 'owl.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await page.waitForFunction(() => document.getElementById('pfPreviewMark').getAttribute('src'));
+  await page.fill('#pfSize', '30'); await page.locator('#pfSize').dispatchEvent('input');
+  await page.fill('#pfY', '40'); await page.locator('#pfY').dispatchEvent('input');
+  assert.equal(await text('#pfSizeVal'), '30%');
+  const prev = await page.locator('#pfPreview').boundingBox(), mark = await page.locator('#pfPreviewMark').boundingBox();
+  assert.ok(Math.abs(mark.width - prev.width * 0.3) < 2 && Math.abs(mark.y + mark.height / 2 - (prev.y + prev.height * 0.4)) < 2, 'the preview places it at its size and height');
+  await page.fill('#pfShape', 'owl wordmark'); await page.fill('#pfNoun', 'owl'); await page.fill('#pfBrief', 'Night Owl, a late bar');
+  await page.fill('#pfPalette', '#223344 #ff8800 nope'); await page.locator('#pfPalette').dispatchEvent('input');
+  assert.equal(await page.locator('#pfSwatches i').count(), 2);
+  await shot('32-new-project');
+  await page.click('#pfSave');
+  await page.waitForFunction(() => document.getElementById('projectName').textContent === 'Night Owl', null, { timeout: 10000 });
+  await page.waitForSelector('#loader', { state: 'detached' });
+  const sent = api.state.calls.filter(c => c.path === '/api/projects').pop().body;
+  assert.deepEqual([sent.action, sent.name, sent.mark_size, sent.mark_y, sent.mark_shape, sent.mark_noun, sent.palette], ['create', 'Night Owl', 30, 40, 'owl wordmark', 'owl', ['#223344', '#ff8800']]);
+  assert.match(api.state.markSent, /^data:image\/png;base64,/, 'the mark goes as a PNG');
+  assert.deepEqual(await page.evaluate(async u => { const i = new Image(); i.src = u; await i.decode(); return [i.width, i.height]; }, api.state.markSent), [120, 60], 'trimmed to the mark itself');
+  assert.equal(await page.locator('.card').count(), 0, 'a new project starts empty');
+  const vars = await page.evaluate(() => ['--mark-w', '--mark-y', '--mark-ar', '--mark-r'].map(v => document.documentElement.style.getPropertyValue(v)));
+  assert.deepEqual(vars, ['30%', '40%', '0.5', '4px'], 'the logo target takes the mark\'s size, place and shape');
+  assert.equal(await text('#retLabel'), 'logo · 50%, 40% · 30%');
+  await page.click('#projectBtn');
+  await page.locator('#projectMenu .gm-item', { hasText: 'Demo' }).click();
+  await page.waitForFunction(() => document.getElementById('projectName').textContent === 'Demo', null, { timeout: 10000 });
+  await page.waitForSelector('#loader', { state: 'detached' });
+  assert.equal(await page.locator('.card').count(), 0, 'switching reloads with the other project');   // (the fake keeps one library)
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('the film strip: one thumbnail per image in order, click jumps there; no key trashes from the Film', { skip }, async () => {
   const ctx = await fresh();
   await film();

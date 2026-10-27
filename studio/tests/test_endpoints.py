@@ -72,8 +72,8 @@ def live(srv, monkeypatch):
     srv.AI_JOBS.clear()
 
 
-GET_ENDPOINTS = ["/api/state", "/api/worlds", "/api/stats", "/api/version"]
-POST_ENDPOINTS = ["/api/save-settings", "/api/reorder", "/api/sequence", "/api/trash", "/api/purge", "/api/invent-prompts", "/api/generate-image", "/api/order-ai", "/api/export-video", "/api/export-audio", "/api/export-frame", "/api/groups", "/api/edits"]
+GET_ENDPOINTS = ["/api/state", "/api/worlds", "/api/stats", "/api/version", "/api/projects"]
+POST_ENDPOINTS = ["/api/save-settings", "/api/reorder", "/api/sequence", "/api/trash", "/api/purge", "/api/invent-prompts", "/api/generate-image", "/api/order-ai", "/api/export-video", "/api/export-audio", "/api/export-frame", "/api/groups", "/api/edits", "/api/projects"]
 
 
 @pytest.mark.parametrize("path", GET_ENDPOINTS)
@@ -646,3 +646,48 @@ def test_ai_reorder_of_a_group_moves_only_its_images_among_their_own_places(live
         srv.save_state(st)
     _, state = live("GET", "/api/state")
     assert [p["filename"] for p in state["plates"] if not p["trashed"]][:3] == [names[2], names[1], names[0]], "n1 kept its place; the group swapped"
+
+
+def test_projects_over_http_a_new_brand_generates_into_its_own_folder_and_cos_comes_back(live, srv):
+    """Make a project from a mark (sent as a PNG data URL), it becomes the open one, its images and curation are its own; the
+    prompt names its mark, size and place; Krea gets its guide; switching back brings DEMO's library back."""
+    import base64
+    from test_projects import star_png
+    _three_plates(live)
+    demo_names = sorted(p["filename"] for p in live("GET", "/api/state")[1]["plates"])
+    status, res = live("POST", "/api/projects", {"action": "create", "name": "Night Owl", "mark": "data:image/png;base64," + base64.b64encode(star_png()).decode(),
+                                                  "mark_size": 24, "mark_x": 50, "mark_y": 40, "mark_shape": "owl wordmark", "mark_noun": "owl", "brief": "Night Owl, a late bar", "palette": ["#223344"]})
+    assert status == 200 and res["active"] == "night-owl" and [p["slug"] for p in res["projects"]] == ["demo", "night-owl"]
+    _, state = live("GET", "/api/state")
+    assert state["project"]["name"] == "Night Owl" and state["plates"] == [], "a new project starts empty"
+    status, mark = live("GET", "/api/project-mark?p=night-owl")
+    assert status == 200 and mark[:4] == b"\x89PNG"
+    live.calls["krea"].clear()
+    status, g = live("POST", "/api/generate-image", {"title": "Owl one", "prompt": "a moonlit bar counter", "model": "m"})
+    assert status == 200 and g.get("ok"), g
+    kw = live.calls["krea"][-1]
+    assert kw["guide"]["files"]["dark"] == srv.projects.PROJECTS_DIR / "night-owl" / "guide_dark.png", "its own guide"
+    assert "At the EXACT POINT 50% from the left and 40% from the top of the 9:16 frame at ~24% frame width (matching the exact owl wordmark SHAPE" in kw["prompt"]
+    assert "is the SINGLE owl," in kw["prompt"]
+    files = [p["filename"] for p in live("GET", "/api/state")[1]["plates"]]
+    assert len(files) == 1 and (srv.projects.PROJECTS_DIR / "night-owl" / "plates" / files[0]).is_file()
+    status, img = live("GET", f"/api/plate?f={files[0]}")
+    assert status == 200 and img[:2] == b"\xff\xd8"
+    assert live("GET", "/api/plate?f=../state.json")[0] == 404
+    status, res = live("POST", "/api/projects", {"action": "switch", "slug": "demo"})
+    assert status == 200 and res["active"] == "demo"
+    _, state = live("GET", "/api/state")
+    assert state["project"]["name"] == "Demo" and sorted(p["filename"] for p in state["plates"]) == demo_names, "DEMO's library is back as it was"
+    assert live("POST", "/api/projects", {"action": "switch", "slug": "nope"})[0] == 404
+    assert live("POST", "/api/projects", {"action": "create", "name": "x", "mark": "data:image/png;base64,AAAA"})[0] == 400
+
+
+def test_switching_projects_waits_while_something_runs(live, srv):
+    from test_projects import star_png
+    import base64
+    live("POST", "/api/projects", {"action": "create", "name": "Owl", "mark": base64.b64encode(star_png()).decode()})
+    with srv.inflight():
+        status, res = live("POST", "/api/projects", {"action": "switch", "slug": "demo"})
+    assert status == 409 and res["busy"]
+    assert live("POST", "/api/projects", {"action": "switch", "slug": "demo"})[0] == 200
+

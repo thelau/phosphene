@@ -15,3 +15,7 @@ studio/web/dist/
 studio/generation_log.jsonl*
 studio/.thumbs/
 studio/.export/
+studio/.local.json
+# projects: new ones stay on this machine; Demo is shared (its plates and curation live where they always did)
+projects/*
+!projects/demo/

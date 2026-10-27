@@ -278,7 +278,7 @@ class ImgResp(FakeResp):
 def test_generate_plate_happy_path_and_payload(monkeypatch):
     sent = {}
     monkeypatch.setattr(k, "init_mcp_session", lambda: "S")
-    monkeypatch.setattr(k, "get_or_upload_guide_url", lambda guide_type="dark", sid=None: GUIDE)
+    monkeypatch.setattr(k, "get_or_upload_guide_url", lambda guide_type="dark", sid=None, guide=None: GUIDE)
     monkeypatch.setattr(k, "call_krea_mcp_tool", lambda name, args, sid=None, timeout=0: sent.update(name=name, args=args) or {"result": {"structuredContent": {"urls": ["https://i/1.png"]}}})
     monkeypatch.setattr(k.urllib.request, "urlopen", lambda req, timeout=0: ImgResp())
     out = k.generate_plate_via_krea_mcp("hello", "dark", "google/nano-banana-2.1")

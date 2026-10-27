@@ -14,6 +14,13 @@ _CACHE: dict | None = None
 _DIRTY = False
 
 
+def use_cache(path: Path) -> None:
+    """Another project: its own measurements file (what was measured for the last one is saved first)."""
+    global CACHE_FILE, _CACHE
+    save_cache()
+    CACHE_FILE, _CACHE = Path(path), None
+
+
 def _load_cache() -> dict:
     global _CACHE
     if _CACHE is None:
