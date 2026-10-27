@@ -111,6 +111,11 @@ def test_own_mark_at_its_size_passes_and_twice_too_big_fails(tmp_path):
     big, spec = _plate_with_own_mark(tmp_path / "big.jpg", mark, scale=2.2)
     r = qa.evaluate_plate_qa(big, spec)
     assert not r["qa_passed"] and "too big" in r["issues"][0], "a mark drawn twice too big used to pass: it still covers the target"
+    near, spec = _plate_with_own_mark(tmp_path / "near.jpg", mark, scale=1.3)
+    r = qa.evaluate_plate_qa(near, spec)
+    assert not r["qa_passed"], "a third too big: it fits about as well at the sizes around it, not sharply at its own"
+    small, spec = _plate_with_own_mark(tmp_path / "small.jpg", mark, scale=0.7)
+    assert not qa.evaluate_plate_qa(small, spec)["qa_passed"]
 
 
 def test_own_mark_embossed_passes_by_its_outline(tmp_path):
