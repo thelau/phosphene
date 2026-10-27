@@ -1572,6 +1572,7 @@
       document.getElementById('followCuts').checked = Math.random() < 0.2;               // now and then the music takes every picture cut
       matchSoundToSpeed();
       soundRules();
+      document.getElementById('tintChords').checked = +document.getElementById('progSelect').value > 0 && Math.random() < 0.6;   // the picture answers the chords more often than not, when there are chords to answer
       refreshVideo(true);
       updateMusic();
       commitSettings('Random');
@@ -1823,7 +1824,7 @@
     // Colour follows the chords: each chord's brand colour mixed lightly over the picture (cutplan.CHORD_TINTS / TINT_ALPHA; the home chord none)
     const CHORD_TINTS = { '-2': '#5D8FF4', 5: '#5D8FF4', '-4': '#EC540C', 3: '#EC540C', '-5': '#F64570' }, TINT_ALPHA = 0.16;
     let tintShown = '';
-    function chordTint(sec) { return window.Drone ? CHORD_TINTS[window.Drone.chordAt(synthParams(), synthStartsSec(), sec)] || null : null; }
+    function chordTint(sec) { return window.Drone && window.Drone.chordAt ? CHORD_TINTS[window.Drone.chordAt(synthParams(), synthStartsSec(), sec)] || null : null; }
     function syncTintRow() {                                                // the check only means something with chord changes playing
       const ok = musicOn() && +document.getElementById('progSelect').value > 0, row = document.getElementById('tintRow'), box = document.getElementById('tintChords');
       box.disabled = !ok;

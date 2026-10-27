@@ -1184,6 +1184,19 @@ test('chord changes: Random turns them on now and then, each chord 1 to 4 second
   assert.equal(JSON.parse(h.store.studioSettings).progSelect, '1');
 });
 
+test('chord colour: Random ticks it more often than not when the chords change, never without changes', async () => {
+  const h = await playerWith();
+  let withChanges = 0, tinted = 0;
+  for (let i = 0; i < 300; i++) {
+    h.run('randomAll()');
+    const changes = +h.$('progSelect').value > 0, tint = h.$('tintChords').checked;
+    if (!changes) assert.equal(tint, false, 'no colour without chord changes');
+    else { withChanges++; if (tint) tinted++; }
+  }
+  assert.ok(withChanges > 40, `changes came up: ${withChanges}`);
+  assert.ok(tinted / withChanges > 0.4 && tinted / withChanges < 0.8, `more often than not: ${tinted} of ${withChanges}`);
+});
+
 test('bassline and arrangement: Random brings them in by type, an arrangement always has layers to move, Follows needs a changing speed; sent', async () => {
   const h = await playerWith();
   const n = id => +h.$(id).value;
