@@ -132,15 +132,17 @@ def test_export_then_import_brings_the_project_back_as_it_was_and_never_carries_
     state = {"order": ["02_shot.jpg", "00_shot.jpg", "01_shot.jpg"], "trashed": ["01_shot.jpg"], "groups": [{"id": "g1", "name": "Red", "files": ["02_shot.jpg"]}],
              "edits": [{"id": "e1", "name": "Feral Ember"}], "kimi_api_key": "sk-secret"}
     p["state_file"].write_text(json.dumps(state))
-    (p["plates_dir"].parent / ".qa_cache.json").write_text("{}")
+    (p["plates_dir"].parent / ".qa_cache.json").write_text(json.dumps({"00_shot.jpg:123:3:22:50:50": {"qa_passed": True}, "gone.jpg:9": {"qa_passed": False}}))
     out = tmp_path / "x.zip"
     assert projects.export_zip("night-owl", out) == "Night Owl.phos"
     names = zipfile.ZipFile(out).namelist()
     assert sorted(names) == sorted(["night-owl/project.json", "night-owl/state.json", "night-owl/mark.png", "night-owl/guide_dark.png", "night-owl/guide_light.png",
-                                    "night-owl/plates/00_shot.jpg", "night-owl/plates/01_shot.jpg", "night-owl/plates/02_shot.jpg"]), "everything it is, no caches"
+                                    "night-owl/plates/00_shot.jpg", "night-owl/plates/01_shot.jpg", "night-owl/plates/02_shot.jpg", "night-owl/qa.json"]), "everything it is, and the logo check measured (no looks measured yet here)"
     assert b"sk-secret" not in out.read_bytes(), "the key never travels"
     q = projects.import_zip(out)
-    assert q["slug"] == "night-owl-2" and q["name"] == "Night Owl" and q["mark_size"] == 22 and q["palette"] == ["#112233"], "a new project, nothing replaced"
+    assert q["slug"] == "night-owl-2" and q["name"] == "Night Owl 2" and q["mark_size"] == 22 and q["palette"] == ["#112233"], "a new project, nothing replaced; numbered as Finder numbers a copy"
+    assert json.loads(q["qa_cache_file"].read_text()) == {"00_shot.jpg:123:3:22:50:50": {"qa_passed": True}}, "the logo check comes along (for its images only): an import opens at once"
+    assert projects.import_zip(out)["name"] == "Night Owl 3"
     got = json.loads(q["state_file"].read_text())
     assert (got["order"], got["trashed"], got["groups"], got["edits"]) == (state["order"], state["trashed"], state["groups"], state["edits"]), "as it was"
     assert sorted(f.name for f in q["plates_dir"].iterdir()) == ["00_shot.jpg", "01_shot.jpg", "02_shot.jpg"]

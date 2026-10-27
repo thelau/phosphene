@@ -743,7 +743,7 @@ def test_project_export_and_import_over_http_and_kimi_reads_a_mark(live, srv, mo
     status, data = live("GET", res["url"])
     assert status == 200 and data[:2] == b"PK"
     status, imp = live("POST", "/api/project-import", raw=data)
-    assert status == 200 and imp["active"] == "Demo" and imp["project"]["name"] == "Demo", "a copy, opened"
+    assert status == 200 and imp["active"] == "Demo-2" and imp["project"]["name"] == "Demo 2", "a copy, opened, numbered (a Demo is already here)"
     _, state = live("GET", "/api/state")
     assert len([p for p in state["plates"] if not p["trashed"]]) == 3, "with its images"
     assert live("POST", "/api/project-import", raw=b"nope, not a zip at all")[0] == 400
@@ -771,7 +771,7 @@ def test_with_no_project_the_server_runs_says_so_and_a_double_clicked_file_opens
     assert status == 409 and r["no_project"], "nothing that needs a project runs without one"
     assert live("POST", "/api/project-import-path", {"path": str(tmp_path / "nope.txt")})[0] == 400
     status, r = live("POST", "/api/project-import-path", {"path": str(f)})
-    assert status == 200 and r["project"]["name"] == "Demo"
+    assert status == 200 and r["project"]["name"] == "Demo 2", "its folder is still here: the copy is numbered"
     assert len(live("GET", "/api/state")[1]["plates"]) == 3, "with its images"
 
 

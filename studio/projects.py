@@ -310,8 +310,16 @@ def export_zip(slug: str, out: Path) -> str:
         for kind, f in p["guides"].items():
             if f.is_file():
                 z.write(f, f"{top}/guide_{kind}.png")
-        for img in sorted(p["plates_dir"].glob("*.jpg")):
+        plates = sorted(p["plates_dir"].glob("*.jpg"))
+        for img in plates:
             z.write(img, f"{top}/plates/{img.name}")
+        names = {img.name for img in plates}
+        for f, arc in ((p["qa_cache_file"], "qa.json"), (p["features_file"], "features.json")):   # the logo check and the looks, measured: an import opens at once
+            try:
+                cache = json.loads(Path(f).read_text())
+                z.writestr(f"{top}/{arc}", json.dumps({k: v for k, v in cache.items() if isinstance(v, dict) and k.split(":", 1)[0] in names}))
+            except Exception:
+                pass
     return f"{re.sub(r'[^A-Za-z0-9 ._-]+', '', p['name']).strip() or 'Project'}.phos"
 
 
@@ -340,6 +348,12 @@ def import_zip(path: Path) -> dict:
         raw.pop("paths", None)
         raw["mark"] = "mark.png"
         raw["name"] = str(raw["name"])[:60]
+        taken = {q["name"] for q in all_projects()}                    # the same name as a project here: "Nike 2", as Finder numbers a copy
+        if raw["name"] in taken:
+            stem, k = re.sub(r" \d+$", "", raw["name"])[:56], 2
+            while f"{stem} {k}" in taken:
+                k += 1
+            raw["name"] = f"{stem} {k}"
         base = slugify(raw["name"])
         slug, n = base, 2
         while (PROJECTS_DIR / slug).exists():
@@ -357,6 +371,17 @@ def import_zip(path: Path) -> dict:
             if not (folder / "mark.png").is_file():
                 raise ValueError("That project file has no mark.")
             _clean_state(folder / "state.json")
+            _write(slug, raw)
+            q = load(slug)
+            plates = {f.name for f in (folder / "plates").glob("*.jpg")}
+            for arc, dest in (("qa.json", q["qa_cache_file"]), ("features.json", q["features_file"])):
+                if f"{top}/{arc}" in names:
+                    try:
+                        cache = json.loads(z.read(f"{top}/{arc}"))
+                        keep = {k: v for k, v in cache.items() if isinstance(k, str) and isinstance(v, dict) and _bare(k.split(":", 1)[0]) and k.split(":", 1)[0] in plates}
+                        Path(dest).write_text(json.dumps(keep))
+                    except Exception:
+                        pass                                    # measured again, as before
             raw["imported"] = time.strftime("%Y-%m-%dT%H:%M:%S")
             _write(slug, raw)
             p = load(slug)
