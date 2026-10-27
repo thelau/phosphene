@@ -258,12 +258,34 @@
       document.body.classList.add('no-project');                             // no mark yet: no logo target to show
       for (const id of ['targetBtn', 'gridTargetBtn']) { const b = document.getElementById(id); if (!b.dataset.title) b.dataset.title = b.title; b.disabled = true; b.title = 'The logo target: make or import a project first'; }
     }
+    // a dark mark (Nike's black swoosh) is lost on the dark top bar and menu: there it shows as a light silhouette, as on the dark guide;
+    // a light or colourful mark stays as it is. Measured once per image from its opaque pixels
+    const markTones = new Map();
+    function fitMarkTone(img) {
+      const apply = () => {
+        const url = img.getAttribute('src');
+        if (!url) return;
+        if (!markTones.has(url)) {
+          try {
+            const c = document.createElement('canvas'), n = 48; c.width = n; c.height = n;
+            const x = c.getContext('2d'); x.drawImage(img, 0, 0, n, n);
+            const d = x.getImageData(0, 0, n, n).data;
+            let sum = 0, w = 0;
+            for (let i = 0; i < d.length; i += 4) { const a = d[i + 3] / 255; if (a < 0.1) continue; sum += a * (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255; w += a; }
+            markTones.set(url, w ? sum / w : 1);
+          } catch (e) { markTones.set(url, 1); }
+        }
+        img.classList.toggle('mark-dark', markTones.get(url) < 0.3);
+      };
+      if (img.complete && img.naturalWidth) apply(); else img.addEventListener('load', apply, { once: true });
+    }
     function showProject(p) {
       project = p;
       document.body.classList.remove('no-project');
       for (const id of ['targetBtn', 'gridTargetBtn']) { const b = document.getElementById(id); b.disabled = false; if (b.dataset.title) b.title = b.dataset.title; }
       const img = document.getElementById('projectMark');
       if (img.getAttribute('src') !== p.mark_url) img.src = p.mark_url;
+      fitMarkTone(img);
       document.getElementById('projectName').textContent = p.name;
       const r = document.documentElement.style;                               // the logo target: the mark's size, place and shape
       if (r && r.setProperty) {
@@ -284,6 +306,7 @@
         + (project ? '<button type="button" class="gm-item" onclick="openProjectForm(\'edit\')">Project settings…</button>' : '')
         + '<hr>' + (project ? '<button type="button" class="gm-item" onclick="exportProject()" title="This project as one file (.phos): its mark, settings, images, groups and snapshots, to send or keep">Export project…</button>' : '')
         + '<button type="button" class="gm-item" onclick="closeProjectMenu(); chooseProjectFile()" title="Open a .phos file someone exported: it comes in as a new project">Import project…</button>';
+      m.querySelectorAll('img').forEach(fitMarkTone);
       const a = btn.getBoundingClientRect();
       m.hidden = false; btn.setAttribute('aria-expanded', 'true');
       m.style.top = `${a.bottom + 6}px`; m.style.left = `${Math.max(8, a.left)}px`;

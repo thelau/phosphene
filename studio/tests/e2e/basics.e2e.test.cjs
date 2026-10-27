@@ -1361,3 +1361,18 @@ test('Film: no Trash button; the group is chosen from a dropdown above the film 
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('a dark mark shows as a light silhouette in the top bar and the project menu; a light one as it is', { skip }, async () => {
+  let ctx = await fresh({ width: 1512, height: 945 });
+  await page.waitForFunction(() => document.getElementById('projectMark').complete);
+  assert.equal(await page.locator('#projectMark.mark-dark').count(), 0, 'DEMO\'s cream mark as it is');
+  await ctx.close();
+  api.state.markColour = '#111111';
+  ctx = await fresh({ width: 1512, height: 945, setup: st => { st.markColour = '#111111'; } });
+  await page.waitForSelector('#projectMark.mark-dark');
+  assert.match(await page.evaluate(() => getComputedStyle(document.getElementById('projectMark')).filter), /invert/);
+  await page.click('#projectBtn');
+  await page.waitForSelector('#projectMenu .gm-item img.mark-dark');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
