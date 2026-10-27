@@ -141,7 +141,7 @@ test('export: preview is untouched, the panel shows the work, then Downloaded wi
   assert.match(await text('#exportMeta'), /^1080 × 1920 · \d+ s · silent$/);
   await page.click('#exportBtn');
   await page.waitForSelector('#exportDock[data-state="busy"]');
-  assert.match(await text('#musicState'), /Rendering/);
+  assert.match(await text('#musicState'), /Exporting|Rendering|Encoding/);
   const link = page.locator('#downloadLink');
   await link.waitFor({ state: 'visible' });
   assert.equal(await page.locator('#exportDock').getAttribute('data-state'), 'ready');
@@ -214,6 +214,14 @@ test('export with WebGL: the page draws every frame as cutplan plans them and th
   near(first.rgb, colour('k1'), 'cut 1: the first image');
   near(twin.rgb, colour('k1').map(v => 255 - v), 'cut 2: its inverted copy');
   near(second.rgb, colour('k2'), 'cut 3: the next image');
+  assert.ok(api.state.frameRequests.length < 30, `held cuts go as runs, not a request a frame: ${api.state.frameRequests.length}`);
+  await page.fill('#trailRange', '40'); await page.locator('#trailRange').dispatchEvent('input');   // Trail: the cut before shows through, fading over 4 frames
+  await page.click('#exportAgainBtn');
+  await page.waitForFunction(() => document.getElementById('exportDock').dataset.state === 'ready', null, { timeout: 30000 });
+  const k1i = colour('k1').map(v => 255 - v), mix = (a, b, t) => a.map((v, i) => v * (1 - t) + b[i] * t);
+  near((await px(30)).rgb, mix(k1i, colour('k1'), 0.4), 'first frame of the inverted copy: 40% of the image before');
+  near((await px(31)).rgb, mix(k1i, colour('k1'), 0.3), 'then 30%');
+  near((await px(34)).rgb, k1i, 'gone after 4 frames');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });

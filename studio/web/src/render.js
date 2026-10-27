@@ -88,5 +88,8 @@
     return { draw, forget, gl, canvas };
   }
 
-  window.Render = { create };
+  // a full-size image, decoded (the export draws from these)
+  async function loadImage(url) { const im = new Image(); im.src = url; await im.decode(); return im; }
+
+  window.Render = { create, loadImage };
 })();

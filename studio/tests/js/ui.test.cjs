@@ -451,6 +451,7 @@ test('export leaves the preview alone and offers a download link', async () => {
   const body = h.calls.find(c => c.url === '/api/export-video').body;
   assert.deepEqual([body.invert_mode, body.zoom_mode, body.zoom_amount, body.bpm], ['mono', 'out', 1.2, 136]);
   assert.equal('total_seconds' in body, false);                       // no fixed duration: the server exports every selected image
+  assert.equal(typeof body.frames, 'number', 'the page says how many frames it drew (the browser tests check the drawing)');
   assert.equal(h.$('stageImg').src, '/p/a');
   assert.equal(h.$('stageImg').style.display, 'block');
   const link = h.$('downloadLink');

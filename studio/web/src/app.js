@@ -1259,7 +1259,7 @@
     function setExportState(state) { document.getElementById('exportDock').dataset.state = state; }
     function setMusicState(kind, text) {
       const el = document.getElementById('musicState');
-      el.textContent = text || 'Rendering on the server…';
+      el.textContent = text || 'Exporting…';
       el.className = kind === 'err' ? 'err' : '';
     }
     function fmtDuration(sec) { return sec >= 60 ? `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}` : `${Math.round(sec)} s`; }
@@ -2342,12 +2342,12 @@
 
     // The export's frames, rendered here by the stage's own renderer (render.js) at 1080 x 1920 from the full-size plates, frame by frame as
     // cutplan.py plans them (frame f shows the clip at f + 0.5), and sent to the server, which only encodes them. A frame that is the same
-    // as the one before (a plain cut held) is sent as a reference, not drawn again. null when WebGL2 is not there: the server draws them.
+    // as the one before (a plain cut held) is sent as a reference, not drawn again. Without WebGL2 there is no export (it says so).
     async function exportFrames(progress) {
       const canvas = document.createElement('canvas');
       canvas.width = 1080; canvas.height = 1920;
       const r = window.Render && window.Render.create(canvas, { keep: true, textures: 4 });
-      if (!r) return null;
+      if (!r) throw new Error('this browser cannot draw the frames (WebGL2 is off)');
       const active = activePlates(), fx = fxSettings(), tl = timelineFor(active.length), n = active.length;
       const paired = fx.invert === 'mono' || fx.invert === 'colour', nCuts = n * (paired ? 2 : 1);
       const total = Math.max(nCuts, Math.floor(tl[tl.length - 1] + 1e-9));     // cutplan.export_length
@@ -2355,32 +2355,37 @@
       const load = async i => {
         const p = active[i];
         if (full.has(p.url)) return full.get(p.url);
-        const im = new Image(); im.src = p.url; await im.decode();
+        const im = await window.Render.loadImage(p.url);
         full.set(p.url, im); while (full.size > 4) full.delete(full.keys().next().value);
         return im;
       };
       const shown = cut => ({ plate: (paired ? Math.floor(cut / 2) : cut) % n, invert: paired && cut % 2 === 1 ? fx.invert : 'off' });
-      const send = (f, body, same) => fetch(`/api/export-frame?i=${f}${same === undefined ? '' : `&same=${same}`}`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: body || '' })
+      const post = (query, body) => fetch(`/api/export-frame?${query}`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: body || '' })
         .then(res => res.json()).then(d => { if (!d.ok) throw new Error(d.error || 'a frame was not accepted'); });
       const inFlight = new Set();
-      let lastKey = '', lastSent = -1, lastJob = null;
+      const track = async job => { inFlight.add(job); job.then(() => inFlight.delete(job), () => {}); if (inFlight.size >= 6) await Promise.race(inFlight); };
+      let lastKey = '', lastSent = -1, lastJob = null, runFrom = -1;     // a run of frames the same as lastSent, sent as one request
+      const flush = async upto => {
+        if (runFrom < 0) return;
+        const [k, a] = [lastSent, runFrom]; runFrom = -1;
+        await track(lastJob.then(() => post(`i=${a}&same=${k}&to=${upto}`)));   // after the frame it points at has arrived
+      };
       for (let f = 0; f < total; f++) {
         const plan = planAt(f + 0.5, n, fx.invert, tl), cur = shown(plan.cut);
         const scale = zoomScale(fx.zoom, fx.amount, plan.p), alpha = plan.cut > 0 ? trailAlpha(f + 0.5 - tl[plan.cut], fx.trail) : 0;
         const prev = alpha > 0 ? shown(plan.cut - 1) : null, prevScale = zoomScale(fx.zoom, fx.amount, 1);
         const key = JSON.stringify([cur, scale > 1.0005 ? scale : 1, prev, alpha]);
-        let job;
-        if (key === lastKey && f > 0) { const k = lastSent; job = lastJob.then(() => send(f, null, k)); }   // after the frame it points at has arrived
-        else {
-          const curImg = await load(cur.plate), prevImg = prev ? await load(prev.plate) : null;
-          r.draw({ cur: { key: active[cur.plate].url, img: curImg, invert: cur.invert, scale }, ghost: prev ? { key: active[prev.plate].url, img: prevImg, invert: prev.invert, scale: prevScale, alpha } : null });
-          const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.92));
-          job = send(f, blob); lastKey = key; lastSent = f; lastJob = job;
-        }
+        if (key === lastKey && f > 0) { if (runFrom < 0) runFrom = f; continue; }
+        await flush(f);
+        const curImg = await load(cur.plate), prevImg = prev ? await load(prev.plate) : null;
+        r.draw({ cur: { key: active[cur.plate].url, img: curImg, invert: cur.invert, scale }, ghost: prev ? { key: active[prev.plate].url, img: prevImg, invert: prev.invert, scale: prevScale, alpha } : null });
+        const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.92));
+        const job = post(`i=${f}`, blob); lastKey = key; lastSent = f; lastJob = job;
         if (f === 0) await job;                                             // the first frame starts a new set on the server
-        else { inFlight.add(job); job.then(() => inFlight.delete(job), () => {}); if (inFlight.size >= 6) await Promise.race(inFlight); }
-        if (progress && f % 10 === 0) progress(f, total);
+        else await track(job);
+        if (progress) progress(f, total);
       }
+      await flush(total);
       await Promise.all(inFlight);
       r.forget();
       return total;
@@ -2392,7 +2397,7 @@
       exporting = true;
       const t0 = performance.now();
       setExportState('busy');
-      setMusicState('busy', 'Rendering on the server…');
+      setMusicState('busy', 'Exporting…');
       let ok = false;
       try {
         if (musicOn()) {                                   // the same WebAudio drone as the preview, rendered offline and sent along
@@ -2401,10 +2406,9 @@
           const up = await fetch('/api/export-audio', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: wav });
           const sent = await up.json();
           if (!sent.ok) throw new Error(sent.error || 'the sound was not accepted');
-          setMusicState('busy', 'Rendering on the server…');
         }
         const frames = await exportFrames((f, total) => setMusicState('busy', `Rendering frames ${f} / ${total}…`));
-        if (frames) setMusicState('busy', 'Encoding…');
+        setMusicState('busy', 'Encoding…');
         const res = await fetch('/api/export-video', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -2418,7 +2422,7 @@
             zoom_mode: document.getElementById('zoomSelect').value,
             zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
             trail: (parseFloat(document.getElementById('trailRange').value) || 0) / 100,
-            ...(frames ? { frames } : {}),                                   // drawn here: the server encodes these
+            frames,                                                          // drawn here: the server only encodes them
             ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // a group: just its images
             ...(editOf(currentEdit) ? { edit: editOf(currentEdit).name } : {}),   // the file is named after the edit
           })

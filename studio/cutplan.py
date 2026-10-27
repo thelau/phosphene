@@ -1,6 +1,6 @@
 """
-Which image is on screen at which moment, and how it is treated: shared by the export and mirrored by the page's preview
-(studio/web/src/app.js: planAt / zoomScale). Measured from the references:
+Which image is on screen at which moment, and how it is treated: the server counts the export's frames with it, and the page plans
+every frame the same way (studio/web/src/app.js: planAt / zoomScale / trailAlpha; shared vectors); the page draws them (render.js). Measured from the references:
   - soiltone-inspo.mp4: every scene is followed by an inverted, greyscale copy of itself, same hold (2-3 frames at 30fps);
     inverted frames match invert(frame) almost exactly (mse < 1).
   - Moverunion clip: each ~5-frame cut slowly zooms OUT about the centre, only ~0.15-0.45% over the cut.
@@ -8,8 +8,6 @@ Which image is on screen at which moment, and how it is treated: shared by the e
 
 import bisect
 import math
-
-from PIL import Image, ImageOps
 
 INVERT_MODES = ("off", "mono", "colour")
 ZOOM_MODES = ("off", "out", "in")
@@ -130,20 +128,6 @@ def cut_plate(cut: int, n_plates: int, invert_mode: str = "off") -> tuple[int, b
     """Which plate, and whether inverted, a given cut shows."""
     paired = invert_mode in ("mono", "colour")
     return ((cut // 2 if paired else cut) % n_plates, paired and cut % 2 == 1)
-
-
-def zoomed(img: Image.Image, scale: float) -> Image.Image:
-    """Crop the centre 1/scale of the image and scale it back up to full size (one resample)."""
-    if scale <= 1.0005:
-        return img
-    w, h = img.size
-    cw, ch = w / scale, h / scale
-    return img.resize((w, h), Image.Resampling.BILINEAR, box=((w - cw) / 2, (h - ch) / 2, (w + cw) / 2, (h + ch) / 2))
-
-
-def inverted(img: Image.Image, invert_mode: str) -> Image.Image:
-    base = img.convert("L").convert("RGB") if invert_mode == "mono" else img
-    return ImageOps.invert(base)
 
 
 def export_length(n_plates: int, frames_per_cut: float, invert_mode: str = "off", starts: list | None = None) -> tuple[int, int]:

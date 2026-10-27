@@ -177,7 +177,9 @@ function start(state = makeState()) {
       case '/api/export-frame': {    // a frame drawn by the page's renderer: kept so a test can look at it
         const i = +url.searchParams.get('i'), same = url.searchParams.get('same');
         if (i === 0) state.frames = [];
-        state.frames[i] = same === null ? req.raw : state.frames[+same];
+        const to = +(url.searchParams.get('to') || i + 1);
+        for (let f = i; f < to; f++) state.frames[f] = same === null ? req.raw : state.frames[+same];
+        (state.frameRequests ||= []).push(url.search);
         return send({ ok: true });
       }
       case '/api/export-audio': {    // the drone rendered in the page: keep what arrived so a test can look at it

@@ -17,6 +17,7 @@ class El {
   addEventListener(ev, fn) { (this.listeners[ev] ||= []).push(fn); }
   fire(ev) { (this.listeners[ev] || []).forEach(fn => fn({ target: this })); }
   focus() {} remove() {} click() {}
+  toBlob(cb) { cb({ size: 1, fakeJpeg: true }); }
   getAttribute(n) { return this[n] ?? null; }
   setAttribute(n, v) { this[n] = v; }
   querySelectorAll() { return []; }
@@ -28,6 +29,7 @@ class El {
 const WEB = (...p) => path.join(__dirname, '..', '..', 'web', ...p);
 
 function load({ routes = {}, storage = {} } = {}) {
+  routes = { '/api/export-frame': { ok: true }, ...routes };              // the export's frames, drawn by the (fake) renderer
   const els = {};
   const calls = [];
   const timers = { intervals: [], timeouts: [] };
@@ -85,6 +87,12 @@ function load({ routes = {}, storage = {} } = {}) {
     },
     renderExport: async (params, starts) => { ctx.__drone.exports.push({ params, starts }); return { left: new Float32Array(1), right: new Float32Array(1), rate: 44100 }; },
     toWav: () => ({ size: 44, fakeWav: true }),
+  };
+  // the picture renderer needs WebGL2, which node does not have: the stage stays on CSS (no renderer for it), the export draws with a fake that counts
+  ctx.__render = { draws: 0 };
+  ctx.Render = {
+    create: (canvas, opts) => (opts && opts.keep ? { draw() { ctx.__render.draws++; }, forget() {}, canvas } : null),
+    loadImage: async url => ({ url, width: 1080, height: 1920 }),
   };
   ctx.window = ctx;
   vm.createContext(ctx);

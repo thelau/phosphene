@@ -320,7 +320,7 @@ def test_purge_ai_order_and_export_are_recorded_and_the_log_is_readable_over_htt
     names = [p["filename"] for p in live("GET", "/api/state")[1]["plates"]]
     live("POST", "/api/trash", {"filename": names[0], "trashed": True})
     live("POST", "/api/purge", {"filenames": [names[0]]})
-    status, ex = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2})
+    status, ex = _export(live, {"bpm": 120, "multiple": 2})
     assert status == 200 and ex["ok"] and ex["images"] == 2 and ex["filename"].endswith(".mp4") and (srv.OUTPUTS_DIR / ex["filename"]).exists()
     kinds = [e["event"] for e in gen_log.read(None)]
     assert kinds.count("image") == 3 and "purge" in kinds and "export" in kinds
@@ -333,7 +333,7 @@ def test_purge_ai_order_and_export_are_recorded_and_the_log_is_readable_over_htt
 def test_a_failing_export_answers_with_a_json_error_and_a_log_line(live, srv, monkeypatch):
     live("POST", "/api/generate-image", {"title": "One", "prompt": "p", "model": "m"})
     monkeypatch.setattr(srv.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("ffmpeg exploded")))
-    status, res = live("POST", "/api/export-video", {"bpm": 120, "multiple": 1})
+    status, res = _export(live, {"bpm": 120, "multiple": 1})
     assert status == 500 and res["ok"] is False and "ffmpeg exploded" in res["error"]
     ev = gen_log.read(None)[-1]
     assert ev["event"] == "export" and ev["ok"] is False and "ffmpeg" in ev["error"]
@@ -446,6 +446,23 @@ def _three_plates(live):
         live("POST", "/api/generate-image", {"title": f"M{i}", "prompt": "p", "model": "m"})
 
 
+def _export(live, body):
+    """An export as the page makes it: every frame first (one drawn, the rest pointing at it in one request, as a held cut does), then the video.
+    The frame count comes from the server's own answer to a request without them."""
+    import re
+    status, res = live("POST", "/api/export-video", {**body, "frames": -1})
+    m = re.search(r"the film has (\d+)", res.get("error") or "")
+    if not m:
+        return status, res
+    total = int(m.group(1))
+    jpg = io.BytesIO()
+    Image.new("RGB", (108, 192), (30, 90, 200)).save(jpg, "JPEG")
+    live("POST", "/api/export-frame?i=0", raw=jpg.getvalue())
+    if total > 1:
+        live("POST", f"/api/export-frame?i=1&same=0&to={total}", raw=b"")
+    return live("POST", "/api/export-video", {**body, "frames": total})
+
+
 def _silent_wav(seconds: float = 1.5) -> bytes:
     import io
     import wave
@@ -460,16 +477,16 @@ def _silent_wav(seconds: float = 1.5) -> bytes:
 
 def test_export_with_music_has_an_audio_track_and_without_it_does_not(live, srv):
     _three_plates(live)
-    status, plain = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2})
+    status, plain = _export(live, {"bpm": 120, "multiple": 2})
     assert status == 200 and _streams(srv.OUTPUTS_DIR / plain["filename"])[0] == ["video"] and "music" not in plain["filename"]
     status, res = live("POST", "/api/export-audio", raw=_silent_wav())                  # the page renders the drone and sends it first
     assert status == 200 and res["ok"]
-    status, withm = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth"})
+    status, withm = _export(live, {"bpm": 120, "multiple": 2, "music": "synth"})
     assert status == 200 and withm["music"] is True and withm["music_mode"] == "synth" and "music" in withm["filename"]
     kinds, seconds = _streams(srv.OUTPUTS_DIR / withm["filename"])
     assert sorted(kinds) == ["audio", "video"]
     assert gen_log.read(None)[-1]["music"] == "synth"
-    status, again = live("POST", "/api/export-video", {"bpm": 120, "multiple": 2, "music": "synth"})   # the sound is used once
+    status, again = _export(live, {"bpm": 120, "multiple": 2, "music": "synth"})   # the sound is used once
     assert status == 500 and "did not arrive" in again["error"]
 
 
@@ -542,20 +559,20 @@ def test_purging_a_plate_removes_its_thumbnails(live, srv):
 
 def test_export_with_variable_speed_runs_the_cuts_from_entry_to_exit(live, srv):
     _three_plates(live)
-    status, res = live("POST", "/api/export-video", {"rhythm": "variable", "start_ms": 600, "end_ms": 200, "ramp": 2, "at": "end"})
+    status, res = _export(live, {"rhythm": "variable", "start_ms": 600, "end_ms": 200, "ramp": 2, "at": "end"})
     assert status == 200 and "var600to200ms" in res["filename"] and "bpm" not in res["filename"]
     expected = cutplan.variable_timeline(3, 600, 200, 2, "end")[-1] / 30
     kinds, seconds = _streams(srv.OUTPUTS_DIR / res["filename"])
     assert kinds == ["video"] and seconds == pytest.approx(expected, abs=0.15)
-    status, flat = live("POST", "/api/export-video", {"rhythm": "flat", "bpm": 120, "multiple": 2})
+    status, flat = _export(live, {"rhythm": "flat", "bpm": 120, "multiple": 2})
     assert status == 200 and "120bpm" in flat["filename"]
-    status, odd = live("POST", "/api/export-video", {"rhythm": "variable", "start_ms": "x", "end_ms": 99999, "ramp": 5000})      # nonsense is clamped
+    status, odd = _export(live, {"rhythm": "variable", "start_ms": "x", "end_ms": 99999, "ramp": 5000})      # nonsense is clamped
     assert status == 200 and "var100to1500ms" in odd["filename"]
 
 
 def test_export_multiple_cuts_the_pictures_faster_in_both_speed_modes(live, srv):
     _three_plates(live)
-    status, res = live("POST", "/api/export-video", {"rhythm": "variable", "start_ms": 600, "end_ms": 600, "ramp": 2, "multiple": 2})
+    status, res = _export(live, {"rhythm": "variable", "start_ms": 600, "end_ms": 600, "ramp": 2, "multiple": 2})
     pic, _ = cutplan.rhythm_timeline(3, 120, 2, (600.0, 600.0, 2, "end"))
     assert status == 200 and _streams(srv.OUTPUTS_DIR / res["filename"])[1] == pytest.approx(pic[-1] / 30, abs=0.15)
     assert pic[-1] / 30 == pytest.approx(0.9)                                   # 3 pictures at 300 ms each: the 600 ms base cut split in two
@@ -571,7 +588,7 @@ def test_export_multiple_cuts_the_pictures_faster_in_both_speed_modes(live, srv)
 ])
 def test_export_survives_extreme_and_nonsense_settings(live, srv, body):
     _three_plates(live)
-    status, res = live("POST", "/api/export-video", body)
+    status, res = _export(live, body)
     assert status == 200 and res["ok"], res
     assert (srv.OUTPUTS_DIR / res["filename"]).stat().st_size > 1000
     assert _streams(srv.OUTPUTS_DIR / res["filename"])[1] > 0
@@ -579,7 +596,7 @@ def test_export_survives_extreme_and_nonsense_settings(live, srv, body):
 
 def test_export_with_one_plate_and_the_fastest_possible_rhythm(live, srv):
     live("POST", "/api/generate-image", {"title": "Solo", "prompt": "p", "model": "m"})
-    status, res = live("POST", "/api/export-video", {"bpm": 300, "multiple": 16, "invert_mode": "mono"})
+    status, res = _export(live, {"bpm": 300, "multiple": 16, "invert_mode": "mono"})
     assert status == 200 and _streams(srv.OUTPUTS_DIR / res["filename"])[0] == ["video"]
 
 
@@ -610,9 +627,9 @@ def test_groups_over_http_and_a_group_exports_alone(live, srv):
     assert state["groups"] == [{"id": gid, "name": "Two", "files": names[:2]}]
     assert all("look" in p for p in state["plates"])
     assert live("POST", "/api/groups", {"action": "create", "name": "two"})[0] == 400        # names are unique
-    status, whole = live("POST", "/api/export-video", {"rhythm": "flat", "bpm": 120, "multiple": 2})
+    status, whole = _export(live, {"rhythm": "flat", "bpm": 120, "multiple": 2})
     full = _streams(srv.OUTPUTS_DIR / whole["filename"])[1]                     # measured now: two exports in the same second share a file name
-    status, part = live("POST", "/api/export-video", {"rhythm": "flat", "bpm": 120, "multiple": 2, "files": names[:2]})
+    status, part = _export(live, {"rhythm": "flat", "bpm": 120, "multiple": 2, "files": names[:2]})
     assert status == 200
     two = _streams(srv.OUTPUTS_DIR / part["filename"])[1]
     assert whole["images"] == len(names) and part["images"] == 2, (whole, part)
@@ -631,7 +648,7 @@ def test_edits_over_http_and_an_edit_names_its_export(live, srv):
     assert live("POST", "/api/edits", {"action": "create", "name": "night strobe"})[0] == 400
     assert live("POST", "/api/edits", {"action": "update", "id": eid, "group": "all", "settings": {"bpmInput": "90"}})[1]["ok"]
     assert live("GET", "/api/state")[1]["edits"][0]["settings"] == {"bpmInput": "90"}
-    status, out = live("POST", "/api/export-video", {"rhythm": "flat", "bpm": 120, "multiple": 2, "edit": "Night strobe"})
+    status, out = _export(live, {"rhythm": "flat", "bpm": 120, "multiple": 2, "edit": "Night strobe"})
     assert status == 200 and out["filename"].startswith("Night-strobe-120bpm-x2-"), out
     assert live("POST", "/api/edits", {"action": "delete", "id": eid})[1]["ok"]
     assert live("GET", "/api/state")[1]["edits"] == []
@@ -647,19 +664,3 @@ def test_ai_reorder_of_a_group_moves_only_its_images_among_their_own_places(live
         srv.save_state(st)
     _, state = live("GET", "/api/state")
     assert [p["filename"] for p in state["plates"] if not p["trashed"]][:3] == [names[2], names[1], names[0]], "n1 kept its place; the group swapped"
-
-
-def test_export_frames_trail_blends_the_previous_image_after_each_cut(srv, tmp_path):
-    """Trail: on the first frames of a cut the previous image shows through, fading over 4 frames; the first cut has none."""
-    from PIL import Image
-    red, blue = tmp_path / "r.jpg", tmp_path / "b.jpg"
-    Image.new("RGB", (40, 72), (255, 0, 0)).save(red)
-    Image.new("RGB", (40, 72), (0, 0, 255)).save(blue)
-    out = tmp_path / "frames"
-    out.mkdir()
-    srv.write_export_frames([red, blue], out, 12, 1.0, "off", "off", 0.6, [0, 6, 12], trail=0.4)
-    px = lambda f: Image.open(out / f"f_{f:04d}.jpg").convert("RGB").resize((1, 1)).getpixel((0, 0))
-    assert px(0)[0] > 240 and px(5)[0] > 240, "the first cut: no trail"
-    r6, _, b6 = px(6)
-    assert 80 < r6 < 125 and b6 > 130, f"first frame of the blue cut: 40% red still shows ({px(6)})"
-    assert px(7)[0] < r6 and px(9)[0] < px(7)[0] and px(10)[0] < 20, "and it fades out within 4 frames"

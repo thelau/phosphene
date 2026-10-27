@@ -686,7 +686,7 @@ EXPORT_AUDIO_MAX_BYTES = 80 * 1024 * 1024
 
 
 EXPORT_FRAME_MAX_BYTES = 16 * 1024 * 1024
-EXPORT_FRAMES_MAX = 20000
+EXPORT_FRAMES_MAX = 200000                 # about 1 h 50 at 30 fps
 
 
 def export_frames_dir() -> Path:
@@ -718,44 +718,6 @@ def prune_exports(folder: Path, keep: int = 12) -> None:
     files = sorted((p for p in folder.glob("*.mp4") if EXPORT_NAME.search(p.name)), key=lambda p: p.stat().st_mtime, reverse=True)
     for old in files[keep:]:
         old.unlink(missing_ok=True)
-
-
-def write_export_frames(files, tmp_dir: Path, total_frames: int, frames_per_cut: float, invert_mode: str = "off", zoom_mode: str = "off", zoom_amount: float = 0.6, starts: list | None = None, trail: float = 0.0) -> int:
-    """Writes f_0000.jpg ... for the export. Plain cuts reuse the encoded bytes; zoom needs a render per frame."""
-    base = [Image.open(p).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS) for p in files]
-    flipped = {}  # plate index -> inverted copy, built on demand
-
-    def encode(im) -> bytes:
-        buf = io.BytesIO()
-        im.save(buf, "JPEG", quality=92)
-        return buf.getvalue()
-
-    def look(plate: int, inv: bool, scale: float):
-        img = base[plate]
-        if inv:
-            if plate not in flipped:
-                flipped[plate] = cutplan.inverted(img, invert_mode)
-            img = flipped[plate]
-        return cutplan.zoomed(img, scale) if scale > 1.0005 else img
-
-    cache: dict = {}
-    for f in range(total_frames):
-        plan = cutplan.frame_plan(f, frames_per_cut, len(base), invert_mode, starts)
-        scale = cutplan.zoom_scale(zoom_mode, zoom_amount, plan["p"])
-        img = look(plan["plate"], plan["inverted"], 1.0)
-        start = starts[plan["cut"]] if starts else plan["cut"] * frames_per_cut
-        alpha = cutplan.trail_alpha(f + 0.5 - start, trail) if plan["cut"] > 0 else 0.0
-        if alpha > 0:                                           # Trail: the previous cut, as it ended, lingers on top
-            prev_plate, prev_inv = cutplan.cut_plate(plan["cut"] - 1, len(base), invert_mode)
-            cur = look(plan["plate"], plan["inverted"], scale)
-            data = encode(Image.blend(cur, look(prev_plate, prev_inv, cutplan.zoom_scale(zoom_mode, zoom_amount, 1.0)), alpha))
-        elif scale > 1.0005:
-            data = encode(cutplan.zoomed(img, scale))
-        else:
-            key = (plan["plate"], plan["inverted"])
-            data = cache.get(key) or cache.setdefault(key, encode(img))
-        (tmp_dir / f"f_{f:04d}.jpg").write_bytes(data)
-    return total_frames
 
 
 def thumb_file(name: str, width: int) -> Path | None:
@@ -963,16 +925,18 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "bytes": len(raw)})
             return
         if parsed.path == "/api/export-frame":
-            # one frame of the export, a JPEG from the page; ?same=k: the same picture as frame k (a held cut). Frame 0 starts a new set.
+            # one frame of the export, a JPEG from the page; ?same=k: the same picture as frame k (a held cut), with &to=j for frames i..j-1
+            # at once; they are hard links, so a long held film takes no room. Frame 0 starts a new set.
             raw = self.rfile.read(min(max(length, 0), EXPORT_FRAME_MAX_BYTES + 1))
             q = parse_qs(parsed.query)
             try:
                 i = int(q.get("i", [""])[0])
                 same = int(q["same"][0]) if "same" in q else None
+                to = int(q["to"][0]) if "to" in q else i + 1
             except ValueError:
                 self.send_json({"ok": False, "error": "Which frame?"}, 400)
                 return
-            if not 0 <= i < EXPORT_FRAMES_MAX or (same is not None and not 0 <= same < i):
+            if not 0 <= i < to <= EXPORT_FRAMES_MAX or (same is not None and not 0 <= same < i) or (same is None and to != i + 1):
                 self.send_json({"ok": False, "error": "That frame is out of range."}, 400)
                 return
             frames = export_frames_dir()
@@ -985,7 +949,13 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 if not src.exists():
                     self.send_json({"ok": False, "error": f"Frame {same} has not arrived."}, 400)
                     return
-                shutil.copyfile(src, dest)
+                for f in range(i, to):
+                    link = frames / f"f_{f:05d}.jpg"
+                    link.unlink(missing_ok=True)
+                    try:
+                        os.link(src, link)
+                    except OSError:
+                        shutil.copyfile(src, link)
             elif length > EXPORT_FRAME_MAX_BYTES or raw[:2] != b"\xff\xd8":
                 self.send_json({"ok": False, "error": "That is not a JPEG frame."}, 400)
                 return
@@ -1283,7 +1253,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
                     invert_mode = body.get("invert_mode", "off") if body.get("invert_mode") in cutplan.INVERT_MODES else "off"
                     zoom_mode = body.get("zoom_mode", "off") if body.get("zoom_mode") in cutplan.ZOOM_MODES else "off"
-                    zoom_amount = max(0.0, min(10.0, float(body.get("zoom_amount", 0.6))))
                     music_mode = "synth" if body.get("music") == "synth" else "off"
                     variable = None
                     if body.get("rhythm") == "variable":                   # accelerating or decelerating: an entry and an exit cut length, and the curve between
@@ -1298,18 +1267,13 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     starts, _base = cutplan.rhythm_timeline(n_picture, bpm, multiple, variable)       # the picture's cuts: the multiple only affects these
                     frames_per_cut = 1.0                                   # the timeline is in frames
                     n_cuts, total_frames = cutplan.export_length(len(active_files), frames_per_cut, invert_mode, starts)  # every selected image, once
-                    try:
-                        trail = max(0.0, min(cutplan.TRAIL_MAX, float(body.get("trail") or 0)))
-                    except (TypeError, ValueError):
-                        trail = 0.0
-                    frames_in = tmp_dir / "f_%04d.jpg"
-                    if body.get("frames"):                                  # drawn by the page (render.js): every frame must be there
-                        sent = export_frames_dir()
-                        if body.get("frames") != total_frames or not all((sent / f"f_{f:05d}.jpg").exists() for f in range(total_frames)):
-                            raise ValueError(f"The page sent {body.get('frames')} frames, the film has {total_frames}. Press Export again.")
-                        frames_in = sent / "f_%05d.jpg"
-                    else:                                                   # no WebGL in the page: drawn here
-                        write_export_frames(active_files, tmp_dir, total_frames, frames_per_cut, invert_mode, zoom_mode, zoom_amount, starts, trail)
+                    sent = export_frames_dir()                              # every frame, drawn by the page (render.js, the preview's renderer)
+                    if total_frames > EXPORT_FRAMES_MAX:
+                        raise ValueError(f"The film is {total_frames} frames, more than {EXPORT_FRAMES_MAX} ({EXPORT_FRAMES_MAX // 1800} minutes at 30 fps). Make it shorter.")
+                    missing = next((f for f in range(total_frames) if not (sent / f"f_{f:05d}.jpg").exists()), None) if body.get("frames") == total_frames else 0
+                    if missing is not None:
+                        raise ValueError(f"The page sent {body.get('frames') or 0} frames, the film has {total_frames}" + (f" (frame {missing} is missing)" if body.get("frames") == total_frames else "") + ". Press Export again.")
+                    frames_in = sent / "f_%05d.jpg"
 
                     out_mp4 = OUTPUTS_DIR / export_filename(bpm, multiple, time.time(), invert_mode, zoom_mode, music_mode, variable, str(body.get("edit") or ""))
                     # cut length follows the tempo, multiple, rhythm and effects chosen in the player; music only when asked for
