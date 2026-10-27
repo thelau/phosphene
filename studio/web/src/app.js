@@ -1593,8 +1593,11 @@
       el.className = kind === 'err' ? 'err' : '';
     }
     function fmtDuration(sec) { return sec >= 60 ? `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}` : `${Math.round(sec)} s`; }
+    let musicWasOn = null;
     function updateMusic() {
       const on = musicOn();
+      if (on && musicWasOn === false && !droneLive.playing) droneLive.fresh();   // Source Off then on: a brand-new sound connection (the reset when the sound is lost)
+      musicWasOn = on;
       document.getElementById('synthBox').hidden = !on;
       if (on) warmSound();
       document.getElementById('soundOffNote').hidden = on;

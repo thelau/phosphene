@@ -85,6 +85,7 @@ function load({ routes = {}, storage = {} } = {}) {
       restart() { ctx.__drone.restarts = (ctx.__drone.restarts || 0) + 1; }
       seek(offset) { (ctx.__drone.seeks ||= []).push(offset); }
       stop() { this.playing = false; ctx.__drone.stops++; }
+      fresh() { this.playing = false; ctx.__drone.freshes = (ctx.__drone.freshes || 0) + 1; }
       pos() { return ctx.__drone.position; }
     },
     renderExport: async (params, starts) => { ctx.__drone.exports.push({ params, starts }); return { left: new Float32Array(1), right: new Float32Array(1), rate: 44100 }; },

@@ -801,11 +801,15 @@
     }
     // a fresh context and sound (the old one closed): the page plays it again from where the picture is (onRenew)
     renew() {
+      this.fresh();
+      if (this.onRenew) this.onRenew();
+    }
+    // stopped, its context closed: the next play makes a new one (also Sound › Source Off then on: the reset when the sound is lost)
+    fresh() {
       const old = this.ctx;
       this.stop();
       this.ctx = null; this.master = null; this.inst = null; this.rooms = new Map();   // the rooms belong to the old context
       if (old && old.close) old.close().catch(() => {});
-      if (this.onRenew) this.onRenew();
     }
     async _revive() {
       if (this.reviving || !this.ctx) return;

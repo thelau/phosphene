@@ -587,3 +587,19 @@ test('back to the window after another app was in front while playing: a fresh s
   assert.equal(r.renewedAgain, 1, 'only after being away');
   await ctx.close();
 });
+
+test('Sound › Source Off then Synthesized is a full reset: a new sound connection that plays from the picture\'s place', { skip }, async () => {
+  const ctx = await fresh();
+  await film();
+  await choose('musicSelect', 'on');
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => document.getElementById('playBtn').classList.contains('playing'));
+  await page.waitForTimeout(400);
+  const before = await page.evaluate(() => { window.__ctxSeen = []; const C = window.AudioContext; window.AudioContext = function (...a) { const c = new C(...a); window.__ctxSeen.push(c); return c; }; return true; });
+  await choose('musicSelect', 'off');
+  await choose('musicSelect', 'on');
+  await page.waitForFunction(() => window.__ctxSeen.length === 1 && window.__ctxSeen[0].state === 'running', null, { timeout: 5000 });
+  assert.ok(before);
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
