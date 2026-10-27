@@ -360,7 +360,7 @@ test('pad, acid and tape: the pad voices each chord in the key (VI gets its majo
     const sr = 44100, starts = Array.from({ length: 25 }, (_, i) => i * 0.25);     // Descend, a chord a second: i, VII, VI, v
     const at = (x, f, a, b) => { const w = (2 * Math.PI * f) / sr; let re = 0, im = 0; for (let i = Math.round(a * sr); i < Math.round(b * sr); i++) { const v = x.left[i] + x.right[i]; re += v * Math.cos(w * i); im += v * Math.sin(w * i); } return re * re + im * im; };
     const p = { ...BASE, pitch: 0.5, chord: 1, prog: 1, progEvery: 1, movement: 0 };
-    const withPad = await window.Drone.renderExport({ ...p, pad: 0.7 }, starts), noPad = await window.Drone.renderExport({ ...p, pad: 0 }, starts);
+    const withPad = await window.Drone.renderExport({ ...p, pad: 1 }, starts), noPad = await window.Drone.renderExport({ ...p, pad: 0 }, starts);
     const T = 38 * Math.pow(2, 0.9 * 0.5) * 4;                                       // the tonic, two octaves over the root
     // on VI (2-3 s) the chord's third is the tonic (voiced an octave up, 2T): the pad brings it; a semitone under it (a minor third on VI) it does not
     const gainAt = f => at(withPad, f, 2.2, 2.9) / at(noPad, f, 2.2, 2.9);
@@ -371,7 +371,9 @@ test('pad, acid and tape: the pad voices each chord in the key (VI gets its majo
   }, BASE);
   assert.ok(r.third > 2 * r.flat && r.third > 1.5, `on VI the pad sounds the major third (×${r.third.toFixed(1)}), not the minor (×${r.flat.toFixed(1)})`);
   for (const k of ['padLevel', 'acidLevel', 'tapeLevel']) assert.ok(Math.abs(r[k] - 0.17) < 0.015, `${k}: ${r[k].toFixed(3)}`);
-  const [plain, taped] = await spectra([{ arp: 0.4, arpRate: 1 }, { arp: 0.4, arpRate: 1, tape: 0.8 }]);
+  const [plain, taped, fullPad, padTape] = await spectra([{ arp: 0.4, arpRate: 1 }, { arp: 0.4, arpRate: 1, tape: 0.8 }, { pad: 1 }, { pad: 1, tape: 1 }]);
+  for (const [name, m] of [['the pad at 100', fullPad], ['the pad at 100 under full tape', padTape]])   // never a takeover: the drone's sub stays on top
+    assert.ok(m.sub > 0.5 && m.mid < 0.45 && m.peak <= 0.97, `${name} stays under the drone: ${JSON.stringify(m)}`);
   assert.ok(taped.air < plain.air * 0.7, `tape darkens the very top (above 8 kHz): ${taped.air.toExponential(2)} vs ${plain.air.toExponential(2)}`);
   assert.ok(taped.sub > 0.35 && taped.high < 0.02, `and stays a heavy drone: ${JSON.stringify(taped)}`);
   await ctx.close();

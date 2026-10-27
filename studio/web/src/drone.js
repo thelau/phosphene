@@ -544,7 +544,7 @@
       const voices = Array.from({ length: m.voices }, (_, vi) => {          // fixed voices: no node per note
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = m.q; lp.frequency.value = m.open;
         const env = gain(0);
-        if (m.acid) lp.connect(shaper(satCurve(3), env)); else lp.connect(env);   // Acid: driven after the filter
+        if (m.acid) lp.connect(shaper(satCurve(1.6), env)); else lp.connect(env);   // Acid: driven after the filter
         const pan = phase ? (vi ? [0.15, 1] : [1, 0.15]) : [1, 1];            // Phase: one loop leans left, the other right
         env.connect(gain(0.6 * m.gain * pan[0], arr.arp[0])); env.connect(gain(0.6 * m.gain * pan[1], arr.arp[1]));
         const oscs = [-MOOD_DETUNE, MOOD_DETUNE].map(det => { const o = osc('sawtooth', 200); o.connect(lp); return [o, det]; });
@@ -616,7 +616,7 @@
       const first = chordAt(Math.min(cursor, Math.max(0, nCuts - 1)));
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1100; lp.Q.value = 0.6;
       lfo(0.06 * move, 320, lp.frequency);
-      const body = gain(0.22 * padAmt); lp.connect(body);
+      const body = gain(0.11 * padAmt); lp.connect(body);                 // under the drone, never over it (the user: no pad takeover)
       sides.forEach((br, i) => {                                           // a chorus each side, a little apart: the Juno width
         const dl = ctx.createDelay(0.05); dl.delayTime.value = 0.012 + 0.004 * i;
         lfo(0.31 + 0.07 * i, 0.0028, dl.delayTime);
@@ -640,7 +640,8 @@
     if (tape > 0.01) {                                                      // tape: wow and flutter, saturation, a darker top, a little dust
       const wow = ctx.createDelay(0.1); wow.delayTime.value = 0.012;
       lfo(0.55, 0.0018 * tape, wow.delayTime); lfo(6.5, 0.00022 * tape, wow.delayTime);
-      const sat = shaper(satCurve(1 + 2.5 * tape)), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 14000 - 9500 * tape; lp.Q.value = 0.5;
+      const sat = shaper(satCurve(1 + 0.6 * tape));                          // warmth, not drive
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 14000 - 9500 * tape; lp.Q.value = 0.5;
       dyn.connect(wow); wow.connect(sat); sat.connect(lp);
       const dust = ctx.createBufferSource(); dust.buffer = dustBuffer(ctx); dust.loop = true; keep(dust);
       const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500; dust.connect(hp); hp.connect(gain(0.025 * tape, lp));

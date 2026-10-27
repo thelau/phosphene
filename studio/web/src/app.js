@@ -1501,6 +1501,9 @@
         if (layers() < 2 && !getn('arpRange')) setv('arpRange', getn('choirRange') ? rint([20, 30]) : rint([25, 40]));   // softly under the choir
       }
       if (rate > 5) setv('bassRateSelect', 0);                                                    // fast cuts: a bass note a cut, not a buzz
+      if (getn('padRange') && getn('tapeRange')) {                                               // a pad under tape: both stay low, or it smears into a wall
+        if (Math.random() < 0.6) setv('tapeRange', 0); else { setv('padRange', Math.min(30, getn('padRange'))); setv('tapeRange', Math.min(25, getn('tapeRange'))); }
+      }
       if ([2, 6].includes(getn('arpMoodSelect')) && rate > 2.5) setv('arpRateSelect', Math.min(1, getn('arpRateSelect')));   // Phase wants time to drift, Acid room to slide
     }
     function randomMusic(quiet) {
@@ -1540,8 +1543,8 @@
       setv('bassPatternSelect', Math.floor(Math.random() * 4));
       setv('bassRateSelect', rate > 4 ? 0 : rate > 2 ? Math.floor(Math.random() * 2) : 1 + Math.floor(Math.random() * 2));   // fast cuts: a note a cut
       setv('arrangeSelect', rpick(sh.arrange));
-      setv('padRange', Math.random() < sh.pad ? rint([30, 60]) : 0);
-      setv('tapeRange', Math.random() < sh.tape ? rint([20, 55]) : 0);
+      setv('padRange', Math.random() < sh.pad ? rint([20, 45]) : 0);
+      setv('tapeRange', Math.random() < sh.tape ? rint([15, 45]) : 0);
     }
     function applySound(c) {
       for (const k of Object.keys(RANDOM_RANGES)) if (!LAYERS.includes(k)) setv(`${k}Range`, rint(c[k]));

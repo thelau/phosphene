@@ -1205,6 +1205,16 @@ test('bassline and arrangement: Random brings them in by type, an arrangement al
   assert.deepEqual([p.bass, p.bassPattern, p.arrange], [0.5, 3, 2]);
 });
 
+test('pad and tape: Random keeps the pad modest and, when both come, keeps both low', async () => {
+  const h = await playerWith();
+  const n = id => +h.$(id).value;
+  for (let i = 0; i < 400; i++) {
+    h.run(i % 2 ? 'randomMusic()' : 'randomAll()');
+    assert.ok(n('padRange') <= 45 && n('tapeRange') <= 45, `modest: pad ${n('padRange')}, tape ${n('tapeRange')}`);
+    if (n('padRange') && n('tapeRange')) assert.ok(n('padRange') <= 30 && n('tapeRange') <= 25, 'together, both low');
+  }
+});
+
 test('Curate and Film: the mode switch is remembered, and Tab / Space work except while typing', async () => {
   const h = await playerWith();
   assert.equal(h.ctx.document.body.dataset.mode, 'curate');                        // a first visit opens on the images
