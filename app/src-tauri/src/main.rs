@@ -64,7 +64,14 @@ fn unique(dir: &Path, name: &str) -> PathBuf {
 // Film ⌘2, the Keys, and the standard Edit menu (copy and paste in text fields)
 fn menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let item = |id: &str, label: &str, key: Option<&str>| MenuItem::with_id(app, id, label, true, key);
-    let about = AboutMetadata { comments: Some("Films around a brand mark".into()), ..Default::default() };
+    let about = AboutMetadata {                                        // About Phosphene: the icon (also when run unbundled, app:live), what it is
+        name: Some("Phosphene".into()),
+        version: Some(app.package_info().version.to_string()),
+        icon: tauri::image::Image::from_bytes(include_bytes!("../icons/128x128@2x.png")).ok(),
+        credits: Some("Films around a brand mark: AI images where the mark always sits at the same place and size, cut to a synthesized sound.".into()),
+        copyright: Some("Alpha".into()),
+        ..Default::default()
+    };
     Menu::with_items(app, &[
         &Submenu::with_items(app, "Phosphene", true, &[
             &PredefinedMenuItem::about(app, Some("About Phosphene"), Some(about))?,
