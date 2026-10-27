@@ -1312,7 +1312,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 except Exception:
                     self.send_json({"ok": False, "error": "The mark did not arrive as an image."}, 400)
                     return
-            touches_active = action in ("switch", "create") or (action == "update" and PROJECT and body.get("slug") == PROJECT["slug"])
+            touches_active = action in ("switch", "create", "delete") or (action == "update" and PROJECT and body.get("slug") == PROJECT["slug"])
             if touches_active and busy():
                 self.send_json({"ok": False, "busy": True, "error": "Something is running (images, an AI order or an export). Wait until it ends."}, 409)
                 return
@@ -1326,6 +1326,13 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     p = projects.update(str(body.get("slug") or ""), body, mark)
                     if PROJECT and p["slug"] == PROJECT["slug"]:
                         apply_project(p)
+                elif action == "delete":                    # to the Trash; the open one gone, the next project opens (or none)
+                    slug = str(body.get("slug") or "")
+                    was_open = bool(PROJECT and PROJECT["slug"] == slug)
+                    with STATE_LOCK:
+                        projects.trash(slug)
+                    if was_open:
+                        open_first_project()
                 else:
                     self.send_json({"ok": False, "error": "Unknown action."}, 400)
                     return

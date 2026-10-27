@@ -825,3 +825,17 @@ def test_kimi_endpoint_that_took_the_key_comes_first(srv, monkeypatch):
     srv.KIMI_ENDPOINT["sk-abc"] = "https://api.kimi.com/coding/v1/chat/completions"
     eps = srv.kimi_endpoints("sk-abc")
     assert eps[0] == "https://api.kimi.com/coding/v1/chat/completions" and len(eps) == 3 and len(set(eps)) == 3
+
+
+def test_delete_project_over_http_opens_the_next_and_waits_for_a_running_job(live, srv, tmp_path, monkeypatch):
+    import base64
+    from test_projects import star_png
+    monkeypatch.setattr(srv.projects, "TRASH_DIR", tmp_path / "Trash")
+    status, d = live("POST", "/api/projects", {"action": "create", "name": "Night Owl", "mark": "data:image/png;base64," + base64.b64encode(star_png()).decode()})
+    assert status == 200 and d["active"] == "night-owl"
+    monkeypatch.setattr(srv, "busy", lambda: True)
+    assert live("POST", "/api/projects", {"action": "delete", "slug": "night-owl"})[0] == 409, "not while something runs"
+    monkeypatch.setattr(srv, "busy", lambda: False)
+    status, d = live("POST", "/api/projects", {"action": "delete", "slug": "night-owl"})
+    assert status == 200 and d["active"] == "demo" and all(p["slug"] != "night-owl" for p in d["projects"]), "gone; the next one is open"
+    assert (tmp_path / "Trash" / "Night Owl (Phosphene project)").is_dir()

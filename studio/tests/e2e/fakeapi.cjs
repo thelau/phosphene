@@ -90,6 +90,9 @@ function start(state = makeState()) {
           state.projects.push({ slug, name: body.name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y, mark_shape: body.mark_shape, mark_noun: body.mark_noun, brief: body.brief, palette: body.palette, mark_ratio: 0.5, round: false, fixed: false, mark_url: `/api/project-mark?p=${slug}` });
           state.project = slug; state.markSent = body.mark;
           state.plates = []; state.sequences[0].order = [];                    // a new project starts empty
+        } else if (body.action === 'delete') {
+          state.deleted = body.slug; state.projects = state.projects.filter(p => p.slug !== body.slug);
+          state.project = state.projects.length ? state.projects[0].slug : null; state.plates = []; state.sequences[0].order = [];
         } else if (body.action === 'update') Object.assign(projectOf(state), { name: body.name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y, brief: body.brief, palette: body.palette });
         return send({ ok: true, active: state.project, project: projectOf(state), projects: state.projects });
       }

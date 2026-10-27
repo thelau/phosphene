@@ -305,7 +305,8 @@
         + (list.length ? '<hr>' : '') + '<button type="button" class="gm-item" onclick="openProjectForm(\'new\')">New project…</button>'
         + (project ? '<button type="button" class="gm-item" onclick="openProjectForm(\'edit\')">Project settings…</button>' : '')
         + '<hr>' + (project ? '<button type="button" class="gm-item" onclick="exportProject()" title="This project as one file (.phos): its mark, settings, images, groups and snapshots, to send or keep">Export project…</button>' : '')
-        + '<button type="button" class="gm-item" onclick="closeProjectMenu(); chooseProjectFile()" title="Open a .phos file someone exported: it comes in as a new project">Import project…</button>';
+        + '<button type="button" class="gm-item" onclick="closeProjectMenu(); chooseProjectFile()" title="Open a .phos file someone exported: it comes in as a new project">Import project…</button>'
+        + (project ? '<hr><button type="button" class="gm-item danger-text" onclick="deleteProject()" title="This project\'s folder goes to the Trash: it can be put back until the Trash is emptied">Delete project…</button>' : '');
       m.querySelectorAll('img').forEach(fitMarkTone);
       const a = btn.getBoundingClientRect();
       m.hidden = false; btn.setAttribute('aria-expanded', 'true');
@@ -453,6 +454,20 @@
         return;
       }
       document.getElementById('pfImport').click();
+    }
+    // Delete project…: asked first; its folder goes to the macOS Trash (recoverable until emptied), then another project opens
+    async function deleteProject() {
+      closeProjectMenu();
+      if (!project) return;
+      if (isBusy()) { setStatus('Wait until the running job ends, then delete.'); return; }
+      const n = plates.length, name = project.name;
+      if (!(await askConfirm(`Delete ${name}?`, `Its ${n} image${n === 1 ? '' : 's'}, groups and snapshots go to the Trash, with its mark and settings. You can put the folder back from the Trash until you empty it; Export project… first keeps a copy.`, 'Delete'))) return;
+      cover(`Deleting ${name}…`);
+      try {
+        const r = await projectsCall({ action: 'delete', slug: project.slug });
+        if (!r.ok) throw new Error(r.error || 'it was not deleted');
+        reopen(r.project ? r.project.name : '');
+      } catch (e) { cover(null); setStatus(`Could not delete ${name}: ${e.message}`); }
     }
     async function importProjectPath(path) {
       if (isBusy()) { setStatus('Wait until the running job ends, then import.'); return; }
@@ -3033,7 +3048,7 @@
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
   installUpdate,
-  exportProject, importProject, chooseProjectFile, closeProjectMenu, saveSettings,
+  exportProject, importProject, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
   downloadShown,
   openProjectMenu, switchProject, openProjectForm, closeProjectForm, readProjectMark, drawProjectPreview, saveProject,
   removeChange,

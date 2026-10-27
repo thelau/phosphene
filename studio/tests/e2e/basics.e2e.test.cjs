@@ -507,7 +507,7 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   assert.equal(await text('#projectName'), 'Demo');
   await page.click('#projectBtn');
   await page.waitForSelector('#projectMenu:not([hidden])');
-  assert.deepEqual(await page.locator('#projectMenu .gm-item').allTextContents(), ['Demo', 'New project…', 'Project settings…', 'Export project…', 'Import project…']);
+  assert.deepEqual(await page.locator('#projectMenu .gm-item').allTextContents(), ['Demo', 'New project…', 'Project settings…', 'Export project…', 'Import project…', 'Delete project…']);
   assert.equal(await page.locator('#projectMenu .gm-item.on').textContent(), 'Demo');
   await page.locator('#projectMenu .gm-item', { hasText: 'Project settings' }).click();       // DEMO: name, brand and colours; its mark, place and words locked
   assert.equal(await page.locator('#projectModal').isVisible(), true);
@@ -1425,6 +1425,27 @@ test('the curve handle stays under the pointer while it is dragged, on a film th
     await page.mouse.up();
   }
   assert.deepEqual(report, []);
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
+test('Delete project…: asked first (Cancel keeps it), then the project goes and the next one opens; none left, the empty page', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  await page.click('#projectBtn');
+  await page.locator('#projectMenu .gm-item', { hasText: 'Delete project…' }).click();
+  assert.equal(await page.locator('#confirmModal').isVisible(), true);
+  assert.match(await text('#confirmTitle'), /^Delete Demo\?$/);
+  assert.match(await text('#confirmBody'), /^Its 7 images, groups and snapshots go to the Trash/, 'every image it has, the Trash\'s too');
+  await page.locator('#confirmModal button', { hasText: 'Cancel' }).click();
+  assert.equal(api.state.deleted, undefined, 'Cancel deletes nothing');
+  await page.click('#projectBtn');
+  await page.locator('#projectMenu .gm-item', { hasText: 'Delete project…' }).click();
+  await page.click('#confirmYes');
+  await page.waitForFunction(() => document.getElementById('projectName').textContent === 'No project', null, { timeout: 10000 });
+  assert.equal(api.state.deleted, 'demo');
+  await page.click('#projectBtn');
+  await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');
+  assert.equal(await page.locator('#projectMenu .gm-item', { hasText: 'Delete project…' }).count(), 0, 'nothing to delete without a project');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });

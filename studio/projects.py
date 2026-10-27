@@ -130,6 +130,33 @@ def active_slug() -> str:
     return first[0]["slug"] if first else None
 
 
+TRASH_DIR = Path.home() / ".Trash"                    # macOS's Trash: a deleted project can be put back until it is emptied
+
+
+def trash(slug: str) -> Path:
+    """Delete project…: its whole folder goes to the Trash (images, groups, snapshots, mark), recoverable until the Trash is
+    emptied. Refused for a project whose files live outside its folder (the repository's Demo: its plates are committed)."""
+    p = load(slug)
+    folder = (PROJECTS_DIR / slug).resolve()
+    for key in ("plates_dir", "state_file", "mark_file"):
+        if folder not in Path(p[key]).resolve().parents:
+            raise ValueError(f"{p['name']} keeps its files outside its folder (the repository's own project): it cannot be deleted here.")
+    TRASH_DIR.mkdir(parents=True, exist_ok=True)
+    stem = re.sub(r"[/:]+", "-", p["name"]).strip() or slug
+    dest, k = TRASH_DIR / f"{stem} (Phosphene project)", 2
+    while dest.exists():
+        dest, k = TRASH_DIR / f"{stem} (Phosphene project) {k}", k + 1
+    shutil.move(str(folder), str(dest))
+    try:
+        local = json.loads(LOCAL_FILE.read_text())
+        if local.get("project") == slug:
+            local.pop("project")
+            LOCAL_FILE.write_text(json.dumps(local, indent=2))
+    except Exception:
+        pass
+    return dest
+
+
 def set_active(slug: str) -> dict:
     p = load(slug)                                    # raises if unknown
     try:

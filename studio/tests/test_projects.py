@@ -236,3 +236,18 @@ def test_a_damaged_project_never_stops_the_server_from_starting(srv, tmp_path):
     (P.PROJECTS_DIR / "demo" / "project.json").write_text("{ also broken")
     srv.open_first_project()
     assert srv.PROJECT is None, "none readable: the first screen, not a crash"
+
+
+def test_delete_project_moves_its_folder_to_the_trash_and_refuses_one_whose_files_live_elsewhere(pdir, tmp_path, monkeypatch):
+    import json
+    monkeypatch.setattr(projects, "TRASH_DIR", tmp_path / "Trash")
+    p = projects.create({"name": "Night Owl"}, star_png())
+    Image.new("RGB", (54, 96)).save(p["plates_dir"] / "00_shot.jpg")
+    projects.set_active("night-owl")
+    dest = projects.trash("night-owl")
+    assert not (pdir / "night-owl").exists() and (dest / "plates" / "00_shot.jpg").is_file() and dest.name == "Night Owl (Phosphene project)", "in the Trash, whole"
+    assert json.loads(projects.LOCAL_FILE.read_text()).get("project") is None, "no longer the open one"
+    projects.create({"name": "Night Owl"}, star_png())
+    assert projects.trash("night-owl").name == "Night Owl (Phosphene project) 2", "never over another"
+    with pytest.raises(ValueError, match="outside its folder"):
+        projects.trash("demo")                        # the repository's DEMO: its plates are committed, elsewhere
