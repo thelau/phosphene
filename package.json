@@ -12,8 +12,10 @@
     "test": "node --test studio/tests/js/ui.test.cjs",
     "test:e2e": "node --test studio/tests/e2e/*.e2e.test.cjs",
     "app": "cd app && tauri dev",
-    "app:build": ".venv/bin/python app/build.py && cd app && tauri build",
-    "release": "bash scripts/release.sh"
+    "app:build": ".venv/bin/python app/build.py && cd app && TAURI_SIGNING_PRIVATE_KEY=\"$(cat ~/.tauri/phosphene.key)\" TAURI_SIGNING_PRIVATE_KEY_PASSWORD=\"\" tauri build",
+    "release": "bash scripts/release.sh",
+    "dev:app": "PHOSPHENE_HOME=\"$HOME/Documents/Phosphene\" PHOSPHENE_SUPPORT=\"$HOME/Library/Application Support/Phosphene\" PHOSPHENE_EXAMPLES=\"$PWD/app/build/resources/examples\" npm run dev",
+    "app:live": "concurrently -k -n data,window -c yellow,magenta \"npm run dev:app\" \"npm run app\""
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4",
