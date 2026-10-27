@@ -1457,16 +1457,16 @@ test('keys: ← → step one image (wrapping), Delete never trashes, Cmd+Z undoe
 });
 
 
-test('the Start and End labels give the music cut, and the picture cut beside it when there is a Multiple', async () => {
+test('the Start and End labels give the music cut only, with or without a Multiple', async () => {
   const r = baseRoutes();
   r['/api/state'] = { plates: Array.from({ length: 24 }, (_, i) => mkPlate('p' + i)) };
   const h = load({ routes: r }); await settle(); await settle();
   h.$('bpmInput').value = '75'; h.$('rhythmSelect').value = 'variable'; h.$('changeFrom').value = '0'; h.$('changeTo').value = '0.5'; h.$('endMsRange').value = '110'; h.$('multSelect').value = '2';
   h.run('updateTempo(); updateRhythm()');
-  assert.equal(h.$('rsStartL').innerHTML, 'Start 800 ms<small> · pictures 400</small>');
-  assert.equal(h.$('rsEndL').innerHTML, 'End 110 ms<small> · pictures 55</small>');
+  assert.equal(h.$('rsStartL').textContent, 'Start 800 ms', 'no picture count on the point');
+  assert.equal(h.$('rsEndL').textContent, 'End 110 ms');
   h.$('multSelect').value = '1'; h.run('updateTempo()');
-  assert.equal(h.$('rsEndL').innerHTML, 'End 110 ms', 'no Multiple: the one value');
+  assert.equal(h.$('rsEndL').textContent, 'End 110 ms');
 });
 
 test('Export says how long it will take once it has seen one: the median of the last exports, per second of film', async () => {

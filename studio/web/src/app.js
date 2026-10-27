@@ -2010,7 +2010,7 @@
         dot.style.left = l.style.left = `${p.x / 10}%`;
         dot.style.top = l.style.top = `${p.y}%`;
         dot.classList.toggle('sel', rsSel === p.id);
-        l.innerHTML = `${p.name} ${p.ms} ms${m.mult !== 1 ? `<small> · pictures ${p.pic}</small>` : ''}`;
+        l.textContent = `${p.name} ${p.ms} ms`;                              // the music's cut only: the picture's (with a Multiple) was noise here
         l.className = `rs-plabel${(k === 1 ? p.x > 700 : p.x > 850) ? ' left' : ''}${p.y < 30 ? ' below' : ''}`;
         l.hidden = rsDrag === p.id;                                            // the tooltip says it while dragging
       }

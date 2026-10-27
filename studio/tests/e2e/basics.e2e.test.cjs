@@ -700,7 +700,7 @@ test('the timeline is the rhythm control: drag or type the tempo and the Multipl
   await page.mouse.click(lane.x + lane.width * 0.4, lane.y + (lane.height * flatY) / 100 + 3);
   assert.equal(await val('rhythmSelect'), 'variable');
   for (const id of ['#rsStart', '#rsEnd', '#rsCurveHandle', '#rsBand', '#rsRemove']) assert.ok(await page.locator(id).isVisible(), id);
-  assert.match(await text('#rsStartL'), /^Start 600 ms · pictures 300$/, 'the music\'s value, the picture\'s beside it');
+  assert.match(await text('#rsStartL'), /^Start 600 ms$/, 'the music\'s value only');
   assert.ok(Math.abs(+(await val('changeFrom')) - 0.4) < 0.08, `the change starts where the click was: ${await val('changeFrom')}`);
   // drag End later and slower; the tooltip says where and how fast
   let e = await page.locator('#rsEnd').boundingBox();
