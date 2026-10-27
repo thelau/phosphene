@@ -112,10 +112,22 @@ def forget_login() -> None:
         _write_auth(auth)
 
 
-def refresh_krea_oauth_token() -> bool:
-    """A new access token from the refresh token. False if there is none or Krea refuses it (then: sign in again)."""
+_REFRESH_LOCK = __import__("threading").Lock()
+
+
+def refresh_krea_oauth_token(seen: str | None = None) -> bool:
+    """A new access token from the refresh token. False if there is none or Krea refuses it (then: sign in again). One at a time:
+    parallel generations near expiry would each spend the refresh token, and Krea may take a reused one as a theft. `seen`: the
+    token the caller had; if it already changed, another thread refreshed it meanwhile."""
+    with _REFRESH_LOCK:
+        before = _read_auth()
+        if seen and before.get("access_token") and before.get("access_token") != seen:
+            return True
+        return _refresh(before)
+
+
+def _refresh(auth: dict) -> bool:
     try:
-        auth = _read_auth()
         if not auth.get("refresh_token") or not auth.get("client_id"):
             return False
         resp = _post(KREA_TOKEN_URL, {"grant_type": "refresh_token", "refresh_token": auth["refresh_token"], "client_id": auth["client_id"], "resource": KREA_MCP_URL})
@@ -133,7 +145,7 @@ def get_krea_oauth_token() -> dict:
     try:
         auth = _read_auth()
         token, expires_at = auth.get("access_token"), float(auth.get("expires_at", 0) or 0)
-        if token and expires_at and time.time() > (expires_at - 120) and refresh_krea_oauth_token():
+        if token and expires_at and time.time() > (expires_at - 120) and refresh_krea_oauth_token(seen=token):
             auth = _read_auth()
             token, expires_at = auth.get("access_token"), float(auth.get("expires_at", 0) or 0)
         if not token:

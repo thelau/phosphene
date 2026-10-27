@@ -1103,7 +1103,8 @@ test('the Keys panel: ? opens a tidy list under the hint, Esc and a click elsewh
   const ctx = await fresh({ width: 1512, height: 945 });
   await page.keyboard.press('?');
   await page.waitForSelector('#keysPanel:not([hidden])');
-  assert.equal(await page.locator('#keysPanel dt').count(), 13);
+  assert.equal(await page.locator('#keysPanel dt:not(.app-only)').count(), 13);
+  assert.equal(await page.locator('#keysPanel dt.app-only').isVisible(), false, 'the app menu\'s shortcuts only in the app');
   const p = await page.locator('#keysPanel').boundingBox();
   assert.ok(p.x >= 0 && p.x + p.width <= 1512 && p.y + p.height <= 945, 'all of it on screen');
   await shot('22-keys');

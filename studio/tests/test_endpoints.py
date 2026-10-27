@@ -67,6 +67,7 @@ def live(srv, monkeypatch):
         return r.status, data
     call.calls = calls
     call.real_job = real_job
+    call.port = port
     yield call
     httpd.shutdown()
     httpd.server_close()
@@ -771,3 +772,37 @@ def test_with_no_project_the_server_runs_says_so_and_a_double_clicked_file_opens
     assert status == 200 and r["project"]["name"] == "Demo"
     assert len(live("GET", "/api/state")[1]["plates"]) == 3, "with its images"
 
+
+
+def test_nothing_outside_the_plates_folder_is_ever_deleted_whatever_the_state_or_a_request_says(live, srv, tmp_path):
+    """Review finding: a project file (or a request) listing '../../x' or '/Users/...' as trashed made Empty trash delete it."""
+    _three_plates(live)
+    outside = tmp_path / "thesis.pdf"; outside.write_text("precious")
+    st = srv.load_state()
+    st["trashed"] = st.get("trashed", []) + [str(outside), "../thesis.pdf", "../../thesis.pdf"]
+    srv.save_state(st)
+    srv.purge_plates(srv.load_state(), srv.load_state()["trashed"])
+    status, res = live("POST", "/api/purge", {"all": True})
+    assert outside.read_text() == "precious", "never deleted"
+    assert live("POST", "/api/trash", {"filename": "../thesis.pdf", "trashed": True})[0] == 400
+    assert live("POST", "/api/trash", {"filename": str(outside), "trashed": True})[0] == 400
+
+
+def srv_port(live):
+    return live.port
+
+
+def test_only_this_computer_and_its_own_page_can_use_the_server(live, srv):
+    """Review finding: any website could POST to the local server (empty the trash, switch project); a renamed domain pointing at
+    127.0.0.1 could read it; the repo's key files were served."""
+    import http.client, json as _json
+    def raw(method, path, headers, body=None):
+        c = http.client.HTTPConnection("127.0.0.1", srv_port(live), timeout=10)
+        c.request(method, path, body=body, headers=headers)
+        r = c.getresponse(); data = r.read(); c.close()
+        return r.status
+    assert raw("POST", "/api/purge", {"Content-Type": "text/plain", "Origin": "https://evil.example"}, '{"all": true}') == 403
+    assert raw("POST", "/api/purge", {"Content-Type": "application/json", "Origin": "http://localhost:5173"}, '{"filenames": []}') == 200
+    assert raw("GET", "/api/state", {"Host": "evil.example:8765"}) == 403, "DNS rebinding"
+    assert raw("GET", "/studio/.secrets.json", {}) == 404 and raw("GET", "/studio/.krea_auth.json", {}) == 404
+    assert raw("GET", "/assets/../studio/.secrets.json", {}) in (403, 404)

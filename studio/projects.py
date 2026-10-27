@@ -58,7 +58,7 @@ def load(slug: str) -> dict:
     mark = raw.get("mark") or "mark.png"
     p = {
         "slug": slug,
-        "name": raw.get("name") or slug,
+        "name": str(raw.get("name") or slug)[:60],
         "mark_file": (ROOT_DIR / mark) if "/" in mark else base / mark,
         "mark_size": float(raw.get("mark_size", 18)),          # % of the frame's width
         "mark_x": float(raw.get("mark_x", 50)),                # % from the left
@@ -231,11 +231,11 @@ def create(body: dict, mark_png: bytes) -> dict:
     raw = _fields({**body, "name": name}, {"v": 1, "created": time.strftime("%Y-%m-%dT%H:%M:%S")})   # v: the project file's format, for later changes
     raw.setdefault("mark_size", 18.0); raw.setdefault("mark_x", 50.0); raw.setdefault("mark_y", 50.0)
     folder = PROJECTS_DIR / slug
+    folder.mkdir(parents=True)                        # raises if another request just took the name: then nothing of theirs is removed
     try:
-        folder.mkdir(parents=True)
         img.convert("RGBA").save(folder / "mark.png", "PNG")
         _write(slug, raw)
-        (folder / "plates").mkdir()
+        (folder / "plates").mkdir(exist_ok=True)
         p = load(slug)
         make_guides(p)
     except Exception:
@@ -324,25 +324,30 @@ def import_zip(path: Path) -> dict:
     except zipfile.BadZipFile:
         raise ValueError("That is not a project file (a .phosphene file made by Export project).")
     with z:
-        names = [n for n in z.namelist() if not n.endswith("/")]
+        names = [n for n in z.namelist() if not n.endswith("/") and not n.startswith("__MACOSX/") and not Path(n).name.startswith(".")]   # Finder's Compress adds __MACOSX/ and ._ files
         tops = {n.split("/", 1)[0] for n in names}
         if len(tops) != 1 or f"{next(iter(tops))}/project.json" not in names:
             raise ValueError("That zip is not a project: it has no project.json.")
         top = next(iter(tops))
-        raw = json.loads(z.read(f"{top}/project.json"))
+        try:
+            raw = json.loads(z.read(f"{top}/project.json"))
+        except Exception:
+            raise ValueError("That project file is damaged (its project.json cannot be read).")
         if not isinstance(raw, dict) or not raw.get("name"):
             raise ValueError("That project file has no name.")
         if int(raw.get("format", 1)) > PROJECT_FORMAT:
             raise ValueError("That project was made by a newer Phosphene: update the app (it offers it when it opens), then open it again.")
         raw.pop("paths", None)
         raw["mark"] = "mark.png"
+        raw["name"] = str(raw["name"])[:60]
         base = slugify(raw["name"])
         slug, n = base, 2
         while (PROJECTS_DIR / slug).exists():
             slug, n = f"{base[:36]}-{n}", n + 1
         folder = PROJECTS_DIR / slug
+        folder.mkdir(parents=True)                    # raises if another import just took the name: then nothing of theirs is removed
         try:
-            (folder / "plates").mkdir(parents=True)
+            (folder / "plates").mkdir()
             for n_ in names:
                 rel = n_[len(top) + 1:]
                 ok = rel in EXPORT_NAMES[1:] or (rel.startswith("plates/") and rel.count("/") == 1 and rel.lower().endswith(".jpg") and not rel.split("/")[1].startswith("."))
@@ -351,15 +356,54 @@ def import_zip(path: Path) -> dict:
                         shutil.copyfileobj(src, dst, 1 << 20)
             if not (folder / "mark.png").is_file():
                 raise ValueError("That project file has no mark.")
+            _clean_state(folder / "state.json")
             raw["imported"] = time.strftime("%Y-%m-%dT%H:%M:%S")
             _write(slug, raw)
             p = load(slug)
             if not all(f.is_file() for f in p["guides"].values()):
                 make_guides(p)
-        except Exception:
+        except ValueError:
             shutil.rmtree(folder, ignore_errors=True)
             raise
+        except Exception as e:                        # a damaged zip (CRC), an unknown compression: say so, leave nothing behind
+            shutil.rmtree(folder, ignore_errors=True)
+            raise ValueError(f"That project file is damaged ({type(e).__name__}).")
     return p
+
+
+def _bare(n) -> bool:
+    n = str(n or "")
+    return bool(n) and n == Path(n).name and not n.startswith(".") and "\\" not in n
+
+
+def _clean_state(f: Path) -> None:
+    """A curation from someone else's file: every image name in it must be a bare file name (no '../', no '/Users/...'), or a
+    later Empty trash could reach outside the project. Anything else is dropped."""
+    if not f.is_file():
+        return
+    try:
+        st = json.loads(f.read_text())
+    except Exception:
+        f.unlink()
+        return
+    if not isinstance(st, dict):
+        f.unlink()
+        return
+    for key in ("trashed", "order", "purged", "qa_failed", "critic_failed", "history"):
+        if isinstance(st.get(key), list):
+            st[key] = [n for n in st[key] if not isinstance(n, str) or _bare(n)]
+    for key in ("trashed_at", "titles", "prompts", "models", "worlds", "ideas", "critic"):
+        if isinstance(st.get(key), dict):
+            st[key] = {k: v for k, v in st[key].items() if _bare(k)}
+    for seq in st.get("sequences") or []:
+        if isinstance(seq, dict):
+            for key in ("order", "original"):
+                if isinstance(seq.get(key), list):
+                    seq[key] = [n for n in seq[key] if isinstance(n, str) and _bare(n)]
+    for g in st.get("groups") or []:
+        if isinstance(g, dict) and isinstance(g.get("files"), list):
+            g["files"] = [n for n in g["files"] if isinstance(n, str) and _bare(n)]
+    f.write_text(json.dumps(st, indent=1))
 
 
 def seed_examples(examples: Path) -> list[str]:

@@ -13,12 +13,15 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::webview::DownloadEvent;
-use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, Wry};
+use tauri_plugin_dialog::DialogExt;
 
 struct Server(Mutex<Option<Child>>);
 // the server's port once it answers (0 before), and .phosphene files opened before that (a double-click that launched the app)
-struct Opened { port: Mutex<u16>, waiting: Mutex<Vec<String>> }
+// one lock for both, so a file opened while the server starts is never lost between "not ready yet" and "ready"
+struct Opened(Mutex<(u16, Vec<String>)>);
 
 // a project file double-clicked in Finder: the server imports it from where it is, then the page reloads on it
 fn import_file(port: u16, path: &str, win: &tauri::WebviewWindow) {
@@ -29,11 +32,18 @@ fn import_file(port: u16, path: &str, win: &tauri::WebviewWindow) {
         s.read_to_string(&mut answer)?;
         Ok(answer.contains("\"ok\": true"))
     }).unwrap_or(false);
-    let js = if ok { "location.reload()".to_string() } else { format!("window.setStatus && setStatus({})", serde_json::json!(format!("Could not open {}: is it a Phosphene project file?", path))) };
+    let msg = serde_json::json!(format!("Could not open {}: is it a Phosphene project file?", path));
+    let js = if ok { "location.reload()".to_string() } else { format!("window.setStatus ? setStatus({msg}) : alert({msg})") };
     let _ = win.eval(&js);
 }
 
+// the same port every launch when it is free, so the Krea sign-in comes back to the same address (Krea registers the app
+// for one address: a new port meant registering again at every sign-in); any free port only when that one is taken
+const HOME_PORT: u16 = 47615;
 fn free_port() -> u16 {
+    if TcpListener::bind(("127.0.0.1", HOME_PORT)).is_ok() {
+        return HOME_PORT;
+    }
     TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map(|a| a.port()).unwrap_or(8765)
 }
 
@@ -47,6 +57,82 @@ fn unique(dir: &Path, name: &str) -> PathBuf {
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("download");
     let ext = p.extension().and_then(|s| s.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
     (2..).map(|n| dir.join(format!("{stem} {n}{ext}"))).find(|c| !c.exists()).unwrap()
+}
+
+// the menu bar. The page gets every shortcut first (WebKit), so the ones it handles itself (⌘Z, ⌘S, ⌘A) are not doubled here;
+// the menu adds what a Mac app has: New Project ⌘N, Open Project File… ⌘O (the macOS file dialog), Export Project… ⌘E, Curate ⌘1,
+// Film ⌘2, the Keys, and the standard Edit menu (copy and paste in text fields)
+fn menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
+    let item = |id: &str, label: &str, key: Option<&str>| MenuItem::with_id(app, id, label, true, key);
+    let about = AboutMetadata { comments: Some("Films around a brand mark".into()), ..Default::default() };
+    Menu::with_items(app, &[
+        &Submenu::with_items(app, "Phosphene", true, &[
+            &PredefinedMenuItem::about(app, Some("About Phosphene"), Some(about))?,
+            &PredefinedMenuItem::separator(app)?,
+            &item("settings", "Settings…", Some("CmdOrCtrl+,"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ])?,
+        &Submenu::with_items(app, "File", true, &[
+            &item("new_project", "New Project…", Some("CmdOrCtrl+N"))?,
+            &item("open_project", "Open Project File…", Some("CmdOrCtrl+O"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &item("export_project", "Export Project…", Some("CmdOrCtrl+E"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ])?,
+        &Submenu::with_items(app, "Edit", true, &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ])?,
+        &Submenu::with_items(app, "View", true, &[
+            &item("curate", "Curate", Some("CmdOrCtrl+1"))?,
+            &item("film", "Film", Some("CmdOrCtrl+2"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::fullscreen(app, None)?,
+        ])?,
+        &Submenu::with_items(app, "Window", true, &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+        ])?,
+        &Submenu::with_items(app, "Help", true, &[&item("keys", "Keyboard Shortcuts", None)?])?,
+    ])
+}
+
+fn on_menu(app: &AppHandle, id: &str) {
+    let Some(win) = app.get_webview_window("main") else { return };
+    let js = match id {
+        "new_project" => "openProjectForm('new')",
+        "export_project" => "document.getElementById('projectBtn') && window.exportProject && exportProject()",
+        "settings" => "toggleSettings(true)",
+        "curate" => "setMode('curate')",
+        "film" => "setMode('film')",
+        "keys" => "toggleKeys()",
+        "open_project" => {
+            let handle = app.clone();
+            app.dialog().file().add_filter("Phosphene project", &["phosphene", "zip"]).pick_file(move |file| {
+                let Some(path) = file.and_then(|f| f.into_path().ok()) else { return };
+                let port = handle.state::<Opened>().0.lock().unwrap().0;
+                if let Some(win) = handle.get_webview_window("main") {
+                    if port > 0 { import_file(port, &path.to_string_lossy(), &win); }   // the dialog's callback is off the main thread
+                }
+            });
+            return;
+        }
+        _ => return,
+    };
+    let _ = win.eval(js);
 }
 
 fn start_server(app: &tauri::App, port: u16) -> std::io::Result<Child> {
@@ -78,12 +164,15 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .menu(menu)
+        .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
         .manage(Server(Mutex::new(None)))
-        .manage(Opened { port: Mutex::new(0), waiting: Mutex::new(Vec::new()) })
+        .manage(Opened(Mutex::new((0, Vec::new()))))
         .setup(|app| {
             let dev = cfg!(debug_assertions);
             let port = if dev { 0 } else { free_port() };
-            if dev { *app.state::<Opened>().port.lock().unwrap() = 8765; }      // npm run app:live: the dev server
+            if dev { app.state::<Opened>().0.lock().unwrap().0 = 8765; }       // npm run app:live: the dev server
             let downloads = app.path().download_dir().unwrap_or_else(|_| PathBuf::from("."));
             let first = if dev { WebviewUrl::External("http://localhost:5173".parse().unwrap()) } else { WebviewUrl::App("index.html".into()) };
             let win = WebviewWindowBuilder::new(app, "main", first)
@@ -108,9 +197,12 @@ fn main() {
                     let t0 = Instant::now();
                     loop {
                         if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-                            let opened = handle.state::<Opened>();
-                            *opened.port.lock().unwrap() = port;
-                            let waiting: Vec<String> = opened.waiting.lock().unwrap().drain(..).collect();
+                            let state = handle.state::<Opened>();
+                            let waiting: Vec<String> = {
+                                let mut o = state.0.lock().unwrap();
+                                o.0 = port;
+                                o.1.drain(..).collect()
+                            };
                             for path in &waiting { import_file(port, path, &win); }
                             let _ = win.navigate(format!("http://localhost:{port}/").parse().unwrap());
                             return;
@@ -131,15 +223,17 @@ fn main() {
     app.run(|handle, event| {
         #[cfg(target_os = "macos")]
         if let RunEvent::Opened { urls } = &event {
-            let opened = handle.state::<Opened>();
-            let port = *opened.port.lock().unwrap();
             for u in urls {
-                if let Ok(path) = u.to_file_path() {
-                    let path = path.to_string_lossy().to_string();
-                    match (port, handle.get_webview_window("main")) {
-                        (p, Some(win)) if p > 0 => import_file(p, &path, &win),
-                        _ => opened.waiting.lock().unwrap().push(path),   // the server is still starting: imported when it answers
+                let Ok(path) = u.to_file_path() else { continue };
+                let path = path.to_string_lossy().to_string();
+                let state = handle.state::<Opened>();
+                let mut o = state.0.lock().unwrap();
+                match (o.0, handle.get_webview_window("main")) {
+                    (p, Some(win)) if p > 0 => {
+                        drop(o);
+                        std::thread::spawn(move || import_file(p, &path, &win));   // a big project takes a while: never on the main thread
                     }
+                    _ => o.1.push(path),                                           // the server is still starting: imported when it answers
                 }
             }
         }

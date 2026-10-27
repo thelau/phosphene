@@ -66,7 +66,8 @@ OUTPUTS_DIR = places.OUTPUTS_DIR
 CURATION_FILE = STUDIO_DIR / "curation_state.json"
 SECRETS_FILE = places.SUPPORT_DIR / ".secrets.json"  # gitignored; holds kimi_api_key
 
-PLATES_DIR.mkdir(parents=True, exist_ok=True)
+if not places.APP:                                                          # in the app this would be inside Phosphene.app (read-only from a DMG)
+    PLATES_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -99,7 +100,8 @@ PROJECT: dict = _first_project()
 def apply_project(p: dict) -> None:
     """Point every path at project `p` (on start and when the page switches). Nothing may be running: the caller checks busy()."""
     global PROJECT, PLATES_DIR, CURATION_FILE, QA_CACHE_FILE, QA_CACHE, THUMBS_DIR
-    PROJECT, PLATES_DIR, CURATION_FILE, QA_CACHE_FILE, THUMBS_DIR = p, p["plates_dir"], p["state_file"], p["qa_cache_file"], p["thumbs_dir"]
+    with STATE_LOCK:                                                         # no load/save of the state straddles the switch
+        PROJECT, PLATES_DIR, CURATION_FILE, QA_CACHE_FILE, THUMBS_DIR = p, p["plates_dir"], p["state_file"], p["qa_cache_file"], p["thumbs_dir"]
     PLATES_DIR.mkdir(parents=True, exist_ok=True)
     try:
         QA_CACHE = json.loads(QA_CACHE_FILE.read_text()) if QA_CACHE_FILE.exists() else {}
@@ -117,6 +119,19 @@ def apply_no_project() -> None:
     base = places.SUPPORT_DIR / ".no-project"
     PROJECT, PLATES_DIR, CURATION_FILE, QA_CACHE_FILE, QA_CACHE, THUMBS_DIR = None, base / "plates", base / "state.json", base / ".qa_cache.json", {}, base / ".thumbs"
     PLATES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def open_first_project() -> None:
+    """On start: the project open last time; one that cannot be read (a damaged project.json) is passed over for the next; none
+    at all, the empty library and the page's first screen. A damaged project never stops the app from starting."""
+    for slug in [projects.active_slug()] + [p["slug"] for p in projects.all_projects()]:
+        try:
+            if slug:
+                apply_project(projects.load(slug))
+                return
+        except Exception as e:
+            print(f"[PROJECTS] {slug} could not be opened ({e}): trying another", flush=True)
+    apply_no_project()
 
 
 NEEDS_PROJECT = {"/api/generate-image", "/api/invent-prompts", "/api/order-ai", "/api/export-video", "/api/download-zip", "/api/reorder", "/api/trash", "/api/purge", "/api/groups", "/api/edits", "/api/sequence"}
@@ -753,11 +768,18 @@ def next_plate_number(st: dict) -> int:
     return max(nums, default=15) + 1
 
 
+def plate_name(n) -> str | None:
+    """A plate's file name as it may be used in a path: a bare name, nothing that climbs out of the plates folder (a project file
+    from someone else, or a request, could carry '../../x' or '/Users/...': it must never reach a delete). None if it is not one."""
+    n = str(n or "")
+    return n if n and n == Path(n).name and not n.startswith(".") and "\\" not in n and "/" not in n else None
+
+
 def purge_plates(st: dict, requested) -> tuple[int, int]:
     """Permanently delete trashed plates (never a kept one). Files and QA results go; the keep/trash record stays
     so taste and territory scores keep learning from them. Returns (files deleted, bytes freed)."""
     trashed = set(st.get("trashed", []))
-    names = [n for n in requested if n in trashed]
+    names = [n for n in requested if n in trashed and plate_name(n)]       # never a path: only files in this project's plates folder
     freed = deleted = 0
     for n in names:
         f = PLATES_DIR / n
@@ -802,6 +824,16 @@ def describe_mark(img, api_key: str, model: str) -> dict:
             "suggested": [c for c in (projects.clean_hex(x) for x in (data.get("palette") or [])[:3]) if c]}
 
 
+def zips_folder() -> Path:
+    """Where downloads wait to be fetched (once); any left unfetched for an hour are cleared."""
+    folder = EXPORT_DIR / "zips"
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in folder.glob("*.zip"):
+        if time.time() - old.stat().st_mtime > 3600:
+            old.unlink(missing_ok=True)
+    return folder
+
+
 def build_download_zip(files: list[str], label: str) -> tuple[Path, str]:
     """The full-size images shown in Curate, numbered in their order, in one zip (stored as they are: JPEGs do not compress).
     Kept in studio/.export/zips until fetched once (older ones are cleared). Returns (file, download name)."""
@@ -809,11 +841,7 @@ def build_download_zip(files: list[str], label: str) -> tuple[Path, str]:
     names = [f for f in files if f and "/" not in f and "\\" not in f and not f.startswith(".") and (PLATES_DIR / f).is_file()]
     if not names:
         raise ValueError("No images to download.")
-    folder = EXPORT_DIR / "zips"
-    folder.mkdir(parents=True, exist_ok=True)
-    for old in folder.glob("*.zip"):
-        if time.time() - old.stat().st_mtime > 3600:
-            old.unlink(missing_ok=True)
+    folder = zips_folder()
     head = re.sub(r"[^A-Za-z0-9]+", "-", f"{PROJECT['name']} {label}").strip("-")[:60] or "Phosphene"
     name = f"{head}-{len(names)}-images-{time.strftime('%Y%m%d-%H%M%S')}.zip"
     out = folder / f"{uuid.uuid4().hex}.zip"
@@ -890,8 +918,22 @@ class StudioHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    def from_this_computer(self, command: bool) -> bool:
+        """Only requests to this computer by its own name (a website that points its domain at 127.0.0.1, DNS rebinding, is refused),
+        and commands (POST) only from the app's own page (another site's page cannot drive the server: empty the trash, switch
+        project, read the key). Clients that send no Origin (the app shell, curl, the tests) are local by construction."""
+        local = ("localhost", "127.0.0.1", "::1")
+        host = urlparse(f"http://{self.headers.get('Host') or ''}").hostname
+        origin = self.headers.get("Origin")
+        ok = host in local and (not command or not origin or urlparse(origin).hostname in local)
+        if not ok:
+            self.send_json({"ok": False, "error": "Not from this computer."}, 403)
+        return ok
+
     def do_GET(self):
         parsed = urlparse(self.path)
+        if not self.from_this_computer(command=False):
+            return
         if parsed.path == "/api/thumb":
             q = parse_qs(parsed.query)
             try:
@@ -909,7 +951,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
-        if parsed.path.startswith("/static/") and (WEB_DIST / parsed.path.lstrip("/")).is_file():
+        if parsed.path.startswith("/static/") and (WEB_DIST / parsed.path.lstrip("/")).is_file() and (WEB_DIST / parsed.path.lstrip("/")).resolve().is_relative_to(WEB_DIST.resolve()):
             f = WEB_DIST / parsed.path.lstrip("/")
             data = f.read_bytes()
             self.send_response(200)
@@ -1095,6 +1137,10 @@ class StudioHandler(SimpleHTTPRequestHandler):
             })
             return
 
+        path = parsed.path
+        if not path.startswith("/assets/") or any(seg.startswith(".") for seg in path.split("/")):   # only the old plate URLs; never studio/.secrets.json
+            self.send_json({"ok": False, "error": "Not found"}, 404)
+            return
         return super().do_GET()
 
     def send_wav(self, raw: bytes):
@@ -1108,6 +1154,9 @@ class StudioHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         length = int(self.headers.get("Content-Length", "0"))
+        if not self.from_this_computer(command=True):
+            self.rfile.read(max(0, min(length, 1 << 20)))
+            return
         if parsed.path == "/api/export-audio":
             # the synthesized sound, rendered in the page (the same WebAudio graph as the preview), kept until the export uses it
             if length <= 44 or length > EXPORT_AUDIO_MAX_BYTES:
@@ -1263,8 +1312,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/project-export":
             # a project as one file (its folder zipped, images included), downloaded once like the image zip
             try:
-                (EXPORT_DIR / "zips").mkdir(parents=True, exist_ok=True)
-                out = EXPORT_DIR / "zips" / f"{uuid.uuid4().hex}.zip"
+                out = zips_folder() / f"{uuid.uuid4().hex}.zip"
                 if not (body.get("slug") or PROJECT):
                     raise FileNotFoundError("none")
                 name = projects.export_zip(str(body.get("slug") or PROJECT["slug"]), out)
@@ -1539,7 +1587,10 @@ class StudioHandler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/api/trash":
-            filename = body.get("filename")
+            filename = plate_name(body.get("filename"))
+            if not filename:
+                self.send_json({"ok": False, "error": "No such image."}, 400)
+                return
             trashed = bool(body.get("trashed", True))
             st = load_state()
             cur = set(st.get("trashed", []))
@@ -1654,10 +1705,7 @@ class QuietServer(ThreadingHTTPServer):
 if __name__ == "__main__":
     if os.environ.get("PHOSPHENE_EXAMPLES"):                                 # the Mac app's first launch: Demo, the sample, copied in once
         projects.seed_examples(Path(os.environ["PHOSPHENE_EXAMPLES"]))
-    if projects.active_slug():
-        apply_project(projects.load(projects.active_slug()))                 # the project open last time on this machine
-    else:
-        apply_no_project()                                                   # a new user: the page shows its first screen
+    open_first_project()
     if places.APP:                                                           # the Mac app quit (even forced): the server goes too
         parent = os.getppid()
         def watch_app():

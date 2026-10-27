@@ -668,3 +668,4 @@
     .fr-main b { font-size: 15px; }
     .fr-main span { font-size: 12px; color: var(--muted); font-weight: 400; }
     .fr-steps { width: 100%; text-align: left; margin-top: 10px !important; }
+    body:not(.app) .app-only { display: none; }                          /* what only the Mac app has (its menu's shortcuts) */

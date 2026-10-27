@@ -198,3 +198,39 @@ def test_a_marks_own_colours(pdir):
     ImageDraw.Draw(im).rectangle((0, 0, 70, 100), fill=(236, 84, 12, 255))
     ImageDraw.Draw(im).rectangle((71, 0, 100, 100), fill=(20, 20, 30, 255))
     assert projects.mark_colours(im) == ["#EC540C", "#14141E"]
+
+
+def test_an_imported_curation_cannot_point_outside_its_project_and_odd_files_still_import(pdir, tmp_path):
+    """Review findings: names in a received state.json could reach outside the project; a numeric name broke the project list;
+    a zip re-made with Finder's Compress (__MACOSX, ._ files) was refused; a damaged zip crashed the import."""
+    import json, zipfile
+    f = tmp_path / "x.phosphene"
+    with zipfile.ZipFile(f, "w") as z:
+        z.writestr("x/project.json", json.dumps({"name": 123}))
+        z.writestr("x/mark.png", star_png())
+        z.writestr("x/plates/a.jpg", b"\xff\xd8 jpeg")
+        z.writestr("x/state.json", json.dumps({"trashed": ["a.jpg", "../../thesis.pdf", "/Users/me/x.pdf"], "order": ["a.jpg", "../b"],
+                                                "groups": [{"id": "g", "name": "G", "files": ["a.jpg", "/etc/passwd"]}], "titles": {"../x": "t", "a.jpg": "A"}}))
+        z.writestr("__MACOSX/x/._project.json", b"apple double")
+        z.writestr("x/._mark.png", b"apple double")
+    p = projects.import_zip(f)
+    st = json.loads(p["state_file"].read_text())
+    assert st["trashed"] == ["a.jpg"] and st["order"] == ["a.jpg"] and st["groups"][0]["files"] == ["a.jpg"] and list(st["titles"]) == ["a.jpg"]
+    assert p["name"] == "123" and [x["name"] for x in projects.all_projects()][-1] == "123", "the list works"
+    broken = tmp_path / "broken.phosphene"
+    data = f.read_bytes()
+    broken.write_bytes(data[:len(data) // 2])
+    with pytest.raises(ValueError):
+        projects.import_zip(broken)
+
+
+def test_a_damaged_project_never_stops_the_server_from_starting(srv, tmp_path):
+    import projects as P
+    P.create({"name": "Owl"}, star_png())
+    P.set_active("owl")
+    (P.PROJECTS_DIR / "owl" / "project.json").write_text("{ not json")
+    srv.open_first_project()
+    assert srv.PROJECT and srv.PROJECT["slug"] == "demo", "the next project opens instead"
+    (P.PROJECTS_DIR / "demo" / "project.json").write_text("{ also broken")
+    srv.open_first_project()
+    assert srv.PROJECT is None, "none readable: the first screen, not a crash"
