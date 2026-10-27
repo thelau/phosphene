@@ -69,7 +69,7 @@ function register() {
 
 async function fresh(opts = {}) {
   const fresh_state = makeState();
-  Object.assign(api.state, { plates: fresh_state.plates, sequences: fresh_state.sequences, active: fresh_state.active, groups: [], edits: [], projects: fresh_state.projects, project: fresh_state.project });
+  Object.assign(api.state, { plates: fresh_state.plates, sequences: fresh_state.sequences, active: fresh_state.active, groups: [], edits: [], projects: fresh_state.projects, project: fresh_state.project, kimiConfigured: true });
   if (opts.setup) opts.setup(api.state);
   api.state.delays = { purge: 0, generate: 0, invent: 0, export: 0, ai: 600, ...opts.delays };
   api.state.jobs = [];

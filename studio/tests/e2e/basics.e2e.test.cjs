@@ -612,6 +612,18 @@ test('no project (a first launch): the usual page, empty, says where to start; t
   await page.click('#projectBtn');
   await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');
   assert.equal(await page.evaluate(() => document.getElementById('projectMenu').firstElementChild.tagName), 'BUTTON');
+  api.state.kimiConfigured = false; await page.evaluate(() => refreshLibrary(true)); await page.waitForTimeout(200);
+  await page.locator('#projectMenu .gm-item', { hasText: 'New project…' }).click();
+  assert.equal(await page.locator('#settingsPopover').isVisible(), true, 'a real click: Settings opens and stays open on the key');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'kimiKeyInput');
+  assert.equal(await page.locator('#projectModal').isVisible(), false);
+  await page.mouse.click(700, 500);                                                 // a click elsewhere closes it
+  await page.waitForSelector('#settingsPopover', { state: 'hidden', timeout: 3000 });
+  await page.click('#generateBtn');
+  await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');                // no project: Generate opens the project menu
+  assert.equal(await page.locator('#settingsPopover').isVisible(), false);
+  api.state.kimiConfigured = true; await page.evaluate(() => refreshLibrary(true)); await page.waitForTimeout(200);
+  await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');
   await page.locator('#projectMenu .gm-item', { hasText: 'New project…' }).click();
   assert.equal(await page.locator('#projectModal').isVisible(), true);
   assert.equal(await text('#projectTitle'), 'New project');

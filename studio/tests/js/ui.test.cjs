@@ -275,7 +275,7 @@ test('generateImages: missing Kimi key opens settings and does not start', async
   h.$('kimiKeyInput').value = '';
   await h.run('generateImages()');
   assert.equal(h.calls.filter(c => c.url === '/api/invent-prompts').length, 0);
-  assert.match(h.$('toast').textContent, /Paste your Kimi API key/);
+  assert.match(h.$('toast').textContent, /Add your Kimi API key first/);
   assert.equal(h.$('generateBtn').disabled, false);
 });
 
@@ -1777,6 +1777,19 @@ test('New project needs the Kimi key: without it Settings opens on the key, not 
   await settle(); await settle();
   h.run("openProjectForm('new')");
   assert.equal(h.$('settingsPopover').classList.contains('open'), true);
-  assert.match(h.$('toast').textContent, /needs your Kimi key/);
+  assert.match(h.$('toast').textContent, /Add your Kimi API key to create a project/);
   assert.equal(h.$('projectModal').classList.contains('open'), false, 'the form stays closed');
+});
+
+test('Krea in Settings: Connect Krea when signed out, only Sign out of Krea once connected', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { ...r['/api/state'], krea_connected: true };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  assert.equal(h.$('kreaConnectBtn').hidden, true);
+  assert.equal(h.$('kreaSignOutBtn').hidden, false);
+  r['/api/state'].krea_connected = false;
+  await h.run('loadState()');
+  assert.equal(h.$('kreaConnectBtn').hidden, false);
+  assert.equal(h.$('kreaSignOutBtn').hidden, true);
 });

@@ -38,10 +38,19 @@
       else pop.classList.toggle('open');
     }
 
+    // Settings opened by the page itself (Generate or New project without the key or the sign-in), on the field to fill: the click
+    // that asked for it must not close it again on its way up
+    let settingsOpenedAt = -1;
+    function openSettingsOn(id) {
+      toggleSettings(true);
+      settingsOpenedAt = performance.now();                                  // a click made before this instant is the one that asked
+      const el = document.getElementById(id);
+      if (el) el.focus();
+    }
     document.addEventListener('click', (e) => {
       const pop = document.getElementById('settingsPopover');
       const btn = document.getElementById('settingsBtn');
-      if (!pop.contains(e.target) && !btn.contains(e.target)) {
+      if (e.timeStamp > settingsOpenedAt && !pop.contains(e.target) && !btn.contains(e.target)) {
         pop.classList.remove('open');
       }
     });
@@ -106,7 +115,7 @@
       kreaDot.className = 'dot' + (data.krea_connected ? '' : ' off');
       kreaLbl.textContent = data.krea_connected ? 'Connected' : 'Disconnected';
       kreaConnected = Boolean(data.krea_connected);
-      document.getElementById('kreaConnectBtn').textContent = kreaConnected ? 'Sign in again' : 'Connect Krea';
+      document.getElementById('kreaConnectBtn').hidden = kreaConnected;     // one button: Connect Krea, or once connected Sign out of Krea
       document.getElementById('kreaSignOutBtn').hidden = !kreaConnected;
 
       kimiConfigured = Boolean(data.kimi_configured);
@@ -303,9 +312,8 @@
       closeProjectMenu();
       const edit = kind === 'edit' && project;
       if (!edit && !kimiConfigured) {                                         // a new project starts from Kimi reading the mark: the key first
-        toggleSettings(true);
-        document.getElementById('kimiKeyInput').focus();
-        setStatus('A new project needs your Kimi key (⚙️ Settings): Kimi reads the mark and fills in the project.');
+        openSettingsOn('kimiKeyInput');
+        setStatus('Add your Kimi API key to create a project: Kimi reads your mark and fills in the project for you.');
         return;
       }
       projectForm = { kind: edit ? 'edit' : 'new', mark: null, markUrl: edit ? project.mark_url : null, typed: new Set() };
@@ -2498,17 +2506,15 @@
 
     function ensureKreaReady() {                                           // images need the Krea sign-in: without it, Settings opens on it
       if (kreaConnected) return true;
-      toggleSettings(true);
-      document.getElementById('kreaConnectBtn').focus();
-      setStatus('Connect Krea in ⚙️ Settings first (images use your Krea credits).');
+      openSettingsOn('kreaConnectBtn');
+      setStatus('Connect Krea first: images are made with your Krea account\'s credits.');
       return false;
     }
     function ensureKimiReady() {
       const typedKey = document.getElementById('kimiKeyInput').value.trim();
       if (!kimiConfigured && !typedKey) {
-        toggleSettings(true);
-        document.getElementById('kimiKeyInput').focus();
-        setStatus('Paste your Kimi API key in ⚙️ Settings first.');
+        openSettingsOn('kimiKeyInput');
+        setStatus('Add your Kimi API key first: Kimi writes the image ideas.');
         return false;
       }
       return true;
@@ -2754,7 +2760,7 @@
         setTimeout(check, 3000);
       } catch (e) {
         if (tab) tab.close();
-        setStatus(`Could not start the Krea sign-in: ${e.message}`);
+        setStatus(`Could not start the Krea sign-in: ${(e && e.message) || e}`);   // the app's own errors are plain text, not Error
       }
     }
     // first run (or a missing sign-in): what is still needed before images can be made; hidden by hand once everything is there
