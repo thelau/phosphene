@@ -634,7 +634,7 @@
     .project-form input:disabled + *, .pf-row:has(> input:disabled) > span { color: var(--off); }
     input.secret { -webkit-text-security: disc; }                       /* masked like a password, but not a password field: macOS offered saved passwords there */
     .pf-preview { position: relative; width: 150px; aspect-ratio: 9 / 16; border-radius: 8px; background: #6F6E6A; /* mid grey: a black mark and a white one both show */ box-shadow: 0 0 0 1px var(--line-2); overflow: hidden; }
-    .pf-preview img { position: absolute; transform: translate(-50%, -50%); object-fit: contain; }
+    .pf-preview img { position: absolute; transform: translate(-50%, -50%); object-fit: contain; z-index: 1; border-radius: 2px; outline: 1.5px dashed var(--orange); outline-offset: 0; }   /* the logo target as on every image: the mark's dashed box */
     .pf-preview img:not([src]) { display: none; }
     .pf-preview::before, .pf-preview::after { content: ''; position: absolute; background: rgba(236, 84, 12, .35); }
     .pf-preview::before { left: var(--pf-x, 50%); top: 0; bottom: 0; width: 1px; }

@@ -547,6 +547,7 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   assert.equal(await text('#pfSizeVal'), '30%');
   const prev = await page.locator('#pfPreview').boundingBox(), mark = await page.locator('#pfPreviewMark').boundingBox();
   assert.ok(Math.abs(mark.width - prev.width * 0.3) < 2 && Math.abs(mark.y + mark.height / 2 - (prev.y + prev.height * 0.4)) < 2, 'the preview places it at its size and height');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('pfPreviewMark')).outlineStyle), 'dashed', 'the logo target already shows here: the mark\'s dashed box');
   await page.fill('#pfShape', 'owl wordmark'); await page.fill('#pfNoun', 'owl'); await page.fill('#pfBrief', 'Night Owl, a late bar');   // typed by hand: Kimi never writes over it
   await page.fill('#pfPalette', '#223344 #ff8800 nope'); await page.locator('#pfPalette').dispatchEvent('input');
   assert.equal(await page.locator('#pfSwatches i').count(), 2);
