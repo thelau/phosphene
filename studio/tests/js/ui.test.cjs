@@ -4,7 +4,7 @@ const { load, WEB } = require('./harness.cjs');
 const fs = require('fs');
 
 const baseRoutes = () => ({
-  '/api/state': { plates: [], krea_connected: true, kimi_configured: true },
+  '/api/state': { plates: [], krea_connected: true, kimi_configured: true, project: { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', round: true, fixed: true } },
   '/api/worlds': { worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', n: 21, kept: 2, wildcard: false }, { name: 'Harbor & Signal', brief: 'Ports.', n: 0, kept: 0, wildcard: true }] },
 });
 const settle = () => new Promise(r => setImmediate(r));
@@ -1730,18 +1730,23 @@ test('Trail: the same opacity curve as the export (shared vectors), and the stag
   h.run('isPlaying = false');
 });
 
-test('first run: the welcome lists what is missing, and goes once Krea and Kimi are set and there are images (or it is closed)', async () => {
+test('Generate without Krea or Kimi opens Settings on what is missing; without a project, the project menu', async () => {
+  const demo = { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', round: true, fixed: true };
   const r = baseRoutes();
-  r['/api/state'] = { plates: [], krea_connected: false, kimi_configured: false, project: { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', round: true, fixed: true } };
+  r['/api/state'] = { plates: [], krea_connected: false, kimi_configured: true, project: demo };
   const h = load({ routes: r });
   await settle(); await settle();
-  assert.equal(h.$('welcome').hidden, false);
-  assert.equal(h.$('wlKrea').classList.contains('done'), false); assert.equal(h.$('wlKimi').classList.contains('done'), false);
-  h.run('dismissWelcome()');
-  assert.equal(h.$('welcome').hidden, true, 'closed for this visit');
-  assert.equal(h.store.studioWelcome, undefined, 'but not for good while something is missing');
-  h.run('welcomeClosed = false');
-  h.run(`showWelcome(${JSON.stringify({ krea_connected: true, kimi_configured: true, plates: [{}] })})`);
-  assert.equal(h.$('welcome').hidden, true, 'ready, with images: no welcome');
-  assert.equal(h.$('wlKrea').classList.contains('done'), true);
+  await h.run('generateImages()');
+  assert.equal(h.$('settingsPopover').classList.contains('open'), true, 'Settings opens');
+  assert.match(h.$('toast').textContent, /Connect Krea/);
+  assert.equal(h.calls.some(c => c.url === '/api/invent-prompts'), false, 'nothing is asked of Kimi or Krea');
+  h.run('toggleSettings(false); kimiConfigured = false');
+  h.$('kimiKeyInput').value = '';
+  await h.run('generateImages()');
+  assert.equal(h.$('settingsPopover').classList.contains('open'), true);
+  assert.match(h.$('toast').textContent, /Kimi API key/);
+  h.run('toggleSettings(false); project = null');
+  await h.run('generateImages()');
+  assert.equal(h.$('settingsPopover').classList.contains('open'), false);
+  assert.match(h.$('toast').textContent, /Make a project or import one first/);
 });

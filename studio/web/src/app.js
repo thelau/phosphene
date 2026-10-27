@@ -91,7 +91,7 @@
       if (call !== stateCalls) return;                                       // a newer request is on its way: an older answer must not win
       const lengthBefore = activePlates().length;
       if (data.project) showProject(data.project);
-      showFirstRun(data);
+      showNoProject(data);
       plates = data.plates || [];
       sequences = data.sequences || [];
       groups = data.groups || [];
@@ -106,7 +106,6 @@
       kreaDot.className = 'dot' + (data.krea_connected ? '' : ' off');
       kreaLbl.textContent = data.krea_connected ? 'Connected' : 'Disconnected';
       kreaConnected = Boolean(data.krea_connected);
-      showWelcome(data);
       document.getElementById('kreaConnectBtn').textContent = kreaConnected ? 'Sign in again' : 'Connect Krea';
       document.getElementById('kreaSignOutBtn').hidden = !kreaConnected;
 
@@ -233,12 +232,11 @@
     // ---- projects: one per brand mark (projects.py); the server works on one at a time, switching reloads the page ----
     let project = null, projectForm = null;
     // no project yet (a new user): the first screen; the header says so; the menu still offers New project and Import
-    function showFirstRun(data) {
-      const none = !data.project;
-      document.getElementById('firstRun').hidden = !none;
-      document.getElementById('frKrea').classList.toggle('done', !!data.krea_connected);
-      document.getElementById('frKimi').classList.toggle('done', !!data.kimi_configured);
-      if (none) { project = null; document.getElementById('projectName').textContent = 'No project'; document.getElementById('projectMark').removeAttribute('src'); }
+    function showNoProject(data) {                                          // no project yet (a first launch of the app): the usual page, empty; the project menu offers New project and Import
+      if (data.project) return;
+      project = null;
+      document.getElementById('projectName').textContent = 'No project';
+      document.getElementById('projectMark').removeAttribute('src');
     }
     function showProject(p) {
       project = p;
@@ -260,7 +258,7 @@
       let list = [];
       try { list = (await (await fetch('/api/projects')).json()).projects || []; } catch (err) { list = project ? [project] : []; }
       m.innerHTML = list.map(x => `<button type="button" class="gm-item${project && x.slug === project.slug ? ' on' : ''}" data-slug="${escapeHtml(x.slug)}" onclick="switchProject(this.dataset.slug)"><img src="${escapeHtml(x.mark_url)}" alt="" />${escapeHtml(x.name)}</button>`).join('')
-        + '<hr><button type="button" class="gm-item" onclick="openProjectForm(\'new\')">New project…</button>'
+        + (list.length ? '<hr>' : '') + '<button type="button" class="gm-item" onclick="openProjectForm(\'new\')">New project…</button>'
         + (project ? '<button type="button" class="gm-item" onclick="openProjectForm(\'edit\')">Project settings…</button>' : '')
         + '<hr>' + (project ? '<button type="button" class="gm-item" onclick="exportProject()" title="This project as one file (.phosphene): its mark, settings, images, groups and snapshots, to send or keep">Export project…</button>' : '')
         + '<button type="button" class="gm-item" onclick="closeProjectMenu(); document.getElementById(\'pfImport\').click()" title="Open a .phosphene file someone exported: it comes in as a new project">Import project…</button>';
@@ -881,7 +879,7 @@
       patchChildren(grid, items);
       const empty = document.getElementById('gridEmpty');
       empty.hidden = items.length > 0;
-      empty.textContent = showTrash ? 'The Trash is empty.' : 'No images yet. Choose a territory and press Generate.';
+      empty.textContent = showTrash ? 'The Trash is empty.' : !project ? 'No project yet: New project… or Import project… in the project menu, at the top.' : 'No images yet. Choose a territory and press Generate.';
       if (grid.querySelectorAll) grid.querySelectorAll('.card[data-filename]').forEach((el, i) => {   // the place in the order lives outside the markup, so a reorder only moves cards
         const num = el.querySelector('.card-num'), txt = String(i + 1).padStart(2, '0');
         if (num && num.textContent !== txt) num.textContent = txt;
@@ -2458,6 +2456,13 @@
     }
 
 
+    function ensureKreaReady() {                                           // images need the Krea sign-in: without it, Settings opens on it
+      if (kreaConnected) return true;
+      toggleSettings(true);
+      document.getElementById('kreaConnectBtn').focus();
+      setStatus('Connect Krea in ⚙️ Settings first (images use your Krea credits).');
+      return false;
+    }
     function ensureKimiReady() {
       const typedKey = document.getElementById('kimiKeyInput').value.trim();
       if (!kimiConfigured && !typedKey) {
@@ -2567,7 +2572,8 @@
 
     async function generateImages() {
       if (blockedByAi()) return;
-      if (!ensureKimiReady()) return;
+      if (!project) { setStatus('Make a project or import one first: the project menu, at the top.'); openProjectMenu(); return; }
+      if (!ensureKimiReady() || !ensureKreaReady()) return;
 
       const model = document.getElementById('modelSelect').value;
       const kimiModel = document.getElementById('kimiModelSelect').value;
@@ -2710,20 +2716,6 @@
       }
     }
     // first run (or a missing sign-in): what is still needed before images can be made; hidden by hand once everything is there
-    function showWelcome(data) {
-      const done = { wlKrea: !!data.krea_connected, wlKimi: !!data.kimi_configured };
-      for (const [id, ok] of Object.entries(done)) document.getElementById(id).classList.toggle('done', ok);
-      let dismissed = false;
-      try { dismissed = localStorage.getItem('studioWelcome') === 'done'; } catch (e) {}
-      const ready = done.wlKrea && done.wlKimi;
-      document.getElementById('welcome').hidden = welcomeClosed || (ready && (dismissed || (data.plates || []).length > 0));   // closed: for this visit; once ready, for good
-    }
-    let welcomeClosed = false;
-    function dismissWelcome() {
-      welcomeClosed = true;
-      try { if (kreaConnected && kimiConfigured) localStorage.setItem('studioWelcome', 'done'); } catch (e) {}
-      document.getElementById('welcome').hidden = true;
-    }
     // ---- the Mac app: updates. On opening it asks GitHub for a newer version; one click installs it and restarts ----
     const TAURI = window.__TAURI__ || null;
     if (TAURI && document.body) document.body.classList.add('app');
@@ -2942,7 +2934,6 @@ Object.assign(window, {
   previewPlate,
   reconnectKrea,
   signOutKrea,
-  dismissWelcome,
   saveCritic,
   saveKimiSettings,
   saveKimiSettingsDebounced,

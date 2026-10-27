@@ -588,19 +588,24 @@ test('Download in Curate: the images shown (All or the group), in their order, a
   await ctx.close();
 });
 
-test('first run with no project: the welcome screen offers New project and Open a project file; the menu has no settings or export yet', { skip }, async () => {
+test('no project (a first launch): the usual page, empty, says where to start; the menu offers New project and Import', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945, empty: true, setup: st => { st.project = null; st.plates = []; } });
-  assert.equal(await page.locator('#firstRun').isVisible(), true);
+  assert.equal(await page.locator('#firstRun').count(), 0, 'no welcome screen over the page');
   assert.equal(await text('#projectName'), 'No project');
-  assert.deepEqual(await page.locator('#firstRun .fr-main b').allTextContents(), ['New project', 'Open a project file']);
+  assert.match(await text('#gridEmpty'), /New project… or Import project… in the project menu/);
   await page.click('#projectBtn');
   await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');
+  assert.equal(await page.locator('#projectMenu').isVisible(), true, 'the menu shows, nothing over it');
   assert.deepEqual(await page.locator('#projectMenu .gm-item').allTextContents(), ['Demo', 'New project…', 'Import project…']);
   await page.keyboard.press('Escape'); await page.mouse.click(700, 500);
-  await page.locator('#firstRun .fr-main', { hasText: 'New project' }).click();
-  assert.equal(await page.locator('#projectModal').isVisible(), true, 'the form opens over it');
+  api.state.projects = [];                                                        // nothing to list: no line above New project
+  await page.click('#projectBtn');
+  await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');
+  assert.equal(await page.evaluate(() => document.getElementById('projectMenu').firstElementChild.tagName), 'BUTTON');
+  await page.locator('#projectMenu .gm-item', { hasText: 'New project…' }).click();
+  assert.equal(await page.locator('#projectModal').isVisible(), true);
   assert.equal(await text('#projectTitle'), 'New project');
-  await shot('33-first-run');
+  await shot('33-no-project');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });

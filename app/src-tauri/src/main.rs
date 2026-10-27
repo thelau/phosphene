@@ -181,6 +181,7 @@ fn main() {
                 .min_inner_size(1280.0, 720.0)
                 .title_bar_style(tauri::TitleBarStyle::Overlay)
                 .hidden_title(true)
+                .traffic_light_position(tauri::LogicalPosition::new(20.0, 21.0))   // the window's buttons centred in the page's 56 px top bar
                 .on_download(move |_webview, event| {
                     if let DownloadEvent::Requested { destination, .. } = event {
                         let name = destination.file_name().and_then(|n| n.to_str()).unwrap_or("download").to_string();

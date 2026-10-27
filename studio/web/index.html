@@ -11,21 +11,6 @@
   <div id="loader"><div class="spin"></div><div class="msg" id="loaderMsg">Loading library…</div></div>
   <div class="update-bar" id="updateBar" hidden role="status"><span id="updateMsg"></span><button type="button" class="small-btn" id="updateBtn" onclick="installUpdate()">Restart to update</button><button type="button" class="icon-btn" onclick="document.getElementById('updateBar').hidden = true" aria-label="Later">×</button></div>
   <input type="file" id="pfImport" accept=".phosphene,.zip" hidden onchange="importProject(this.files[0])" />
-  <section class="first-run" id="firstRun" hidden aria-label="Start">
-    <div class="fr-card">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#EC540C" aria-hidden="true"><circle cx="12" cy="12" r="2.6" fill="#EC540C" stroke="none"></circle><circle cx="12" cy="12" r="6" stroke-width="1.6" opacity=".7"></circle><circle cx="12" cy="12" r="9.6" stroke-width="1.2" opacity=".35"></circle></svg>
-      <h1>Welcome to Phosphene</h1>
-      <p>Films around a brand mark: AI images where the mark always sits at the same place and size, cut to a synthesized sound. Each mark is a project.</p>
-      <div class="fr-actions">
-        <button type="button" class="fr-main" onclick="openProjectForm('new')"><b>New project</b><span>Start from your mark (a PNG or SVG)</span></button>
-        <button type="button" class="fr-main" onclick="document.getElementById('pfImport').click()"><b>Open a project file</b><span>A .phosphene file someone sent you</span></button>
-      </div>
-      <ol class="wl-steps fr-steps">
-        <li id="frKrea"><span>Sign in to your Krea account (images use its credits)</span><button type="button" class="small-btn" onclick="reconnectKrea()">Connect Krea</button></li>
-        <li id="frKimi"><span>Add your Kimi key (it writes the image ideas)</span><button type="button" class="small-btn" onclick="toggleSettings(true)">Open settings</button></li>
-      </ol>
-    </div>
-  </section>
   <div id="cover" hidden role="status"><div class="spin"></div><div class="msg" id="coverMsg"></div></div>
 
   <div class="too-small" id="tooSmall" role="alert">
@@ -165,14 +150,6 @@
       </div>
 
       <div class="gallery-col">
-        <section class="welcome" id="welcome" hidden aria-label="Getting started">
-          <div class="wl-text"><b>Welcome to Phosphene.</b> Before making images:</div>
-          <ol class="wl-steps">
-            <li id="wlKrea"><span>Sign in to your Krea account (images use its credits)</span><button type="button" class="small-btn" onclick="reconnectKrea()">Connect Krea</button></li>
-            <li id="wlKimi"><span>Add your Kimi key (it writes the image ideas)</span><button type="button" class="small-btn" onclick="toggleSettings(true)">Open settings</button></li>
-          </ol>
-          <button type="button" class="icon-btn wl-close" onclick="dismissWelcome()" aria-label="Hide">×</button>
-        </section>
         <div class="gallery-head">
           <div class="seg">
             <button id="tabSelection" onclick="setTrashView(false)">Selection (<span id="selCount">0</span>)</button>

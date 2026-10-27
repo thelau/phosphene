@@ -600,7 +600,7 @@
     .project-btn { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text); font-size: 14px; font-weight: 600; max-width: 260px; transition: none; }
     .project-btn:hover, .project-btn[aria-expanded="true"] { border-color: var(--line-3); background: var(--field); }
     .project-btn img { width: 20px; height: 20px; object-fit: contain; flex: none; }
-    .project-btn img:not([src]) { visibility: hidden; }
+    .project-btn img:not([src]) { display: none; }                  /* No project: no empty space before the name */
     .project-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .project-btn svg { flex: none; color: var(--muted); }
     .project-menu { min-width: 240px; }
@@ -633,14 +633,6 @@
     .project-form .confirm-foot button.solid { background: var(--text); color: #1A1A1A; border-color: var(--text); }
 
     /* ---------- first run: what is missing before images can be made ---------- */
-    .welcome { position: relative; flex: none; margin: 16px 24px 0; padding: 14px 44px 14px 16px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line-3); font-size: 13px; }
-    .welcome[hidden] { display: none; }
-    .wl-text { margin-bottom: 8px; color: var(--text-2); }
-    .wl-steps { display: flex; flex-direction: column; gap: 6px; padding-left: 18px; margin: 0; color: var(--muted); }
-    .wl-steps li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .wl-steps li.done { color: var(--faint); text-decoration: line-through; }
-    .wl-steps li.done button { display: none; }
-    .wl-close { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; }
     .pf-locked { margin-top: 10px; font-size: 12px !important; color: var(--muted) !important; }
     .pf-locked[hidden] { display: none; }
     .project-form input:disabled { opacity: .45; cursor: not-allowed; }
@@ -650,22 +642,10 @@
     #cover .msg { font-size: 13px; color: var(--text-2); }
 
     /* ---------- the Mac app (body.app): the window's buttons sit over the top bar, which drags the window; updates ---------- */
-    body.app .topbar { padding-left: 86px; -webkit-user-select: none; }
+    body.app .topbar { padding-left: 96px; -webkit-user-select: none; }
     body.app .topbar > * { -webkit-app-region: no-drag; }
     .update-bar { position: fixed; z-index: 160; top: 64px; right: 20px; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 16px 40px rgba(0,0,0,.5); font-size: 13px; }
     .update-bar[hidden] { display: none; }
     .update-bar .small-btn { background: var(--text); color: #1A1A1A; border-color: var(--text); }
 
-    /* ---------- no project yet: the first screen (New project, Open a project file, Krea and Kimi) ---------- */
-    .first-run { position: fixed; inset: 56px 0 0 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: var(--bg); }
-    .first-run[hidden] { display: none; }
-    .fr-card { width: min(560px, 92vw); display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
-    .fr-card h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; margin: 6px 0 0; }
-    .fr-card > p { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 0 0 8px; }
-    .fr-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; }
-    .fr-main { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 16px; border-radius: 12px; border: 1px solid var(--line-3); background: var(--raised); color: var(--text); text-align: left; }
-    .fr-main:hover { border-color: var(--orange); }
-    .fr-main b { font-size: 15px; }
-    .fr-main span { font-size: 12px; color: var(--muted); font-weight: 400; }
-    .fr-steps { width: 100%; text-align: left; margin-top: 10px !important; }
     body:not(.app) .app-only { display: none; }                          /* what only the Mac app has (its menu's shortcuts) */
