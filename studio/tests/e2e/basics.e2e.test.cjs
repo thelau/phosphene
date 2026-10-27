@@ -1377,3 +1377,23 @@ test('a dark mark shows as a light silhouette in the top bar and the project men
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('the project menu in a real browser: Import project… opens the file chooser, every item runs without an error (a handler calling an unshared function broke Import)', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  await page.click('#projectBtn');
+  await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }), page.locator('#projectMenu .gm-item', { hasText: 'Import project…' }).click()]);
+  assert.ok(chooser, 'the file chooser opens');
+  assert.equal(await page.locator('#projectMenu').isVisible(), false, 'and the menu closes');
+  await page.click('#projectBtn');
+  await page.locator('#projectMenu .gm-item', { hasText: 'New project…' }).click();
+  await page.locator('.project-form button', { hasText: 'Cancel' }).click();
+  await page.click('#projectBtn');
+  await page.locator('#projectMenu .gm-item', { hasText: 'Project settings…' }).click();
+  await page.locator('.project-form button', { hasText: 'Cancel' }).click();
+  await film();
+  await page.locator('label:has(#bpmLock)').click().catch(() => page.locator('#bpmLock').check({ force: true }));
+  await page.waitForTimeout(100);
+  assert.deepEqual(consoleErrors, [], 'no handler fails (the tempo lock called an unshared saveSettings too)');
+  await ctx.close();
+});

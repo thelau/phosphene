@@ -333,10 +333,17 @@ test('every inline handler in the markup and templates is exported on window', (
   const html = fs.readFileSync(WEB('index.html'), 'utf8');
   const app = fs.readFileSync(WEB('src', 'app.js'), 'utf8');
   const used = new Set();
-  for (const m of (html + app).matchAll(/\bon[a-z]+="(?:[^"]*?[;\s])?([A-Za-z_]\w*)\(/g)) used.add(m[1]);
-  used.delete('event'); used.delete('if');
-  const h = load({ routes: baseRoutes() });
-  const missing = [...used].filter(n => h.run(`typeof window.${n}`) !== 'function');
+  for (const m of (html + app).matchAll(/\bon[a-z]+="([^"]*)"/g)) {         // every call in a handler, not just one: "closeProjectMenu(); chooseProjectFile()" hid the first
+    for (const c of m[1].matchAll(/(?<![\w.$'])([A-Za-z_]\w*)\(/g)) used.add(c[1]);
+  }
+  for (const n of ['event', 'if', 'setTimeout', 'String', 'Number', 'parseFloat', 'parseInt']) used.delete(n);
+  // what the page really shares: the names in its Object.assign(window, {...}) (the node harness makes every function global, a
+  // browser does not: a handler calling an unshared one fails only in the real page)
+  const block = app.slice(app.lastIndexOf('Object.assign(window, {'));
+  const shared = new Set([...block.slice(block.indexOf('{') + 1, block.indexOf('});')).matchAll(/([A-Za-z_]\w*)/g)].map(m => m[1]));
+  for (const m of app.matchAll(/window\.([A-Za-z_]\w*)\s*=/g)) shared.add(m[1]);
+  const builtins = new Set(['alert', 'confirm', 'history', 'location']);
+  const missing = [...used].filter(n => !shared.has(n) && !builtins.has(n)).sort();
   assert.deepEqual(missing, []);
   assert.ok(used.size >= 20);
 });
@@ -1813,4 +1820,19 @@ test('Info on a card says why the logo check flagged it, as it says the AI criti
   assert.match(html, /Logo check: The mark looks too big \(it fits about as well at 1\.5x\)/);
   assert.match(html, /AI critic 6\.8: calm/);
   assert.doesNotMatch(h.run(`cardHtml(${JSON.stringify({ ...mkPlate('y.jpg'), qa_passed: true })})`), /Logo check:/);
+});
+
+test('the film strip and ← →: every image can be reached, at any tempo (a cut start read back a hair early showed the image before)', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: 19 }, (_, i) => mkPlate('p' + i)), krea_connected: true, kimi_configured: true };
+  const h = load({ routes: r }); await settle(); await settle();
+  const bad = [];
+  for (const [bpm, mult, inv] of [[172, '2', 'mono'], [172, '1', 'off'], [97, '3', 'colour'], [133, '4', 'mono'], [61, '1', 'mono']]) {
+    h.$('bpmInput').value = String(bpm); h.$('multSelect').value = mult; h.$('invertSelect').value = inv; h.$('followCuts').checked = true;
+    h.run('updateTempo(); updateRhythm(); updateFx()');
+    for (let i = 0; i < 19; i++) { h.run(`jumpToPlate(${i})`); const got = h.run('currentIdx'); if (got !== i) bad.push(`${bpm} x${mult} ${inv}: ${i} -> ${got}`); }
+    h.run('jumpToPlate(0)');
+    for (let i = 1; i < 19; i++) { h.run('stepImage(1)'); const got = h.run('currentIdx'); if (got !== i) { bad.push(`${bpm} x${mult} ${inv}: right to ${i} gave ${got}`); break; } }
+  }
+  assert.deepEqual(bad, []);
 });

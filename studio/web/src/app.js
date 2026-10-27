@@ -1467,7 +1467,8 @@
     // ---- the cut timeline: where each cut starts (every cut is one base cut) ----
     function cutAt(starts, t) {
       const total = starts[starts.length - 1];
-      t = total > 0 ? ((t % total) + total) % total : 0;
+      if (!(total > 0)) t = 0;
+      else if (t < 0 || t >= total) t = ((t % total) + total) % total;   // only outside the loop: (t + total) % total read a cut's own start back a hair early (the image before showed)
       let lo = 0, hi = starts.length - 2;
       while (lo < hi) { const mid = Math.floor((lo + hi + 1) / 2); if (starts[mid] <= t) lo = mid; else hi = mid - 1; }
       const span = starts[lo + 1] - starts[lo];
@@ -3013,7 +3014,7 @@
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
   installUpdate,
-  exportProject, importProject, chooseProjectFile,
+  exportProject, importProject, chooseProjectFile, closeProjectMenu, saveSettings,
   downloadShown,
   openProjectMenu, switchProject, openProjectForm, closeProjectForm, readProjectMark, drawProjectPreview, saveProject,
   removeChange,
