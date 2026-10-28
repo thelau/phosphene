@@ -372,9 +372,14 @@ def import_zip(path: Path) -> dict:
             raise ValueError("That project file has no name.")
         if int(raw.get("format", 1)) > PROJECT_FORMAT:
             raise ValueError("That project was made by a newer Phosphene: update the app (it offers it when it opens), then open it again.")
-        raw.pop("paths", None)
+        try:                                          # the fields as create / update take them: numbers in their ranges, words, colours
+            raw = _fields({k: raw[k] for k in ("name", "mark_size", "mark_x", "mark_y", "mark_shape", "mark_noun", "brief", "palette") if k in raw},
+                          {"v": 1, "qa": raw.get("qa") if raw.get("qa") == "demo-tuned" else "mark",
+                           **({"created": str(raw["created"])[:30]} if raw.get("created") else {})})
+        except (TypeError, ValueError, AttributeError):
+            raise ValueError("That project file is damaged (its settings cannot be read).")
+        raw.setdefault("mark_size", 18.0); raw.setdefault("mark_x", 50.0); raw.setdefault("mark_y", 50.0)
         raw["mark"] = "mark.png"
-        raw["name"] = str(raw["name"])[:60]
         taken = {q["name"] for q in all_projects()}                    # the same name as a project here: "Nike 2", as Finder numbers a copy
         if raw["name"] in taken:
             stem, k = re.sub(r" \d+$", "", raw["name"])[:56], 2
@@ -441,9 +446,12 @@ def _clean_state(f: Path) -> None:
     if not isinstance(st, dict):
         f.unlink()
         return
-    for key in ("trashed", "order", "purged", "qa_failed", "critic_failed", "history"):
+    st.pop("kimi_api_key", None)                    # someone else's key never comes in (it would be used, and saved as this machine's)
+    for key in ("trashed", "order", "purged", "qa_failed", "critic_failed"):
         if isinstance(st.get(key), list):
-            st[key] = [n for n in st[key] if not isinstance(n, str) or _bare(n)]
+            st[key] = [n for n in st[key] if isinstance(n, str) and _bare(n)]   # a number or a list there stopped the library from loading
+    if isinstance(st.get("history"), list):
+        st["history"] = [t for t in st["history"] if isinstance(t, str)]
     for key in ("trashed_at", "titles", "prompts", "models", "worlds", "ideas", "critic"):
         if isinstance(st.get(key), dict):
             st[key] = {k: v for k, v in st[key].items() if _bare(k)}

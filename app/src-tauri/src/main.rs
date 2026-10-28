@@ -159,10 +159,12 @@ fn on_menu(app: &AppHandle, id: &str) {
             let handle = app.clone();
             app.dialog().file().add_filter("Phosphene project", &["phos", "phosphene", "zip"]).pick_file(move |file| {
                 let Some(path) = file.and_then(|f| f.into_path().ok()) else { return };
-                let port = handle.state::<Opened>().0.lock().unwrap().0;
-                if let Some(win) = handle.get_webview_window("main") {
-                    if port > 0 { page_import(&path.to_string_lossy(), &win); }
-                }
+                let path = path.to_string_lossy().to_string();
+                let state = handle.state::<Opened>();
+                let mut o = state.0.lock().unwrap();
+                if o.0 == 0 { o.1.push(path); return; }                  // the server is still starting: imported when it answers
+                drop(o);
+                if let Some(win) = handle.get_webview_window("main") { page_import(&path, &win); }
             });
             return;
         }
@@ -255,6 +257,7 @@ fn main() {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
                     let t0 = Instant::now();
+                    let mut told = false;
                     loop {
                         if TcpStream::connect(("127.0.0.1", port)).is_ok() {
                             let state = handle.state::<Opened>();
@@ -268,9 +271,13 @@ fn main() {
                             return;
                         }
                         let gone = handle.state::<Server>().0.lock().unwrap().as_mut().map(|c| c.try_wait().ok().flatten().is_some()).unwrap_or(true);
-                        if gone || t0.elapsed() > Duration::from_secs(60) {
+                        if gone {
                             let _ = win.eval("document.getElementById('msg').textContent = 'Phosphene could not start. Its log is in ~/Library/Application Support/Phosphene/server.log.'");
                             return;
+                        }
+                        if !told && t0.elapsed() > Duration::from_secs(60) {   // slow, still alive: say so and keep waiting
+                            told = true;
+                            let _ = win.eval("document.getElementById('msg').textContent = 'Still starting… (a first launch can take a few minutes while macOS checks the app)'");
                         }
                         std::thread::sleep(Duration::from_millis(150));
                     }

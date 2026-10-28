@@ -13,7 +13,8 @@ The first time, right-click Phosphene › **Open** › **Open** (the app is not 
 and it updates itself: when a new version is out it says so, and **Restart to update** installs it.
 
 - Your projects are in **Documents › Phosphene**, one folder each. Updates never touch them, and deleting the app leaves them.
-  Back them up like any document. Demo, the sample, is copied there the first time.
+  Back them up like any document. The app starts with none: make one (New project…) or open a project file you were sent
+  (Demo comes as one: double-click it, or Import project…).
 - To send a project to someone: the project menu (next to Phosphene) › **Export project…**; they use **Import project…**.
 - Needs a Mac with Apple silicon (M1 or newer).
 

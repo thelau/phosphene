@@ -89,8 +89,10 @@ except Exception:
 
 # ---- the project the server works on (projects.py): its plates, curation, caches, mark and words ----
 def _first_project():
+    # DEMO, whose places the paths above are: importing the server (bench, the tests) never pairs DEMO's plates with another
+    # project's mark; the server's start opens the project open last time (open_first_project)
     try:
-        return projects.load(projects.active_slug() or projects.DEFAULT)
+        return projects.load(projects.DEFAULT)
     except Exception:                                                        # the app before its first launch copied the sample in
         return None
 
@@ -120,6 +122,17 @@ def apply_no_project() -> None:
     base = places.SUPPORT_DIR / ".no-project"
     PROJECT, PLATES_DIR, CURATION_FILE, QA_CACHE_FILE, QA_CACHE, THUMBS_DIR = None, base / "plates", base / "state.json", base / ".qa_cache.json", {}, base / ".thumbs"
     PLATES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def imported_opens(handler, p: dict) -> bool:
+    """An imported project opens, unless a job started while it was copied (seconds): it stays in the menu and the job's project
+    stays open (a switch then would put that job's images in the new project). False: the answer is sent."""
+    with STATE_LOCK:
+        if not busy():
+            apply_project(projects.set_active(p["slug"]))
+            return True
+    handler.send_json({"ok": False, "busy": True, "error": f"{p['name']} was imported. Something started meanwhile: open it from the project menu when it ends."}, 409)
+    return False
 
 
 def open_first_project() -> None:
@@ -242,6 +255,8 @@ def world_examples(w: dict, n: int = 2) -> list[str]:
     """What to type to focus a territory, for its field's placeholder: two of its own subjects, without the article."""
     out = []
     for a in w.get("applications") or []:
+        if not isinstance(a, str):                                 # a world Kimi invented or a project brought: one odd entry hid every world
+            continue
         a = re.sub(r"^(a|an|the) ", "", a)
         a = re.split(r" (?:with|in|on|against|at|of|for|from|to|and|under|over|inside|by|off|lit|half|\w+ing|\w+ed)\b", a)[0]
         a = " ".join(a.split()[:3])                                # short, as someone would type it: "puffer jacket collar"
@@ -1337,7 +1352,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                             break
                         fh.write(chunk); left -= len(chunk)
                 p = projects.import_zip(tmp)
-                apply_project(projects.set_active(p["slug"]))
+                if not imported_opens(self, p):
+                    return
             except ValueError as e:
                 self.send_json({"ok": False, "error": str(e)}, 400)
                 return
@@ -1361,7 +1377,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 return
             try:
                 p = projects.import_zip(f)
-                apply_project(projects.set_active(p["slug"]))
+                if not imported_opens(self, p):
+                    return
             except ValueError as e:
                 self.send_json({"ok": False, "error": str(e)}, 400)
                 return

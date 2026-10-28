@@ -118,3 +118,5 @@ def test_world_examples_are_short_subjects_of_that_territory():
             assert any(e in a for a in w["applications"]), (w["name"], e)
     fashion = next(w for w in chapters.WORLDS if w["name"] == "Fashion & Apparel")
     assert server.world_examples(fashion) == ["heavy hoodie chest", "puffer jacket collar"]
+    odd = {"name": "Odd", "applications": [7, None, {"x": 1}, "a brass bell on a desk", "the wet slate step"]}
+    assert server.world_examples(odd) == ["brass bell", "wet slate step"], "an odd entry (Kimi, an imported project) is passed over: it hid every world"

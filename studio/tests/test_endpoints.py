@@ -815,7 +815,7 @@ def test_project_export_and_import_over_http_and_kimi_reads_a_mark(live, srv, mo
     assert live("POST", "/api/describe-mark", {"mark": "data:image/png;base64,AAAA"})[0] == 400
 
 
-def test_with_no_project_the_server_runs_says_so_and_a_double_clicked_file_opens(live, srv, tmp_path):
+def test_with_no_project_the_server_runs_says_so_and_a_double_clicked_file_opens(live, srv, tmp_path, monkeypatch):
     """A new user (the Mac app with an empty Documents/Phosphene): no project, an empty library, the page shows its first screen;
     what needs a project says so; a .phosphene file opened from Finder becomes the project."""
     _three_plates(live)
@@ -832,6 +832,16 @@ def test_with_no_project_the_server_runs_says_so_and_a_double_clicked_file_opens
     status, r = live("POST", "/api/project-import-path", {"path": str(f)})
     assert status == 200 and r["project"]["name"] == "Demo 2", "its folder is still here: the copy is numbered"
     assert len(live("GET", "/api/state")[1]["plates"]) == 3, "with its images"
+    # from a review: a job that starts while a file is copied (seconds) keeps its project; the file is imported, not opened
+    srv.apply_project(srv.projects.load(r["active"]))
+    real = srv.projects.import_zip
+    monkeypatch.setattr(srv.projects, "import_zip", lambda path: (srv._LEASE.update(until=srv.time.time() + 30), real(path))[1])
+    try:
+        status, r2 = live("POST", "/api/project-import-path", {"path": str(f)})
+    finally:
+        srv._LEASE["until"] = 0
+    assert status == 409 and "Demo 3 was imported" in r2["error"] and srv.PROJECT["slug"] == r["active"]
+    assert any(p["name"] == "Demo 3" for p in live("GET", "/api/projects")[1]["projects"])
 
 
 

@@ -180,6 +180,28 @@ def test_import_refuses_what_is_not_a_project_and_takes_nothing_outside_its_fold
     assert not (tmp_path / "escape.txt").exists() and not (pdir / "evil.jpg").exists()
 
 
+def test_an_imported_curation_brings_no_key_and_no_odd_entries_and_its_settings_are_checked(pdir, tmp_path):
+    # from a review: someone else's Kimi key came in (and was used, then saved as this machine's); a number or a list among the
+    # image names stopped the library from loading at every launch; a mark size of 500 or "big" was taken as it was
+    import json, zipfile
+    def phos(name, raw, state):
+        f = tmp_path / f"{name}.phos"
+        with zipfile.ZipFile(f, "w") as z:
+            z.writestr("x/project.json", json.dumps(raw))
+            z.writestr("x/mark.png", star_png())
+            z.writestr("x/state.json", json.dumps(state))
+        return f
+    p = projects.import_zip(phos("a", {"name": "Odd", "mark_size": 500, "mark_x": -3, "palette": ["#112233", 7], "qa": "anything", "paths": {"plates": "/etc"}},
+                                 {"kimi_api_key": "sk-theirs", "trashed": ["01_a.jpg", {"x": 1}, ["y"], 5, "../evil.jpg"], "order": [None, "02_b.jpg"], "history": ["Shot", 3]}))
+    st = json.loads(p["state_file"].read_text())
+    assert "kimi_api_key" not in st and st["trashed"] == ["01_a.jpg"] and st["order"] == ["02_b.jpg"] and st["history"] == ["Shot"]
+    assert (p["mark_size"], p["mark_x"], p["palette"], p["qa"]) == (60, 10, ["#112233"], "mark"), "in the ranges New project allows"
+    assert p["plates_dir"] == pdir / "odd" / "plates", "never someone else's places"
+    with pytest.raises(ValueError, match="damaged"):
+        projects.import_zip(phos("b", {"name": "Bad", "mark_size": "big"}, {}))
+    assert not (pdir / "bad").exists(), "nothing left behind"
+
+
 def test_the_sample_is_copied_in_once_and_never_over_a_project(pdir, tmp_path, monkeypatch):
     import shutil
     monkeypatch.setattr(projects.places, "SUPPORT_DIR", tmp_path)
@@ -270,3 +292,12 @@ def test_the_replay_measures_the_users_curation_again_and_says_where_the_check_d
     assert judged == {"owl/16_right.jpg": "you trashed", "owl/17_moved.jpg": "restored"}, "DEMO is left out"
     got = {k: v for k, v, _ in map(qa_replay._measure, todo)}
     assert got == {"owl/16_right.jpg": "pass", "owl/17_moved.jpg": "trash"}
+
+
+def test_importing_the_server_pairs_demos_places_with_cos_whatever_was_open_last(srv, tmp_path):
+    # from a review: bench.py (and the tests) import the server; PROJECT came from the last project opened while the paths stayed
+    # DEMO's, so good DEMO plates were checked against another mark and trashed
+    import projects as P
+    P.create({"name": "Owl"}, star_png())
+    P.set_active("owl")
+    assert srv._first_project()["slug"] == "demo", "the start (open_first_project) opens the last one; importing does not"
