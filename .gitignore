@@ -24,3 +24,4 @@ app/build/
 app/src-tauri/target/
 app/src-tauri/gen/
 studio/.no-project/
+studio/tests/.qa_shapes_passed
