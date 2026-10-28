@@ -34,6 +34,8 @@ git lfs pull
 ok "images downloaded"
 
 note "Python packages (in .venv, only for this app)"
+# A .venv made in another folder (the repo was moved) has scripts pointing there: make it again.
+if [ -d .venv ] && ! grep -qF "$PWD/.venv" .venv/pyvenv.cfg 2>/dev/null; then rm -rf .venv; fi
 [ -d .venv ] || python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -q --disable-pip-version-check -r requirements-dev.txt
 ok "Pillow and pytest"
