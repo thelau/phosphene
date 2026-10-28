@@ -1055,7 +1055,7 @@
               }
             </div>
             <div class="prompt-overlay" id="overlay-${CSS.escape(p.filename)}" onclick="togglePromptOverlay(event, '${p.filename}')">
-              <div class="prompt-overlay-text">${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${p.critic ? `<span class="po-critic">AI critic ${p.critic.mean}: ${escapeHtml(p.critic.reason)}</span>` : ''}${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-critic po-qa">Logo check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : ''}</div>
+              <div class="prompt-overlay-text">${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${p.critic ? `<span class="po-critic">AI critic ${p.critic.mean}: ${escapeHtml(p.critic.reason)}</span>` : ''}${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-critic po-qa">Logo check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : p.qa_doubt ? `<span class="po-critic po-doubt">Logo check: ${escapeHtml(p.qa_doubt)}</span>` : ''}</div>
               <div class="prompt-overlay-meta"><button class="po-copy" onclick="copyPromptText(event, '${p.filename}')">Copy prompt</button></div>
             </div>
           </div>
@@ -1064,7 +1064,7 @@
             <span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>
             ${p.critic ? `<span class="card-model-badge" title="${escapeHtml(p.critic.reason)}">AI ${p.critic.mean}</span>` : ''}
             ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
-            ${!p.qa_passed ? `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>` : ''}
+            ${!p.qa_passed ? `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>` : p.qa_doubt ? `<span class="card-model-badge doubt" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : ''}
           </div>
         </div>`;
     }

@@ -253,11 +253,16 @@ def evaluate_plate_qa(image_path: Path, mark: MarkSpec | None = None) -> dict:
 # and 1.2x: +0.07 to +0.24 on every kept one), a mark of another size fits about as well at the sizes around it (+0.04 or less on every
 # trashed one). The fit is the flat mark either way round, or its outline against the image's edges (what an emboss or a carving shows),
 # a little off its place included.
-OWN_CHECK_VERSION = 3       # in the QA cache's keys: a new version measures the images again
-OWN_FIT_MIN = 0.42          # the fit at its size: under this, the mark is not there
-OWN_SHARP_MIN = 0.055       # fit at 1.0x minus the mean of 0.8x and 1.2x: under this, it is not its size
+OWN_CHECK_VERSION = 4       # in the QA cache's keys: a new version measures the images again
+# Two outcomes, from the user's own keep / trash of Nike, a triangle, McDonald's and Kestrel: on simple solid shapes no overlap
+# measure tells "right size" from "a bit too big" for sure (a kept triangle and a trashed one scored the same), so only the clearly
+# wrong is trashed by itself; the doubtful stays in the selection with a "Check the mark" note (qa_doubt) for the user to judge
+OWN_ABSENT = 0.33           # the fit at its size under this: the mark is not there (trashed)
+OWN_FIT_MIN = 0.42          # under this: doubtful
+OWN_SHARP_MIN = 0.055       # fit at 1.0x minus the mean of 0.8x and 1.2x: under this, doubtful (another size fits as well)
 OWN_AROUND = (0.8, 1.2)
-OWN_OTHER = (0.6, 1.5, 2.0, 2.5)   # only to say which way it is off
+OWN_SCALES = (0.6, 0.7, 0.78, 0.8, 0.85, 0.92, 1.0, 1.08, 1.16, 1.2, 1.25, 1.4, 1.6, 2.0, 2.5)
+OWN_CLEAR = 0.04            # a size this much better than its own, 1.4x or more (or 0.7x or less): clearly the wrong size (trashed)
 OWN_SHIFT = (-24, -12, 0, 12, 24)
 
 
@@ -284,20 +289,28 @@ def _fit(gray: Image.Image, edges: Image.Image, mark: MarkSpec, scale: float) ->
 
 def _check_project_mark(image_path: Path, im: Image.Image, gray: Image.Image, mark: MarkSpec) -> dict:
     edges = gray.filter(ImageFilter.GaussianBlur(1)).filter(ImageFilter.FIND_EDGES).filter(ImageFilter.GaussianBlur(1.5))
-    fit = {sc: _fit(gray, edges, mark, sc) for sc in (1.0,) + OWN_AROUND + OWN_OTHER}
+    fit = {sc: _fit(gray, edges, mark, sc) for sc in OWN_SCALES}
     at = fit[1.0][0]
     sharp = at - sum(fit[sc][0] for sc in OWN_AROUND) / len(OWN_AROUND)
     best = max(fit, key=lambda sc: fit[sc][0])
-    issues = []
-    if at < OWN_FIT_MIN:
-        issues.append(f"The mark is not clearly at its place and size (fit {at:.2f})")
+    gain = fit[best][0] - at
+    issues, doubt = [], ""
+    if at < OWN_ABSENT:
+        issues.append(f"The mark is not at its place and size (fit {at:.2f})")
+    elif best >= 1.4 and gain > OWN_CLEAR:
+        issues.append(f"The mark is too big: it fits best at about {best:g}x its size")
+    elif best <= 0.7 and gain > OWN_CLEAR:
+        issues.append(f"The mark is too small: it fits best at about {best:g}x its size")
+    elif at < OWN_FIT_MIN:
+        doubt = f"Check the mark: it is faint or partly there (fit {at:.2f})"
+    elif best < 0.88 or best > 1.12:
+        doubt = f"Check the mark's size: it fits a little better at about {best:g}x"
     elif sharp < OWN_SHARP_MIN:
-        way = "too big" if best > 1.0 else "too small" if best < 1.0 else "off its size"
-        issues.append(f"The mark looks {way}" + (f" (it fits about as well at {best:g}x)" if best != 1.0 else "") + f": it fits as well at 0.8x or 1.2x (sharpness {sharp:.2f})")
-    score = max(0, min(100, int(round(min(sharp, 0.2) / 0.2 * 60 + min(at, 0.8) / 0.8 * 40)) - (30 if issues else 0)))
+        doubt = f"Check the mark's size: it fits about as well a fifth smaller or bigger (sharpness {sharp:.2f})"
+    score = max(0, min(100, int(round(min(max(sharp, 0), 0.2) / 0.2 * 60 + min(at, 0.8) / 0.8 * 40)) - (30 if issues else 15 if doubt else 0)))
     return {
         "filename": image_path.name, "width": im.width, "height": im.height,
-        "qa_passed": not issues, "qa_score": score,
+        "qa_passed": not issues, "qa_doubt": doubt, "qa_score": score,
         "center_corr": round(at, 3), "core_asymmetry": round(sharp, 3), "outer_ring_corr": round(fit[best][0], 3),
         "detected_diam_px": int(round(mark.width * best)), "polarity": fit[1.0][1], "issues": issues,
     }

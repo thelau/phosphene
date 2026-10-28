@@ -1878,3 +1878,12 @@ test('settings saved before films were per project become the first project\'s, 
   assert.equal(JSON.parse(h.store['studioFilm:demo']).bpmInput, '88');
   assert.equal(JSON.parse(h.store.studioSettings).thumbSizeVal, 'L', 'the shared ones stay shared');
 });
+
+test('a doubtful logo check stays in the selection with a "Check the mark" badge and its reason in Info', async () => {
+  const h = load({ routes: baseRoutes() });
+  await settle(); await settle();
+  const html = h.run(`cardHtml(${JSON.stringify({ ...mkPlate('x.jpg'), qa_passed: true, qa_doubt: "Check the mark's size: it fits a little better at about 1.16x" })})`);
+  assert.match(html, /class="card-model-badge doubt"[^>]*>Check the mark</);
+  assert.match(html, /Logo check: Check the mark's size: it fits a little better at about 1\.16x/);
+  assert.doesNotMatch(html, /QA flagged/);
+});

@@ -1189,6 +1189,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "qa_passed": qa["qa_passed"],
                     "qa_score": qa["qa_score"],
                     "qa_issues": qa.get("issues", []),
+                    "qa_doubt": qa.get("qa_doubt", ""),
                 })
 
             kimi_key = st.get("kimi_api_key", "")
@@ -1671,6 +1672,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "title": title,
                     "model": model,
                     "qa_issues": qa.get("issues", []),
+                    "qa_doubt": qa.get("qa_doubt", ""),
                     "softened": bool(softened),
                 })
             except Exception as e:
