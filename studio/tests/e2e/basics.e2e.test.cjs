@@ -978,9 +978,21 @@ test('Curate: thumbnail sizes, trash from the grid with Undo, restore picked ima
   const cols = async () => page.evaluate(() => getComputedStyle(document.getElementById('grid')).gridTemplateColumns.split(' ').length);
   const m = await cols();
   await page.click('#thumbS'); const sm = await cols();
+  await page.click('#thumbXXL'); const xxl = await cols();
   await page.click('#thumbXL'); const xl = await cols();
   await page.click('#thumbL'); const lg = await cols();
-  assert.ok(sm > m && m > lg && lg > xl, `S ${sm} > M ${m} > L ${lg} > XL ${xl} columns`);
+  assert.ok(sm > m && m > lg && lg > xl && xl > xxl, `S ${sm} > M ${m} > L ${lg} > XL ${xl} > XXL ${xxl} columns`);
+  // a double-click on a card: the image large over everything, the arrows to the next, Esc closes
+  await page.locator('.card[data-filename="k2"] .card-thumb').dblclick();
+  await page.waitForSelector('#viewer:not([hidden])');
+  const box = await page.locator('#viewerImg').boundingBox();
+  assert.ok(box.height > 600, `the image is large (${Math.round(box.height)} px)`);
+  const first = await text('#viewerCount');
+  await page.keyboard.press('ArrowRight');
+  assert.notEqual(await text('#viewerCount'), first);
+  await shot('20-viewer');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#viewer[hidden]', { state: 'attached' });
   await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
   assert.equal(await page.locator('#thumbL').getAttribute('aria-pressed'), 'true', 'the size is remembered');
   // trash from the grid, then Undo: back in its place
@@ -1143,7 +1155,8 @@ test('the Keys panel: ? opens a tidy list under the hint, Esc and a click elsewh
   const ctx = await fresh({ width: 1512, height: 945 });
   await page.keyboard.press('?');
   await page.waitForSelector('#keysPanel:not([hidden])');
-  assert.equal(await page.locator('#keysPanel dt:not(.app-only)').count(), 13);
+  assert.equal(await page.locator('#keysPanel dt:not(.app-only)').count(), 14);
+  assert.deepEqual(await page.locator('#keysPanel h5').allTextContents(), ['Everywhere', 'Film', 'Curate'], 'universal keys, then each tab\'s own');
   assert.equal(await page.locator('#keysPanel dt.app-only').isVisible(), false, 'the app menu\'s shortcuts only in the app');
   const p = await page.locator('#keysPanel').boundingBox();
   assert.ok(p.x >= 0 && p.x + p.width <= 1512 && p.y + p.height <= 945, 'all of it on screen');

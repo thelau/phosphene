@@ -11,6 +11,23 @@
     function idleText() { return 'Ready'; }
     let toastTimer = null;
     // a toast can carry one action (e.g. Undo after trashing the image on screen)
+    // what went wrong, in a few words: the status bar shows this, the full text stays in the log (npm run log, Settings › log)
+    function plainError(raw) {
+      const s = String((raw && raw.message) || raw || '');
+      const who = /kimi|moonshot/i.test(s) ? 'Kimi' : /krea/i.test(s) ? 'Krea' : '';
+      const it = who || 'The service';
+      if (/did not answer/i.test(s)) return 'Phosphene\'s server did not answer: is it still running?';
+      if (/timed out|timeout/i.test(s)) return `${it} took too long to answer: try again.`;
+      if (/nodename nor servname|name or service not known|network is unreachable|could not be reached|urlopen error|failed to fetch|networkerror|load failed|connection (refused|reset|aborted)|no route to host|name resolution/i.test(s)) return 'No internet connection: check it, then try again.';
+      if (/insufficient.?credits|out of credits/i.test(s)) return 'Krea is out of credits: add some at krea.ai.';
+      if (/extra data|expecting value|unterminated string|invalid json|not valid json|could not parse/i.test(s)) return 'Kimi\'s answer could not be read: try again.';
+      if (/content.?policy|moderation/i.test(s)) return 'Refused by Krea\'s moderation.';
+      if (/\b401\b|unauthori[sz]ed|invalid.{0,12}key|incorrect api key/i.test(s)) return who === 'Krea' ? 'Krea needs you to sign in again: Settings › Connect Krea.' : 'Kimi refused the key: check it in Settings.';
+      if (/\b429\b|rate.?limit|too many requests/i.test(s)) return `${it} is busy: try again in a minute.`;
+      if (/\b5\d\d\b|bad gateway|service unavailable|overloaded/i.test(s)) return `${it} is having trouble: try again in a few minutes.`;
+      const first = s.split(/ \| |\n/)[0];
+      return first.length > 110 ? `${first.slice(0, 107)}…` : first;
+    }
     function setStatus(msg, action) {
       const t = document.getElementById('toast');
       clearTimeout(toastTimer);
@@ -489,7 +506,7 @@
         const r = await (await fetch('/api/project-import-path', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) })).json();
         if (!r.ok) throw new Error(r.error || 'it was not imported');
         reopen(r.project && r.project.name);
-      } catch (e) { cover(null); setStatus(`Could not import: ${e.message}`); }
+      } catch (e) { cover(null); setStatus(`Could not import: ${plainError(e)}`); }
     }
     async function importProject(file) {
       if (!file) return;
@@ -499,7 +516,7 @@
         const r = await (await fetch('/api/project-import', { method: 'POST', headers: { 'Content-Type': 'application/zip' }, body: file })).json();
         if (!r.ok) throw new Error(r.error || 'it was not imported');
         reopen(r.project && r.project.name);
-      } catch (e) { cover(null); setStatus(`Could not import: ${e.message}`); }
+      } catch (e) { cover(null); setStatus(`Could not import: ${plainError(e)}`); }
       finally { document.getElementById('pfImport').value = ''; }
     }
     async function saveProject() {
@@ -835,7 +852,7 @@
           progRender();
         }
       } catch (e) {
-        progStop(`AI order failed: ${e.message}`);
+        progStop(`AI order failed: ${plainError(e)}`);
       } finally {
         aiRunning = false;
         renderSequences();
@@ -874,7 +891,7 @@
         const a = document.createElement('a'); a.href = r.url; a.download = r.filename; document.body.appendChild(a); a.click(); a.remove();
         setStatus(`Downloading ${r.filename} (${Math.round(r.bytes / 1e6)} MB).`);
       } catch (e) {
-        setStatus(`Could not download: ${e.message}`);
+        setStatus(`Could not download: ${plainError(e)}`);
       } finally { downloading = false; renderSequences(); }
     }
     async function seqCall(payload) {
@@ -1040,7 +1057,8 @@
              ondragleave="onDragLeave(event)"
              ondrop="onDrop(event, '${p.filename}')"
              ondragend="onDragEnd(event)"
-             onclick="cardClick(event, '${p.filename}')">
+             onclick="cardClick(event, '${p.filename}')"
+             ondblclick="openViewer(event, '${p.filename}')">
           <div class="card-thumb">
             <img src="${p.thumb || p.url}" loading="lazy" decoding="async" alt="" />
             <span class="card-num"></span>
@@ -1077,14 +1095,66 @@
         : '')).filter(Boolean);
     }
     function refreshPending() { if (generating) renderGrid(); }          // only the placeholders change, so only they are touched
-    // thumbnail size in Curate: S, M or L
+    // thumbnail size in Curate: five steps (as Photos: steps, not a continuous range, so the grid stays tidy); a pinch steps through them
+    const THUMB_SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
     function setThumbSize(v) {
-      if (!['S', 'M', 'L', 'XL'].includes(v)) v = 'M';
+      if (!THUMB_SIZES.includes(v)) v = 'M';
       document.getElementById('thumbSizeVal').value = v;
       document.getElementById('grid').dataset.size = v;
-      for (const k of ['S', 'M', 'L', 'XL']) document.getElementById(`thumb${k}`).setAttribute('aria-pressed', String(k === v));
+      for (const k of THUMB_SIZES) document.getElementById(`thumb${k}`).setAttribute('aria-pressed', String(k === v));
       saveSettings();
     }
+    function stepThumbSize(d) {
+      const i = THUMB_SIZES.indexOf(document.getElementById('thumbSizeVal').value);
+      const j = Math.max(0, Math.min(THUMB_SIZES.length - 1, i + d));
+      if (j !== i) setThumbSize(THUMB_SIZES[j]);
+    }
+    // the trackpad's pinch on the grid: WebKit (Safari, the Mac app) sends gesture events, Chrome a wheel with Ctrl; a step per
+    // clear spread or squeeze, as far as the pinch goes
+    let pinchAcc = 0, gestureAt = 1, gesturing = false;
+    function onGridWheel(e) {
+      if (!e.ctrlKey) return;
+      e.preventDefault();                                                    // never the page's own zoom
+      if (gesturing) return;
+      pinchAcc -= e.deltaY;
+      if (Math.abs(pinchAcc) >= 40) { stepThumbSize(Math.sign(pinchAcc)); pinchAcc = 0; }
+    }
+    function onGridGesture(e) {
+      e.preventDefault();
+      if (e.type === 'gesturestart') { gesturing = true; gestureAt = 1; return; }
+      if (e.type === 'gestureend') { gesturing = false; return; }
+      const r = e.scale / gestureAt;
+      if (r > 1.3 || r < 0.77) { stepThumbSize(r > 1 ? 1 : -1); gestureAt = e.scale; }
+    }
+    (() => {
+      const g = document.getElementById('grid');
+      if (!g.addEventListener) return;
+      g.addEventListener('wheel', onGridWheel, { passive: false });
+      for (const t of ['gesturestart', 'gesturechange', 'gestureend']) g.addEventListener(t, onGridGesture, { passive: false });
+    })();
+    // the image viewer: a double-click on a card shows it as large as the window allows, ← → the next ones of what the grid shows
+    // (the group, or the Trash), Esc, Space or a click closes it. Nothing else in it: trashing stays on the cards
+    let viewerAt = -1;
+    const viewerOpen = () => document.getElementById('viewer').hidden === false;
+    function openViewer(e, filename) {
+      if (e && e.target && e.target.closest && e.target.closest('button, .prompt-overlay')) return;   // a double-click on a card's own buttons
+      viewerAt = visiblePlates().findIndex(p => p.filename === filename);
+      if (viewerAt < 0) return;
+      document.getElementById('viewer').hidden = false;
+      showViewer();
+    }
+    function showViewer() {
+      const list = visiblePlates();
+      if (!list.length) { closeViewer(); return; }
+      viewerAt = (viewerAt + list.length) % list.length;
+      const p = list[viewerAt];
+      document.getElementById('viewerImg').src = p.url;
+      document.getElementById('viewerTitle').textContent = p.title || '';
+      document.getElementById('viewerCount').textContent = `${viewerAt + 1} / ${list.length}`;
+      for (const d of [1, -1]) { const q = list[(viewerAt + d + list.length) % list.length]; if (q && window.Image) new Image().src = q.url; }   // the next ones ready
+    }
+    function viewerStep(d) { viewerAt += d; showViewer(); }
+    function closeViewer() { document.getElementById('viewer').hidden = true; viewerAt = -1; }
     // the floating film preview in Curate: the same stage, moved here, so there is one player and one sound
     let miniOpen = true;
     function toggleMini(open) {
@@ -1205,26 +1275,46 @@
     }
     // Keys (none while typing in a field): Tab mode · Space play · ← → one image · 0 / Home back to the start · Delete trash the image on screen (Film)
     // · F full screen · T the logo target · R Random (video and sound) · S Random sound · Cmd/Ctrl+Z undo
+    // Keys, in three groups (the keys panel shows the same three). A key is universal when it means the same thing in both
+    // tabs; otherwise it belongs to the tab whose content it acts on, and does nothing in the other (free there for its own use).
+    //   everywhere  Tab, Space (the one player; in Curate it opens the preview), T, ?, ⌘Z / ⇧⌘Z (one history), Esc
+    //   Film        ← →, 0 / Home, F, R, S, ⌘S, Delete on a selected speed change: the film's playhead and settings
+    //   Curate      ⌘A (and ⌘ / ⇧ click, double-click, pinch, on the grid): the images. Delete trashes nothing (by hand only)
+    // The image viewer is modal: while open it has the keys (← →, Esc or Space closes).
+    const FILM_KEYS = {
+      ArrowRight: () => stepImage(1), ArrowLeft: () => stepImage(-1),
+      0: () => { flash('restartBtn'); toStart(); }, Home: () => { flash('restartBtn'); toStart(); },
+      f: toggleFullscreen, r: () => { flash('randomAllBtn'); randomAll(); },
+      s: () => { flash('randomBtn'); if (!musicOn()) setv('musicSelect', 'on'); randomMusic(); },
+    };
     function onKey(e) {
       if (typingIn(e.target) || document.getElementById('confirmModal').classList.contains('open')) return;
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) redoLast(); else undoLast(); return; }
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A') && mode === 'curate' && !showTrash) { e.preventDefault(); pickAll(); return; }
-      if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); if (mode === 'film') { flash('editSaveBtn'); snapshotEdit(); } return; }   // a new snapshot (never the browser's Save Page)
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.repeat && ['Tab', 'f', 'F', 't', 'T', 'r', 'R', 's', 'S'].includes(e.key)) { e.preventDefault(); return; }   // a held key acts once
-      if (e.target && e.target.type === 'range' && e.key.startsWith('Arrow')) return;             // a slider with focus keeps its arrows
-      if (e.key === 'Tab') { e.preventDefault(); if (e.target && e.target.blur) e.target.blur(); setMode(mode === 'film' ? 'curate' : 'film'); }
-      else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
-      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); stepImage(e.key === 'ArrowRight' ? 1 : -1); }
-      else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFullscreen(); }
-      else if (e.key === '0' || e.key === 'Home') { e.preventDefault(); flash('restartBtn'); toStart(); }
-      else if (e.key === '?') { e.preventDefault(); toggleKeys(); }
-      else if ((e.key === 'Delete' || e.key === 'Backspace') && mode === 'film' && rsSel) { e.preventDefault(); removeChange(); }   // a selected point of the change: the change goes (never an image)
-      else if (e.key === 'Backspace' || e.key === 'Delete') e.preventDefault();       // nothing else: and WebKit (the Mac app) must not take Backspace for "go back"
-      else if (e.key === 'Escape') { document.getElementById('keysPanel').hidden = true; if (pickSel.size) clearPicks(); if (rsSel) { rsSel = null; renderRhythmStrip(); } }
-      else if (e.key === 't' || e.key === 'T') { e.preventDefault(); flash(mode === 'film' ? 'targetBtn' : 'gridTargetBtn'); toggleReticle(); }
-      else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); flash('randomAllBtn'); randomAll(); }
-      else if (e.key === 's' || e.key === 'S') { e.preventDefault(); flash('randomBtn'); if (!musicOn()) { setv('musicSelect', 'on'); } randomMusic(); }
+      const cmd = e.metaKey || e.ctrlKey, key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (key === 'Backspace' || key === 'Delete') e.preventDefault();      // WebKit (the Mac app) must not take Backspace for "go back"
+      if (viewerOpen()) {
+        if (cmd) return;
+        e.preventDefault();
+        if (key === 'ArrowRight' || key === 'ArrowLeft') viewerStep(key === 'ArrowRight' ? 1 : -1);
+        else if (key === 'Escape' || key === ' ') closeViewer();
+        return;
+      }
+      // everywhere
+      if (cmd && !e.altKey && key === 'z') { e.preventDefault(); if (e.shiftKey) redoLast(); else undoLast(); return; }
+      if (cmd && key === 's') { e.preventDefault(); if (mode === 'film') { flash('editSaveBtn'); snapshotEdit(); } return; }   // Film's snapshot; never the browser's Save Page
+      if (cmd && key === 'a' && mode === 'curate' && !showTrash) { e.preventDefault(); pickAll(); return; }
+      if (cmd || e.altKey) return;
+      if (e.repeat && ['Tab', 'f', 't', 'r', 's'].includes(key)) { e.preventDefault(); return; }   // a held key acts once
+      if (e.target && e.target.type === 'range' && key.startsWith('Arrow')) return;               // a slider with focus keeps its arrows
+      if (key === 'Tab') { e.preventDefault(); if (e.target && e.target.blur) e.target.blur(); setMode(mode === 'film' ? 'curate' : 'film'); return; }
+      if (key === ' ') { e.preventDefault(); if (mode === 'curate' && !miniOpen) toggleMini(true); togglePlay(); return; }
+      if (key === 't') { e.preventDefault(); flash(mode === 'film' ? 'targetBtn' : 'gridTargetBtn'); toggleReticle(); return; }
+      if (key === '?') { e.preventDefault(); toggleKeys(); return; }
+      if (key === 'Escape') { document.getElementById('keysPanel').hidden = true; if (pickSel.size) clearPicks(); if (rsSel) { rsSel = null; renderRhythmStrip(); } return; }
+      // the tab's own
+      if (mode === 'film') {
+        if ((key === 'Delete' || key === 'Backspace') && rsSel) { removeChange(); return; }      // a selected point of the change: the change goes (never an image)
+        if (FILM_KEYS[key]) { e.preventDefault(); FILM_KEYS[key](); }
+      }
     }
     // a key shows which button it pressed: the button flashes as if clicked
     function flash(id) {
@@ -2847,7 +2937,7 @@
           if (!genData.offline || genData.project_changed) break;
           // Krea answers the connection check but this image keeps failing as if offline (a gateway error, a timeout): after 3
           // rounds it fails on its own (Retry covers it) instead of being sent again until Stop, a new paid job each time
-          if (++rounds >= 3) { genData = { ...genData, offline: false, error: `Krea kept failing (${genData.error || 'no answer'}): Retry later` }; break; }
+          if (++rounds >= 3) { genData = { ...genData, offline: false }; break; }
           prog.slots[idx] = 'wait';
           await waitForConnection();
           if (batchStop) return;
@@ -2856,7 +2946,8 @@
         if (genData.needs_auth) { authFailed = true; prog.slots[idx] = 'err'; prog.why[idx] = 'Krea login needed: Settings › Connect Krea'; return; }
         if (!genData.ok) {
           // a moderation refusal is not a failure to retry: nothing was made (and nothing goes to the Trash), its bar is grey
-          prog.slots[idx] = genData.code === 'content_policy' ? 'blocked' : 'err'; prog.why[idx] = genData.error || 'Generation failed';
+          prog.slots[idx] = genData.code === 'content_policy' ? 'blocked' : 'err';
+          prog.why[idx] = genData.code === 'content_policy' ? genData.error : plainError(genData.error || 'Generation failed');   // the server's own words there are plain
           if (genData.stop) creditsOut = true;
           left.delete(idx);
           if (genData.retryable !== false) failedItems.push(item);
@@ -2881,7 +2972,7 @@
       await Promise.all([0, 1, 2].map(async () => {
         while (queue.length) {
           const [item, idx] = queue.shift();
-          try { await runOne(item, idx); } catch (e) { prog.slots[idx] = 'err'; prog.why[idx] = e.message; left.delete(idx); failedItems.push(item); keep(); }
+          try { await runOne(item, idx); } catch (e) { prog.slots[idx] = 'err'; prog.why[idx] = plainError(e); left.delete(idx); failedItems.push(item); keep(); }
         }
       }));
       loadWorlds();
@@ -2911,7 +3002,7 @@
       if (!ensureKreaReady()) return;
       setGenerating(true);
       progStart(items.length);
-      try { await runBatch(items, model); } catch (e) { progStop(`Error: ${e.message}`); } finally { setGenerating(false); }
+      try { await runBatch(items, model); } catch (e) { progStop(plainError(e)); } finally { setGenerating(false); }
     }
     // opening the page: a batch left unfinished (Stop, a reload, a quit, a crash) is offered again
     function offerPending() {
@@ -2967,7 +3058,7 @@
         ran = true;
         await runBatch(invData.ideas, model);
       } catch (e) {
-        progStop(`Error: ${e.message}`);
+        progStop(plainError(e));
       } finally {
         setGenerating(false);
         if (ran) {  // the direction was for this batch only
@@ -3153,7 +3244,7 @@
           setStatus(`Export failed: ${data.error || 'unknown error'}`);
         }
       } catch (e) {
-        setStatus(`Export failed: ${e.message}`);
+        setStatus(`Export failed: ${plainError(e)}`);
       } finally {
         exporting = false; applyLocks();
         setExportState(ok ? 'ready' : 'idle');
@@ -3227,7 +3318,7 @@
 Object.assign(window, {
   installUpdate,
   exportProject, importProject, importProjectPath, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
-  downloadShown,
+  downloadShown, openViewer, closeViewer, viewerStep,
   openProjectMenu, switchProject, openProjectForm, closeProjectForm, readProjectMark, drawProjectPreview, saveProject,
   removeChange,
   includeAll,

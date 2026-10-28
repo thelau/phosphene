@@ -418,6 +418,10 @@ def check_kimi_key(key: str, timeout: float = 8) -> str:
     return "refused" if refused == len(eps) else "unknown"
 
 
+class KimiOffline(RuntimeError):
+    """Kimi could not be reached at all: no network, or its address does not answer."""
+
+
 def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", images: list | None = None, system: str | None = None,
                   timeout: float | None = None, attempts: int = 2) -> str:
     """Calls Kimi API (Moonshot .ai, .cn, or Kimi Coding) with automatic model/endpoint fallback."""
@@ -475,6 +479,9 @@ def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", i
                     break
                 except Exception as e:
                     errors.append(f"{ep.split('/')[2]} ({model}): {e}")
+                    if isinstance(e, urllib.error.URLError) and "timed out" not in str(e):
+                        # no network (the name does not resolve, nothing answers): every other model and endpoint fails the same way
+                        raise KimiOffline(f"Kimi could not be reached ({getattr(e, 'reason', e)})")
                     if "timed out" not in str(e) or attempt == attempts:
                         break
             if errors and (errors[-1].startswith("HTTP 401") or "timed out" in errors[-1]):
@@ -1631,7 +1638,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 print(f"[KIMI] invent-prompts failed: {e!r}", flush=True)
                 gen_log.record("batch", ok=False, asked=int(body.get("count", 4)), territory_choice=body.get("world") or "mix", direction=direction,
                                seconds=round(time.time() - t_batch, 1), error=str(e)[:300])
-                self.send_json({"ok": False, "error": str(e)}, 500)
+                self.send_json({"ok": False, "error": str(e), "offline": isinstance(e, KimiOffline)}, 500)
             return
 
         if parsed.path == "/api/generate-image":

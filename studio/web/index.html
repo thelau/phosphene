@@ -42,21 +42,29 @@
       <button class="icon-btn keys-btn" id="keysBtn" onclick="toggleKeys(event)" title="Keys (?)" aria-label="Keys">?</button>
       <div class="keys-panel" id="keysPanel" hidden onclick="event.stopPropagation()" role="dialog" aria-label="Keys">
         <h4>Keys</h4>
+        <h5>Everywhere</h5>
         <dl>
-          <dt><kbd>Space</kbd></dt><dd>Play / pause</dd>
-          <dt><kbd>0</kbd> <kbd>Home</kbd></dt><dd>Back to the start</dd>
-          <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>One image back / forward</dd>
+          <dt><kbd>Space</kbd></dt><dd>Play / pause (in Curate it opens the preview)</dd>
           <dt><kbd>Tab</kbd></dt><dd>Curate / Film</dd>
-          <dt><kbd>R</kbd></dt><dd>Random: video and sound</dd>
-          <dt><kbd>S</kbd></dt><dd>Random sound</dd>
           <dt><kbd>T</kbd></dt><dd>Logo target</dd>
-          <dt><kbd>F</kbd></dt><dd>Full screen</dd>
-          <dt><kbd>⌘</kbd> <kbd>Z</kbd></dt><dd>Undo</dd>
-          <dt><kbd>⌘</kbd> <kbd>S</kbd></dt><dd>New snapshot of the film</dd>
+          <dt><kbd>⌘</kbd> <kbd>Z</kbd></dt><dd>Undo (<kbd>⇧</kbd> redo)</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Close, clear the picks</dd>
           <dt class="app-only"><kbd>⌘</kbd> <kbd>N</kbd> · <kbd>O</kbd> · <kbd>E</kbd></dt><dd class="app-only">New project · Open a project file · Export the project</dd>
-          <dt><kbd>⌘</kbd> click</dt><dd>Pick images to group them (Curate)</dd>
-          <dt><kbd>⇧</kbd> click</dt><dd>Pick a run of images</dd>
-          <dt><kbd>⌘</kbd> <kbd>A</kbd> · <kbd>Esc</kbd></dt><dd>Pick all · clear the picks</dd>
+        </dl>
+        <h5>Film</h5>
+        <dl>
+          <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>One image back / forward</dd>
+          <dt><kbd>0</kbd> <kbd>Home</kbd></dt><dd>Back to the start</dd>
+          <dt><kbd>R</kbd> · <kbd>S</kbd></dt><dd>Random film · random sound</dd>
+          <dt><kbd>F</kbd></dt><dd>Full screen</dd>
+          <dt><kbd>⌘</kbd> <kbd>S</kbd></dt><dd>New snapshot of the film</dd>
+        </dl>
+        <h5>Curate</h5>
+        <dl>
+          <dt>Double-click</dt><dd>The image large: <kbd>←</kbd> <kbd>→</kbd> the next, <kbd>Esc</kbd> closes</dd>
+          <dt>Pinch</dt><dd>Thumbnail size</dd>
+          <dt><kbd>⌘</kbd> · <kbd>⇧</kbd> click</dt><dd>Pick images (a run with ⇧) to group them</dd>
+          <dt><kbd>⌘</kbd> <kbd>A</kbd></dt><dd>Pick all</dd>
         </dl>
         <p>Keys do nothing while you type in a field.</p>
       </div>
@@ -198,10 +206,11 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 1v4M12 19v4M1 12h4M19 12h4"></path></svg>
           </button>
           <div class="size-seg" role="group" aria-label="Thumbnail size">
-            <button id="thumbS" onclick="setThumbSize('S')" aria-label="Small thumbnails" title="Small thumbnails"><i style="width:8px;height:12px"></i></button>
-            <button id="thumbM" onclick="setThumbSize('M')" aria-label="Medium thumbnails" title="Medium thumbnails"><i style="width:10px;height:15px"></i></button>
-            <button id="thumbL" onclick="setThumbSize('L')" aria-label="Large thumbnails" title="Large thumbnails"><i style="width:12px;height:18px"></i></button>
-            <button id="thumbXL" onclick="setThumbSize('XL')" aria-label="Very large thumbnails" title="Very large thumbnails: to look closely"><i style="width:14px;height:21px"></i></button>
+            <button id="thumbS" onclick="setThumbSize('S')" aria-label="Thumbnails S" title="S (pinch the grid to change the size)"><i style="width:7px;height:10px"></i></button>
+            <button id="thumbM" onclick="setThumbSize('M')" aria-label="Thumbnails M" title="M (pinch the grid to change the size)"><i style="width:8px;height:12px"></i></button>
+            <button id="thumbL" onclick="setThumbSize('L')" aria-label="Thumbnails L" title="L (pinch the grid to change the size)"><i style="width:10px;height:15px"></i></button>
+            <button id="thumbXL" onclick="setThumbSize('XL')" aria-label="Thumbnails XL" title="XL (pinch the grid to change the size)"><i style="width:12px;height:18px"></i></button>
+            <button id="thumbXXL" onclick="setThumbSize('XXL')" aria-label="Thumbnails XXL" title="XXL: to look closely (pinch the grid to change the size)"><i style="width:14px;height:21px"></i></button>
           </div>
           <button class="icon-btn refresh-btn" id="refreshBtn" onclick="refreshLibrary(true)" title="Check for new images now (the page also checks by itself every so often). Film refreshes with it." aria-label="Refresh the library"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
           <input type="hidden" id="thumbSizeVal" value="M" />
@@ -226,6 +235,13 @@
         </div>
         <div class="grid-col" id="grid" data-size="M"></div>
         <p class="grid-empty" id="gridEmpty" hidden></p>
+      </div>
+
+      <div class="viewer" id="viewer" hidden onclick="closeViewer()" role="dialog" aria-label="Image viewer">
+        <img id="viewerImg" alt="" />
+        <button type="button" class="viewer-nav prev" onclick="event.stopPropagation(); viewerStep(-1)" aria-label="Previous image">‹</button>
+        <button type="button" class="viewer-nav next" onclick="event.stopPropagation(); viewerStep(1)" aria-label="Next image">›</button>
+        <div class="viewer-bar"><span id="viewerTitle"></span><span id="viewerCount"></span></div>
       </div>
 
       <aside class="mini" id="miniPlayer" aria-label="Film preview">

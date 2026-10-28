@@ -388,6 +388,19 @@ def test_the_ai_order_is_recorded(live, srv, monkeypatch):
     assert ev["ok"] and ev["images"] == 4 and ev["direction"] == "start soft" and ev["kimi_ok"] is False
 
 
+def test_kimi_unreachable_stops_at_once_and_says_offline(srv, monkeypatch):
+    # offline, every model on every endpoint was tried in turn (six failures, one long message) before the page heard
+    import urllib.error
+    tried = []
+    def no_network(req, timeout=None):
+        tried.append(req.full_url)
+        raise urllib.error.URLError("[Errno 8] nodename nor servname provided, or not known")
+    monkeypatch.setattr(srv.urllib.request, "urlopen", no_network)
+    with pytest.raises(srv.KimiOffline, match="could not be reached"):
+        srv.call_kimi_llm("p", "sk-test")
+    assert len(tried) == 1
+
+
 def test_krea_refusing_is_not_a_lost_connection_and_out_of_credits_can_be_retried(live, srv, monkeypatch):
     # an HTTPError is a URLError too: every Krea refusal (401, 403, 404) read as "offline", and the page resubmitted it forever
     import urllib.error

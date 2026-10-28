@@ -239,7 +239,7 @@ test('generateImages: server errors on an image become err slots, batch continue
   await runGenerate(h);
   assert.equal(h.run('prog.slots').filter(s => s === 'err').length, 1);
   assert.match(h.$('statusText').innerHTML, /Done · 2 added · 1 failed</);
-  assert.match(h.$('statusText').innerHTML, /title="[^"]*Krea 500/);
+  assert.match(h.$('statusText').innerHTML, /title="[^"]*Krea is having trouble: try again in a few minutes/);
 });
 
 test('generateImages: a moderation refusal is its own grey bar and count, not a failure, not retried', async () => {
@@ -276,7 +276,7 @@ test('generateImages: Krea reachable but an image keeps failing as offline: afte
   assert.equal(calls, 3);
   assert.deepEqual(JSON.parse(h.run('JSON.stringify(prog.slots)')), ['err']);
   assert.ok(h.run("prog.actions.some(a => a.label === 'Retry 1')"));
-  assert.match(h.$('statusText').innerHTML, /Krea kept failing \(Krea 502\)/);
+  assert.match(h.$('statusText').innerHTML, /Krea is having trouble: try again in a few minutes/);
 });
 
 test('in the Mac app the page says when it is ready (files opened from Finder while it loaded come then), and tells the app it is idle', async () => {
@@ -372,7 +372,7 @@ test('generateImages: prompt-writing failure shows an error and unlocks', async 
   await settle(); await settle();
   h.$('directionInput').value = 'keep me';
   await runGenerate(h);
-  assert.match(h.$('statusText').innerHTML, /Error: Extra data/);
+  assert.match(h.$('statusText').innerHTML, /Kimi's answer could not be read: try again/);
   assert.equal(h.$('generateBtn').disabled, false);
   assert.equal(h.$('directionInput').value, 'keep me');           // nothing ran, so the text stays
   assert.equal(h.calls.filter(c => c.url === '/api/generate-image').length, 0);
@@ -1557,6 +1557,10 @@ test('keys: ← → step one image (wrapping), Delete never trashes, Cmd+Z undoe
   const h = load({ routes: r });
   await settle(); await settle();
   const key = (k, extra = {}) => h.ctx.onKey({ key: k, target: { tagName: 'BODY' }, preventDefault() {}, ...extra });
+  h.run("setMode('curate')");
+  key('ArrowRight'); key('0'); key('r');
+  assert.equal(h.run('currentIdx'), 0, "the Film's keys do nothing in Curate (free there for its own use)");
+  h.run("setMode('film')");
   key('ArrowRight'); assert.equal(h.run('currentIdx'), 1);
   key('ArrowRight'); key('ArrowRight'); assert.equal(h.run('currentIdx'), 0, 'wraps to the first');
   key('ArrowLeft'); assert.equal(h.run('currentIdx'), 2);
@@ -1675,6 +1679,7 @@ test('held keys act once; a slider with focus keeps its arrows', async () => {
 test('keys: 0 / Home back to the start (playing stays playing), T the target, R Random, S Random sound (turns the sound on)', async () => {
   const h = await playerWith();
   const key = k => h.ctx.onKey({ key: k, target: { tagName: 'BODY' }, preventDefault() {} });
+  h.run("setMode('film')");
   h.run('jumpToPlate(2)');
   key('0'); assert.equal(h.run('cutPos'), 0); assert.equal(h.run('currentIdx'), 0); assert.equal(h.run('isPlaying'), false, 'paused stays paused');
   h.$('musicSelect').value = 'on'; h.run('updateMusic()'); h.run('togglePlay()'); await settle();
@@ -2002,4 +2007,59 @@ test('a doubtful logo check stays in the selection with a "Check the mark" badge
   assert.match(html, /class="card-model-badge doubt"[^>]*>Check the mark</);
   assert.match(html, /Logo check: Check the mark's size: it fits a little better at about 1\.16x/);
   assert.doesNotMatch(html, /QA flagged/);
+});
+
+test('errors in a few words: the offline Kimi error the user saw, Krea refusals, out of credits; anything else cut short', async () => {
+  const h = load({ routes: baseRoutes() });
+  await settle();
+  const plain = raw => h.run(`plainError(${JSON.stringify(raw)})`);
+  const seen = "Kimi API call failed (api.moonshot.ai (kimi-k3): <urlopen error [Errno 8] nodename nor servname provided, or not known> | api.moonshot.ai (kimi-k2.7-code): <urlopen error [Errno 8] nodename nor servname provided, or not known>)";
+  assert.equal(plain(seen), 'No internet connection: check it, then try again.');
+  assert.equal(plain('Kimi could not be reached (timed out)'), 'Kimi took too long to answer: try again.');
+  assert.equal(plain('HTTP 401 (kimi-k3 @ api.moonshot.ai): Invalid Authentication'), 'Kimi refused the key: check it in Settings.');
+  assert.equal(plain('Krea MCP: HTTP Error 401: Unauthorized'), 'Krea needs you to sign in again: Settings › Connect Krea.');
+  assert.equal(plain('Krea: insufficient credits'), 'Krea is out of credits: add some at krea.ai.');
+  assert.equal(plain('Krea 429: too many requests'), 'Krea is busy: try again in a minute.');
+  assert.ok(plain('x'.repeat(300)).length <= 110);
+});
+
+test('Space in Curate plays and opens the floating preview if it was closed (so it is clear what plays)', async () => {
+  const h = await playerWith();
+  h.run("setMode('curate'); toggleMini(false)");
+  h.ctx.onKey({ key: ' ', target: { tagName: 'BODY' }, preventDefault() {} });
+  assert.equal(h.run('miniOpen'), true);
+  assert.equal(h.run('isPlaying'), true);
+});
+
+test('the image viewer: a double-click opens what the grid shows, the arrows go round, Esc closes; the keys act on nothing behind it', async () => {
+  const h = await playerWith();
+  h.run("setMode('curate')");
+  const n = h.run('visiblePlates().length');
+  const second = h.run('visiblePlates()[1].filename');
+  h.run(`openViewer(null, ${JSON.stringify(second)})`);
+  assert.equal(h.$('viewer').hidden, false);
+  assert.equal(h.$('viewerCount').textContent, `2 / ${n}`);
+  const key = k => h.ctx.onKey({ key: k, target: { tagName: 'BODY' }, preventDefault() {} });
+  key('ArrowLeft'); key('ArrowLeft');
+  assert.equal(h.$('viewerCount').textContent, `${n} / ${n}`, 'round from the first to the last');
+  key('t'); key('Tab');
+  assert.equal(h.run('mode'), 'curate', 'nothing behind the viewer moves');
+  key('Escape');
+  assert.equal(h.$('viewer').hidden, true);
+});
+
+test('thumbnails: five sizes, a pinch steps through them and stops at either end, never the page zoom', async () => {
+  const h = load({ routes: baseRoutes() });
+  await settle(); await settle();
+  h.run("setThumbSize('L')");
+  let prevented = 0;
+  const pinch = dy => h.run(`onGridWheel({ ctrlKey: true, deltaY: ${dy}, preventDefault() { globalThis.__p = (globalThis.__p || 0) + 1; } })`);
+  pinch(-45); assert.equal(h.$('thumbSizeVal').value, 'XL');
+  pinch(-45); pinch(-45); assert.equal(h.$('thumbSizeVal').value, 'XXL', 'stops at the largest');
+  for (let i = 0; i < 6; i++) pinch(45);
+  assert.equal(h.$('thumbSizeVal').value, 'S');
+  h.run('onGridWheel({ ctrlKey: false, deltaY: 300, preventDefault() { throw new Error("a plain scroll is left alone"); } })');
+  assert.equal(h.$('thumbSizeVal').value, 'S');
+  h.run("onGridGesture({ type: 'gesturestart', preventDefault() {} }); onGridGesture({ type: 'gesturechange', scale: 1.4, preventDefault() {} }); onGridGesture({ type: 'gestureend', preventDefault() {} })");
+  assert.equal(h.$('thumbSizeVal').value, 'M', "WebKit's pinch (the Mac app) steps too");
 });

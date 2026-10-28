@@ -116,9 +116,11 @@
     .modes { position: absolute; left: 50%; transform: translateX(-50%); }    /* Curate | Film in the middle of the window */
     .keys { position: relative; margin-right: -12px; }                              /* ? beside Settings */
     .keys-btn { font-family: var(--mono); font-size: 14px; font-weight: 600; }
-    .keys-panel { position: absolute; top: calc(100% + 10px); right: 0; width: 370px; padding: 16px 18px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 20px 50px rgba(0,0,0,.55); z-index: 100; }
+    .keys-panel { position: absolute; top: calc(100% + 10px); right: 0; width: 420px; padding: 16px 18px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 20px 50px rgba(0,0,0,.55); z-index: 100; }
     .keys-panel[hidden] { display: none; }
     .keys-panel h4 { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 12px; }
+    .keys-panel h5 { font-size: 11px; font-weight: 600; color: var(--text-3); margin: 14px 0 8px; }
+    .keys-panel h4 + h5 { margin-top: 0; }
     .keys-panel dl { display: grid; grid-template-columns: 96px 1fr; row-gap: 9px; column-gap: 12px; align-items: center; font-size: 13px; }
     .keys-panel dt { display: flex; gap: 4px; }
     .keys-panel dd { color: var(--text-2); }
@@ -407,7 +409,17 @@
     }
     .grid-col[data-size="S"] { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 14px 8px; }
     .grid-col[data-size="L"] { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-    .grid-col[data-size="XL"] { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }   /* to look closely: two or three a row */
+    .grid-col[data-size="XL"] { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+    .grid-col[data-size="XXL"] { grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); }   /* to look closely: two or three a row */
+    /* the image viewer (double-click a card): the image as large as the window allows, the next with the arrows */
+    .viewer { position: fixed; inset: 0; z-index: 300; background: rgba(8, 8, 9, .94); display: flex; align-items: center; justify-content: center; }
+    .viewer[hidden] { display: none; }
+    .viewer img { height: min(calc(100vh - 110px), calc((100vw - 160px) * 16 / 9)); width: auto; aspect-ratio: 9 / 16; object-fit: contain; border-radius: 4px; }
+    .viewer-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 64px; border: 0; border-radius: 10px; background: transparent; color: var(--text-2); font-size: 40px; line-height: 1; cursor: pointer; }
+    .viewer-nav:hover { background: var(--raised); color: var(--text); }
+    .viewer-nav.prev { left: 24px; } .viewer-nav.next { right: 24px; }
+    .viewer-bar { position: absolute; bottom: 22px; left: 0; right: 0; display: flex; justify-content: center; gap: 14px; font-size: 13px; color: var(--text-2); pointer-events: none; }
+    .viewer-bar span:first-child { color: var(--text); }
     .card { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; cursor: grab; user-select: none; transition: opacity .15s; }
     .card:active { cursor: grabbing; }
     .card.out { opacity: .5; }

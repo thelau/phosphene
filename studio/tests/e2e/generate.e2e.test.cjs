@@ -46,10 +46,10 @@ test('generate: failed images are explained (hover) and counted, the rest still 
   await page.waitForFunction(() => /Done · 1 added · 3 failed/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   const text_ = await text('#statusText');
   assert.doesNotMatch(text_, /Krea 429/, 'one short line: the reasons are on hover');
-  assert.match(await page.getAttribute('#statusText .prog-note', 'title'), /Krea 429: too many requests/);
+  assert.match(await page.getAttribute('#statusText .prog-note', 'title'), /Krea is busy: try again in a minute/, 'in a few words (the full error is in the log)');
   const reds = await page.locator('#statusText .slot.err').evaluateAll(els => els.map(e => e.title));
   assert.equal(reds.length, 3);
-  assert.ok(reds.every(t => /Fog \d — Krea 429/.test(t)), JSON.stringify(reds));
+  assert.ok(reds.every(t => /Fog \d — Krea is busy/.test(t)), JSON.stringify(reds));
   assert.equal(await page.locator('#tabSelection').innerText().then(t => /\(4\)/.test(t)), true);
   await ctx.close();
 });
