@@ -2925,7 +2925,7 @@
       if (worlds.length) {
         const row = o => { const k = +o.dataset.kept || 0, n = +o.dataset.n || 0; return item(o.value, `<span class="tm-name">${escapeHtml(o.value)}${o.dataset.wild ? ' <span class="tm-sub">new</span>' : ''}</span><span class="tm-bar">${n ? `<i style="width:${Math.round(k / n * 100)}%"></i>` : ''}</span><span class="tm-n">${n ? `${k} of ${n}` : '–'}</span>${check}`, 'tm-world' + (n ? '' : ' unmade')); };
         if (mix) html += '<div class="tm-sep"></div>';
-        html += '<div class="tm-head"><span>Your territories</span><span>kept of made</span></div>' + worlds.map(row).join('');
+        html += '<div class="tm-head"><span>Territories</span><span>kept of made</span></div>' + worlds.map(row).join('');
       }
       let list = m.querySelector('.tm-list');
       if (!list) {
