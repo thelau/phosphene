@@ -2083,3 +2083,28 @@ test('thumbnails: five sizes, a pinch steps through them and stops at either end
   h.run("onGridGesture({ type: 'gesturestart', preventDefault() {} }); onGridGesture({ type: 'gesturechange', scale: 1.4, preventDefault() {} }); onGridGesture({ type: 'gestureend', preventDefault() {} })");
   assert.equal(h.$('thumbSizeVal').value, 'M', "WebKit's pinch (the Mac app) steps too");
 });
+
+test('your groups keep their own order: shown and played in it; a drag or AI order there changes only the group; All and the automatic groups share one order', async () => {
+  const r = baseRoutes();
+  const P = (f, look) => ({ ...mkPlate(f), look });
+  let state = { plates: [P('a', ['warm']), P('b', []), P('c', ['warm']), P('d', [])], groups: [{ id: 'g1', name: 'Night', files: ['d', 'a', 'c'] }], kimi_configured: true };
+  r['/api/state'] = () => state;
+  r['/api/groups'] = body => { if (body.action === 'reorder') state = { ...state, groups: [{ ...state.groups[0], files: body.files }] }; return { ok: true }; };
+  r['/api/reorder'] = () => { throw new Error('All must not move'); };
+  r['/api/order-ai'] = { ok: true, job: 'j1', steps: ['a'] };
+  const h = load({ routes: r }); await settle(); await settle();
+  h.run("setGroup('look:warm')");
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['a', 'c'], 'an automatic group: All\'s order');
+  h.run("setGroup('g:g1')");
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['d', 'a', 'c'], 'your group: its own order');
+  const drop = target => h.run(`onDrop({ preventDefault() {}, currentTarget: { classList: { remove() {} } } }, '${target}')`);
+  h.run("draggedFilename = 'c'"); await drop('d'); await settle();
+  assert.deepEqual(h.calls.filter(c => c.url === '/api/groups').pop().body, { action: 'reorder', id: 'g1', files: ['c', 'd', 'a'] });
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['c', 'd', 'a']);
+  assert.equal(h.calls.filter(c => c.url === '/api/reorder').length, 0, 'All did not move');
+  await h.run('undoLast()'); await settle();
+  assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['d', 'a', 'c'], 'Undo puts the group back');
+  h.ctx.setTimeout = () => 0;
+  h.run('startAiOrder()'); await settle(); await settle();
+  assert.equal(h.calls.find(c => c.url === '/api/order-ai').body.group, 'g1', 'AI order in your group: its own order');
+});

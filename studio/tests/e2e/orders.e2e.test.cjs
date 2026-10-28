@@ -73,3 +73,21 @@ test('best N: the left-out divider has an "Include them all" button', { skip }, 
   assert.equal(await page.locator('.card').count(), 3);
   await ctx.close();
 });
+
+test('one of your groups keeps its own order: a drag there moves only the group, All stays as it was', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  await page.evaluate(() => fetch('/api/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', name: 'Night', files: ['k3', 'k1'] }) }));
+  await page.click('#refreshBtn');
+  const all = await names();
+  await page.waitForSelector('#groupBar .chip.own');
+  await page.click('#groupBar .chip.own');
+  await page.waitForFunction(() => document.querySelectorAll('.card[data-filename]').length === 2);
+  assert.deepEqual(await names(), ['k3', 'k1'], 'its own order, not All\'s');
+  await page.locator('.card[data-filename="k1"]').dragTo(page.locator('.card[data-filename="k3"]'));
+  await page.waitForFunction(() => [...document.querySelectorAll('.card[data-filename]')].map(c => c.dataset.filename).join() === 'k1,k3');
+  await page.click('#groupRow .chip[data-key="all"]');
+  await page.waitForFunction(n => [...document.querySelectorAll('.card[data-filename]')].length === n, all.length);
+  assert.deepEqual(await names(), all, 'All did not move');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

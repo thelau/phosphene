@@ -369,3 +369,15 @@ def test_summary_is_cut_at_a_word_never_mid_word():
     assert E.tidy("Short and sweet.") == "Short and sweet."
     assert E.tidy("  ") is None and E.tidy(None) is None
     assert E.tidy("a   b\n c") == "a b c"
+
+
+def test_the_ai_order_of_one_of_your_groups_is_its_own_and_moves_nothing_else(srv):
+    import sequences
+    st = {"groups": [{"id": "g1", "name": "Night", "files": ["b", "d", "e"]}], "sequences": []}
+    sequences.add_ai(st, ["a", "b", "c", "d", "e"])
+    before = sequences.get_order(st)
+    assert before == ["a", "b", "c", "d", "e"]
+    built = {"result": {"names": ["e", "b"], "left_out": ["d"], "cuts": []}, "summary": "opens on e"}
+    seq = srv.set_group_order(st, built, "g1")
+    assert st["groups"][0]["files"] == ["e", "b", "d"] and seq["summary"] == "opens on e"
+    assert sequences.get_order(st) == before, "All's order does not move"

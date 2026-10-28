@@ -200,6 +200,7 @@ function start(state = makeState()) {
         if (!g) return send({ ok: false, error: 'That group is gone.' }, 400);
         if (body.action === 'add') { g.files = [...new Set([...g.files, ...(body.files || [])])]; return send({ ok: true }); }
         if (body.action === 'remove') { g.files = g.files.filter(f => !(body.files || []).includes(f)); return send({ ok: true }); }
+        if (body.action === 'reorder') { const want = (body.files || []).filter(f => g.files.includes(f)); g.files = [...want, ...g.files.filter(f => !want.includes(f))]; return send({ ok: true }); }
         if (body.action === 'rename') { if (!name) return send({ ok: false, error: 'A group needs a name.' }, 400); g.name = name; return send({ ok: true }); }
         if (body.action === 'delete') { state.groups = gs.filter(x => x !== g); return send({ ok: true, group: g }); }
         return send({ ok: false, error: 'Unknown action.' }, 400);

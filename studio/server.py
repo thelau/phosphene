@@ -842,7 +842,17 @@ def add_group_order(st: dict, built: dict, only: set) -> dict:
     return sequences.add_ai(st, merged, summary=built["summary"], cut_off=None, cuts=built["result"]["cuts"])
 
 
-def run_ai_order_job(job_id: str, length, direction: str, only: set | None = None) -> None:
+def set_group_order(st: dict, built: dict, gid: str) -> dict:
+    """One of your groups ordered by the AI: its own order, nothing else moves (All and the other groups stay as they are)."""
+    g = groups.find(st, gid)
+    if not g:
+        raise RuntimeError("That group is gone.")
+    names = built["result"]["names"] + built["result"]["left_out"]
+    g["files"] = [f for f in names if f in g["files"]] + [f for f in g["files"] if f not in names]
+    return {"id": None, "name": g["name"], "summary": built["summary"]}
+
+
+def run_ai_order_job(job_id: str, length, direction: str, only: set | None = None, group: str | None = None) -> None:
     job = AI_JOBS[job_id]
     t_job = time.time()
     try:
@@ -854,7 +864,7 @@ def run_ai_order_job(job_id: str, length, direction: str, only: set | None = Non
         built = build_ai_order(st, call_kimi_llm, key, model, None if only else length, direction, progress, only)
         with STATE_LOCK:
             fresh = load_state()
-            seq = add_group_order(fresh, built, only) if only else add_ai_sequence(fresh, built)
+            seq = set_group_order(fresh, built, group) if group else add_group_order(fresh, built, only) if only else add_ai_sequence(fresh, built)
             save_state(fresh)
         job.update(done=True, step=len(AI_STEPS), stage="Done", sequence={"id": seq["id"], "name": seq["name"], "summary": seq["summary"]})
         gen_log.record("ai_order", ok=True, images=built["images"], length=length, direction=direction, kimi_ok=built["brief_ok"], summary=seq["summary"], seconds=round(time.time() - t_job, 1))
@@ -1566,7 +1576,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
             job_id = f"job{int(time.time() * 1000)}"
             AI_JOBS[job_id] = {"done": False, "step": 0, "steps": len(AI_STEPS), "stage": AI_STEPS[0], "note": ""}
             only = set(str(f) for f in body["files"]) if isinstance(body.get("files"), list) and body["files"] else None
-            threading.Thread(target=run_ai_order_job, args=(job_id, length, str(body.get("direction", ""))[:300], only), daemon=True).start()
+            gid = str(body["group"]) if body.get("group") else None    # one of your groups: its own order
+            threading.Thread(target=run_ai_order_job, args=(job_id, length, str(body.get("direction", ""))[:300], only, gid), daemon=True).start()
             self.send_json({"ok": True, "job": job_id, "steps": AI_STEPS})
             return
 

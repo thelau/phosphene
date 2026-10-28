@@ -625,7 +625,10 @@
       if (key.startsWith('world:')) { const set = new Set(shown.filter(p => p.world === key.slice(6)).map(p => p.filename)); return set.size ? set : null; }
       return null;
     }
+    // what a group shows: All and the automatic groups in the one order of the selection; one of your groups in its OWN order
     function inGroup(list) {
+      const own = ownGroup();
+      if (own) { const by = new Map(list.map(p => [p.filename, p])); return own.files.map(f => by.get(f)).filter(Boolean); }
       const m = groupMembers(currentGroup);
       return m === 'all' || !m ? list : list.filter(p => m.has(p.filename));
     }
@@ -857,11 +860,13 @@
       if (!ensureKimiReady()) return;
       const shown = plates.filter(p => !p.trashed).length;
       if (shown < 2) { setStatus('Keep at least two images before ordering.'); return; }
-      const before = { order: plates.filter(p => !p.trashed).map(p => p.filename), cut_off: activeCutOff() };   // for Undo: the order as it was
+      const own = ownGroup();                                                 // one of your groups: its own order, nothing else moves
+      const before = own ? { group: own.id, files: [...own.files] } : { order: plates.filter(p => !p.trashed).map(p => p.filename), cut_off: activeCutOff() };   // for Undo
       const body = {
         length: currentGroup === 'all' ? parseInt(document.getElementById('aiLength').value, 10) || null : null,
         direction: document.getElementById('aiDirection').value.trim(),
-        ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // a group: its images change places among themselves
+        ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // an automatic group: its images change places among themselves in All
+        ...(own ? { group: own.id } : {}),
       };
       document.getElementById('aiPanel').hidden = true;
       const start = await (await fetch('/api/order-ai', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify(body) })).json();
@@ -884,8 +889,10 @@
             prog.slots = steps.map(() => 'ok');
             progStop(`Done — AI re-order: ${job.sequence.summary}`);
             await loadState();
-            const after = { order: plates.filter(p => !p.trashed).map(p => p.filename), cut_off: activeCutOff() };
-            const step = pushStep({ label: 'AI re-order', undo: () => restoreOrder(before), redo: () => restoreOrder(after) });
+            const g = before.group && groups.find(x => x.id === before.group);
+            const after = before.group ? { group: before.group, files: g ? [...g.files] : before.files } : { order: plates.filter(p => !p.trashed).map(p => p.filename), cut_off: activeCutOff() };
+            const put = o => (o.group ? groupsCall({ action: 'reorder', id: o.group, files: o.files }) : restoreOrder(o));
+            const step = pushStep({ label: 'AI re-order', undo: () => put(before), redo: () => put(after) });
             setStatus('The AI re-ordered your images.', { label: 'Undo', run: () => undoStep(step) });
             break;
           }
@@ -1133,7 +1140,7 @@
           </div>
         </div>`;
     }
-    function gridHintText() { return aiRunning && !showTrash ? 'Locked while the AI orders' : ''; }   // dragging needs no hint
+    function gridHintText() { return aiRunning && !showTrash ? 'Locked while the AI orders' : ''; }   // (which order a group shows needs no words: as Photos' albums)   // dragging needs no hint
     // the images still being made, at the end of the selection while a batch runs
     function pendingCards() {
       if (!generating || prog.stage !== 'render') return [];
@@ -1275,6 +1282,16 @@
 
       const dragged = draggedFilename;
       const target = targetFilename;
+      const own = ownGroup();
+      if (own) {                                                             // one of your groups: its own order only
+        const before = [...own.files], list = before.filter(f => f !== dragged);
+        list.splice(list.indexOf(target) + (before.indexOf(dragged) < before.indexOf(target) ? 1 : 0), 0, dragged);
+        const put = files => () => groupsCall({ action: 'reorder', id: own.id, files });
+        await put(list)();
+        const p = plates.find(x => x.filename === dragged);
+        pushStep({ label: `Move “${p ? p.title : dragged}” in “${own.name}”`, undo: put(before), redo: put(list) });
+        return;
+      }
       const fromIdx = plates.findIndex(p => p.filename === dragged);
       const toIdx = plates.findIndex(p => p.filename === target);
       if (fromIdx === -1 || toIdx === -1) return;

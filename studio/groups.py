@@ -1,7 +1,8 @@
 """
 Your groups of images (stored in the curation state as st["groups"]): named sets of the selection that the film can play on its own.
-A group is a view, not a copy: an image can be in several groups, the order is the one order of the selection, and trashing an image
-takes it out everywhere it shows. The automatic groups (warm, cold, mono, dark, bright, territories) are worked out in the page from
+A group is a view, not a copy: an image can be in several groups, and trashing an image takes it out everywhere it shows. Each of
+your groups has its OWN order (its files list, in order): dragging or the AI ordering inside it changes only it; new images join at
+its end. All and the automatic groups share the one order of the selection. The automatic groups (warm, cold, mono, dark, bright, territories) are worked out in the page from
 each image's look and territory; only the ones you make are stored here.
 """
 
@@ -28,7 +29,8 @@ def public(st: dict, existing: set) -> list:
 
 
 def act(st: dict, body: dict) -> dict:
-    """create {name, files} · add {id, files} · remove {id, files} · rename {id, name} · delete {id} · restore {group} (undo of a delete)."""
+    """create {name, files} · add {id, files} · remove {id, files} · reorder {id, files} · rename {id, name} · delete {id} ·
+    restore {group} (undo of a delete)."""
     groups = st.setdefault("groups", [])
     action = body.get("action")
     if action == "create":
@@ -56,6 +58,10 @@ def act(st: dict, body: dict) -> dict:
     if action == "remove":
         out = set(_files(body.get("files")))
         g["files"] = [f for f in g["files"] if f not in out]
+        return {"ok": True}
+    if action == "reorder":                                   # its own order: the files given first, in that order, then any not given
+        want = [f for f in _files(body.get("files")) if f in g["files"]]
+        g["files"] = want + [f for f in g["files"] if f not in want]
         return {"ok": True}
     if action == "rename":
         name = _clean_name(body.get("name"))

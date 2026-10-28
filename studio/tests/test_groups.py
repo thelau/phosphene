@@ -35,3 +35,14 @@ def test_looks_for_the_automatic_groups():
     assert F.look({"hue": 210, "sat": 0.4, "lum": 0.8}) == ["cold", "bright"]
     assert F.look({"hue": None, "sat": 0.02, "lum": 0.5}) == ["mono"]
     assert F.look({"hue": 110, "sat": 0.4, "lum": 0.5}) == [], "a green in the middle is neither"
+
+
+def test_each_of_your_groups_keeps_its_own_order():
+    st = {}
+    gid = G.act(st, {"action": "create", "name": "Night", "files": ["a", "b", "c"]})["group"]["id"]
+    assert G.act(st, {"action": "reorder", "id": gid, "files": ["c", "a", "b"]})["ok"]
+    assert G.find(st, gid)["files"] == ["c", "a", "b"], "its own order"
+    assert G.act(st, {"action": "reorder", "id": gid, "files": ["b", "zzz"]})["ok"]
+    assert G.find(st, gid)["files"] == ["b", "c", "a"], "only its own images; the ones not given keep their order after"
+    G.act(st, {"action": "add", "id": gid, "files": ["d"]})
+    assert G.find(st, gid)["files"][-1] == "d", "new images join at its end"
