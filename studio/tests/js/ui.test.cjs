@@ -91,6 +91,7 @@ test('direction placeholder follows the territory selection', async () => {
   $('worldSelect').value = '';
   run('updateDirectionHint()');
   assert.match($('directionInput').placeholder, /^e\.g\. wet apparel/);
+  assert.equal($('terrSub').textContent, '2 of 21 kept', 'Mix it up: what was kept of what was made, across every territory');
   $('worldSelect').value = '__wildcard__';
   run('updateDirectionHint()');
   assert.match($('directionInput').placeholder, /hint for the unexpected territory/i);

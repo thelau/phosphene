@@ -2846,11 +2846,12 @@
     const ICON_PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>';
     const ICON_SPARK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>';
     let refineEditing = false;
-    function namedWorlds() { return [...document.getElementById('worldSelect').options].filter(o => o.classList.contains('w')); }
+    function namedWorlds() { return [...document.getElementById('worldSelect').options].filter(o => o.value && o.value !== '__custom__' && o.value !== '__wildcard__'); }
     function renderGen() {
       const v = document.getElementById('worldSelect').value, custom = v === '__custom__';
       const opt = document.getElementById('worldSelect').selectedOptions[0];
-      const [icon, name, sub] = v === '' ? [ICON_MIX, 'Mix it up', `all ${namedWorlds().length} territories`]
+      const kept = namedWorlds().reduce((a, o) => a + (+o.dataset.kept || 0), 0), made = namedWorlds().reduce((a, o) => a + (+o.dataset.n || 0), 0);
+      const [icon, name, sub] = v === '' ? [ICON_MIX, 'Mix it up', made ? `${kept} of ${made} kept` : 'nothing made yet']   // as a territory's count, across all of them
         : custom ? [ICON_PLUS, 'Custom territory', 'describe it']
         : v === '__wildcard__' ? [ICON_SPARK, 'Unexpected territory', 'Kimi invents one']
         : [ICON_WORLD, v, opt && opt.dataset.n ? `${opt.dataset.kept} of ${opt.dataset.n} kept` : ''];
@@ -2925,7 +2926,7 @@
       const item = (v, inner, cls = '') => `<div class="tm-item ${cls}" role="option" data-v="${escapeHtml(v)}" aria-selected="${v === cur}">${inner}</div>`;
       const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
       let html = '';
-      if (mix) html += item('', `${ICON_MIX}<span><span>Mix it up</span><span class="tm-sub">A bit of every territory</span></span>${check}`, 'big');
+      if (mix) html += item('', `${ICON_MIX}<span><span>Mix it up</span><span class="tm-sub">A bit of every territory, more of what you keep</span></span>${check}`, 'big');
       if (worlds.length) {
         html += '<div class="tm-head"><span>Your territories</span><span>kept of made</span></div>';
         html += worlds.map(o => { const k = +o.dataset.kept || 0, n = +o.dataset.n || 0; return item(o.value, `<span class="tm-name">${escapeHtml(o.value)}${o.dataset.wild ? ' <span class="tm-sub">new</span>' : ''}</span><span class="tm-bar"><i style="width:${n ? Math.round(k / n * 100) : 0}%"></i></span><span class="tm-n">${k} of ${n}</span>${check}`, 'tm-world'); }).join('');
