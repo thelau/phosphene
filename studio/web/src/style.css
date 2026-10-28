@@ -428,8 +428,11 @@
     /* the territory list: a filter, Mix it up, the project's territories with what was kept of what was made, then the two others */
     .terr-menu { position: absolute; left: 0; top: 52px; width: 400px;   /* as wide as its button (set when it opens) */ box-sizing: border-box; padding: 8px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 24px 60px rgba(0,0,0,.55); display: flex; flex-direction: column; gap: 2px; z-index: 30; max-height: calc(100vh - 160px); overflow-y: auto; }
     .terr-menu[hidden] { display: none; }
-    .tm-filter { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 10px; margin-bottom: 4px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line-2); color: var(--faint); }
-    .tm-filter input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13px; padding: 6px 0; }
+    .terr-menu:focus { outline: none; }
+    .tm-cols { display: grid; gap: 0 16px; }
+    .tm-cols.n2 { grid-template-columns: 1fr 1fr; }
+    .tm-world.unmade .tm-name { color: var(--text-2); }
+    .tm-world.unmade .tm-n { color: var(--off); }
     .tm-item { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; border-radius: 7px; font-size: 14px; color: var(--text); cursor: pointer; }
     .tm-item.big { min-height: 44px; }
     .tm-item.active { background: #2A2825; }
@@ -445,7 +448,6 @@
     .tm-n { font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: right; }
     .tm-head { display: flex; justify-content: space-between; padding: 10px 10px 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
     .tm-sep { height: 1px; background: var(--line-2); margin: 6px 4px; }
-    .tm-none { padding: 8px 10px; font-size: 13px; color: var(--faint); }
     @media (max-width: 1400px) { .refine { min-width: 250px; } .gen-row { padding: 12px 20px; } }
     @media (max-width: 1240px) { .terr-btn { width: 360px; } .refine { min-width: 220px; } .gen-row { padding: 10px 16px; } }
     #worldSelect { width: 210px; }

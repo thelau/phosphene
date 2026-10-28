@@ -110,7 +110,7 @@ function start(state = makeState()) {
         res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
         return res.end(`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="16" fill="none" stroke="${state.markColour || '#FEFFE7'}" stroke-width="4"/></svg>`);
       case '/api/worlds':
-        return send({ ok: true, worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', n: 7, kept: 3, wildcard: false }, { name: 'Matter & Elements', brief: 'Fluids and fire.', n: 10, kept: 2, wildcard: false }] });
+        return send({ ok: true, worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', n: 7, kept: 3, wildcard: false }, { name: 'Matter & Elements', brief: 'Fluids and fire.', n: 10, kept: 2, wildcard: false }, ...(state.moreWorlds || [])] });
       case '/api/version': return send({ boot: state.boot || 'fake', html: 0 });
       case '/api/net': return send({ ok: true, online: state.online !== false });
       case '/api/busy': if (req.method === 'POST') state.lease = body.for; return send({ ok: true, busy: !!body.for });

@@ -2908,40 +2908,34 @@
       document.getElementById('genLabel').textContent = prog.stage === 'invent' ? 'Writing scenes…' : `Generating ${done} of ${prog.total}`;
     }
 
-    // the territory list: a filter, Mix it up, the project's territories (kept of made), Custom, New; ↩ chooses
+    // the territory list: Mix it up, the project's territories in two columns (kept of made), Custom, Unexpected; ↑ ↓ and ↩
+    // (no search: Custom and Unexpected batches add a territory each, ~30-40 over a project's life, which two columns hold)
     let terrActive = 0;
-    function terrOptions(filter) {
-      const f = (filter || '').trim().toLowerCase();
-      const sel = document.getElementById('worldSelect');
-      const all = [...sel.options];
-      const mix = all.find(o => o.value === ''), custom = all.find(o => o.value === '__custom__'), wild = all.find(o => o.value === '__wildcard__');
-      const worlds = namedWorlds().filter(o => !f || o.value.toLowerCase().includes(f));
-      return { mix: !f || 'mix it up'.includes(f) ? mix : null, worlds, custom: !f || 'custom territory'.includes(f) ? custom : null, wild: !f || 'unexpected territory'.includes(f) ? wild : null };
+    function terrOptions() {
+      const all = [...document.getElementById('worldSelect').options];
+      return { mix: all.find(o => o.value === ''), worlds: namedWorlds(), custom: all.find(o => o.value === '__custom__'), wild: all.find(o => o.value === '__wildcard__') };
     }
     function renderTerrMenu() {
       const m = document.getElementById('terrMenu');
-      const fv = (m.querySelector('#terrFilter') || {}).value || '';
       const cur = document.getElementById('worldSelect').value;
-      const { mix, worlds, custom, wild } = terrOptions(fv);
+      const { mix, worlds, custom, wild } = terrOptions();
       const item = (v, inner, cls = '') => `<div class="tm-item ${cls}" role="option" data-v="${escapeHtml(v)}" aria-selected="${v === cur}">${inner}</div>`;
       const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
       let html = '';
       if (mix) html += item('', `${ICON_MIX}<span><span>Mix it up</span><span class="tm-sub">A bit of every territory, more of what you keep</span></span>${check}`, 'big');
       if (worlds.length) {
-        html += '<div class="tm-head"><span>Your territories</span><span>kept of made</span></div>';
-        html += worlds.map(o => { const k = +o.dataset.kept || 0, n = +o.dataset.n || 0; return item(o.value, `<span class="tm-name">${escapeHtml(o.value)}${o.dataset.wild ? ' <span class="tm-sub">new</span>' : ''}</span><span class="tm-bar"><i style="width:${n ? Math.round(k / n * 100) : 0}%"></i></span><span class="tm-n">${k} of ${n}</span>${check}`, 'tm-world'); }).join('');
+        const row = o => { const k = +o.dataset.kept || 0, n = +o.dataset.n || 0; return item(o.value, `<span class="tm-name">${escapeHtml(o.value)}${o.dataset.wild ? ' <span class="tm-sub">new</span>' : ''}</span><span class="tm-bar">${n ? `<i style="width:${Math.round(k / n * 100)}%"></i>` : ''}</span><span class="tm-n">${n ? `${k} of ${n}` : '–'}</span>${check}`, 'tm-world' + (n ? '' : ' unmade')); };
+        const half = Math.ceil(worlds.length / 2), cols = worlds.length > 8 ? [worlds.slice(0, half), worlds.slice(half)] : [worlds];   // a few: one column
+        const head = '<div class="tm-head"><span>Your territories</span><span>kept of made</span></div>';
+        html += `<div class="tm-cols n${cols.length}">${cols.map(c => `<div>${head}${c.map(row).join('')}</div>`).join('')}</div>`;
       }
-      if (custom || wild) html += '<div class="tm-sep"></div>';
-      if (custom) html += item('__custom__', `${ICON_PLUS}<span>Custom territory… <span class="tm-sub">describe your own</span></span>${check}`);
-      if (wild) html += item('__wildcard__', `${ICON_SPARK}<span>Unexpected territory <span class="tm-sub">Kimi invents one</span></span>${check}`);
-      if (!html) html = '<div class="tm-none">No territory matches.</div>';
+      if (custom || wild) html += `<div class="tm-sep"></div><div class="tm-cols n2">${custom ? `<div>${item('__custom__', `${ICON_PLUS}<span>Custom territory… <span class="tm-sub">describe your own</span></span>${check}`)}</div>` : ''}${wild ? `<div>${item('__wildcard__', `${ICON_SPARK}<span>Unexpected territory <span class="tm-sub">Kimi invents one</span></span>${check}`)}</div>` : ''}</div>`;
       let list = m.querySelector('.tm-list');
       if (!list) {
-        m.innerHTML = '<label class="tm-filter"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><input id="terrFilter" type="text" placeholder="Type to filter" autocomplete="off" aria-label="Filter the territories" /></label><div class="tm-list"></div>';
+        m.innerHTML = '<div class="tm-list"></div>';
+        m.tabIndex = -1;
         list = m.querySelector('.tm-list');
-        const f = m.querySelector('#terrFilter');
-        f.addEventListener('input', () => { terrActive = 0; renderTerrMenu(); });
-        f.addEventListener('keydown', terrKey);
+        m.addEventListener('keydown', terrKey);
         list.addEventListener('mousedown', e => e.preventDefault());
         list.addEventListener('click', e => { const it = e.target.closest('.tm-item'); if (it) chooseTerr(it.dataset.v); });
         list.addEventListener('mousemove', e => { const it = e.target.closest('.tm-item'); if (it) { terrActive = [...list.querySelectorAll('.tm-item')].indexOf(it); markTerr(); } });
@@ -2964,13 +2958,13 @@
       const btn = document.getElementById('terrBtn');
       btn.setAttribute('aria-expanded', String(open));
       if (!open) return;
-      m.style.width = `${Math.max(400, btn.offsetWidth || 0)}px`;            // the list and its button: one width
-      const f = m.querySelector('#terrFilter'); if (f) f.value = '';
       renderTerrMenu();
+      const two = m.querySelector && m.querySelector('.tm-cols.n2 .tm-world');
+      m.style.width = `${Math.min(innerWidth - 48, Math.max(two ? 800 : 400, btn.offsetWidth || 0))}px`;   // two columns: no scrolling for a project's ~40 territories
       const items = [...m.querySelectorAll('.tm-item')];
       terrActive = Math.max(0, items.findIndex(it => it.getAttribute('aria-selected') === 'true'));
       markTerr();
-      const fi = m.querySelector('#terrFilter'); if (fi && fi.focus) fi.focus();
+      if (m.focus) m.focus();                                                // ↑ ↓ ↩ and Esc work at once
     }
     function terrKey(e) {
       const items = [...document.querySelectorAll('#terrMenu .tm-item')];

@@ -5,7 +5,7 @@ test('generate: a custom territory waits for its description; controls lock, pro
   const ctx = await fresh({ delays: { invent: 300, generate: 500 } });
   await page.click('#terrBtn');                                     // the territory list: Custom at its foot
   await page.waitForSelector('#terrMenu:not([hidden])');
-  assert.equal(await page.evaluate(() => document.activeElement.id), 'terrFilter', 'type to filter at once');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'terrMenu', 'the list has the keys at once (no search field)');
   const [btnBox, menuBox] = [await page.locator('#terrBtn').boundingBox(), await page.locator('#terrMenu').boundingBox()];
   assert.ok(Math.abs(btnBox.width - menuBox.width) < 2 && Math.abs(btnBox.x - menuBox.x) < 2, `the list as wide as its button: ${btnBox.width} / ${menuBox.width}`);
   assert.equal(await page.locator('.terr-label').count(), 0, 'no TERRITORY label: they all are');
@@ -106,5 +106,21 @@ test('the batch size list offers up to 20 images and sends the chosen number', {
   await page.reload();
   await page.waitForSelector('.card');
   assert.equal(await page.inputValue('#batchCountSelect'), '12');                                          // remembered
+  await ctx.close();
+});
+
+test('many territories: two columns, no scrolling, no search; the ones never made show a dash', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945, setup: st => { st.moreWorlds = Array.from({ length: 30 }, (_, i) => ({ name: `Territory ${i + 1}`, brief: '', n: i % 3 ? 0 : 4, kept: i % 3 ? 0 : 1, wildcard: false })); } });
+  await page.click('#terrBtn');
+  await page.waitForSelector('#terrMenu:not([hidden])');
+  assert.equal(await page.locator('#terrMenu input').count(), 0, 'no search');
+  assert.equal(await page.locator('#terrMenu .tm-cols.n2 .tm-world').count(), 32);
+  const m = await page.locator('#terrMenu').evaluate(e => ({ w: e.getBoundingClientRect().width, scrolls: e.scrollHeight > e.clientHeight + 1 }));
+  assert.ok(m.w >= 800 && !m.scrolls, `twice as wide, everything in view: ${JSON.stringify(m)}`);
+  assert.equal(await page.locator('#terrMenu .tm-item[data-v="Territory 2"] .tm-n').textContent(), '–');
+  await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+  assert.equal(await page.inputValue('#worldSelect'), 'Matter & Elements', '↓ ↓ ↩ picks the second territory');
+  await page.click('#terrBtn'); await shot('30-territories-two-columns');
+  await page.keyboard.press('Escape');
   await ctx.close();
 });
