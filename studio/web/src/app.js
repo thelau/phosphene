@@ -2850,15 +2850,10 @@
     function renderGen() {
       const v = document.getElementById('worldSelect').value, custom = v === '__custom__';
       const opt = document.getElementById('worldSelect').selectedOptions[0];
-      const kept = namedWorlds().reduce((a, o) => a + (+o.dataset.kept || 0), 0), made = namedWorlds().reduce((a, o) => a + (+o.dataset.n || 0), 0);
-      const [icon, name, sub] = v === '' ? [ICON_MIX, 'Mix it up', made ? `${kept} of ${made} kept` : 'nothing made yet']   // as a territory's count, across all of them
-        : custom ? [ICON_PLUS, 'Custom territory', 'describe it']
-        : v === '__wildcard__' ? [ICON_SPARK, 'Unexpected territory', 'Kimi invents one']
-        : [ICON_WORLD, v, opt && opt.dataset.n ? `${opt.dataset.kept} of ${opt.dataset.n} kept` : ''];
+      const [icon, name] = v === '' ? [ICON_MIX, 'Mix it up'] : custom ? [ICON_PLUS, 'Custom territory'] : v === '__wildcard__' ? [ICON_SPARK, 'Unexpected territory'] : [ICON_WORLD, v];   // just the name (the counts are in the list)
       const ic = document.getElementById('terrIcon');
       if (ic.dataset.v !== v) { ic.innerHTML = icon; ic.dataset.v = v; }
       document.getElementById('terrName').textContent = name;
-      document.getElementById('terrSub').textContent = sub;
       const input = document.getElementById('directionInput'), text = input.value.trim();
       const r = document.getElementById('refine');
       r.dataset.state = custom || refineEditing ? 'edit' : text ? 'set' : 'empty';
@@ -2922,12 +2917,13 @@
       const item = (v, inner, cls = '') => `<div class="tm-item ${cls}" role="option" data-v="${escapeHtml(v)}" aria-selected="${v === cur}">${inner}</div>`;
       const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
       let html = '';
-      if (mix) html += item('', `${ICON_MIX}<span><span>Mix it up</span><span class="tm-sub">A bit of every territory, more of what you keep</span></span>${check}`, 'big');
+      if (mix) html += item('', `${ICON_MIX}<span><span>Mix it up</span><span class="tm-sub">A bit of every territory</span></span>${check}`, 'big');
+      if (mix && (worlds.length || custom || wild)) html += '<div class="tm-sep"></div>';   // Mix it up apart from the territories
       if (worlds.length) {
         const row = o => { const k = +o.dataset.kept || 0, n = +o.dataset.n || 0; return item(o.value, `<span class="tm-name">${escapeHtml(o.value)}${o.dataset.wild ? ' <span class="tm-sub">new</span>' : ''}</span><span class="tm-bar">${n ? `<i style="width:${Math.round(k / n * 100)}%"></i>` : ''}</span><span class="tm-n">${n ? `${k} of ${n}` : '–'}</span>${check}`, 'tm-world' + (n ? '' : ' unmade')); };
         const half = Math.ceil(worlds.length / 2), cols = worlds.length > 8 ? [worlds.slice(0, half), worlds.slice(half)] : [worlds];   // a few: one column
-        const head = '<div class="tm-head"><span>Your territories</span><span>kept of made</span></div>';
-        html += `<div class="tm-cols n${cols.length}">${cols.map(c => `<div>${head}${c.map(row).join('')}</div>`).join('')}</div>`;
+        html += '<div class="tm-head"><span>Your territories</span><span>kept of made</span></div>';                 // once, over both columns
+        html += `<div class="tm-cols n${cols.length}">${cols.map(c => `<div>${c.map(row).join('')}</div>`).join('')}</div>`;
       }
       if (custom || wild) html += `<div class="tm-sep"></div><div class="tm-cols n2">${custom ? `<div>${item('__custom__', `${ICON_PLUS}<span>Custom territory… <span class="tm-sub">describe your own</span></span>${check}`)}</div>` : ''}${wild ? `<div>${item('__wildcard__', `${ICON_SPARK}<span>Unexpected territory <span class="tm-sub">Kimi invents one</span></span>${check}`)}</div>` : ''}</div>`;
       let list = m.querySelector('.tm-list');
@@ -2960,7 +2956,7 @@
       if (!open) return;
       renderTerrMenu();
       const two = m.querySelector && m.querySelector('.tm-cols.n2 .tm-world');
-      m.style.width = `${Math.min(innerWidth - 48, Math.max(two ? 800 : 400, btn.offsetWidth || 0))}px`;   // two columns: no scrolling for a project's ~40 territories
+      m.style.width = `${Math.min(innerWidth - 48, Math.max(two ? 800 : 400, btn.offsetWidth || 0))}px`;   // two columns: no scrolling for a project's ~40 territories (wider than its button)
       const items = [...m.querySelectorAll('.tm-item')];
       terrActive = Math.max(0, items.findIndex(it => it.getAttribute('aria-selected') === 'true'));
       markTerr();

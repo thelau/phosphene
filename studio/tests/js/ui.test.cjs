@@ -91,7 +91,6 @@ test('direction placeholder follows the territory selection', async () => {
   $('worldSelect').value = '';
   run('updateDirectionHint()');
   assert.match($('directionInput').placeholder, /^e\.g\. wet apparel/);
-  assert.equal($('terrSub').textContent, '2 of 21 kept', 'Mix it up: what was kept of what was made, across every territory');
   $('worldSelect').value = '__wildcard__';
   run('updateDirectionHint()');
   assert.match($('directionInput').placeholder, /hint for the unexpected territory/i);
@@ -105,7 +104,7 @@ test('direction placeholder follows the territory selection', async () => {
   run('updateDirectionHint()');
   assert.match($('directionInput').placeholder, /focus inside Editorial Print, e\.g\. poster, open magazine spread/, 'the territory\'s own subjects');
   assert.equal($('terrName').textContent, 'Editorial Print');
-  assert.equal($('terrSub').textContent, '2 of 21 kept', 'what was kept of what was made, on the button');
+  assert.equal($('terrName').textContent, 'Editorial Print', 'just the name on the button (the counts are in the list)');
   assert.doesNotMatch($('directionInput').placeholder, /fog|rain|lightning/);
 });
 

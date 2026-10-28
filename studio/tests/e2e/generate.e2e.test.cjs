@@ -7,7 +7,7 @@ test('generate: a custom territory waits for its description; controls lock, pro
   await page.waitForSelector('#terrMenu:not([hidden])');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'terrMenu', 'the list has the keys at once (no search field)');
   const [btnBox, menuBox] = [await page.locator('#terrBtn').boundingBox(), await page.locator('#terrMenu').boundingBox()];
-  assert.ok(Math.abs(btnBox.width - menuBox.width) < 2 && Math.abs(btnBox.x - menuBox.x) < 2, `the list as wide as its button: ${btnBox.width} / ${menuBox.width}`);
+  assert.ok(menuBox.width >= btnBox.width && Math.abs(btnBox.x - menuBox.x) < 2, `the list under its button, at least as wide: ${btnBox.width} / ${menuBox.width}`);
   assert.equal(await page.locator('.terr-label').count(), 0, 'no TERRITORY label: they all are');
   assert.match(await page.locator('#terrMenu .tm-item[data-v="__wildcard__"]').textContent(), /Unexpected territory\s+Kimi invents one/);
   await shot('04-territory-list');
@@ -115,6 +115,8 @@ test('many territories: two columns, no scrolling, no search; the ones never mad
   await page.waitForSelector('#terrMenu:not([hidden])');
   assert.equal(await page.locator('#terrMenu input').count(), 0, 'no search');
   assert.equal(await page.locator('#terrMenu .tm-cols.n2 .tm-world').count(), 32);
+  assert.equal(await page.locator('#terrMenu .tm-item.big + .tm-sep').count(), 1, 'a line under Mix it up');
+  assert.equal(await page.locator('#terrMenu .tm-head').count(), 1, 'one header over both columns');
   const m = await page.locator('#terrMenu').evaluate(e => ({ w: e.getBoundingClientRect().width, scrolls: e.scrollHeight > e.clientHeight + 1 }));
   assert.ok(m.w >= 800 && !m.scrolls, `twice as wide, everything in view: ${JSON.stringify(m)}`);
   assert.equal(await page.locator('#terrMenu .tm-item[data-v="Territory 2"] .tm-n').textContent(), '–');
