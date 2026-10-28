@@ -556,26 +556,43 @@
     .size-seg button[aria-pressed="true"] { background: var(--text); color: #1A1A1A; }
     .size-seg i { display: block; border: 1.6px solid currentColor; border-radius: 2px; }
     /* groups: one row of chips (All, yours, then the automatic ones); the picks' actions on the right */
-    .group-row { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 24px 12px; min-height: 34px; }
+    .group-row { flex: none; display: flex; align-items: center; gap: 8px; padding: 2px 24px 12px; min-height: 34px; position: relative; }
     .group-row[hidden] { display: none; }
-    .group-bar { display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+    .group-bar { flex: 1; display: flex; gap: 6px; min-width: 0; overflow: hidden; }
+    .group-bar .out { display: none; }                                   /* behind "+N more" */
+    .chip-overflow[hidden] { display: none; }
+    .auto-menus { flex: none; display: flex; align-items: center; gap: 6px; }
+    .auto-label { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin-right: 2px; }
+    .auto-btn { display: inline-flex; align-items: center; height: 30px; box-sizing: border-box; border-radius: 7px; border: 1px solid #34312C; }
+    .auto-btn > button { height: 28px; padding: 0 10px 0 12px; display: flex; align-items: center; gap: 7px; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .auto-btn > button span { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--faint); }
+    .auto-btn > button[aria-expanded="true"] { background: var(--field); }
+    .auto-btn.on { border-color: var(--text); background: #2A2825; }
+    .auto-btn.on > button { color: var(--text); padding-right: 8px; }
+    .auto-btn.on > button span { color: var(--text-2); }
+    .auto-btn .auto-x { width: 24px; height: 24px; margin-right: 3px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 5px; background: var(--text); color: #1A1A1A; }
+    .gm-title { padding: 4px 10px 6px; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+    .gm-item .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; box-shadow: inset 0 0 0 1px rgba(254,255,231,.2); }
+    .gm-item .gm-n { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+    .gm-item.on { background: #2A2825; color: var(--text); }
+    .gm-note { padding: 8px 10px 2px; font-size: 12px; line-height: 1.4; color: var(--faint); max-width: 260px; }
+    .gm-sep { height: 1px; background: var(--line-2); margin: 4px; }
+    .gm-plus { color: var(--orange); }
     .group-bar::-webkit-scrollbar { display: none; }
-    .group-bar.fade-r { mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
-    .group-bar.fade-l { mask-image: linear-gradient(to right, transparent, #000 48px); }
-    .group-bar.fade-l.fade-r { mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent); }
-    .chip { flex: none; height: 28px; padding: 0 11px; border-radius: 14px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; white-space: nowrap; transition: none; }
-    .chip span { font-family: var(--mono); font-size: 10px; font-weight: 400; color: var(--faint); margin-left: 3px; }
+    .chip { flex: none; height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid #34312C; background: #1C1B19; color: #E4E0CC; font-size: 13px; font-weight: 600; white-space: nowrap; transition: none; }
+    .chip span { font-family: var(--mono); font-size: 11px; font-weight: 500; opacity: .65; margin-left: 3px; }
     .chip:hover { border-color: var(--line-3); color: var(--text); }
     .chip.on { background: var(--text); border-color: var(--text); color: #1A1A1A; }
     .chip.on span { color: #5E5A50; }
     .chip-more { flex: none; width: 28px; height: 28px; margin-left: -2px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 14px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); transition: none; }
     .chip-more:hover { color: var(--text); border-color: var(--line-3); }
-    .chip-sep { flex: none; width: 1px; margin: 4px 4px; background: var(--line-2); }
-    .pick-bar { flex: none; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+    .pick-bar { position: fixed; left: 50%; bottom: calc(24px + var(--status-h, 0px)); transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 12px; background: #262522; border: 1px solid #45423B; box-shadow: 0 20px 50px rgba(0,0,0,.6); }
     .pick-bar[hidden] { display: none; }
-    .pick-bar::before { content: ''; width: 1px; height: 20px; margin-right: 4px; background: var(--line-2); }   /* the picks' actions, set apart from the chips */
-    .pick-bar button:not(.icon-btn) { height: 28px; padding: 0 12px; font-size: 12px; }
-    .pick-bar .icon-btn.small { width: 28px; height: 28px; }   /* the chips' height: picking must not move the row */
+    .pick-n { font-size: 14px; font-weight: 700; white-space: nowrap; }
+    .pick-hint { font-size: 12px; color: var(--faint); white-space: nowrap; }
+    .pick-add { height: 34px; padding: 0 14px; display: flex; align-items: center; gap: 8px; border-radius: 8px; border: 0; background: var(--text); color: #1A1A1A; font-size: 13px; font-weight: 700; white-space: nowrap; }
+    .pick-out { height: 34px; padding: 0 12px; border-radius: 8px; font-size: 13px; white-space: nowrap; }
+    .pick-x { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; padding: 0; border-radius: 8px; border: 1px solid #45423B; background: transparent; color: var(--text-2); }
     .group-menu { position: fixed; z-index: 120; min-width: 220px; padding: 6px; display: flex; flex-direction: column; gap: 2px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 20px 50px rgba(0,0,0,.55); }
     .group-menu[hidden] { display: none; }
     .gm-item { text-align: left; height: 32px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 500; }

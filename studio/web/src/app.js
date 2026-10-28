@@ -642,52 +642,47 @@
       Object.entries(worlds).filter(([, n]) => n >= 6).sort((a, b) => b[1] - a[1]).forEach(([w, n]) => auto.push({ key: `world:${w}`, name: w, n }));
       return { chips, auto };
     }
+    // Curate's group row: All and your own groups as chips (those that do not fit behind "+N more", never the chosen one), then on
+    // the right the automatic groups in two menus, Look and Territory (a chosen one shows in its button: "Look: Warm ×")
+    const LOOK_SWATCH = { warm: '#C8743A', cold: '#4C7BD1', mono: '#8A877C', dark: '#1A1A1A', bright: '#F3EFD9' };
+    function autoKinds() {
+      const { auto } = groupChips();
+      return { look: auto.filter(c => c.key.startsWith('look:')), terr: auto.filter(c => c.key.startsWith('world:')) };
+    }
     function renderGroups() {
       const bar = document.getElementById('groupBar');
       document.getElementById('groupRow').hidden = showTrash;
       const { chips, auto } = groupChips();
       const menu = '<button type="button" class="chip-more" id="groupMenuBtn" onclick="openGroupMenu(event, \'edit\')" title="Rename or delete this group" aria-label="Rename or delete this group"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></button>';
       const chip = c => `<button type="button" class="chip${c.key === currentGroup ? ' on' : ''}${c.own ? ' own' : ''}" data-key="${escapeHtml(c.key)}" onclick="setGroup(this.dataset.key)">${escapeHtml(c.name)} <span>${c.n}</span></button>${c.own && c.key === currentGroup ? menu : ''}`;   // your group's menu sits right after its chip
-      bar.innerHTML = chips.map(chip).join('') + (auto.length ? '<i class="chip-sep"></i>' + auto.map(chip).join('') : '');
+      bar.innerHTML = chips.map(chip).join('') + '<button type="button" class="chip chip-overflow" id="moreChip" onclick="openGroupMenu(event, \'more\')" aria-haspopup="menu" hidden></button>';
+      fitChips();
+      const kinds = autoKinds();
+      const autoBtn = (kind, list, label) => {
+        if (!list.length) return '';
+        const on = list.find(c => c.key === currentGroup);
+        const caret = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>';
+        const tip = kind === 'look' ? 'Automatic groups by look' : 'Automatic groups, one per territory with 6+ images';
+        return on
+          ? `<span class="auto-btn on"><button type="button" id="auto-${kind}" onclick="openGroupMenu(event, '${kind}')" aria-haspopup="menu" title="${tip}">${label}: ${escapeHtml(on.name)} <span>${on.n}</span></button><button type="button" class="auto-x" onclick="setGroup('all')" aria-label="Clear ${label}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span>`
+          : `<span class="auto-btn"><button type="button" id="auto-${kind}" onclick="openGroupMenu(event, '${kind}')" aria-haspopup="menu" title="${tip}">${label} <span>${list.length}</span>${caret}</button></span>`;
+      };
+      const am = kinds.look.length || kinds.terr.length ? '<span class="auto-label">Auto</span>' + autoBtn('look', kinds.look, 'Look') + autoBtn('terr', kinds.terr, 'Territory') : '';
+      const amEl = document.getElementById('autoMenus');
+      if (amEl.innerHTML !== am) amEl.innerHTML = am;
       const own = ownGroup();
       document.getElementById('removeFromGroupBtn').hidden = !own;
-      // the same choice in Film, as a dropdown above the film strip
+      // the same choice in Film, as a dropdown above the film strip: your groups, then Look, then Territory
       const fg = document.getElementById('filmGroup');
       const opt = c => `<option value="${escapeHtml(c.key)}">${escapeHtml(c.name)} (${c.n})</option>`;
-      fg.innerHTML = chips.map(opt).join('') + (auto.length ? `<optgroup label="Automatic">${auto.map(opt).join('')}</optgroup>` : '');
+      fg.innerHTML = chips.map(opt).join('') + (kinds.look.length ? `<optgroup label="Look">${kinds.look.map(opt).join('')}</optgroup>` : '') + (kinds.terr.length ? `<optgroup label="Territory">${kinds.terr.map(opt).join('')}</optgroup>` : '');
       fg.value = currentGroup;
       syncSelects();
-      revealGroupChip();
-      groupFade();
       document.getElementById('miniTitle').textContent = currentGroup === 'all' ? 'Film' : (chips.concat(auto).find(c => c.key === currentGroup) || { name: 'Film' }).name;
       const len = document.getElementById('aiLength');
       len.disabled = currentGroup !== 'all';                                 // best N is for the whole selection
       if (len.disabled) len.value = '';
     }
-    // the chips scroll sideways (trackpad, Shift+wheel, or the wheel itself); a fade shows on the side that has more
-    let shownGroup = null;
-    function revealGroupChip() {                                             // a new choice (here, from Film, or on load): its chip into view, once the row can be seen
-      const bar = document.getElementById('groupBar'), on = bar.querySelector && bar.querySelector('.chip.on');
-      if (shownGroup === currentGroup || !on || !bar.clientWidth || !on.scrollIntoView) return;
-      shownGroup = currentGroup;
-      on.scrollIntoView({ block: 'nearest', inline: 'center' });            // centred: clear of the fades
-      groupFade();
-    }
-    function groupFade() {
-      const b = document.getElementById('groupBar');
-      if (!b.classList || b.scrollWidth === undefined) return;
-      b.classList.toggle('fade-l', b.scrollLeft > 1);
-      b.classList.toggle('fade-r', b.scrollLeft + b.clientWidth < b.scrollWidth - 1);
-    }
-    (() => {
-      const b = document.getElementById('groupBar');
-      if (!b.addEventListener) return;
-      b.addEventListener('scroll', groupFade, { passive: true });
-      b.addEventListener('wheel', e => {
-        if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && b.scrollWidth > b.clientWidth) { b.scrollLeft += e.deltaY; e.preventDefault(); }
-      }, { passive: false });
-      window.addEventListener('resize', groupFade);
-    })();
     function setGroup(key) {
       if (!groupMembers(key)) key = 'all';
       if (key === currentGroup) return;
@@ -718,11 +713,29 @@
     function clearPicks() { pickSel = new Set(); closeGroupMenu(); syncSelection(); }
     function updatePickBar() {
       const n = showTrash ? 0 : pickSel.size;
-      document.getElementById('pickBar').hidden = !n;
-      document.getElementById('pickCount').textContent = `${n} selected`;
+      document.getElementById('pickBar').hidden = !n || mode !== 'curate';
+      document.getElementById('pickCount').textContent = `${n} picked`;
       document.body.classList.toggle('picking', n > 0);                     // every card shows its circle while picking
-      groupFade();                                                           // the bar takes width from the chips
     }
+    // the chips that fit, in order, the chosen one always among them; the rest behind "+N more"
+    function fitChips() {
+      const bar = document.getElementById('groupBar'), more = document.getElementById('moreChip');
+      if (!bar.querySelectorAll || !more) return;
+      const items = [...bar.children].filter(el => el !== more);
+      items.forEach(el => el.classList.remove('out'));
+      more.hidden = true;
+      const avail = bar.clientWidth;
+      if (!avail) return;                                                    // not laid out (hidden): fitted when shown
+      const gap = 6, w = el => el.offsetWidth + gap;
+      if (items.reduce((a, el) => a + w(el), 0) <= avail + gap) return;
+      const keep = new Set(items.filter(el => el.classList.contains('on') || el.id === 'groupMenuBtn'));
+      let used = 96 + [...keep].reduce((a, el) => a + w(el), 0);           // room for "+N more" and the chosen one
+      const hidden = [];
+      items.forEach(el => { if (keep.has(el)) return; if (used + w(el) <= avail) used += w(el); else { el.classList.add('out'); hidden.push(el); } });
+      more.hidden = !hidden.length;
+      more.innerHTML = `+${hidden.length} more <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>`;
+    }
+    addEventListener('resize', () => { if (mode === 'curate') fitChips(); });
     async function groupsCall(payload) {
       const res = await (await fetch('/api/groups', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify(payload) })).json();
       if (!res.ok) { setStatus(res.error || 'Could not do that.'); return null; }
@@ -737,19 +750,45 @@
       if (!m.hidden && groupMenuFor === mode) { closeGroupMenu(); return; }
       groupMenuFor = mode;
       const own = ownGroup();
+      const pick = c => `<button type="button" class="gm-item${c.key === currentGroup ? ' on' : ''}" data-key="${escapeHtml(c.key)}" onclick="closeGroupMenu(); setGroup(this.dataset.key)">${c.sw ? `<i class="sw" style="background:${c.sw}"></i>` : ''}<span>${escapeHtml(c.name)}</span><span class="gm-n">${c.n}</span></button>`;
+      const kinds = autoKinds();
+      const hiddenOwn = [...document.querySelectorAll('#groupBar .chip.out')].map(el => groupChips().chips.find(c => c.key === el.dataset.key)).filter(Boolean);
       m.innerHTML = mode === 'add'
-        ? groups.map(g => `<button type="button" class="gm-item" data-id="${g.id}" onclick="addToGroup(this.dataset.id)">${escapeHtml(g.name)}</button>`).join('')
-          + `<form class="gm-new" onsubmit="event.preventDefault(); newGroup(this.elements.name.value)"><input name="name" id="groupNameInput" type="text" maxlength="40" placeholder="New group…" autocomplete="off" /><button type="submit">Add</button></form>`
-        : `<form class="gm-new" onsubmit="event.preventDefault(); renameGroup(this.elements.name.value)"><input name="name" id="groupNameInput" type="text" maxlength="40" value="${escapeHtml(own ? own.name : '')}" autocomplete="off" /><button type="submit">Rename</button></form>`
-          + `<button type="button" class="gm-item danger-text" onclick="deleteGroup()">Delete group</button>`;
-      const anchor = document.getElementById(mode === 'add' ? 'addToGroupBtn' : 'groupMenuBtn').getBoundingClientRect();
+        ? `<button type="button" class="gm-item" id="gmNewBtn" onclick="showNewGroupForm(event)"><span class="gm-plus">＋</span> New group…</button>`
+          + (groups.length ? '<div class="gm-sep"></div>' + groups.map(g => `<button type="button" class="gm-item" data-id="${g.id}" onclick="addToGroup(this.dataset.id)"><span>${escapeHtml(g.name)}</span><span class="gm-n">${g.files.length}</span></button>`).join('') : '')
+        : mode === 'edit'
+          ? `<form class="gm-new" onsubmit="event.preventDefault(); renameGroup(this.elements.name.value)"><input name="name" id="groupNameInput" type="text" maxlength="40" value="${escapeHtml(own ? own.name : '')}" autocomplete="off" /><button type="submit">Rename</button></form>`
+            + `<button type="button" class="gm-item danger-text" onclick="deleteGroup()">Delete group</button>`
+        : mode === 'more' ? hiddenOwn.map(pick).join('')
+        : mode === 'look' ? '<div class="gm-title">Auto · Look</div>' + kinds.look.map(c => pick({ ...c, sw: LOOK_SWATCH[c.key.slice(5)] })).join('')
+        : '<div class="gm-title">Auto · Territory</div>' + kinds.terr.map(pick).join('') + '<div class="gm-note">One group for every territory with 6 or more images. Smaller ones join once they grow.</div>';
+      const anchorEl = document.getElementById({ add: 'addToGroupBtn', edit: 'groupMenuBtn', more: 'moreChip', look: 'auto-look', terr: 'auto-terr' }[mode]);
+      if (!anchorEl) return;
+      const anchor = anchorEl.getBoundingClientRect();
       m.hidden = false;
-      m.style.top = `${anchor.bottom + 6}px`;
-      m.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - m.offsetWidth - 8))}px`;
-      if (mode === 'add' && !groups.length || mode === 'edit') { const i = document.getElementById('groupNameInput'); if (i && i.focus) i.focus(); if (mode === 'edit' && i && i.select) i.select(); }
+      document.querySelectorAll('#autoMenus [aria-haspopup]').forEach(b => b.setAttribute('aria-expanded', String(b === anchorEl)));
+      if (mode === 'add') m.style.top = `${anchor.top - m.offsetHeight - 8}px`;                    // the pick bar is at the bottom: the menu opens upward
+      else m.style.top = `${anchor.bottom + 6}px`;
+      const left = mode === 'look' || mode === 'terr' ? anchor.right - m.offsetWidth : anchor.left;   // the Auto menus line up with the right edge
+      m.style.left = `${Math.max(8, Math.min(left, innerWidth - m.offsetWidth - 8))}px`;
+      if (mode === 'add' && !groups.length) showNewGroupForm();
+      if (mode === 'edit') { const i = document.getElementById('groupNameInput'); if (i && i.focus) i.focus(); if (i && i.select) i.select(); }
     }
-    function closeGroupMenu() { const m = document.getElementById('groupMenu'); if (m) m.hidden = true; groupMenuFor = null; }
-    document.addEventListener('click', e => { if (!(e.target.closest && (e.target.closest('#groupMenu') || e.target.closest('#addToGroupBtn') || e.target.closest('#groupMenuBtn')))) closeGroupMenu(); });
+    // "New group…" becomes its name field, in place (the menu stays open: the click must not reach the click-outside rule)
+    function showNewGroupForm(e) {
+      if (e && e.stopPropagation) e.stopPropagation();
+      const b = document.getElementById('gmNewBtn');
+      if (!b) return;
+      b.outerHTML = `<form class="gm-new" onsubmit="event.preventDefault(); newGroup(this.elements.name.value)"><input name="name" id="groupNameInput" type="text" maxlength="40" placeholder="New group…" autocomplete="off" /><button type="submit">Add</button></form>`;
+      const m = document.getElementById('groupMenu'), a = document.getElementById('addToGroupBtn').getBoundingClientRect();
+      m.style.top = `${a.top - m.offsetHeight - 8}px`;                      // taller now: still above the pick bar
+      const i = document.getElementById('groupNameInput'); if (i && i.focus) i.focus();
+    }
+    function closeGroupMenu() {
+      const m = document.getElementById('groupMenu'); if (m) m.hidden = true; groupMenuFor = null;
+      document.querySelectorAll('#autoMenus [aria-haspopup]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+    }
+    document.addEventListener('click', e => { if (!(e.target.closest && e.target.closest('#groupMenu, #addToGroupBtn, #groupMenuBtn, #moreChip, #auto-look, #auto-terr'))) closeGroupMenu(); });
     async function addToGroup(id) {
       const g = groups.find(x => x.id === id), files = [...pickSel].filter(f => g && !g.files.includes(f));
       closeGroupMenu();
@@ -1265,7 +1304,8 @@
       const stage = document.getElementById('stage'), host = document.getElementById(mode === 'film' ? 'stageHome' : 'stageMini');
       if (stage.parentNode !== host && host.appendChild) host.appendChild(stage);
       if (mode === 'film') scrollFilmstripTo(currentIdx);
-      else revealGroupChip();
+      else fitChips();                                                       // measured once the row can be seen
+      updatePickBar();
     }
     // Tab switches the mode and Space plays, except while typing in a field (Tab still moves between fields there)
     function typingIn(t) {
@@ -3466,7 +3506,7 @@
 Object.assign(window, {
   installUpdate,
   exportProject, importProject, importProjectPath, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
-  downloadShown, openViewer, closeViewer, viewerStep, toggleTerrMenu, editRefine, clearRefine,
+  downloadShown, openViewer, closeViewer, viewerStep, toggleTerrMenu, editRefine, clearRefine, closeGroupMenu, showNewGroupForm,
   openProjectMenu, switchProject, openProjectForm, closeProjectForm, readProjectMark, drawProjectPreview, saveProject,
   removeChange,
   includeAll,

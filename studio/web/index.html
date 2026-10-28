@@ -236,17 +236,20 @@
           <button class="icon-btn refresh-btn" id="refreshBtn" onclick="refreshLibrary(true)" title="Check for new images now (the page also checks by itself every so often). Film refreshes with it." aria-label="Refresh the library"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
           <input type="hidden" id="thumbSizeVal" value="M" />
         </div>
+        <!-- your own groups as chips (those that do not fit behind "+N more"); the automatic ones in two menus on the right -->
         <div class="group-row" id="groupRow">
           <div class="group-bar" id="groupBar" role="tablist" aria-label="Groups"></div>
-          <span class="grow"></span>
-          <div class="pick-bar" id="pickBar" hidden>
-            <span id="pickCount">0 selected</span>
-            <button type="button" id="addToGroupBtn" onclick="openGroupMenu(event, 'add')">Add to group</button>
-            <button type="button" id="removeFromGroupBtn" onclick="removeFromGroup()" hidden>Remove from group</button>
-            <button type="button" class="icon-btn small" id="clearPickBtn" onclick="clearPicks()" title="Clear the selection (Esc)" aria-label="Clear the selection">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
-            </button>
-          </div>
+          <div class="auto-menus" id="autoMenus"></div>
+        </div>
+        <!-- picking floats at the bottom, never over the chips -->
+        <div class="pick-bar" id="pickBar" role="toolbar" aria-label="Picked images" hidden>
+          <span class="pick-n" id="pickCount">0 picked</span>
+          <span class="pick-hint">⌘-click to add</span>
+          <button type="button" class="pick-add" id="addToGroupBtn" onclick="openGroupMenu(event, 'add')" aria-haspopup="menu">Add to group <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"></path></svg></button>
+          <button type="button" class="pick-out" id="removeFromGroupBtn" onclick="removeFromGroup()" hidden>Remove from group</button>
+          <button type="button" class="pick-x" id="clearPickBtn" onclick="clearPicks()" title="Clear the picks (Esc)" aria-label="Clear picks">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+          </button>
         </div>
         <div class="group-menu" id="groupMenu" hidden></div>
         <div class="lock-banner" id="aiLock" role="status" hidden>
