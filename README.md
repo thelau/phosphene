@@ -81,6 +81,7 @@ publishing, open the built app (`app/src-tauri/target/release/bundle/macos/Phosp
 - [ ] **A `.phos` file double-clicked in Finder** opens as a project.
 - [ ] **Settings › Connect Krea** opens Krea's sign-in in your browser and comes back connected.
 - [ ] **Generate** a small batch (2 images): they arrive with the logo check's badges.
+- [ ] **Drag a card** to another place in Curate: it moves (the window's file-drop handler used to take every drag).
 - [ ] **Sound**: Film › play: the drone plays. Put Phosphene behind other windows for 5 minutes, come back: it still plays.
 - [ ] **Export** a short film: "Downloaded", and the MP4 in Downloads plays (not a tiny broken file).
 - [ ] **⌘Q while generating** asks "Quit anyway / Keep working"; reopening offers to Resume the images not made.

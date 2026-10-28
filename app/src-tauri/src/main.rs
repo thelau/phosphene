@@ -243,6 +243,9 @@ fn main() {
                 // never suspended when hidden: after ~4 min behind other windows WebKit suspended the page's process and its audio session,
                 // and the sound stayed silent (every context still 'running') until a reload; macOS 14+ (WKInactiveSchedulingPolicy::None)
                 .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
+                // the page's own drag and drop (reordering cards): Tauri's file-drop handler took every drag, so cards could not be
+                // moved in the app (fine in a browser); Finder files reach the app another way (RunEvent::Opened), not by a drop
+                .disable_drag_drop_handler()
                 .on_download(move |_webview, event| {
                     if let DownloadEvent::Requested { destination, .. } = event {
                         let name = destination.file_name().and_then(|n| n.to_str()).unwrap_or("download").to_string();
