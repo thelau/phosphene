@@ -2825,10 +2825,10 @@
         say = 'Mix it up: we pick the territory, mostly ones whose images you keep, sometimes ones you haven\'t tried, sometimes a brand-new one. Type a direction and we match it to the closest territory.';
       } else if (v === '__custom__') {
         input.placeholder = 'what is it? e.g. fog, clouds, rain, lightning';
-        say = 'Custom territory: describe it and every image will be about that. A look and palette are invented for it.';
+        say = 'Describe your own: every image will be about what you write. A look and palette are invented for it.';
       } else if (v === '__wildcard__') {
-        input.placeholder = 'a hint for the unexpected territory';
-        say = 'Unexpected territory: Kimi invents a fresh area we don\'t cover yet.';
+        input.placeholder = 'a hint for Kimi, if you like';
+        say = 'Surprise me: Kimi invents a territory we don\'t cover yet.';
       } else {
         const opt = sel.selectedOptions[0];
         const eg = opt && opt.dataset.examples;                                   // the territory's own subjects: what typed here changes
@@ -2850,7 +2850,7 @@
     function renderGen() {
       const v = document.getElementById('worldSelect').value, custom = v === '__custom__';
       const opt = document.getElementById('worldSelect').selectedOptions[0];
-      const [icon, name] = v === '' ? [ICON_MIX, 'Mix it up'] : custom ? [ICON_PLUS, 'Custom territory'] : v === '__wildcard__' ? [ICON_SPARK, 'Unexpected territory'] : [ICON_WORLD, v];   // just the name (the counts are in the list)
+      const [icon, name] = v === '' ? [ICON_MIX, 'Mix it up'] : custom ? [ICON_PLUS, 'Describe your own'] : v === '__wildcard__' ? [ICON_SPARK, 'Surprise me'] : [ICON_WORLD, v];   // just the name (the counts are in the list)
       const ic = document.getElementById('terrIcon');
       if (ic.dataset.v !== v) { ic.innerHTML = icon; ic.dataset.v = v; }
       document.getElementById('terrName').textContent = name;
@@ -2918,10 +2918,10 @@
       const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
       // one column: the two ways to a new territory first, Mix it up, then the project's territories (new ones join at the end)
       let html = '';
-      if (custom) html += item('__custom__', `${ICON_PLUS}<span>Custom territory… <span class="tm-sub">describe your own</span></span>${check}`);
-      if (wild) html += item('__wildcard__', `${ICON_SPARK}<span>Unexpected territory <span class="tm-sub">Kimi invents one</span></span>${check}`);
+      if (custom) html += item('__custom__', `${ICON_PLUS}<span>Describe your own <span class="tm-sub">in your own words</span></span>${check}`);
+      if (wild) html += item('__wildcard__', `${ICON_SPARK}<span>Surprise me <span class="tm-sub">Kimi invents a territory</span></span>${check}`);
       if (custom || wild) html += '<div class="tm-sep"></div>';
-      if (mix) html += item('', `${ICON_MIX}<span><span>Mix it up</span><span class="tm-sub">A bit of every territory</span></span>${check}`, 'big');
+      if (mix) html += item('', `${ICON_MIX}<span>Mix it up <span class="tm-sub">a mix of your territories</span></span>${check}`);   // (not quite random: pickWorld leans on what you keep)
       if (worlds.length) {
         const row = o => { const k = +o.dataset.kept || 0, n = +o.dataset.n || 0; return item(o.value, `<span class="tm-name">${escapeHtml(o.value)}${o.dataset.wild ? ' <span class="tm-sub">new</span>' : ''}</span><span class="tm-bar">${n ? `<i style="width:${Math.round(k / n * 100)}%"></i>` : ''}</span><span class="tm-n">${n ? `${k} of ${n}` : '–'}</span>${check}`, 'tm-world' + (n ? '' : ' unmade')); };
         if (mix) html += '<div class="tm-sep"></div>';

@@ -9,7 +9,10 @@ test('generate: a custom territory waits for its description; controls lock, pro
   const [btnBox, menuBox] = [await page.locator('#terrBtn').boundingBox(), await page.locator('#terrMenu').boundingBox()];
   assert.ok(menuBox.width >= btnBox.width && Math.abs(btnBox.x - menuBox.x) < 2, `the list under its button, at least as wide: ${btnBox.width} / ${menuBox.width}`);
   assert.equal(await page.locator('.terr-label').count(), 0, 'no TERRITORY label: they all are');
-  assert.match(await page.locator('#terrMenu .tm-item[data-v="__wildcard__"]').textContent(), /Unexpected territory\s+Kimi invents one/);
+  assert.match(await page.locator('#terrMenu .tm-item[data-v="__wildcard__"]').textContent(), /Surprise me\s+Kimi invents a territory/);
+  assert.match(await page.locator('#terrMenu .tm-item[data-v=""]').textContent(), /Mix it up\s+a mix of your territories/, 'what it is, beside it as for the two above');
+  const mixH = (await page.locator('#terrMenu .tm-item[data-v=""]').boundingBox()).height, cH = (await page.locator('#terrMenu .tm-item[data-v="__custom__"]').boundingBox()).height;
+  assert.ok(Math.abs(mixH - cH) < 2, `Mix it up on one line, as the two above (${mixH} / ${cH})`);
   await shot('04-territory-list');
   await page.click('#terrMenu .tm-item[data-v="__custom__"]');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'directionInput', 'its description opens at once');

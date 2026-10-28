@@ -435,6 +435,7 @@
     .tm-item.big { min-height: 44px; }
     .tm-item.active { background: #2A2825; }
     .tm-item .tm-sub { font-size: 12px; color: var(--faint); margin-left: 6px; }
+    .tm-item > span:not(.tm-name):not(.tm-bar):not(.tm-n) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }   /* every item on one line */
     .tm-item.big .tm-sub { margin-left: 0; }
     .tm-item.big .tm-sub { display: block; color: var(--muted); }
     .tm-item .tm-check { margin-left: auto; color: var(--orange); visibility: hidden; }
