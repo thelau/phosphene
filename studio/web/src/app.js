@@ -2903,8 +2903,8 @@
       document.getElementById('genLabel').textContent = prog.stage === 'invent' ? 'Writing scenes…' : `Generating ${done} of ${prog.total}`;
     }
 
-    // the territory list: Mix it up, the project's territories in two columns (kept of made), Custom, Unexpected; ↑ ↓ and ↩
-    // (no search: Custom and Unexpected batches add a territory each, ~30-40 over a project's life, which two columns hold)
+    // the territory list, one column: Custom and Unexpected, Mix it up, the project's territories (kept of made); ↑ ↓ and ↩
+    // (no search: Custom and Unexpected batches add a territory each, ~30-40 over a project's life)
     let terrActive = 0;
     function terrOptions() {
       const all = [...document.getElementById('worldSelect').options];
@@ -2916,16 +2916,17 @@
       const { mix, worlds, custom, wild } = terrOptions();
       const item = (v, inner, cls = '') => `<div class="tm-item ${cls}" role="option" data-v="${escapeHtml(v)}" aria-selected="${v === cur}">${inner}</div>`;
       const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
+      // one column: the two ways to a new territory first, Mix it up, then the project's territories (new ones join at the end)
       let html = '';
+      if (custom) html += item('__custom__', `${ICON_PLUS}<span>Custom territory… <span class="tm-sub">describe your own</span></span>${check}`);
+      if (wild) html += item('__wildcard__', `${ICON_SPARK}<span>Unexpected territory <span class="tm-sub">Kimi invents one</span></span>${check}`);
+      if (custom || wild) html += '<div class="tm-sep"></div>';
       if (mix) html += item('', `${ICON_MIX}<span><span>Mix it up</span><span class="tm-sub">A bit of every territory</span></span>${check}`, 'big');
-      if (mix && (worlds.length || custom || wild)) html += '<div class="tm-sep"></div>';   // Mix it up apart from the territories
       if (worlds.length) {
         const row = o => { const k = +o.dataset.kept || 0, n = +o.dataset.n || 0; return item(o.value, `<span class="tm-name">${escapeHtml(o.value)}${o.dataset.wild ? ' <span class="tm-sub">new</span>' : ''}</span><span class="tm-bar">${n ? `<i style="width:${Math.round(k / n * 100)}%"></i>` : ''}</span><span class="tm-n">${n ? `${k} of ${n}` : '–'}</span>${check}`, 'tm-world' + (n ? '' : ' unmade')); };
-        const half = Math.ceil(worlds.length / 2), cols = worlds.length > 8 ? [worlds.slice(0, half), worlds.slice(half)] : [worlds];   // a few: one column
-        html += '<div class="tm-head"><span>Your territories</span><span>kept of made</span></div>';                 // once, over both columns
-        html += `<div class="tm-cols n${cols.length}">${cols.map(c => `<div>${c.map(row).join('')}</div>`).join('')}</div>`;
+        if (mix) html += '<div class="tm-sep"></div>';
+        html += '<div class="tm-head"><span>Your territories</span><span>kept of made</span></div>' + worlds.map(row).join('');
       }
-      if (custom || wild) html += `<div class="tm-sep"></div><div class="tm-cols n2">${custom ? `<div>${item('__custom__', `${ICON_PLUS}<span>Custom territory… <span class="tm-sub">describe your own</span></span>${check}`)}</div>` : ''}${wild ? `<div>${item('__wildcard__', `${ICON_SPARK}<span>Unexpected territory <span class="tm-sub">Kimi invents one</span></span>${check}`)}</div>` : ''}</div>`;
       let list = m.querySelector('.tm-list');
       if (!list) {
         m.innerHTML = '<div class="tm-list"></div>';
@@ -2955,8 +2956,7 @@
       btn.setAttribute('aria-expanded', String(open));
       if (!open) return;
       renderTerrMenu();
-      const two = m.querySelector && m.querySelector('.tm-cols.n2 .tm-world');
-      m.style.width = `${Math.min(innerWidth - 48, Math.max(two ? 800 : 400, btn.offsetWidth || 0))}px`;   // two columns: no scrolling for a project's ~40 territories (wider than its button)
+      m.style.width = `${Math.max(400, btn.offsetWidth || 0)}px`;              // one column (scrolls past what fits: a project's territories grow)
       const items = [...m.querySelectorAll('.tm-item')];
       terrActive = Math.max(0, items.findIndex(it => it.getAttribute('aria-selected') === 'true'));
       markTerr();

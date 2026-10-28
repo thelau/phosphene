@@ -109,26 +109,22 @@ test('the batch size list offers up to 20 images and sends the chosen number', {
   await ctx.close();
 });
 
-test('many territories: two columns, no scrolling, no search; the ones never made show a dash', { skip }, async () => {
+test('many territories: one column, Custom and Unexpected first, then Mix it up, then the territories (the list scrolls); the ones never made show a dash', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945, setup: st => { st.moreWorlds = Array.from({ length: 30 }, (_, i) => ({ name: `Territory ${i + 1}`, brief: '', n: i % 3 ? 0 : 4, kept: i % 3 ? 0 : 1, wildcard: false })); } });
   await page.click('#terrBtn');
   await page.waitForSelector('#terrMenu:not([hidden])');
   assert.equal(await page.locator('#terrMenu input').count(), 0, 'no search');
-  assert.equal(await page.locator('#terrMenu .tm-cols.n2 .tm-world').count(), 32);
-  assert.equal(await page.locator('#terrMenu .tm-item.big + .tm-sep').count(), 1, 'a line under Mix it up');
-  assert.equal(await page.locator('#terrMenu .tm-head').count(), 1, 'one header over both columns');
-  const w0 = (await page.locator('#terrBtn').boundingBox()).width;
-  await page.keyboard.press('Escape');
-  await page.evaluate(() => { const s = document.getElementById('worldSelect'); s.value = '__wildcard__'; s.dispatchEvent(new Event('change')); });
-  assert.equal((await page.locator('#terrBtn').boundingBox()).width, w0, 'the button keeps its width whatever the territory');
-  await page.evaluate(() => { const s = document.getElementById('worldSelect'); s.value = ''; s.dispatchEvent(new Event('change')); });
-  await page.click('#terrBtn');
-  const m = await page.locator('#terrMenu').evaluate(e => ({ w: e.getBoundingClientRect().width, scrolls: e.scrollHeight > e.clientHeight + 1 }));
-  assert.ok(m.w >= 800 && !m.scrolls, `twice as wide, everything in view: ${JSON.stringify(m)}`);
+  const order = await page.locator('#terrMenu .tm-item').evaluateAll(els => els.slice(0, 4).map(e => e.dataset.v));
+  assert.deepEqual(order, ['__custom__', '__wildcard__', '', 'Editorial Print'], 'Custom, Unexpected, Mix it up, then the territories');
+  assert.equal(await page.locator('#terrMenu .tm-sep').count(), 2, 'a line after the two new-territory items, one after Mix it up');
+  assert.equal(await page.locator('#terrMenu .tm-world').count(), 32);
+  assert.equal(await page.locator('#terrMenu .tm-head').count(), 1);
+  const m = await page.locator('#terrMenu').evaluate(e => ({ w: e.getBoundingClientRect().width, bottom: e.getBoundingClientRect().bottom }));
+  assert.ok(m.w >= 400 && m.w < 500 && m.bottom <= 945, `one column, on screen (it scrolls): ${JSON.stringify(m)}`);
   assert.equal(await page.locator('#terrMenu .tm-item[data-v="Territory 2"] .tm-n').textContent(), '–');
   await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
-  assert.equal(await page.inputValue('#worldSelect'), 'Matter & Elements', '↓ ↓ ↩ picks the second territory');
-  await page.click('#terrBtn'); await shot('30-territories-two-columns');
+  assert.equal(await page.inputValue('#worldSelect'), 'Matter & Elements', '↓ ↓ ↩ from Mix it up picks the second territory');
+  await page.click('#terrBtn'); await shot('30-territories-one-column');
   await page.keyboard.press('Escape');
   await ctx.close();
 });

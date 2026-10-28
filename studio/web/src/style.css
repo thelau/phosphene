@@ -429,8 +429,6 @@
     .terr-menu { position: absolute; left: 0; top: 52px; width: 400px;   /* as wide as its button (set when it opens) */ box-sizing: border-box; padding: 8px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 24px 60px rgba(0,0,0,.55); display: flex; flex-direction: column; gap: 2px; z-index: 30; max-height: calc(100vh - 160px); overflow-y: auto; }
     .terr-menu[hidden] { display: none; }
     .terr-menu:focus { outline: none; }
-    .tm-cols { display: grid; gap: 0 16px; }
-    .tm-cols.n2 { grid-template-columns: 1fr 1fr; }
     .tm-world.unmade .tm-name { color: var(--text-2); }
     .tm-world.unmade .tm-n { color: var(--off); }
     .tm-item { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; border-radius: 7px; font-size: 14px; color: var(--text); cursor: pointer; }
