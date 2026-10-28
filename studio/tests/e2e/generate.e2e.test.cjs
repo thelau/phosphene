@@ -17,6 +17,7 @@ test('generate: a custom territory waits for its description; controls lock, pro
   assert.match(await page.locator('#directionInput').getAttribute('placeholder'), /what is it\?/);
   assert.equal(await text('#refineLabel'), 'Describe');
   assert.equal(await page.locator('#refineReq').isVisible(), true, 'Required');
+  assert.equal(await page.locator('#directionInput').evaluate(e => getComputedStyle(e).backgroundColor), 'rgba(0, 0, 0, 0)', 'the field takes the tinted area\'s colour, no box of its own');
   assert.equal(await page.locator('#generateBtn').isDisabled(), true, 'Generate waits for the description');
   await page.selectOption('#batchCountSelect', '4');
   await page.fill('#directionInput', 'fog, clouds, rain');

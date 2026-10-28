@@ -446,9 +446,6 @@
     .tm-sep { height: 1px; background: var(--line-2); margin: 6px 4px; }
     @media (max-width: 1400px) { .refine { min-width: 250px; } .gen-row { padding: 12px 20px; } }
     @media (max-width: 1240px) { .refine { min-width: 220px; } .gen-row { padding: 10px 16px; } }
-    #worldSelect { width: 210px; }
-    #directionInput { flex: 1; min-width: 0; height: 36px; border-radius: 8px; background: #1C1B19; }
-    #batchCountSelect { width: 110px; }
     #generateBtn { height: 36px; padding: 0 22px; border-radius: 8px; }
     .gallery-col { flex: 1; min-height: 0; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
     .gallery-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 24px 12px; flex-shrink: 0; }
