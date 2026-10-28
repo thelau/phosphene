@@ -203,6 +203,11 @@ def get_cached_qa(path: Path) -> dict:
 
 
 
+def check_new_image(path: Path) -> dict:
+    """The logo check on an image not yet among the plates (its result is cached under its final name by the caller)."""
+    return evaluate_plate_qa(path, current_mark())
+
+
 def apply_critic(filename: str) -> None:
     """Score a plate with the Kimi critic. Advisory unless critic_autotrash is on (then low scores go to Trash with the reason)."""
     started_in = PROJECT["slug"] if PROJECT else None
@@ -1647,18 +1652,26 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         raw_prompt = softened
                 im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
 
+                # whole before it appears (an export, a thumbnail never reads half an image), and checked before it appears, outside the
+                # lock: the logo check takes ~2.5 s an image on a project's own mark, and trash / restore clicks waited for it
+                tmp_img = PLATES_DIR / f".new-{uuid.uuid4().hex}.jpg.part"
+                im.save(tmp_img, "JPEG", quality=95)
+                try:
+                    qa = check_new_image(tmp_img)
+                except BaseException:
+                    tmp_img.unlink(missing_ok=True)
+                    raise
                 with STATE_LOCK:
                     next_num = next_plate_number(load_state())
                     slug = "".join(c if c.isalnum() else "_" for c in title.lower()).strip("_")[:26] or "plate"
                     while "__" in slug:
                         slug = slug.replace("__", "_")
                     filename = f"{next_num:02d}_{slug}.jpg"
-                    save_path = PLATES_DIR / filename
-                    tmp_img = save_path.with_name(f".{save_path.name}.part")   # whole before it appears: an export, a thumbnail or the logo check never reads half an image
-                    im.save(tmp_img, "JPEG", quality=95)
+                    save_path = tmp_img.parent / filename
                     os.replace(tmp_img, save_path)
-
-                    qa = get_cached_qa(save_path)
+                    qa = {**qa, "filename": filename}
+                    with QA_LOCK:
+                        QA_CACHE[_plate_key(save_path)] = qa
                     print(
                         f"[QA] {filename} ({model}) -> passed={qa['qa_passed']} score={qa['qa_score']}% "
                         f"corr={qa['center_corr']} asym={qa['core_asymmetry']} issues={qa['issues']}",

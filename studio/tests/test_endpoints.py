@@ -8,6 +8,7 @@ import io
 import json
 import subprocess
 import threading
+import time
 
 import pytest
 from PIL import Image
@@ -23,7 +24,7 @@ def live(srv, monkeypatch):
     calls = {"krea": [], "kimi": []}
     monkeypatch.setattr(srv, "get_krea_oauth_token", lambda: {"connected": True, "expired": False, "token": "t"})
     monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", lambda **kw: calls["krea"].append(kw) or png.getvalue())
-    monkeypatch.setattr(srv, "get_cached_qa", lambda p: {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2})
+    monkeypatch.setattr(srv, "check_new_image", lambda p: {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2})
     monkeypatch.setattr(srv, "apply_critic", lambda f: None)
     real_popen = srv.subprocess.Popen                                  # only the browser-login helper is faked, ffmpeg etc. stay real
     monkeypatch.setattr(srv.subprocess, "Popen", lambda cmd, *a, **k: None if "opencode" in str(cmd) else real_popen(cmd, *a, **k))
@@ -294,8 +295,37 @@ def test_a_retry_that_works_is_recorded_as_one_ok_image_with_two_attempts(live, 
     assert done["ok"] and [a["ok"] for a in done["attempts"]] == [False, True] and gen_log.summarize(gen_log.read(None))["retried"] == 1
 
 
+def test_trash_and_restore_answer_at_once_while_a_new_image_is_checked(live, srv, monkeypatch):
+    # the logo check takes ~2.5 s an image on a project's own mark: it ran holding the curation's lock, so a Trash or Restore click
+    # during a batch waited for every image being checked (the user saw the buttons do nothing)
+    first = live("POST", "/api/generate-image", {"title": "Already Here", "prompt": "p", "model": "m"})[1]["filename"]
+    checking, release = threading.Event(), threading.Event()
+
+    def slow_check(p):
+        checking.set()
+        release.wait(10)
+        return {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2}
+    monkeypatch.setattr(srv, "check_new_image", slow_check)
+    gen = threading.Thread(target=live, args=("POST", "/api/generate-image", {"title": "Being Checked", "prompt": "p", "model": "m"}))
+    gen.start()
+    assert checking.wait(10)
+    try:
+        t0 = time.time()
+        assert live("POST", "/api/trash", {"filename": first, "trashed": True})[1]["ok"]
+        assert live("POST", "/api/trash", {"filename": first, "trashed": False})[1]["ok"]
+        assert time.time() - t0 < 2, "the clicks waited for the logo check"
+        assert not any("Being Checked" in t for t in srv.load_state().get("titles", {}).values()), "not among the images before it is checked"
+    finally:
+        release.set()
+        gen.join(10)
+    names = [p.name for p in srv.PLATES_DIR.glob("*.jpg")]
+    assert len(names) == 2 and not list(srv.PLATES_DIR.glob(".*.part"))
+    new = next(n for n in names if n != first)
+    assert srv.get_cached_qa(srv.PLATES_DIR / new)["filename"] == new          # the check's result is kept under the image's own name
+
+
 def test_a_logo_check_failure_is_recorded(live, srv, monkeypatch):
-    monkeypatch.setattr(srv, "get_cached_qa", lambda p: {"qa_passed": False, "qa_score": 12, "issues": ["Low center logo fidelity"], "center_corr": 0.1, "core_asymmetry": 0.0})
+    monkeypatch.setattr(srv, "check_new_image", lambda p: {"qa_passed": False, "qa_score": 12, "issues": ["Low center logo fidelity"], "center_corr": 0.1, "core_asymmetry": 0.0})
     assert live("POST", "/api/generate-image", {"title": "Bad Logo", "prompt": "p", "model": "m"})[1]["trashed"] is True
     done = [e for e in gen_log.read(None) if e["event"] == "image"][0]
     assert done["ok"] and done["qa_passed"] is False and done["qa_issues"] == ["Low center logo fidelity"]

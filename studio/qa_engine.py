@@ -10,6 +10,7 @@ Performs strict self-QA on generated 9:16 plates to catch:
 import json
 import math
 import os
+from operator import mul
 from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageOps, ImageStat
 
@@ -97,24 +98,25 @@ def _box(center: tuple, m: Image.Image) -> tuple:
     return (cx - m.width // 2, cy - m.height // 2, cx - m.width // 2 + m.width, cy - m.height // 2 + m.height)
 
 
-def normalized_corr(patch_l: Image.Image, ref_l: Image.Image) -> float:
-    """Computes Pearson correlation coefficient between two grayscale PIL images of identical size."""
-    p_bytes = patch_l.tobytes()
-    r_bytes = ref_l.tobytes()
-    n = len(p_bytes)
+def corr_ref(ref_l: Image.Image) -> tuple:
+    """A reference made ready once for normalized_corr (its pixels and sums), when it is compared at many places."""
+    r = ref_l.tobytes()
+    return r, sum(r), sum(map(mul, r, r))
+
+
+def normalized_corr(patch_l: Image.Image, ref_l) -> float:
+    """Computes Pearson correlation coefficient between two grayscale PIL images of identical size (ref_l: an image or corr_ref's)."""
+    p = patch_l.tobytes()
+    r, sr, srr = ref_l if isinstance(ref_l, tuple) else corr_ref(ref_l)
+    n = len(p)
     if n == 0:
         return 0.0
-    mean_p = sum(p_bytes) / n
-    mean_r = sum(r_bytes) / n
-    num = 0.0
-    den_p = 0.0
-    den_r = 0.0
-    for pv, rv in zip(p_bytes, r_bytes):
-        dp = pv - mean_p
-        dr = rv - mean_r
-        num += dp * dr
-        den_p += dp * dp
-        den_r += dr * dr
+    # whole-number sums made in C (sum / map): the same coefficient as a pixel-by-pixel loop, ~10x faster; a mark half the frame
+    # wide, measured at 15 sizes, took ~37 s an image the old way
+    sp = sum(p)
+    num = sum(map(mul, p, r)) - sp * sr / n
+    den_p = sum(map(mul, p, p)) - sp * sp / n
+    den_r = srr - sr * sr / n
     if den_p <= 1e-6 or den_r <= 1e-6:
         return 0.0
     return num / math.sqrt(den_p * den_r)
@@ -274,12 +276,13 @@ def _fit(gray: Image.Image, edges: Image.Image, mark: MarkSpec, scale: float) ->
     """How well the mark at this scale matches around its place: the best of the flat mark (either way round) and its outline."""
     m = mark.mask(max(8, int(round(mark.width * scale))))
     o = _outline(m)
+    mr, orf = corr_ref(m), corr_ref(o)
     best, how = -1.0, "flat"
     for dx in OWN_SHIFT:
         for dy in OWN_SHIFT:
             c = (mark.center[0] + dx, mark.center[1] + dy)
-            flat = abs(normalized_corr(gray.crop(_box(c, m)), m))
-            edge = normalized_corr(edges.crop(_box(c, o)), o)
+            flat = abs(normalized_corr(gray.crop(_box(c, m)), mr))
+            edge = normalized_corr(edges.crop(_box(c, o)), orf)
             if flat > best:
                 best, how = flat, "flat"
             if edge > best:
