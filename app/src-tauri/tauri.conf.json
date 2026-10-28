@@ -34,7 +34,8 @@
       "../build/resources/bin/": "bin/"
     },
     "macOS": {
-      "minimumSystemVersion": "13.0"
+      "minimumSystemVersion": "13.0",
+      "signingIdentity": "-"
     },
     "createUpdaterArtifacts": true,
     "fileAssociations": [

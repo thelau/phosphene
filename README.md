@@ -9,7 +9,8 @@ It runs on your own computer. You sign in with your own Krea account (images use
 ## The Mac app (easiest)
 
 Download **Phosphene.dmg** from the link you were sent, open it and drag Phosphene into Applications.
-The first time, right-click Phosphene › **Open** › **Open** (the app is not signed by Apple yet). After that it opens normally,
+The first time, macOS says it cannot verify the developer (the app is not notarized by Apple yet): click **Done**, then System Settings ›
+**Privacy & Security**, scroll to "Phosphene was blocked", **Open Anyway**, and your password. Only once. After that it opens normally,
 and it updates itself: when a new version is out it says so, and **Restart to update** installs it.
 
 - Your projects are in **Documents › Phosphene**, one folder each. Updates never touch them, and deleting the app leaves them.
@@ -75,6 +76,7 @@ The automatic tests (`.venv/bin/python -m pytest studio/tests -q`, `npm test`, `
 the page and the server. They cannot reach the Mac app's own shell, where several bugs were only found by hand, so before
 publishing, open the built app (`app/src-tauri/target/release/bundle/macos/Phosphene.app`) and check, about 5 minutes:
 
+- [ ] **Signed as a whole**: `codesign --verify --deep --strict app/src-tauri/target/release/bundle/macos/Phosphene.app` says nothing (an error there means a downloaded copy reads as "damaged").
 - [ ] **It opens**, on the last project, with the Phosphene icon in the Dock and in ⌘Tab; About Phosphene shows the new version.
 - [ ] **Menu bar**: File › New Project (⌘N) opens the form; File › Open Project File… (⌘O) opens the macOS file dialog; Project ›
       Import project… opens the same dialog; Export project… saves a `.phos` file to Downloads.
