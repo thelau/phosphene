@@ -113,17 +113,19 @@ test('the batch size list offers up to 20 images and sends the chosen number', {
 });
 
 test('many territories: one column, Describe your own and Surprise me first, then the territories with where each comes from (the list scrolls); the button keeps its width', { skip }, async () => {
-  const ctx = await fresh({ width: 1512, height: 945, setup: st => { st.moreWorlds = Array.from({ length: 30 }, (_, i) => ({ name: `Territory ${i + 1}`, brief: '', n: i % 3 ? 0 : 4, kept: i % 3 ? 0 : 1, wildcard: false })); } });
+  const ctx = await fresh({ width: 1512, height: 945, setup: st => { st.moreWorlds = Array.from({ length: 30 }, (_, i) => ({ name: `Territory ${i + 1}`, brief: '', n: i % 3 ? 0 : 4, kept: i % 3 ? 0 : 1, wildcard: i > 26, origin: i > 26 ? 'invented' : i > 24 ? 'custom' : 'core' })); } });
   await page.click('#terrBtn');
   await page.waitForSelector('#terrMenu:not([hidden])');
   assert.equal(await page.locator('#terrMenu input').count(), 0, 'no search');
   const order = await page.locator('#terrMenu .tm-item').evaluateAll(els => els.slice(0, 4).map(e => e.dataset.v));
   assert.deepEqual(order, ['__custom__', '__wildcard__', 'Editorial Print', 'Matter & Elements'], 'the two ways to a new territory, then the territories');
-  assert.equal(await page.locator('#terrMenu .tm-sep').count(), 1, 'a line between them');
+  assert.equal(await page.locator('#terrMenu .tm-sep').count(), 3, 'a line under the two, and between the core, custom and invented groups');
   assert.equal(await page.locator('#terrMenu .tm-world').count(), 32);
   assert.equal(await page.locator('#terrMenu .tm-head').count(), 1);
   assert.equal(await page.locator('#terrMenu .tm-item[data-v="Editorial Print"] .tm-origin').textContent(), 'core', 'where it comes from (shown in capitals)');
   assert.equal(await page.locator('#terrMenu .tm-bar, #terrMenu .tm-n').count(), 0, 'no kept-of-made column');
+  const groups = await page.locator('#terrMenu .tm-list').evaluate(l => [...l.children].map(c => c.classList.contains('tm-sep') ? '|' : (c.querySelector('.tm-origin') || {}).textContent).filter(Boolean).join(' ').replace(/(\w+)( \1)+/g, '$1'));
+  assert.equal(groups, '| core | custom | invented', 'grouped by where they come from, a line between groups');
   const m = await page.locator('#terrMenu').evaluate(e => ({ w: e.getBoundingClientRect().width, bottom: e.getBoundingClientRect().bottom }));
   assert.ok(m.w >= 400 && m.w < 500 && m.bottom <= 945, `one column, on screen (it scrolls): ${JSON.stringify(m)}`);
   await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');

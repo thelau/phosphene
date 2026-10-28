@@ -16,6 +16,8 @@ test('page loads without errors: Curate first, generation in one tidy row, no st
   assert.ok(field.width > 400, `the refinement has room to be read in full (${field.width} px)`);
   await page.keyboard.press('Escape');
   assert.equal(await text('#terrName'), 'Editorial Print', 'no Mix it up: the first territory');
+  const clip = await page.locator('#terrName').evaluate(b => b.scrollHeight - b.clientHeight);
+  assert.ok(clip <= 0, `the name is not clipped (descenders: g, p, y): ${clip}`);
   const mids = await page.evaluate(() => ['#terrIcon svg', '#terrName', '#terrBtn > svg', '#refineOpen', '.csel[data-for="batchCountSelect"] .csel-face', '#generateBtn'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return Math.round((r.top + r.height / 2) * 10) / 10; }));
   assert.ok(Math.max(...mids) - Math.min(...mids) <= 1.5, `everything in the bar on one centre line: ${mids}`);
   const [bar, tools] = [await box('#genGroup'), await box('.size-ctl')];

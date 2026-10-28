@@ -393,8 +393,8 @@
     .terr-btn[aria-expanded="true"], .terr-btn:hover:not(:disabled) { background: #2A2825; }
     .terr-btn > svg { color: var(--muted); flex: none; }
     .terr-icon { width: 18px; height: 18px; flex: none; display: flex; align-items: center; justify-content: center; }
-    .terr-text { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; white-space: nowrap; line-height: 1; }   /* one line: TERRITORY, the name, its count, on the icon's centre line */
-    .terr-line { display: flex; align-items: center; gap: 8px; white-space: nowrap; min-width: 0; overflow: hidden; line-height: 1; }
+    .terr-text { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; white-space: nowrap; line-height: 1.3; }   /* the name on the icon's centre line (1.3: room for descenders, a g was clipped) */
+    .terr-line { display: flex; align-items: center; gap: 8px; white-space: nowrap; min-width: 0; overflow: hidden; line-height: 1.3; }
     .terr-line b { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
     .terr-line span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
     .refine { display: flex; align-items: stretch; flex: 1 1 320px; min-width: 320px; }   /* takes the bar's spare width, so what you type stays readable */

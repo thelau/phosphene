@@ -2926,7 +2926,9 @@
       if (worlds.length) {
         // where each comes from, on the right: CORE (built in), INVENTED (Surprise me), CUSTOM (Describe your own); the ones never made a little dimmer
         const row = o => item(o.value, `<span class="tm-name">${escapeHtml(o.value)}</span><span class="tm-origin">${escapeHtml(o.dataset.origin || 'core')}</span>${check}`, 'tm-world' + (+o.dataset.n ? '' : ' unmade'));
-        html += '<div class="tm-head"><span>Territories</span></div>' + worlds.map(row).join('');
+        // grouped by where they come from (core, then yours, then Kimi's), a line between the groups
+        const order = ['core', 'custom', 'invented'], by = k => worlds.filter(o => (o.dataset.origin || 'core') === k);
+        html += '<div class="tm-head"><span>Territories</span></div>' + order.map(by).filter(g => g.length).map(g => g.map(row).join('')).join('<div class="tm-sep"></div>');
       }
       let list = m.querySelector('.tm-list');
       if (!list) {
