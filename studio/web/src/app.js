@@ -1302,6 +1302,7 @@
       if (cmd && !e.altKey && key === 'z') { e.preventDefault(); if (e.shiftKey) redoLast(); else undoLast(); return; }
       if (cmd && key === 's') { e.preventDefault(); if (mode === 'film') { flash('editSaveBtn'); snapshotEdit(); } return; }   // Film's snapshot; never the browser's Save Page
       if (cmd && key === 'a' && mode === 'curate' && !showTrash) { e.preventDefault(); pickAll(); return; }
+      if (cmd && key === 'Enter' && mode === 'curate') { e.preventDefault(); if (!generating && !aiRunning) generateImages(); return; }   // Generate
       if (cmd || e.altKey) return;
       if (e.repeat && ['Tab', 'f', 't', 'r', 's'].includes(key)) { e.preventDefault(); return; }   // a held key acts once
       if (e.target && e.target.type === 'range' && key.startsWith('Arrow')) return;               // a slider with focus keeps its arrows
@@ -1390,7 +1391,7 @@
     // tested), the focus and the keyboard. A click or Enter opens our menu instead of the system's; it opens downward, or upward
     // when there is more room above. ----
     function enhanceSelects() {
-      document.querySelectorAll('select:not(.seg-src)').forEach(sel => {
+      document.querySelectorAll('select:not(.seg-src):not(.src-only)').forEach(sel => {
         if (sel.parentElement && sel.parentElement.classList.contains('csel')) return;
         const box = document.createElement('span'); box.className = 'csel'; box.dataset.for = sel.id;
         const face = document.createElement('span'); face.className = 'csel-face'; face.setAttribute('aria-hidden', 'true');
@@ -2766,22 +2767,170 @@
       const input = document.getElementById('directionInput');
       let say;
       if (v === '') {
-        input.placeholder = 'Optional: what do you want? e.g. wet apparel, warm light';
+        input.placeholder = 'e.g. wet apparel, warm light';
         say = 'Mix it up: we pick the territory, mostly ones whose images you keep, sometimes ones you haven\'t tried, sometimes a brand-new one. Type a direction and we match it to the closest territory.';
       } else if (v === '__custom__') {
-        input.placeholder = 'Describe your territory (required), e.g. fog, clouds, vapor, rain, lightning';
+        input.placeholder = 'what is it? e.g. fog, clouds, rain, lightning';
         say = 'Custom territory: describe it and every image will be about that. A look and palette are invented for it.';
       } else if (v === '__wildcard__') {
-        input.placeholder = 'Optional: hint for the new territory';
+        input.placeholder = 'a hint for the new territory';
         say = 'New territory: Kimi invents a fresh area we don\'t cover yet.';
       } else {
         const opt = sel.selectedOptions[0];
         const eg = opt && opt.dataset.examples;                                   // the territory's own subjects: what typed here changes
-        input.placeholder = `Optional: focus inside ${v}${eg ? `, e.g. ${eg}` : ''} (every image follows it)`;
+        input.placeholder = `focus inside ${v}${eg ? `, e.g. ${eg}` : ''}`;
         say = `${v}: ${(opt && opt.dataset.brief) || ''}`;
       }
       sel.title = say;
+      document.getElementById('terrBtn').title = say;
+      renderGen();
     }
+
+    // ---- the generation row: Territory (all Generate needs) → Refine (optional; Describe, required, for a custom territory) → count → Generate ----
+    const ICON_MIX = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg>';
+    const ICON_WORLD = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EC540C" stroke-width="2"><rect x="7" y="3" width="10" height="18" rx="2"></rect><circle cx="12" cy="12" r="2" fill="#EC540C" stroke="none"></circle></svg>';
+    const ICON_PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>';
+    const ICON_SPARK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>';
+    let refineEditing = false;
+    function namedWorlds() { return [...document.getElementById('worldSelect').options].filter(o => o.classList.contains('w')); }
+    function renderGen() {
+      const v = document.getElementById('worldSelect').value, custom = v === '__custom__';
+      const opt = document.getElementById('worldSelect').selectedOptions[0];
+      const [icon, name, sub] = v === '' ? [ICON_MIX, 'Mix it up', `all ${namedWorlds().length} territories`]
+        : custom ? [ICON_PLUS, 'Custom territory', 'describe it']
+        : v === '__wildcard__' ? [ICON_SPARK, 'New territory', 'Kimi decides']
+        : [ICON_WORLD, v, opt && opt.dataset.n ? `${opt.dataset.kept} of ${opt.dataset.n} kept` : ''];
+      const ic = document.getElementById('terrIcon');
+      if (ic.dataset.v !== v) { ic.innerHTML = icon; ic.dataset.v = v; }
+      document.getElementById('terrName').textContent = name;
+      document.getElementById('terrSub').textContent = sub;
+      const input = document.getElementById('directionInput'), text = input.value.trim();
+      const r = document.getElementById('refine');
+      r.dataset.state = custom || refineEditing ? 'edit' : text ? 'set' : 'empty';
+      r.classList.toggle('required', custom);
+      r.classList.toggle('has-text', !!input.value);
+      document.getElementById('refineLabel').textContent = custom ? 'Describe' : 'Refine';
+      document.getElementById('refineReq').hidden = !custom;
+      input.setAttribute('aria-required', String(custom));
+      document.getElementById('refineKey').textContent = 'Refine:';
+      document.getElementById('refineShown').textContent = text;
+      const g = document.getElementById('generateBtn');
+      if (!generating) {
+        g.classList.remove('running');
+        document.getElementById('genLabel').textContent = 'Generate';
+        g.disabled = aiRunning || (custom && !text);
+        g.title = custom && !text ? 'Describe the custom territory first' : 'Generate (⌘↩)';
+      }
+      document.getElementById('genHint').hidden = !(project && !plates.length && !generating);   // a new project, until its first batch
+    }
+    function editRefine() {
+      if (generating || aiRunning) return;
+      refineEditing = true; renderGen();
+      const input = document.getElementById('directionInput');
+      input.focus(); input.select && input.select();
+    }
+    function clearRefine() {
+      const input = document.getElementById('directionInput');
+      input.value = ''; saveSettings();
+      refineEditing = document.activeElement === input; renderGen();
+    }
+    (() => {
+      const input = document.getElementById('directionInput');
+      if (!input.addEventListener) return;
+      input.addEventListener('input', renderGen);
+      input.addEventListener('focus', () => { refineEditing = true; renderGen(); });
+      input.addEventListener('blur', () => { refineEditing = false; renderGen(); });
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); input.blur(); generateImages(); }
+        else if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); input.blur(); }
+      });
+    })();
+    // the running batch shows on the button itself: "Generating 2 of 4" (Stop stays in the status bar: one control)
+    function genRunningLabel() {
+      const g = document.getElementById('generateBtn');
+      if (!generating) { renderGen(); return; }
+      g.classList.add('running');
+      const done = prog.slots.filter(x => x === 'ok' || x === 'trash' || x === 'err' || x === 'blocked').length;
+      document.getElementById('genLabel').textContent = prog.stage === 'invent' ? 'Writing scenes…' : `Generating ${done} of ${prog.total}`;
+    }
+
+    // the territory list: a filter, Mix it up, the project's territories (kept of made), Custom, New; ↩ chooses, ⌘↩ chooses and generates
+    let terrActive = 0;
+    function terrOptions(filter) {
+      const f = (filter || '').trim().toLowerCase();
+      const sel = document.getElementById('worldSelect');
+      const all = [...sel.options];
+      const mix = all.find(o => o.value === ''), custom = all.find(o => o.value === '__custom__'), wild = all.find(o => o.value === '__wildcard__');
+      const worlds = namedWorlds().filter(o => !f || o.value.toLowerCase().includes(f));
+      return { mix: !f || 'mix it up'.includes(f) ? mix : null, worlds, custom: !f || 'custom territory'.includes(f) ? custom : null, wild: !f || 'new territory'.includes(f) ? wild : null };
+    }
+    function renderTerrMenu() {
+      const m = document.getElementById('terrMenu');
+      const fv = (m.querySelector('#terrFilter') || {}).value || '';
+      const cur = document.getElementById('worldSelect').value;
+      const { mix, worlds, custom, wild } = terrOptions(fv);
+      const item = (v, inner, cls = '') => `<div class="tm-item ${cls}" role="option" data-v="${escapeHtml(v)}" aria-selected="${v === cur}">${inner}</div>`;
+      const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
+      let html = '';
+      if (mix) html += item('', `${ICON_MIX}<span><span>Mix it up</span><span class="tm-sub">A bit of every territory</span></span>${check}`, 'big');
+      if (worlds.length) {
+        html += '<div class="tm-head"><span>Your territories</span><span>kept of made</span></div>';
+        html += worlds.map(o => { const k = +o.dataset.kept || 0, n = +o.dataset.n || 0; return item(o.value, `<span class="tm-name">${escapeHtml(o.value)}${o.dataset.wild ? ' <span class="tm-sub">new</span>' : ''}</span><span class="tm-bar"><i style="width:${n ? Math.round(k / n * 100) : 0}%"></i></span><span class="tm-n">${k} of ${n}</span>${check}`, 'tm-world'); }).join('');
+      }
+      if (custom || wild) html += '<div class="tm-sep"></div>';
+      if (custom) html += item('__custom__', `${ICON_PLUS}<span>Custom territory… <span class="tm-sub">describe your own</span></span>${check}`);
+      if (wild) html += item('__wildcard__', `${ICON_SPARK}<span>New territory <span class="tm-sub">Kimi decides</span></span>${check}`);
+      if (!html) html = '<div class="tm-none">No territory matches.</div>';
+      let list = m.querySelector('.tm-list');
+      if (!list) {
+        m.innerHTML = '<label class="tm-filter"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><input id="terrFilter" type="text" placeholder="Type to filter" autocomplete="off" aria-label="Filter the territories" /></label><div class="tm-list"></div><div class="tm-foot">↩ choose · ⌘↩ choose and generate</div>';
+        list = m.querySelector('.tm-list');
+        const f = m.querySelector('#terrFilter');
+        f.addEventListener('input', () => { terrActive = 0; renderTerrMenu(); });
+        f.addEventListener('keydown', terrKey);
+        list.addEventListener('mousedown', e => e.preventDefault());
+        list.addEventListener('click', e => { const it = e.target.closest('.tm-item'); if (it) chooseTerr(it.dataset.v, e.metaKey || e.ctrlKey); });
+        list.addEventListener('mousemove', e => { const it = e.target.closest('.tm-item'); if (it) { terrActive = [...list.querySelectorAll('.tm-item')].indexOf(it); markTerr(); } });
+      }
+      list.innerHTML = html;
+      markTerr();
+    }
+    function markTerr() {
+      const items = [...document.querySelectorAll('#terrMenu .tm-item')];
+      terrActive = Math.max(0, Math.min(items.length - 1, terrActive));
+      items.forEach((it, i) => it.classList.toggle('active', i === terrActive));
+      if (items[terrActive] && items[terrActive].scrollIntoView) items[terrActive].scrollIntoView({ block: 'nearest' });
+    }
+    function toggleTerrMenu(e, open) {
+      if (e && e.stopPropagation) e.stopPropagation();
+      const m = document.getElementById('terrMenu');
+      open = open === undefined ? m.hidden : open;
+      if (open && (generating || aiRunning)) return;
+      m.hidden = !open;
+      document.getElementById('terrBtn').setAttribute('aria-expanded', String(open));
+      if (!open) return;
+      const f = m.querySelector('#terrFilter'); if (f) f.value = '';
+      renderTerrMenu();
+      const items = [...m.querySelectorAll('.tm-item')];
+      terrActive = Math.max(0, items.findIndex(it => it.getAttribute('aria-selected') === 'true'));
+      markTerr();
+      const fi = m.querySelector('#terrFilter'); if (fi && fi.focus) fi.focus();
+    }
+    function terrKey(e) {
+      const items = [...document.querySelectorAll('#terrMenu .tm-item')];
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); terrActive += e.key === 'ArrowDown' ? 1 : -1; markTerr(); }
+      else if (e.key === 'Enter') { e.preventDefault(); const it = items[terrActive]; if (it) chooseTerr(it.dataset.v, e.metaKey || e.ctrlKey); }
+      else if (e.key === 'Escape') { e.preventDefault(); toggleTerrMenu(null, false); document.getElementById('terrBtn').focus(); }
+    }
+    function chooseTerr(v, andGenerate) {
+      const sel = document.getElementById('worldSelect');
+      toggleTerrMenu(null, false);
+      if (sel.value !== v) { sel.value = v; sel.dispatchEvent(new Event('change')); }
+      if (v === '__custom__') { editRefine(); return; }                     // its description comes first
+      if (andGenerate) generateImages();
+      else document.getElementById('terrBtn').focus();
+    }
+    document.addEventListener('click', e => { const m = document.getElementById('terrMenu'); if (!m.hidden && !(e.target.closest && e.target.closest('#terrMenu, #terrBtn'))) toggleTerrMenu(null, false); });
 
     async function loadWorlds() {
       try {
@@ -2795,7 +2944,8 @@
           o.value = w.name;
           o.dataset.brief = w.brief || '';
           o.dataset.examples = (w.examples || []).join(', ');
-          o.textContent = `${w.wildcard ? '✨ ' : ''}${w.name} (${w.kept} of ${w.n} kept)`;
+          o.dataset.kept = w.kept; o.dataset.n = w.n; o.dataset.wild = w.wildcard ? '1' : '';
+          o.textContent = w.name;
           sel.appendChild(o);
         });
         sel.value = cur || (JSON.parse(localStorage.getItem('studioSettings') || '{}').worldSelect || '');
@@ -2809,6 +2959,7 @@
     function fmtElapsed(ms) { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
     function progRender() {
       refreshPending();
+      if (generating) genRunningLabel();
       const el = document.getElementById('statusText');
       const done = prog.slots.filter(x => x === 'ok' || x === 'trash' || x === 'err' || x === 'blocked').length;
       const running = prog.slots.filter(x => x === 'run').length;
@@ -2854,7 +3005,8 @@
       const T = window.__TAURI__;                                            // (not TAURI: declared further down, and this runs early)
       if (T && T.event && isBusy() !== toldBusy) { toldBusy = isBusy(); T.event.emit('page-busy', toldBusy).catch(() => {}); }   // the Mac app asks before quitting mid-job
       const lockGen = generating || aiRunning;
-      ['worldSelect', 'directionInput', 'batchCountSelect', 'modelSelect', 'generateBtn'].forEach(id => { document.getElementById(id).disabled = lockGen; });
+      ['worldSelect', 'directionInput', 'batchCountSelect', 'modelSelect', 'generateBtn', 'terrBtn', 'refineOpen', 'refineSet', 'refineClear'].forEach(id => { document.getElementById(id).disabled = lockGen; });
+      genRunningLabel();
       syncAiBtn();
       document.getElementById('exportBtn').disabled = aiRunning || !activePlates().length;
       ['trashSelAll', 'trashEmpty'].forEach(id => { document.getElementById(id).disabled = aiRunning || exporting; });
@@ -3061,10 +3213,6 @@
         progStop(plainError(e));
       } finally {
         setGenerating(false);
-        if (ran) {  // the direction was for this batch only
-          document.getElementById('directionInput').value = '';
-          saveSettings();
-        }
       }
     }
 
@@ -3318,7 +3466,7 @@
 Object.assign(window, {
   installUpdate,
   exportProject, importProject, importProjectPath, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
-  downloadShown, openViewer, closeViewer, viewerStep,
+  downloadShown, openViewer, closeViewer, viewerStep, toggleTerrMenu, editRefine, clearRefine,
   openProjectMenu, switchProject, openProjectForm, closeProjectForm, readProjectMark, drawProjectPreview, saveProject,
   removeChange,
   includeAll,

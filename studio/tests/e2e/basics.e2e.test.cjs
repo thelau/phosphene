@@ -7,10 +7,12 @@ test('page loads without errors: Curate first, generation in one tidy row, no st
   assert.equal(await page.evaluate(() => document.body.dataset.mode), 'curate');
   assert.equal(await page.locator('#statusText').isVisible(), false, 'the status bar only shows while something runs');
   const box = async sel => page.locator(sel).first().boundingBox();
-  const [world, dir, count, gen, settings] = await Promise.all(['#worldSelect', '#directionInput', '#batchCountSelect', '#generateBtn', '#settingsBtn'].map(box));
+  const [world, dir, count, gen, settings] = await Promise.all(['#terrBtn', '#refineOpen', '.csel[data-for="batchCountSelect"]', '#generateBtn', '#settingsBtn'].map(box));
   const header = await box('header');
   assert.ok(header.height <= 57, `header is ${header.height}px tall`);
-  assert.ok(world.x + world.width <= dir.x + 1 && dir.x + dir.width <= count.x + 1 && count.x + count.width <= gen.x + 1, 'world, direction, count, Generate: left to right');
+  assert.ok(world.x + world.width <= dir.x + 1 && dir.x + dir.width <= count.x + 1 && count.x + count.width <= gen.x + 1, 'territory, Refine, count, Generate: left to right');
+  assert.ok(world.width > dir.width, 'the territory leads: it is the bigger part');
+  assert.equal(await text('#terrName'), 'Mix it up');
   for (const b of [dir, count, gen]) assert.ok(Math.abs(b.y + b.height / 2 - (world.y + world.height / 2)) < 4, 'one row');
   assert.ok(settings.y < world.y, 'Settings stays in the header');
   assert.equal(await text('#tabSelection'), 'Selection (3)');
@@ -349,7 +351,8 @@ test('modes: Tab switches, Space plays (also after clicking a button), switching
   await page.keyboard.press(' ');
   assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Play');
   await page.click('#modeCurate');
-  await page.click('#directionInput');
+  await page.click('#refineOpen');                                            // Refine opens in place, the field focused
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'directionInput');
   await page.keyboard.press('Tab');                                           // typing: Tab moves to the next field
   assert.equal(await page.evaluate(() => document.body.dataset.mode), 'curate');
   await page.keyboard.type('a b');
@@ -1243,8 +1246,8 @@ test('dropdowns in the app style: open below or above depending on room, pick wi
   await page.click('.csel[data-for="chordSelect"]'); await page.keyboard.press('Escape');
   await page.keyboard.press('t');
   assert.equal(await page.locator('#reticle').evaluate(e => e.classList.contains('visible')), true, 'and after Esc');
-  // no system dropdown is left in the page (the segmented ones are buttons)
-  const native = await page.evaluate(() => [...document.querySelectorAll('select')].filter(s => !s.classList.contains('seg-src') && !s.parentElement.classList.contains('csel')).map(s => s.id));
+  // no system dropdown is left in the page (the segmented ones are buttons; the territory's is drawn by its own button and list)
+  const native = await page.evaluate(() => [...document.querySelectorAll('select')].filter(s => !s.classList.contains('seg-src') && !s.classList.contains('src-only') && !s.parentElement.classList.contains('csel')).map(s => s.id));
   assert.deepEqual(native, []);
   assert.deepEqual(consoleErrors, []);
   await ctx.close();

@@ -143,13 +143,31 @@
     <!-- ============ CURATE: the images ============ -->
     <section class="view" id="viewCurate" aria-label="Curate">
       <div class="gen-row">
-        <select id="worldSelect" title="Which territory to generate in">
-          <option value="">🎲 Mix it up</option>
-          <option value="__custom__">✍️ Custom territory…</option>
-          <option value="__wildcard__">✨ New territory (Kimi decides)</option>
-        </select>
-        <input id="directionInput" type="text" maxlength="300" placeholder="Direction (optional): e.g. apparel, wet, warm" />
-        <select id="batchCountSelect" title="Number of images per batch">
+        <!-- one control, read left to right: the territory (all Generate needs), an optional refinement, how many, Generate -->
+        <div class="gen" id="genGroup" role="group" aria-label="Generate images">
+          <button type="button" class="terr-btn" id="terrBtn" onclick="toggleTerrMenu(event)" aria-haspopup="listbox" aria-expanded="false">
+            <span class="terr-icon" id="terrIcon" aria-hidden="true"></span>
+            <span class="terr-text"><span class="terr-label">Territory</span><span class="terr-line"><b id="terrName">Mix it up</b><span id="terrSub"></span></span></span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+          </button>
+          <select id="worldSelect" class="src-only" title="Which territory to generate in" tabindex="-1" aria-hidden="true">
+            <option value="">Mix it up</option>
+            <option value="__custom__">Custom territory…</option>
+            <option value="__wildcard__">New territory (Kimi decides)</option>
+          </select>
+          <span class="gen-sep"></span>
+          <div class="refine" id="refine" data-state="empty">
+            <button type="button" class="refine-open" id="refineOpen" onclick="editRefine()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Refine <span>· optional</span></button>
+            <label class="refine-edit">
+              <span class="refine-label" id="refineLabel">Refine</span>
+              <span class="refine-req" id="refineReq" hidden>Required</span>
+              <input id="directionInput" type="text" maxlength="300" placeholder="e.g. wet apparel, warm light" autocomplete="off" />
+            </label>
+            <button type="button" class="refine-set" id="refineSet" onclick="editRefine()" title="Edit the refinement"><span class="refine-k" id="refineKey">Refine:</span> <span class="refine-v" id="refineShown"></span></button>
+            <button type="button" class="refine-x" id="refineClear" onmousedown="event.preventDefault()" onclick="clearRefine()" aria-label="Clear the refinement"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+          </div>
+          <span class="gen-sep"></span>
+          <select id="batchCountSelect" title="Number of images per batch">
           <option value="2">2 images</option>
           <option value="4" selected>4 images</option>
           <option value="6">6 images</option>
@@ -158,7 +176,10 @@
           <option value="16">16 images</option>
           <option value="20">20 images</option>
         </select>
-        <button class="primary" id="generateBtn" onclick="generateImages()">Generate</button>
+          <button class="primary" id="generateBtn" onclick="generateImages()" title="Generate (⌘↩)"><span class="gen-spin" aria-hidden="true"></span><span id="genLabel">Generate</span><kbd>⌘↩</kbd></button>
+          <div class="terr-menu" id="terrMenu" role="listbox" aria-label="Territories" hidden></div>
+        </div>
+        <span class="gen-hint" id="genHint" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>A territory is all Generate needs. Refine only to narrow it.</span>
       </div>
 
       <div class="gallery-col">

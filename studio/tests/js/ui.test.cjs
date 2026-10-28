@@ -90,25 +90,31 @@ test('direction placeholder follows the territory selection', async () => {
   await settle(); await settle();
   $('worldSelect').value = '';
   run('updateDirectionHint()');
-  assert.match($('directionInput').placeholder, /what do you want/i);
+  assert.match($('directionInput').placeholder, /^e\.g\. wet apparel/);
   $('worldSelect').value = '__wildcard__';
   run('updateDirectionHint()');
   assert.match($('directionInput').placeholder, /hint for the new territory/i);
   $('worldSelect').value = '__custom__';
   run('updateDirectionHint()');
-  assert.match($('directionInput').placeholder, /Describe your territory \(required\)/);
+  assert.match($('directionInput').placeholder, /what is it\?/);
+  assert.equal($('refineLabel').textContent, 'Describe', 'a custom territory is described, not refined');
+  assert.equal($('refineReq').hidden, false, 'and its description is required');
+  assert.equal($('generateBtn').disabled, true, 'Generate waits for it');
   $('worldSelect').value = 'Editorial Print';
   run('updateDirectionHint()');
-  assert.match($('directionInput').placeholder, /focus inside Editorial Print, e\.g\. poster, open magazine spread \(/, 'the territory\'s own subjects');
+  assert.match($('directionInput').placeholder, /focus inside Editorial Print, e\.g\. poster, open magazine spread/, 'the territory\'s own subjects');
+  assert.equal($('terrName').textContent, 'Editorial Print');
+  assert.equal($('terrSub').textContent, '2 of 21 kept', 'what was kept of what was made, on the button');
   assert.doesNotMatch($('directionInput').placeholder, /fog|rain|lightning/);
 });
 
-test('loadWorlds fills the dropdown with "X of Y kept" and wildcard marker', async () => {
+test('loadWorlds fills the territories with what was kept of what was made, and marks the ones Kimi invented', async () => {
   const { $, run } = load({ routes: baseRoutes() });
   await settle(); await settle();
-  const labels = $('worldSelect').options.map(o => o.textContent);
-  assert.ok(labels.includes('Editorial Print (2 of 21 kept)'));
-  assert.ok(labels.includes('✨ Harbor & Signal (0 of 0 kept)'));
+  const ep = $('worldSelect').options.find(o => o.value === 'Editorial Print');
+  assert.equal(ep.textContent, 'Editorial Print');
+  assert.deepEqual([ep.dataset.kept, ep.dataset.n], [2, 21]);
+  assert.equal($('worldSelect').options.find(o => o.value === 'Harbor & Signal').dataset.wild, '1');
 });
 
 test('changing territory clears the direction text', async () => {
@@ -181,7 +187,7 @@ async function runGenerate(h) {
   return p;
 }
 
-test('generateImages: success path locks controls, reports progress, then unlocks and clears direction', async () => {
+test('generateImages: success path locks controls, reports progress, then unlocks; the refinement stays for the next batch', async () => {
   let observed = null;
   const h = load({ routes: genRoutes({ n: 4, gen: async () => { observed = observed || ['worldSelect', 'directionInput', 'batchCountSelect', 'generateBtn'].map(id => h.$(id).disabled); return { ok: true, qa_passed: true }; } }) });
   await settle(); await settle();
@@ -189,7 +195,8 @@ test('generateImages: success path locks controls, reports progress, then unlock
   await runGenerate(h);
   assert.deepEqual(observed, [true, true, true, true]);                            // locked while running
   ['worldSelect', 'directionInput', 'batchCountSelect', 'generateBtn', 'modelSelect'].forEach(id => assert.equal(h.$(id).disabled, false, id));
-  assert.equal(h.$('directionInput').value, '');                                   // cleared after the batch
+  assert.equal(h.$('directionInput').value, 'harbour fog', 'it stays (shown as "Refine: harbour fog ×") until cleared');
+  assert.equal(h.$('refine').dataset.state, 'set');
   assert.deepEqual(JSON.parse(h.run('JSON.stringify(prog.slots)')), ['ok', 'ok', 'ok', 'ok']);
   assert.match(h.$('statusText').innerHTML, /Done · 4 added/);
   assert.equal(h.run('prog.timer'), null);
@@ -432,11 +439,10 @@ test('custom territory sends its description as the direction', async () => {
 });
 
 test('territory dropdown offers Mix it up, Custom and New', () => {
-  const { $, run } = load({ routes: baseRoutes() });
   const html = fs.readFileSync(WEB('index.html'), 'utf8');
-  assert.match(html, /<option value="">🎲 Mix it up<\/option>/);
-  assert.match(html, /<option value="__custom__">✍️ Custom territory…<\/option>/);
-  assert.match(html, /<option value="__wildcard__">✨ New territory/);
+  assert.match(html, /<option value="">Mix it up<\/option>/);
+  assert.match(html, /<option value="__custom__">Custom territory…<\/option>/);
+  assert.match(html, /<option value="__wildcard__">New territory/);
 });
 
 test('every inline handler in the markup and templates is exported on window', () => {

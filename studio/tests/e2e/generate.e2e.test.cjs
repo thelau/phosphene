@@ -1,17 +1,19 @@
 const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, skip, api, page, consoleErrors, addAi } = require('./harness.cjs');
 register();
 
-test('generate: controls lock, progress shows per image, direction clears afterwards', { skip }, async () => {
+test('generate: a custom territory waits for its description; controls lock, progress shows per image and on the button; the refinement stays', { skip }, async () => {
   const ctx = await fresh({ delays: { invent: 300, generate: 500 } });
-  await page.selectOption('#worldSelect', '__custom__');
-  assert.match(await page.locator('#directionInput').getAttribute('placeholder'), /Describe your territory/);
+  await page.click('#terrBtn');                                     // the territory list: Custom at its foot
+  await page.waitForSelector('#terrMenu:not([hidden])');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'terrFilter', 'type to filter at once');
+  await shot('04-territory-list');
+  await page.click('#terrMenu .tm-item[data-v="__custom__"]');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'directionInput', 'its description opens at once');
+  assert.match(await page.locator('#directionInput').getAttribute('placeholder'), /what is it\?/);
+  assert.equal(await text('#refineLabel'), 'Describe');
+  assert.equal(await page.locator('#refineReq').isVisible(), true, 'Required');
+  assert.equal(await page.locator('#generateBtn').isDisabled(), true, 'Generate waits for the description');
   await page.selectOption('#batchCountSelect', '4');
-
-  await page.click('#generateBtn');                                 // custom needs a description first
-  await page.waitForFunction(() => document.getElementById('toast').classList.contains('show'));
-  assert.match(await text('#toast'), /Describe your custom territory/);
-  assert.equal(api.state.calls.filter(c => c.path === '/api/invent-prompts').length, 0);
-
   await page.fill('#directionInput', 'fog, clouds, rain');
   await page.click('#generateBtn');
   for (const id of ['#worldSelect', '#directionInput', '#batchCountSelect', '#generateBtn']) assert.equal(await page.locator(id).isDisabled(), true, `${id} locked`);
@@ -21,13 +23,15 @@ test('generate: controls lock, progress shows per image, direction clears afterw
   assert.equal(await page.locator('#statusText .slot').count(), 4);
   await page.waitForSelector('#statusText .slot.run');
   assert.match(await text('#statusText'), /Fog & Vapor/);
+  assert.match(await text('#genLabel'), /^Generating \d of 4$/, 'the batch on the button itself');
   await shot('06-rendering');
   await page.waitForSelector('.pending-card');                                    // the images still coming hold their place at the end of the grid
   assert.ok(await page.locator('.pending-card').count() >= 1);
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.pending-ring')).borderRadius), '2px', 'the mark\'s box, as the logo target, not a circle');
   await page.waitForFunction(() => /Done · 4 added/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   for (const id of ['#worldSelect', '#directionInput', '#batchCountSelect', '#generateBtn']) await enabled(id);
-  assert.equal(await page.inputValue('#directionInput'), '');
+  assert.equal(await page.inputValue('#directionInput'), 'fog, clouds, rain', 'the description stays for the next batch');
+  assert.equal(await text('#genLabel'), 'Generate');
   assert.equal(await page.locator('#statusText .slot.ok').count(), 4);
   await page.waitForFunction(() => document.getElementById('tabSelection').textContent.includes('(7)'));
   assert.equal(await page.locator('.pending-card').count(), 0);
