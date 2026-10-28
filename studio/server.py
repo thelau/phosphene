@@ -514,7 +514,7 @@ def parse_llm_json(out: str, opener: str):
     return value
 
 
-def invent_world(st: dict, api_key: str, kimi_model: str, direction: str = "") -> dict:
+def invent_world(st: dict, api_key: str, kimi_model: str, direction: str = "", origin: str = "invented") -> dict:
     """Wildcard: Kimi authors a brand-new world in the same format as chapters.WORLDS."""
     known = ", ".join(w["name"] for w in chapters.all_worlds(st))
     ref = chapters.WORLDS[0]
@@ -533,6 +533,7 @@ def invent_world(st: dict, api_key: str, kimi_model: str, direction: str = "") -
             raise RuntimeError(f"invented world missing '{k}'")
     w["weight"] = 1.0
     w["wildcard"] = True
+    w["origin"] = origin                                   # "invented" (Surprise me: Kimi's) or "custom" (Describe your own: yours)
     st.setdefault("custom_worlds", [])
     st["custom_worlds"] = [x for x in st["custom_worlds"] if x["name"] != w["name"]] + [w]
     print(f"[KIMI] invented world '{w['name']}'", flush=True)
@@ -662,7 +663,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     if direction and not world:
         w = match_world(st, api_key, kimi_model, direction) or invent_world(st, api_key, kimi_model, direction)
     elif w is None:
-        w = invent_world(st, api_key, kimi_model, direction)
+        w = invent_world(st, api_key, kimi_model, direction, origin="custom" if world == "__custom__" else "invented")
 
     out: list = []
     totals = {"asked_kimi": 0, "from_kimi": 0, "dropped_duplicates": 0, "topped_up": 0, "kimi_calls": 0}
@@ -1183,7 +1184,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
             st = load_state()
             stats = chapters.world_stats(st)
             self.send_json({"ok": True, "worlds": [
-                {"name": w["name"], "brief": w["brief"], "examples": world_examples(w), "n": stats.get(w["name"], {}).get("n", 0), "kept": stats.get(w["name"], {}).get("kept", 0), "wildcard": bool(w.get("wildcard"))}
+                {"name": w["name"], "brief": w["brief"], "examples": world_examples(w), "n": stats.get(w["name"], {}).get("n", 0), "kept": stats.get(w["name"], {}).get("kept", 0), "wildcard": bool(w.get("wildcard")),
+                 "origin": w.get("origin") or ("invented" if w.get("wildcard") else "core")}   # where it comes from: built in, Kimi's, or yours
                 for w in chapters.all_worlds(st)
                 if not w.get("wildcard") or stats.get(w["name"], {}).get("n", 0) > 0  # invented worlds only list once they have images
             ]})

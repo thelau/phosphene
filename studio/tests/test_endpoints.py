@@ -955,7 +955,12 @@ def test_an_unexpected_territory_is_kept_and_listed_once_it_has_an_image(live, s
     assert [w["name"] for w in srv.load_state().get("custom_worlds", [])] == ["Salt & Tide"], "the invented territory is saved"
     assert "Salt & Tide" not in [w["name"] for w in live("GET", "/api/worlds")[1]["worlds"]], "listed only once it has an image"
     live("POST", "/api/generate-image", {"title": "Wiped Porthole Glass", "prompt": "p", "model": "m", "world": "Salt & Tide"})
-    assert "Salt & Tide" in [w["name"] for w in live("GET", "/api/worlds")[1]["worlds"]]
+    listed = {w["name"]: w["origin"] for w in live("GET", "/api/worlds")[1]["worlds"]}
+    assert listed["Salt & Tide"] == "invented" and listed["Editorial Print"] == "core", "where each comes from: Kimi's, built in"
+    world["name"] = "Fog & Vapor"                                                   # Describe your own: yours
+    live("POST", "/api/invent-prompts", {"count": 1, "world": "__custom__", "direction": "fog, clouds, rain"})
+    live("POST", "/api/generate-image", {"title": "Fog Bank", "prompt": "p", "model": "m", "world": "Fog & Vapor"})
+    assert {w["name"]: w["origin"] for w in live("GET", "/api/worlds")[1]["worlds"]}["Fog & Vapor"] == "custom"
 
 
 def test_kimi_writing_scenes_never_undoes_what_was_trashed_meanwhile_nor_writes_into_another_project(live, srv, monkeypatch):

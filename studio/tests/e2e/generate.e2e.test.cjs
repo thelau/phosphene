@@ -10,9 +10,7 @@ test('generate: a custom territory waits for its description; controls lock, pro
   assert.ok(menuBox.width >= btnBox.width && Math.abs(btnBox.x - menuBox.x) < 2, `the list under its button, at least as wide: ${btnBox.width} / ${menuBox.width}`);
   assert.equal(await page.locator('.terr-label').count(), 0, 'no TERRITORY label: they all are');
   assert.match(await page.locator('#terrMenu .tm-item[data-v="__wildcard__"]').textContent(), /Surprise me\s+Kimi invents a territory/);
-  assert.match(await page.locator('#terrMenu .tm-item[data-v=""]').textContent(), /Mix it up\s+a mix of your territories/, 'what it is, beside it as for the two above');
-  const mixH = (await page.locator('#terrMenu .tm-item[data-v=""]').boundingBox()).height, cH = (await page.locator('#terrMenu .tm-item[data-v="__custom__"]').boundingBox()).height;
-  assert.ok(Math.abs(mixH - cH) < 2, `Mix it up on one line, as the two above (${mixH} / ${cH})`);
+  assert.equal(await page.locator('#terrMenu .tm-item[data-v=""]').count(), 0, 'no Mix it up: you pick the territory');
   await shot('04-territory-list');
   await page.click('#terrMenu .tm-item[data-v="__custom__"]');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'directionInput', 'its description opens at once');
@@ -112,21 +110,25 @@ test('the batch size list offers up to 20 images and sends the chosen number', {
   await ctx.close();
 });
 
-test('many territories: one column, Custom and Unexpected first, then Mix it up, then the territories (the list scrolls); the ones never made show a dash', { skip }, async () => {
+test('many territories: one column, Describe your own and Surprise me first, then the territories with where each comes from (the list scrolls); the button keeps its width', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945, setup: st => { st.moreWorlds = Array.from({ length: 30 }, (_, i) => ({ name: `Territory ${i + 1}`, brief: '', n: i % 3 ? 0 : 4, kept: i % 3 ? 0 : 1, wildcard: false })); } });
   await page.click('#terrBtn');
   await page.waitForSelector('#terrMenu:not([hidden])');
   assert.equal(await page.locator('#terrMenu input').count(), 0, 'no search');
   const order = await page.locator('#terrMenu .tm-item').evaluateAll(els => els.slice(0, 4).map(e => e.dataset.v));
-  assert.deepEqual(order, ['__custom__', '__wildcard__', '', 'Editorial Print'], 'Custom, Unexpected, Mix it up, then the territories');
-  assert.equal(await page.locator('#terrMenu .tm-sep').count(), 2, 'a line after the two new-territory items, one after Mix it up');
+  assert.deepEqual(order, ['__custom__', '__wildcard__', 'Editorial Print', 'Matter & Elements'], 'the two ways to a new territory, then the territories');
+  assert.equal(await page.locator('#terrMenu .tm-sep').count(), 1, 'a line between them');
   assert.equal(await page.locator('#terrMenu .tm-world').count(), 32);
   assert.equal(await page.locator('#terrMenu .tm-head').count(), 1);
+  assert.equal(await page.locator('#terrMenu .tm-item[data-v="Editorial Print"] .tm-origin').textContent(), 'core', 'where it comes from (shown in capitals)');
+  assert.equal(await page.locator('#terrMenu .tm-bar, #terrMenu .tm-n').count(), 0, 'no kept-of-made column');
   const m = await page.locator('#terrMenu').evaluate(e => ({ w: e.getBoundingClientRect().width, bottom: e.getBoundingClientRect().bottom }));
   assert.ok(m.w >= 400 && m.w < 500 && m.bottom <= 945, `one column, on screen (it scrolls): ${JSON.stringify(m)}`);
-  assert.equal(await page.locator('#terrMenu .tm-item[data-v="Territory 2"] .tm-n').textContent(), '–');
-  await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
-  assert.equal(await page.inputValue('#worldSelect'), 'Matter & Elements', '↓ ↓ ↩ from Mix it up picks the second territory');
+  await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+  assert.equal(await page.inputValue('#worldSelect'), 'Matter & Elements', '↓ ↩ from the first territory picks the second');
+  const w0 = (await page.locator('#terrBtn').boundingBox()).width;
+  await page.evaluate(() => { const s = document.getElementById('worldSelect'); s.value = '__wildcard__'; s.dispatchEvent(new Event('change')); });
+  assert.equal((await page.locator('#terrBtn').boundingBox()).width, w0, 'the button keeps its width whatever the territory');
   await page.click('#terrBtn'); await shot('30-territories-one-column');
   await page.keyboard.press('Escape');
   await ctx.close();

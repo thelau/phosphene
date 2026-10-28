@@ -2703,6 +2703,9 @@
     const filmKey = slug => `studioFilm:${slug}`;
     let filmSlug = null, legacyFilm = null;
     try { filmSlug = localStorage.getItem('studioProject') || null; } catch (e) {}
+    // the territory used last, read now: the page saves its settings before the territories arrive, which blanked it
+    let savedWorld = '';
+    try { savedWorld = JSON.parse(localStorage.getItem(`studioFilm:${filmSlug}`) || '{}').worldSelect || ''; } catch (e) {}
     function readJson(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; } }
     function putSettings(saved, ids) {
       saved = migrateRhythm({ ...saved });
@@ -2820,9 +2823,9 @@
       const v = sel.value;
       const input = document.getElementById('directionInput');
       let say;
-      if (v === '') {
+      if (v === '') {                                                        // only until the territories have loaded
         input.placeholder = 'e.g. wet apparel, warm light';
-        say = 'Mix it up: we pick the territory, mostly ones whose images you keep, sometimes ones you haven\'t tried, sometimes a brand-new one. Type a direction and we match it to the closest territory.';
+        say = 'Choose a territory';
       } else if (v === '__custom__') {
         input.placeholder = 'what is it? e.g. fog, clouds, rain, lightning';
         say = 'Describe your own: every image will be about what you write. A look and palette are invented for it.';
@@ -2841,7 +2844,6 @@
     }
 
     // ---- the generation row: Territory (all Generate needs) → Refine (optional; Describe, required, for a custom territory) → count → Generate ----
-    const ICON_MIX = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg>';
     const ICON_WORLD = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EC540C" stroke-width="2"><rect x="7" y="3" width="10" height="18" rx="2"></rect><circle cx="12" cy="12" r="2" fill="#EC540C" stroke="none"></circle></svg>';
     const ICON_PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>';
     const ICON_SPARK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>';
@@ -2850,7 +2852,7 @@
     function renderGen() {
       const v = document.getElementById('worldSelect').value, custom = v === '__custom__';
       const opt = document.getElementById('worldSelect').selectedOptions[0];
-      const [icon, name] = v === '' ? [ICON_MIX, 'Mix it up'] : custom ? [ICON_PLUS, 'Describe your own'] : v === '__wildcard__' ? [ICON_SPARK, 'Surprise me'] : [ICON_WORLD, v];   // just the name (the counts are in the list)
+      const [icon, name] = v === '' ? ['', 'Choose a territory'] : custom ? [ICON_PLUS, 'Describe your own'] : v === '__wildcard__' ? [ICON_SPARK, 'Surprise me'] : [ICON_WORLD, v];   // just the name (the counts are in the list)
       const ic = document.getElementById('terrIcon');
       if (ic.dataset.v !== v) { ic.innerHTML = icon; ic.dataset.v = v; }
       document.getElementById('terrName').textContent = name;
@@ -2903,29 +2905,29 @@
       document.getElementById('genLabel').textContent = prog.stage === 'invent' ? 'Writing scenes…' : `Generating ${done} of ${prog.total}`;
     }
 
-    // the territory list, one column: Custom and Unexpected, Mix it up, the project's territories (kept of made); ↑ ↓ and ↩
+    // the territory list, one column: Describe your own and Surprise me, then the territories (kept of made); ↑ ↓ and ↩. There is
+    // no Mix it up any more (it picked one territory per batch for you: the user would rather pick it)
     // (no search: Custom and Unexpected batches add a territory each, ~30-40 over a project's life)
     let terrActive = 0;
     function terrOptions() {
       const all = [...document.getElementById('worldSelect').options];
-      return { mix: all.find(o => o.value === ''), worlds: namedWorlds(), custom: all.find(o => o.value === '__custom__'), wild: all.find(o => o.value === '__wildcard__') };
+      return { worlds: namedWorlds(), custom: all.find(o => o.value === '__custom__'), wild: all.find(o => o.value === '__wildcard__') };
     }
     function renderTerrMenu() {
       const m = document.getElementById('terrMenu');
       const cur = document.getElementById('worldSelect').value;
-      const { mix, worlds, custom, wild } = terrOptions();
+      const { worlds, custom, wild } = terrOptions();
       const item = (v, inner, cls = '') => `<div class="tm-item ${cls}" role="option" data-v="${escapeHtml(v)}" aria-selected="${v === cur}">${inner}</div>`;
       const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
-      // one column: the two ways to a new territory first, Mix it up, then the project's territories (new ones join at the end)
+      // one column: the two ways to a new territory first, then the territories (new ones join at the end)
       let html = '';
       if (custom) html += item('__custom__', `${ICON_PLUS}<span>Describe your own <span class="tm-sub">in your own words</span></span>${check}`);
       if (wild) html += item('__wildcard__', `${ICON_SPARK}<span>Surprise me <span class="tm-sub">Kimi invents a territory</span></span>${check}`);
       if (custom || wild) html += '<div class="tm-sep"></div>';
-      if (mix) html += item('', `${ICON_MIX}<span>Mix it up <span class="tm-sub">a mix of your territories</span></span>${check}`);   // (not quite random: pickWorld leans on what you keep)
       if (worlds.length) {
-        const row = o => { const k = +o.dataset.kept || 0, n = +o.dataset.n || 0; return item(o.value, `<span class="tm-name">${escapeHtml(o.value)}${o.dataset.wild ? ' <span class="tm-sub">new</span>' : ''}</span><span class="tm-bar">${n ? `<i style="width:${Math.round(k / n * 100)}%"></i>` : ''}</span><span class="tm-n">${n ? `${k} of ${n}` : '–'}</span>${check}`, 'tm-world' + (n ? '' : ' unmade')); };
-        if (mix) html += '<div class="tm-sep"></div>';
-        html += '<div class="tm-head"><span>Territories</span><span>kept of made</span></div>' + worlds.map(row).join('');
+        // where each comes from, on the right: CORE (built in), INVENTED (Surprise me), CUSTOM (Describe your own); the ones never made a little dimmer
+        const row = o => item(o.value, `<span class="tm-name">${escapeHtml(o.value)}</span><span class="tm-origin">${escapeHtml(o.dataset.origin || 'core')}</span>${check}`, 'tm-world' + (+o.dataset.n ? '' : ' unmade'));
+        html += '<div class="tm-head"><span>Territories</span></div>' + worlds.map(row).join('');
       }
       let list = m.querySelector('.tm-list');
       if (!list) {
@@ -2989,11 +2991,13 @@
           o.value = w.name;
           o.dataset.brief = w.brief || '';
           o.dataset.examples = (w.examples || []).join(', ');
-          o.dataset.kept = w.kept; o.dataset.n = w.n; o.dataset.wild = w.wildcard ? '1' : '';
+          o.dataset.kept = w.kept; o.dataset.n = w.n; o.dataset.wild = w.wildcard ? '1' : ''; o.dataset.origin = w.origin || (w.wildcard ? 'invented' : 'core');
           o.textContent = w.name;
           sel.appendChild(o);
         });
-        sel.value = cur || (JSON.parse(localStorage.getItem('studioSettings') || '{}').worldSelect || '');
+        sel.value = cur || savedWorld;
+        savedWorld = '';
+        if (!sel.value) sel.value = (namedWorlds()[0] || { value: '__custom__' }).value;   // never Mix it up (gone): the one used last, else the first
         updateDirectionHint();
         syncSelects();
       } catch (e) {}
@@ -3225,6 +3229,7 @@
       const kimiModel = document.getElementById('kimiModelSelect').value;
       const count = parseInt(document.getElementById('batchCountSelect').value, 10) || 4;
       const worldChoice = document.getElementById('worldSelect').value;
+      if (!worldChoice) { setStatus('Choose a territory first.'); toggleTerrMenu(null, true); return; }   // the territories have not loaded yet
       const direction = document.getElementById('directionInput').value.trim();
       if (worldChoice === '__custom__' && !direction) {
         setStatus('Describe your custom territory first, e.g. fog, clouds, rain, lightning.');

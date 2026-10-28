@@ -147,11 +147,11 @@
         <div class="gen" id="genGroup" role="group" aria-label="Generate images">
           <button type="button" class="terr-btn" id="terrBtn" onclick="toggleTerrMenu(event)" aria-haspopup="listbox" aria-expanded="false">
             <span class="terr-icon" id="terrIcon" aria-hidden="true"></span>
-            <span class="terr-text"><span class="terr-line"><b id="terrName">Mix it up</b></span></span>
+            <span class="terr-text"><span class="terr-line"><b id="terrName"></b></span></span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
           </button>
           <select id="worldSelect" class="src-only" title="Which territory to generate in" tabindex="-1" aria-hidden="true">
-            <option value="">Mix it up</option>
+            <option value="" hidden></option>
             <option value="__custom__">Describe your own</option>
             <option value="__wildcard__">Surprise me (Kimi invents a territory)</option>
           </select>

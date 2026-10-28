@@ -438,9 +438,19 @@ test('custom territory sends its description as the direction', async () => {
   assert.equal(inv.body.direction, 'fog, clouds, rain');
 });
 
-test('territory dropdown offers Mix it up, Custom and New', () => {
+test('territories: Describe your own and Surprise me, no Mix it up; the one used last opens, else the first', async () => {
   const html = fs.readFileSync(WEB('index.html'), 'utf8');
-  assert.match(html, /<option value="">Mix it up<\/option>/);
+  assert.doesNotMatch(html, /Mix it up/);
+  const fresh = load({ routes: baseRoutes() });
+  await settle(); await settle();
+  assert.equal(fresh.$('worldSelect').value, 'Editorial Print', 'a project with nothing saved: the first territory');
+  assert.equal(fresh.$('terrName').textContent, 'Editorial Print');
+  const back = load({ routes: baseRoutes(), storage: { 'studioFilm:demo': JSON.stringify({ worldSelect: 'Harbor & Signal' }) } });
+  await settle(); await settle();
+  assert.equal(back.$('worldSelect').value, 'Harbor & Signal', 'the one used last in this project');
+  const old = load({ routes: baseRoutes(), storage: { 'studioFilm:demo': JSON.stringify({ worldSelect: '' }) } });
+  await settle(); await settle();
+  assert.equal(old.$('worldSelect').value, 'Editorial Print', 'Mix it up saved before: the first territory instead');
   assert.match(html, /<option value="__custom__">Describe your own<\/option>/);
   assert.match(html, /<option value="__wildcard__">Surprise me/);
 });
