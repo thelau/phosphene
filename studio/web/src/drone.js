@@ -768,7 +768,7 @@
   // every ~120 ms however fast a slider moves, and the exact loudness is worked out in the background (the old level carries on meanwhile).
   class Live {
     constructor() { this.ctx = null; this.inst = null; this.params = null; this.starts = null; this.t0 = 0; this.total = 0; this.timer = null; this.playing = false; this.holding = 0; this.cal = 1; this.pending = null; this.swapAt = 0; this.calTimer = null; this.ticker = null; this.rooms = new Map(); this.buildMs = 20; this.master = null;
-      this.renewOnReturn = typeof navigator !== 'undefined' && /Apple/.test(navigator.vendor || '');   // WebKit (the Mac app, Safari) only: Chrome keeps its sound
+      this.renewOnReturn = false;   // a fresh sound on coming back to the window: off (it did not mend the lost output, which the app now prevents: background throttling off; it only added a gap)
     }
     get playingNow() { return this.playing; }
     // where the sound is in the clip. Just after a start, a restart or a seek the new sound has not begun yet (it starts a build's time

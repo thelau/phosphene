@@ -192,6 +192,9 @@ fn main() {
                 .title_bar_style(tauri::TitleBarStyle::Overlay)
                 .hidden_title(true)
                 .traffic_light_position(tauri::LogicalPosition::new(20.0, 21.0))   // the window's buttons centred in the page's 56 px top bar
+                // never suspended when hidden: after ~4 min behind other windows WebKit suspended the page's process and its audio session,
+                // and the sound stayed silent (every context still 'running') until a reload; macOS 14+ (WKInactiveSchedulingPolicy::None)
+                .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
                 .on_download(move |_webview, event| {
                     if let DownloadEvent::Requested { destination, .. } = event {
                         let name = destination.file_name().and_then(|n| n.to_str()).unwrap_or("download").to_string();
