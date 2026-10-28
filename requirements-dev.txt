@@ -1,2 +1,6 @@
 -r requirements.txt
 pytest
+
+# the Mac app's build (app/build.py): the frozen server and a self-contained ffmpeg
+pyinstaller==6.22.3
+imageio-ffmpeg==0.7.0
