@@ -115,13 +115,15 @@
     .modes { position: absolute; left: 50%; transform: translateX(-50%); }    /* Curate | Film in the middle of the window */
     .keys { position: relative; margin-right: -12px; }                              /* ? beside Settings */
     .keys-btn { font-family: var(--mono); font-size: 14px; font-weight: 600; }
-    .keys-panel { position: absolute; top: calc(100% + 10px); right: 0; width: 420px; padding: 16px 18px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 20px 50px rgba(0,0,0,.55); z-index: 100; }
+    .keys-panel { position: absolute; top: calc(100% + 10px); right: 0; width: 460px; padding: 16px 18px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 20px 50px rgba(0,0,0,.55); z-index: 100; }
     .keys-panel[hidden] { display: none; }
     .keys-panel h4 { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 12px; }
     .keys-panel h5 { font-size: 11px; font-weight: 600; color: var(--text-3); margin: 14px 0 8px; }
     .keys-panel h4 + h5 { margin-top: 0; }
-    .keys-panel dl { display: grid; grid-template-columns: 96px 1fr; row-gap: 9px; column-gap: 12px; align-items: center; font-size: 13px; }
-    .keys-panel dt { display: flex; gap: 4px; }
+    .keys-panel dl { display: grid; grid-template-columns: 112px 1fr; row-gap: 8px; column-gap: 14px; align-items: center; font-size: 13px; }
+    .keys-panel dt { display: flex; align-items: center; gap: 3px; }
+    .keys-panel .gesture { font-family: var(--mono); font-size: 11px; color: var(--text-2); padding: 1px 0; }
+    .keys-panel kbd + .gesture { margin-left: 3px; }
     .keys-panel dd { color: var(--text-2); }
     .keys-panel kbd { min-width: 22px; text-align: center; background: var(--field); }
     .keys-panel p { margin-top: 12px; font-size: 12px; color: var(--faint); }

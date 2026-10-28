@@ -1185,12 +1185,22 @@ test('the Keys panel: ? opens a tidy list under the hint, Esc and a click elsewh
   const ctx = await fresh({ width: 1512, height: 945 });
   await page.keyboard.press('?');
   await page.waitForSelector('#keysPanel:not([hidden])');
-  assert.equal(await page.locator('#keysPanel dt:not(.app-only)').count(), 14);
+  assert.equal(await page.locator('#keysPanel dt:not(.app-only)').count(), 17);
   assert.deepEqual(await page.locator('#keysPanel h5').allTextContents(), ['Everywhere', 'Film', 'Curate'], 'universal keys, then each tab\'s own');
-  assert.equal(await page.locator('#keysPanel dt.app-only').isVisible(), false, 'the app menu\'s shortcuts only in the app');
+  assert.equal(await page.locator('#keysPanel dt.app-only').first().isVisible(), false, 'the app menu\'s shortcuts only in the app');
+  await page.evaluate(() => document.body.classList.add('app'));                    // as in the app: its menu's keys too
+  const rows = await page.evaluate(() => [...document.querySelectorAll('#keysPanel dt')].map(dt => {
+    const a = dt.getBoundingClientRect(), b = dt.nextElementSibling.getBoundingClientRect(), last = dt.lastElementChild.getBoundingClientRect();
+    return { text: dt.textContent, keysEnd: last.right, ddStart: b.left, ddLines: Math.round(b.height / 17) };
+  }));
+  for (const r of rows) {
+    assert.ok(r.keysEnd <= r.ddStart - 4, `${r.text}: the keys stay clear of what they do`);
+    assert.ok(r.ddLines <= 1, `${r.text}: what it does on one line`);
+  }
+  await shot('22-keys');
+  await page.evaluate(() => document.body.classList.remove('app'));
   const p = await page.locator('#keysPanel').boundingBox();
   assert.ok(p.x >= 0 && p.x + p.width <= 1512 && p.y + p.height <= 945, 'all of it on screen');
-  await shot('22-keys');
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('#keysPanel').isVisible(), false);
   await page.click('#keysBtn');
