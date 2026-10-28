@@ -1606,6 +1606,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/invent-prompts":
             started_in = PROJECT["slug"] if PROJECT else None
             st = load_state()
+            before = json.loads(json.dumps(st))                 # what writing the scenes changes is merged back below, nothing else
             kimi_key = body.get("kimi_api_key") or st.get("kimi_api_key", "")
             kimi_model = body.get("kimi_model") or st.get("kimi_model", "kimi-k3")
             if not kimi_key:
@@ -1630,6 +1631,16 @@ class StudioHandler(SimpleHTTPRequestHandler):
                             t = idea.get("title", "")
                             if t and t not in now.setdefault("history", []):
                                 now["history"].append(t)
+                        # and whatever this step itself changed: a territory Kimi invented (custom_worlds), the memory that keeps
+                        # batches from repeating (recent_subjects / _worlds / _axes). Merging only the titles lost them all.
+                        for k, v in st.items():
+                            if k in ("history", "kimi_api_key") or v == before.get(k):
+                                continue
+                            if k == "custom_worlds":
+                                mine = {w.get("name"): w for w in v}
+                                now[k] = [w for w in now.get(k, []) if w.get("name") not in mine] + v
+                            else:
+                                now[k] = v
                         save_state(now)
                 gen_log.record("batch", ok=True, asked=int(body.get("count", 4)), territory_choice=body.get("world") or "mix", direction=direction, kimi_model=kimi_model,
                                seconds=round(time.time() - t_batch, 1), titles=[i.get("title") for i in ideas], **stats)

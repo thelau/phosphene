@@ -943,6 +943,21 @@ def test_a_request_for_another_project_is_refused(live, srv):
     assert status != 409, "the open project's own requests go through"
 
 
+def test_an_unexpected_territory_is_kept_and_listed_once_it_has_an_image(live, srv, monkeypatch):
+    # since the merge above, the territory Kimi invented was dropped with the rest of what the step changed: its image was
+    # tagged "Salt & Tide", which the territory list never showed
+    import json as _json
+    world = {"name": "Salt & Tide", "brief": "Harbours. Brine.", "palette": "grey and rust", "applications": ["tarred rope coil", "wiped porthole glass"] + [f"thing {i}" for i in range(8)], "marks": ["etched", "stamped", "cast", "woven", "lit"]}
+    shots = [{"title": "Wiped Porthole Glass", "subject": "porthole", "idea": "i", "guide": "dark", "prompt": "a wiped porthole glass, harbour light"}]
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda prompt, **k: _json.dumps(world if "Invent ONE new creative world" in prompt else shots))
+    status, res = live("POST", "/api/invent-prompts", {"count": 1, "world": "__wildcard__"})
+    assert status == 200 and res["ideas"][0]["world"] == "Salt & Tide", res
+    assert [w["name"] for w in srv.load_state().get("custom_worlds", [])] == ["Salt & Tide"], "the invented territory is saved"
+    assert "Salt & Tide" not in [w["name"] for w in live("GET", "/api/worlds")[1]["worlds"]], "listed only once it has an image"
+    live("POST", "/api/generate-image", {"title": "Wiped Porthole Glass", "prompt": "p", "model": "m", "world": "Salt & Tide"})
+    assert "Salt & Tide" in [w["name"] for w in live("GET", "/api/worlds")[1]["worlds"]]
+
+
 def test_kimi_writing_scenes_never_undoes_what_was_trashed_meanwhile_nor_writes_into_another_project(live, srv, monkeypatch):
     """invent-prompts used to save the state it read before Kimi's seconds-long call: a trash made meanwhile was undone."""
     import json as _json
@@ -957,3 +972,4 @@ def test_kimi_writing_scenes_never_undoes_what_was_trashed_meanwhile_nor_writes_
     st = srv.load_state()
     assert name in st["trashed"], "the trash made during the call is kept"
     assert "Fresh Idea" in st["history"], "and the new titles are added"
+    assert st["recent_worlds"][-1] == "Editorial Print" and st.get("recent_axes"), "and the memory that keeps batches from repeating"
