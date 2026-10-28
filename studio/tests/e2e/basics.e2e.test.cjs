@@ -595,7 +595,7 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   await ctx.close();
 });
 
-test('Download in Curate: the images shown (All or the group), in their order, as one zip; not in the Trash', { skip }, async () => {
+test('Download in Curate: the images shown (All, the group or the Trash), in their order, as one zip', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945 });
   assert.equal(await page.locator('#downloadBtn').isVisible(), true);
   assert.match(await page.locator('#downloadBtn').getAttribute('title'), /Download the 3 images shown/);
@@ -608,7 +608,10 @@ test('Download in Curate: the images shown (All or the group), in their order, a
   assert.deepEqual(api.state.zipAsked, { files: ['k2', 'k3'], label: 'Warm' }, 'just the group, named after it');
   await page.click('#tabTrash');
   await page.waitForSelector('#trashBar:not([hidden])');
-  assert.equal(await page.locator('#downloadBtn').isVisible(), false, 'not in the Trash');
+  await page.waitForFunction(() => /Download the 4 images/.test(document.getElementById('downloadBtn').title));
+  await Promise.all([page.waitForEvent('download'), page.click('#downloadBtn')]);
+  assert.equal(api.state.zipAsked.label, 'Trash', 'the Trash too, named so');
+  assert.equal(api.state.zipAsked.files.length, 4);
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
@@ -1168,7 +1171,7 @@ test('the Keys panel: ? opens a tidy list under the hint, Esc and a click elsewh
   const ctx = await fresh({ width: 1512, height: 945 });
   await page.keyboard.press('?');
   await page.waitForSelector('#keysPanel:not([hidden])');
-  assert.equal(await page.locator('#keysPanel dt:not(.app-only)').count(), 15);
+  assert.equal(await page.locator('#keysPanel dt:not(.app-only)').count(), 14);
   assert.deepEqual(await page.locator('#keysPanel h5').allTextContents(), ['Everywhere', 'Film', 'Curate'], 'universal keys, then each tab\'s own');
   assert.equal(await page.locator('#keysPanel dt.app-only').isVisible(), false, 'the app menu\'s shortcuts only in the app');
   const p = await page.locator('#keysPanel').boundingBox();

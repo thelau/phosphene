@@ -907,9 +907,10 @@
     let activeSeq = null;
     function renderSequences() {
       document.getElementById('seqBox').hidden = showTrash;
-      const dl = document.getElementById('downloadBtn'), n = activePlates().length;   // the Selection only (All or the group), not the Trash
-      dl.hidden = showTrash; dl.disabled = !n || downloading;
-      dl.title = n ? `Download the ${n} image${n === 1 ? '' : 's'} shown, full size, in their order (a zip)` : 'No images to download';
+      const n = activePlates().length, shown = showTrash ? visiblePlates().length : n;   // the images shown: All, the group, or the Trash
+      const dl = document.getElementById('downloadBtn');
+      dl.disabled = !shown || downloading;
+      dl.title = shown ? `Download the ${shown} image${shown === 1 ? '' : 's'} shown, full size, in their order (a zip)` : 'No images to download';
       syncAiBtn();
       for (const id of ['playBtn', 'fsPlayBtn', 'miniPlayBtn']) document.getElementById(id).disabled = !n;
       if (!n && isPlaying) togglePlay();                                     // the last image went (trashed, another group): stop
@@ -922,12 +923,12 @@
     // the images shown in Curate (All or the chosen group, in their order), full size, in one zip; the browser saves it
     let downloading = false;
     async function downloadShown() {
-      const list = activePlates();
-      if (showTrash || !list.length || downloading) return;
+      const list = showTrash ? visiblePlates() : activePlates();
+      if (!list.length || downloading) return;
       downloading = true; renderSequences();
       setStatus(`Packing ${list.length} images…`);
       try {
-        const label = currentGroup === 'all' ? 'All' : (groupChips().chips.concat(groupChips().auto).find(c => c.key === currentGroup) || { name: 'Group' }).name;
+        const label = showTrash ? 'Trash' : currentGroup === 'all' ? 'All' : (groupChips().chips.concat(groupChips().auto).find(c => c.key === currentGroup) || { name: 'Group' }).name;
         const r = await (await fetch('/api/download-zip', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files: list.map(p => p.filename), label }) })).json();
         if (!r.ok) throw new Error(r.error || 'the zip was not made');
         const a = document.createElement('a'); a.href = r.url; a.download = r.filename; document.body.appendChild(a); a.click(); a.remove();
@@ -1356,7 +1357,6 @@
       if (cmd && !e.altKey && key === 'z') { e.preventDefault(); if (e.shiftKey) redoLast(); else undoLast(); return; }
       if (cmd && key === 's') { e.preventDefault(); if (mode === 'film') { flash('editSaveBtn'); snapshotEdit(); } return; }   // Film's snapshot; never the browser's Save Page
       if (cmd && key === 'a' && mode === 'curate' && !showTrash) { e.preventDefault(); pickAll(); return; }
-      if (cmd && key === 'Enter' && mode === 'curate') { e.preventDefault(); if (!generating && !aiRunning) generateImages(); return; }   // Generate
       if (cmd || e.altKey) return;
       if (e.repeat && ['Tab', 'f', 't', 'r', 's'].includes(key)) { e.preventDefault(); return; }   // a held key acts once
       if (e.target && e.target.type === 'range' && key.startsWith('Arrow')) return;               // a slider with focus keeps its arrows
@@ -2873,7 +2873,7 @@
         g.classList.remove('running');
         document.getElementById('genLabel').textContent = 'Generate';
         g.disabled = aiRunning || (custom && !text);
-        g.title = custom && !text ? 'Describe the custom territory first' : 'Generate (⌘↩)';
+        g.title = custom && !text ? 'Describe the custom territory first' : 'Generate';
       }
       document.getElementById('genHint').hidden = !(project && !plates.length && !generating);   // a new project, until its first batch
     }
@@ -2895,8 +2895,7 @@
       input.addEventListener('focus', () => { refineEditing = true; renderGen(); });
       input.addEventListener('blur', () => { refineEditing = false; renderGen(); });
       input.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); input.blur(); generateImages(); }
-        else if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); input.blur(); }
       });
     })();
     // the running batch shows on the button itself: "Generating 2 of 4" (Stop stays in the status bar: one control)
@@ -2908,7 +2907,7 @@
       document.getElementById('genLabel').textContent = prog.stage === 'invent' ? 'Writing scenes…' : `Generating ${done} of ${prog.total}`;
     }
 
-    // the territory list: a filter, Mix it up, the project's territories (kept of made), Custom, New; ↩ chooses, ⌘↩ chooses and generates
+    // the territory list: a filter, Mix it up, the project's territories (kept of made), Custom, New; ↩ chooses
     let terrActive = 0;
     function terrOptions(filter) {
       const f = (filter || '').trim().toLowerCase();
@@ -2937,13 +2936,13 @@
       if (!html) html = '<div class="tm-none">No territory matches.</div>';
       let list = m.querySelector('.tm-list');
       if (!list) {
-        m.innerHTML = '<label class="tm-filter"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><input id="terrFilter" type="text" placeholder="Type to filter" autocomplete="off" aria-label="Filter the territories" /></label><div class="tm-list"></div><div class="tm-foot">↩ choose · ⌘↩ choose and generate</div>';
+        m.innerHTML = '<label class="tm-filter"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><input id="terrFilter" type="text" placeholder="Type to filter" autocomplete="off" aria-label="Filter the territories" /></label><div class="tm-list"></div>';
         list = m.querySelector('.tm-list');
         const f = m.querySelector('#terrFilter');
         f.addEventListener('input', () => { terrActive = 0; renderTerrMenu(); });
         f.addEventListener('keydown', terrKey);
         list.addEventListener('mousedown', e => e.preventDefault());
-        list.addEventListener('click', e => { const it = e.target.closest('.tm-item'); if (it) chooseTerr(it.dataset.v, e.metaKey || e.ctrlKey); });
+        list.addEventListener('click', e => { const it = e.target.closest('.tm-item'); if (it) chooseTerr(it.dataset.v); });
         list.addEventListener('mousemove', e => { const it = e.target.closest('.tm-item'); if (it) { terrActive = [...list.querySelectorAll('.tm-item')].indexOf(it); markTerr(); } });
       }
       list.innerHTML = html;
@@ -2961,8 +2960,10 @@
       open = open === undefined ? m.hidden : open;
       if (open && (generating || aiRunning)) return;
       m.hidden = !open;
-      document.getElementById('terrBtn').setAttribute('aria-expanded', String(open));
+      const btn = document.getElementById('terrBtn');
+      btn.setAttribute('aria-expanded', String(open));
       if (!open) return;
+      m.style.width = `${Math.max(400, btn.offsetWidth || 0)}px`;            // the list and its button: one width
       const f = m.querySelector('#terrFilter'); if (f) f.value = '';
       renderTerrMenu();
       const items = [...m.querySelectorAll('.tm-item')];
@@ -2973,16 +2974,15 @@
     function terrKey(e) {
       const items = [...document.querySelectorAll('#terrMenu .tm-item')];
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); terrActive += e.key === 'ArrowDown' ? 1 : -1; markTerr(); }
-      else if (e.key === 'Enter') { e.preventDefault(); const it = items[terrActive]; if (it) chooseTerr(it.dataset.v, e.metaKey || e.ctrlKey); }
+      else if (e.key === 'Enter') { e.preventDefault(); const it = items[terrActive]; if (it) chooseTerr(it.dataset.v); }
       else if (e.key === 'Escape') { e.preventDefault(); toggleTerrMenu(null, false); document.getElementById('terrBtn').focus(); }
     }
-    function chooseTerr(v, andGenerate) {
+    function chooseTerr(v) {
       const sel = document.getElementById('worldSelect');
       toggleTerrMenu(null, false);
       if (sel.value !== v) { sel.value = v; sel.dispatchEvent(new Event('change')); }
       if (v === '__custom__') { editRefine(); return; }                     // its description comes first
-      if (andGenerate) generateImages();
-      else document.getElementById('terrBtn').focus();
+      document.getElementById('terrBtn').focus();
     }
     document.addEventListener('click', e => { const m = document.getElementById('terrMenu'); if (!m.hidden && !(e.target.closest && e.target.closest('#terrMenu, #terrBtn'))) toggleTerrMenu(null, false); });
 

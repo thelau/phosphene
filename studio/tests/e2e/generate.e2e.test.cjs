@@ -6,6 +6,10 @@ test('generate: a custom territory waits for its description; controls lock, pro
   await page.click('#terrBtn');                                     // the territory list: Custom at its foot
   await page.waitForSelector('#terrMenu:not([hidden])');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'terrFilter', 'type to filter at once');
+  const [btnBox, menuBox] = [await page.locator('#terrBtn').boundingBox(), await page.locator('#terrMenu').boundingBox()];
+  assert.ok(Math.abs(btnBox.width - menuBox.width) < 2 && Math.abs(btnBox.x - menuBox.x) < 2, `the list as wide as its button: ${btnBox.width} / ${menuBox.width}`);
+  const [label, name] = [await page.locator('.terr-label').boundingBox(), await page.locator('#terrName').boundingBox()];
+  assert.ok(Math.abs(label.y + label.height - (name.y + name.height)) < 6 && label.x < name.x, 'one line: TERRITORY, then the name');
   await shot('04-territory-list');
   await page.click('#terrMenu .tm-item[data-v="__custom__"]');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'directionInput', 'its description opens at once');
