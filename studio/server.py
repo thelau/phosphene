@@ -1707,7 +1707,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             except Exception as e:
                 print(f"[GENERATE] FAILED '{title}' ({model}, guide={guide_type}) after {time.time() - t_start:.0f}s: {str(e)[:300]}", flush=True)
                 code = getattr(e, "code", None)
-                message = ("Krea's moderation rejected this image" + (" even after the prompt was softened" if softened else "") + " (content policy). Regenerate it, or change the wording." if code == "content_policy" else str(e))
+                message = ("Refused by Krea's moderation" + (", also with a softened prompt" if softened else "") if code == "content_policy" else str(e))
                 gen_log.record("image", id=job_id, ok=False, title=title, model=model, guide=guide_type, world=body.get("world"), seconds=round(time.time() - t_start, 1),
                                attempts=trace, error=str(e)[:500], error_code=code, krea_job=getattr(e, "job_id", None), prompt=raw_prompt[:700], softened=bool(softened))
                 # what the page does next: a lost connection or Krea down pauses the batch until it is back; no credits stops it;

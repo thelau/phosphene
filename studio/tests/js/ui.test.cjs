@@ -158,9 +158,9 @@ test('progStop keeps a summary and stops the timer', () => {
   const { run, $ } = load({ routes: baseRoutes() });
   run(`progStart(2)`);
   assert.ok(run('prog.timer'));
-  run(`progStop('Done — 2 added')`);
+  run(`progStop('Done · 2 added')`);
   assert.equal(run('prog.timer'), null);
-  assert.match($('statusText').innerHTML, /Done — 2 added/);
+  assert.match($('statusText').innerHTML, /Done · 2 added/);
 });
 
 // ---------- generateImages end to end (fake server) ----------
@@ -191,7 +191,7 @@ test('generateImages: success path locks controls, reports progress, then unlock
   ['worldSelect', 'directionInput', 'batchCountSelect', 'generateBtn', 'modelSelect'].forEach(id => assert.equal(h.$(id).disabled, false, id));
   assert.equal(h.$('directionInput').value, '');                                   // cleared after the batch
   assert.deepEqual(JSON.parse(h.run('JSON.stringify(prog.slots)')), ['ok', 'ok', 'ok', 'ok']);
-  assert.match(h.$('statusText').innerHTML, /Done — 4 added/);
+  assert.match(h.$('statusText').innerHTML, /Done · 4 added/);
   assert.equal(h.run('prog.timer'), null);
   const gen = h.calls.filter(c => c.url === '/api/generate-image');
   assert.equal(gen.length, 4);
@@ -228,7 +228,8 @@ test('generateImages: logo-check failures show as trash slots and in the summary
   await settle(); await settle();
   await runGenerate(h);
   assert.deepEqual(h.run('prog.slots').slice().sort(), ['ok', 'ok', 'trash', 'trash']);
-  assert.match(h.$('statusText').innerHTML, /2 added, 2 in Trash \(Low center logo fidelity\)/);
+  assert.match(h.$('statusText').innerHTML, /Done · 2 added · 2 to Trash by the logo check/);
+  assert.match(h.$('statusText').innerHTML, /title="[^"]*Logo check: Low center logo fidelity/);
 });
 
 test('generateImages: server errors on an image become err slots, batch continues', async () => {
@@ -237,7 +238,19 @@ test('generateImages: server errors on an image become err slots, batch continue
   await settle(); await settle();
   await runGenerate(h);
   assert.equal(h.run('prog.slots').filter(s => s === 'err').length, 1);
-  assert.match(h.$('statusText').innerHTML, /2 added, 1 failed \(Krea 500\)/);
+  assert.match(h.$('statusText').innerHTML, /Done · 2 added · 1 failed</);
+  assert.match(h.$('statusText').innerHTML, /title="[^"]*Krea 500/);
+});
+
+test('generateImages: a moderation refusal is its own grey bar and count, not a failure, not retried', async () => {
+  let i = 0;
+  const h = load({ routes: genRoutes({ n: 2, gen: async () => (i++ === 1 ? { ok: false, code: 'content_policy', retryable: false, error: "Refused by Krea's moderation, also with a softened prompt" } : { ok: true, qa_passed: true }) }) });
+  await settle(); await settle();
+  await runGenerate(h);
+  assert.deepEqual(h.run('prog.slots').slice().sort(), ['blocked', 'ok']);
+  assert.match(h.$('statusText').innerHTML, /Done · 1 added · 1 refused by Krea's moderation</);
+  assert.doesNotMatch(h.$('statusText').innerHTML, /failed|Retry/);
+  assert.match(h.$('statusText').innerHTML, /class="slot blocked" title="[^"]*also with a softened prompt/);
 });
 
 test('generateImages: the connection is lost (a request throws, or Krea is unreachable): the batch waits, then carries on by itself', async () => {
@@ -264,7 +277,7 @@ test('generateImages: Krea answers "unreachable" (offline): the same wait; Stop 
   assert.match(h.$('statusText').innerHTML, /Connection lost: waiting to carry on/);
   h.run("prog.actions.find(a => a.label === 'Stop').run()");
   await run;
-  assert.match(h.$('statusText').innerHTML, /Stopped — 0 added, 4 not made/);
+  assert.match(h.$('statusText').innerHTML, /Stopped · 0 added · 4 not made/);
   const pending = JSON.parse(h.store['studioPending:demo']);
   assert.equal(pending.items.length, 4, 'kept on this computer');
   // the page opens again later: the batch is offered
@@ -1924,6 +1937,14 @@ test('settings saved before films were per project become the first project\'s, 
   assert.equal(h.$('bpmInput').value, '88'); assert.equal(h.$('echoRange').value, '12');
   assert.equal(JSON.parse(h.store['studioFilm:demo']).bpmInput, '88');
   assert.equal(JSON.parse(h.store.studioSettings).thumbSizeVal, 'L', 'the shared ones stay shared');
+});
+
+test('an image the logo check trashed has one badge, Logo check, with the reason on hover (not also QA flagged)', async () => {
+  const h = load({ routes: baseRoutes() });
+  await settle(); await settle();
+  const html = h.run(`cardHtml(${JSON.stringify({ ...mkPlate('x.jpg'), trashed: true, trash_reason: 'Logo check', qa_passed: false, qa_issues: ['The mark is not at its place and size (fit 0.30)'] })})`);
+  assert.match(html, /class="card-model-badge warn" title="The mark is not at its place and size \(fit 0\.30\)">Logo check</);
+  assert.doesNotMatch(html, /QA flagged/);
 });
 
 test('a doubtful logo check stays in the selection with a "Check the mark" badge and its reason in Info', async () => {

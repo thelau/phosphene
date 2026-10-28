@@ -39,7 +39,7 @@ Phosphene.app (Tauri 2, `app/src-tauri`): a native window (macOS's WebKit) aroun
 A lost connection or Krea down (`offline` from /api/generate-image: 5xx gateway codes, URL / socket errors, or the page's request
 throwing) pauses the batch ("Connection lost: waiting to carry on…") and `/api/net` (Krea reachable?) is asked every 5 s until it is
 back, then it carries on by itself; no Krea credits (`stop`) stops it; an image failing on its own is kept for "Retry N" at the end
-(same scenes, Kimi not asked again; `retryable` false for a moderation rejection); Stop (in the status bar, it wakes a waiting batch) or
+(same scenes, Kimi not asked again; `retryable` false for a moderation rejection); a moderation refusal (Krea said no twice, the second time to a softened prompt) is not a failure: nothing was made, so nothing goes to the Trash; its bar is grey (`blocked`) and it is counted on its own; the summary is one short line of counts (`Done · 1 added · 1 to Trash by the logo check · 1 refused by Krea's moderation`), each bar's hover gives that image's reason and the summary's hover all of them (`prog.detail`); Stop (in the status bar, it wakes a waiting batch) or
 a reload, quit or crash keeps what was not made on this computer (`studioPending:<slug>`), offered when the page opens: "N images of
 the last batch weren't made · Resume · Discard" (`offerPending`; images already made meanwhile, by title, are skipped). The status
 bar's buttons are `prog.actions`. The Mac app asks before quitting or closing the window while a job runs (`page-busy` event from the

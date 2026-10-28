@@ -79,7 +79,7 @@ test('AI order: it cannot start while images are being generated', { skip }, asy
   await page.click('#generateBtn');
   await page.waitForSelector('#statusText .slot');
   assert.equal(await page.locator('#aiBtn').isDisabled(), true);
-  await page.waitForFunction(() => /Done — 4 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
+  await page.waitForFunction(() => /Done · 4 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
   await enabled('#aiBtn');
   assert.equal(api.state.calls.filter(c => c.path === '/api/order-ai').length, 0);
   await ctx.close();

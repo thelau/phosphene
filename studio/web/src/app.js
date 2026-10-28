@@ -1063,8 +1063,8 @@
           <div class="card-meta">
             <span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>
             ${p.critic ? `<span class="card-model-badge" title="${escapeHtml(p.critic.reason)}">AI ${p.critic.mean}</span>` : ''}
-            ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
-            ${!p.qa_passed ? `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>` : p.qa_doubt ? `<span class="card-model-badge doubt" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : ''}
+            ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(!p.qa_passed && (p.qa_issues || []).length && p.trash_reason === 'Logo check' ? p.qa_issues.join(', ') : p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
+            ${!p.qa_passed ? (p.trash_reason === 'Logo check' ? '' : `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>`) : p.qa_doubt ? `<span class="card-model-badge doubt" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : ''}
           </div>
         </div>`;
     }
@@ -2719,21 +2719,21 @@
     function progRender() {
       refreshPending();
       const el = document.getElementById('statusText');
-      const done = prog.slots.filter(x => x === 'ok' || x === 'trash' || x === 'err').length;
+      const done = prog.slots.filter(x => x === 'ok' || x === 'trash' || x === 'err' || x === 'blocked').length;
       const running = prog.slots.filter(x => x === 'run').length;
       const dots = prog.slots.map((st, i) => `<i class="slot ${st}" title="${escapeHtml((prog.titles[i] || '') + (prog.why && prog.why[i] ? ' — ' + prog.why[i] : ''))}"></i>`).join('');
       const bar = prog.stage === 'invent' ? '<span class="slots indeterminate"><i></i></span>' : `<span class="slots">${dots}</span>`;
       const count = prog.stage === 'invent' ? '' : `<b>${done}/${prog.total}</b>`;
       el.innerHTML = `<div class="prog">
         <span class="prog-world">${escapeHtml(prog.world || 'New batch')}</span>${bar}${count}
-        <span class="prog-note">${escapeHtml(prog.summary || prog.note)}</span>
+        <span class="prog-note"${prog.summary && prog.detail ? ` title="${escapeHtml(prog.detail)}"` : ''}>${escapeHtml(prog.summary || prog.note)}</span>
         ${(prog.actions || []).map((x, i) => `<button type="button" class="small-btn prog-act" data-act="${i}">${escapeHtml(x.label)}</button>`).join('')}
         ${prog.timer ? `<span class="prog-time">${fmtElapsed(Date.now() - prog.t0)}${running ? ` · ${running} ${prog.world === 'AI order' ? 'working' : 'rendering'}` : ''}</span>` : ''}
       </div>`;
     }
     function progStart(count) {
       prog.t0 = Date.now(); prog.slots = []; prog.titles = []; prog.why = []; prog.world = ''; prog.stage = 'invent';
-      prog.total = count; prog.summary = ''; prog.note = `Choosing a territory and writing ${count} scenes…`;
+      prog.total = count; prog.summary = ''; prog.detail = ''; prog.note = `Choosing a territory and writing ${count} scenes…`;
       document.getElementById('statusText').dataset.idle = '';
       clearInterval(prog.timer); prog.timer = setInterval(progRender, 1000); progRender();
     }
@@ -2814,8 +2814,8 @@
     function batchActions(list) { prog.actions = list; progRender(); }
     async function runBatch(ideas, model) {
       batchStop = false;
-      let added = 0, trashedByQa = 0, lastRejectReason = '', authFailed = false, creditsOut = false;
-      const reasons = [], failedItems = [], left = new Map(ideas.map((it, i) => [i, it]));
+      let added = 0, trashedByQa = 0, authFailed = false, creditsOut = false;
+      const failedItems = [], left = new Map(ideas.map((it, i) => [i, it]));
       prog.stage = 'render';
       prog.total = ideas.length;
       prog.world = (ideas[0] && ideas[0].world) || '';
@@ -2849,9 +2849,10 @@
           if (batchStop) return;
         }
         if (genData.project_changed) { batchStop = true; prog.slots[idx] = 'wait'; return; }
-        if (genData.needs_auth) { authFailed = true; prog.slots[idx] = 'err'; lastRejectReason = 'Krea login needed: Settings › Connect Krea'; prog.why[idx] = lastRejectReason; reasons.push(lastRejectReason); return; }
+        if (genData.needs_auth) { authFailed = true; prog.slots[idx] = 'err'; prog.why[idx] = 'Krea login needed: Settings › Connect Krea'; return; }
         if (!genData.ok) {
-          prog.slots[idx] = 'err'; lastRejectReason = genData.error || 'Generation failed'; prog.why[idx] = lastRejectReason; reasons.push(lastRejectReason);
+          // a moderation refusal is not a failure to retry: nothing was made (and nothing goes to the Trash), its bar is grey
+          prog.slots[idx] = genData.code === 'content_policy' ? 'blocked' : 'err'; prog.why[idx] = genData.error || 'Generation failed';
           if (genData.stop) creditsOut = true;
           left.delete(idx);
           if (genData.retryable !== false) failedItems.push(item);
@@ -2866,7 +2867,7 @@
         } else {
           trashedByQa++;
           prog.slots[idx] = 'trash';
-          if (genData.qa_issues && genData.qa_issues.length) lastRejectReason = genData.qa_issues[0];
+          if (genData.qa_issues && genData.qa_issues.length) prog.why[idx] = `Logo check: ${genData.qa_issues[0]}`;
           prog.note = `“${item.title}” failed the logo check → Trash`;
         }
         progRender();
@@ -2876,20 +2877,22 @@
       await Promise.all([0, 1, 2].map(async () => {
         while (queue.length) {
           const [item, idx] = queue.shift();
-          try { await runOne(item, idx); } catch (e) { prog.slots[idx] = 'err'; lastRejectReason = e.message; prog.why[idx] = e.message; reasons.push(e.message); left.delete(idx); failedItems.push(item); keep(); }
+          try { await runOne(item, idx); } catch (e) { prog.slots[idx] = 'err'; prog.why[idx] = e.message; left.delete(idx); failedItems.push(item); keep(); }
         }
       }));
       loadWorlds();
-      const failed = prog.slots.filter(x => x === 'err').length, notMade = left.size;
+      // the summary stays one short line (the status bar is one line): counts only; each bar's hover gives its image's reason,
+      // the summary's own hover the reasons together
+      const failed = prog.slots.filter(x => x === 'err').length, blocked = prog.slots.filter(x => x === 'blocked').length, notMade = left.size;
       const parts = [`${added} added`];
-      if (trashedByQa) parts.push(`${trashedByQa} in Trash (${lastRejectReason})`);
-      if (failed) {
-        const distinct = [...new Set(reasons.map(r => String(r).slice(0, 90)))].slice(0, 2);
-        parts.push(`${failed} failed (${distinct.join(' · ') || lastRejectReason}) — hover the red bars for each reason`);
-      }
+      if (trashedByQa) parts.push(`${trashedByQa} to Trash by the logo check`);
+      if (blocked) parts.push(`${blocked} refused by Krea's moderation`);
+      if (failed) parts.push(`${failed} failed`);
+      if (authFailed) parts.push('sign in to Krea: Settings › Connect Krea');
       if (creditsOut) parts.push('Krea is out of credits: add some at krea.ai, then Retry');
       if (notMade) parts.push(`${notMade} not made`);
-      progStop(`${batchStop && notMade ? 'Stopped' : 'Done'} — ${parts.join(', ')}`);
+      prog.detail = prog.titles.map((t, i) => (prog.why[i] ? `${t}: ${prog.why[i]}` : '')).filter(Boolean).join('\n');
+      progStop(`${batchStop && notMade ? 'Stopped' : 'Done'} · ${parts.join(' · ')}`);
       const again = [...failedItems, ...left.values()];
       batchActions(again.length ? [
         { label: `Retry ${again.length}`, run: () => retryBatch(again, model) },

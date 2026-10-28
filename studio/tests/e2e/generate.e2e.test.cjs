@@ -25,7 +25,7 @@ test('generate: controls lock, progress shows per image, direction clears afterw
   await page.waitForSelector('.pending-card');                                    // the images still coming hold their place at the end of the grid
   assert.ok(await page.locator('.pending-card').count() >= 1);
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.pending-ring')).borderRadius), '2px', 'the mark\'s box, as the logo target, not a circle');
-  await page.waitForFunction(() => /Done — 4 added/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Done · 4 added/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   for (const id of ['#worldSelect', '#directionInput', '#batchCountSelect', '#generateBtn']) await enabled(id);
   assert.equal(await page.inputValue('#directionInput'), '');
   assert.equal(await page.locator('#statusText .slot.ok').count(), 4);
@@ -43,10 +43,10 @@ test('generate: failed images are explained (hover) and counted, the rest still 
   const ctx = await fresh({ delays: { invent: 100, generate: 200 }, failGen: n => n % 4 !== 1 });          // only every 4th request succeeds: 1 of 4
   await page.selectOption('#batchCountSelect', '4');
   await page.click('#generateBtn');
-  await page.waitForFunction(() => /Done — 1 added, 3 failed/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => /Done · 1 added · 3 failed/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   const text_ = await text('#statusText');
-  assert.match(text_, /Krea 429: too many requests/);
-  assert.match(text_, /hover the red bars/);
+  assert.doesNotMatch(text_, /Krea 429/, 'one short line: the reasons are on hover');
+  assert.match(await page.getAttribute('#statusText .prog-note', 'title'), /Krea 429: too many requests/);
   const reds = await page.locator('#statusText .slot.err').evaluateAll(els => els.map(e => e.title));
   assert.equal(reds.length, 3);
   assert.ok(reds.every(t => /Fog \d — Krea 429/.test(t)), JSON.stringify(reds));
@@ -64,7 +64,7 @@ test('a server restart during a batch does not reload the page underneath it', {
   api.state.boot = 'restarted';                                                       // the dev runner restarted the server
   await page.waitForFunction(() => /The server restarted/.test(document.getElementById('toast').textContent), null, { timeout: 6000 });
   assert.equal(await page.evaluate(() => window.__marker), 'still here');             // no reload happened
-  await page.waitForFunction(() => /Done — 2 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
+  await page.waitForFunction(() => /Done · 2 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
   await page.waitForFunction(() => window.__marker === undefined, null, { timeout: 8000 });     // the reload happens afterwards, once idle
   await ctx.close();
 });
@@ -77,7 +77,7 @@ test('closing or reloading the page during a batch asks first (and not when idle
   await page.click('#generateBtn');
   await page.waitForSelector('#statusText .slot.run');
   assert.equal(await asks(), true);                                                   // generating: the browser will ask first
-  await page.waitForFunction(() => /Done — 2 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
+  await page.waitForFunction(() => /Done · 2 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
   await enabled('#generateBtn');
   assert.equal(await asks(), false);
   await ctx.close();
@@ -91,7 +91,7 @@ test('the batch size list offers up to 20 images and sends the chosen number', {
   assert.equal(await page.locator('#batchCountSelect option[value="20"]').innerText(), '20 images');
   await page.selectOption('#batchCountSelect', '12');
   await page.click('#generateBtn');
-  await page.waitForFunction(() => /Done — 12 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
+  await page.waitForFunction(() => /Done · 12 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
   assert.equal(api.state.calls.find(c => c.path === '/api/invent-prompts').body.count, 12);
   assert.equal(await page.locator('#statusText .slot.ok').count(), 12);
   assert.equal(await page.locator('#tabSelection').innerText().then(t => /\(15\)/.test(t)), true);          // 3 kept + 12 new

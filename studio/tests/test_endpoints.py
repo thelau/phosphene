@@ -369,7 +369,7 @@ def test_a_moderation_rejection_is_not_retried_explained_and_written_down(live, 
     monkeypatch.setattr(srv.time, "sleep", lambda s: pytest.fail("no waiting for a rejection"))
     monkeypatch.setattr(srv, "call_kimi_llm", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("Kimi is down")))     # no rewrite possible
     status, res = live("POST", "/api/generate-image", {"title": "Neon Roundel", "prompt": "a neon tube roundel on a signboard", "guide": "dark", "model": "m"})
-    assert status == 500 and res["code"] == "content_policy" and "moderation rejected" in res["error"] and "even after" not in res["error"]
+    assert status == 500 and res["code"] == "content_policy" and "moderation" in res["error"] and "softened" not in res["error"]
     assert len(calls) == 1                                                       # one attempt, not three
     ev = gen_log.read(None)[-1]
     assert ev["error_code"] == "content_policy" and ev["krea_job"] == "J-42" and ev["prompt"] == "a neon tube roundel on a signboard"
@@ -412,7 +412,7 @@ def test_if_the_softened_prompt_is_refused_too_the_image_is_reported_as_moderate
     monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", refuse)
     monkeypatch.setattr(srv, "call_kimi_llm", lambda *a, **k: "A perfectly neutral rewritten prompt that is long enough to be accepted as a rewrite.")
     status, res = live("POST", "/api/generate-image", {"title": "Still Refused", "prompt": "original wording of the prompt", "model": "m"})
-    assert status == 500 and "even after the prompt was softened" in res["error"] and len(calls) == 2
+    assert status == 500 and "also with a softened prompt" in res["error"] and len(calls) == 2
     ev = gen_log.read(None)[-1]
     assert ev["softened"] is True and ev["error_code"] == "content_policy"
 
@@ -427,7 +427,7 @@ def test_without_a_kimi_key_or_a_usable_rewrite_a_rejection_is_just_reported(liv
     monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", refuse)
     monkeypatch.setattr(srv, "call_kimi_llm", lambda *a, **k: "original wording of the prompt")        # Kimi returns it unchanged: nothing to retry with
     status, res = live("POST", "/api/generate-image", {"title": "Same", "prompt": "original wording of the prompt", "model": "m"})
-    assert status == 500 and res["code"] == "content_policy" and len(calls) == 1 and "even after" not in res["error"]
+    assert status == 500 and res["code"] == "content_policy" and len(calls) == 1 and "softened" not in res["error"]
 
 
 def test_soften_prompt_refuses_empty_or_failed_rewrites(srv):
