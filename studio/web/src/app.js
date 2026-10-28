@@ -2944,7 +2944,8 @@
       if (custom) html += item('__custom__', `${ICON_PLUS}<span>Describe your own <span class="tm-sub">in your own words</span></span>${check}`);
       if (wild) html += item('__wildcard__', `${ICON_SPARK}<span>Surprise me <span class="tm-sub">Kimi invents a territory</span></span>${check}`);
       const n = Math.min(parseInt(document.getElementById('batchCountSelect').value, 10) || 4, worlds.length);   // the count picks how many territories
-      if (sampler && worlds.length > 1) html += item('__sampler__', `${ICON_SAMPLER}<span>Sampler <span class="tm-sub">one image from each of ${n} territories</span></span>${check}`);
+      const which = n >= worlds.length ? 'one image from every territory' : `one image from each of the ${n} you've tried least`;   // not random: least tried first
+      if (sampler && worlds.length > 1) html += item('__sampler__', `${ICON_SAMPLER}<span>Sampler <span class="tm-sub">${which}</span></span>${check}`);
       if (custom || wild || sampler) html += '<div class="tm-sep"></div>';
       if (worlds.length) {
         // where each comes from, on the right: CORE (built in), INVENTED (Surprise me), CUSTOM (Describe your own); the ones never made a little dimmer
