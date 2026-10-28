@@ -130,7 +130,7 @@ test('player: invert pairs and slow zoom show up on the preview image', { skip }
   await ctx.close();
 });
 
-test('export: preview is untouched, the panel shows the work, then Downloaded with Export again and Download again', { skip }, async () => {
+test('export: preview is untouched, the panel shows the work, then Downloaded for a moment and the Export button again (no Export again)', { skip }, async () => {
   const ctx = await fresh({ delays: { export: 400 } });
   await page.locator('.card').nth(1).click();
   await film();
@@ -141,8 +141,9 @@ test('export: preview is untouched, the panel shows the work, then Downloaded wi
   await page.waitForSelector('#exportDock[data-state="busy"]');
   assert.match(await text('#musicState'), /Exporting|Rendering|Encoding/);
   const link = page.locator('#downloadLink');
-  await link.waitFor({ state: 'visible' });
-  assert.equal(await page.locator('#exportDock').getAttribute('data-state'), 'ready');
+  await page.waitForSelector('#exportDock[data-state="ready"]');
+  assert.equal(await link.isVisible(), false, 'no Download again');
+  assert.equal(await page.locator('#exportAgainBtn').count(), 0, 'no Export again');
   assert.equal(await link.getAttribute('download'), 'Demo-test.mp4');
   assert.equal(await link.getAttribute('href'), '/outputs/Demo-test.mp4');
   assert.equal(await text('#exportFile'), 'Demo-test.mp4');
@@ -151,7 +152,9 @@ test('export: preview is untouched, the panel shows the work, then Downloaded wi
   const body = api.state.calls.find(c => c.path === '/api/export-video').body;
   assert.equal('total_seconds' in body, false);
   await shot('09-export');
-  await page.click('#exportAgainBtn');                                            // a second export straight from the ready panel
+  await page.waitForSelector('#exportDock[data-state="idle"]', { timeout: 8000 });     // "Downloaded" for a moment, then the Export button
+  assert.equal(await page.locator('#exportBtn').isVisible(), true);
+  await page.click('#exportBtn');
   await page.waitForSelector('#exportDock[data-state="ready"]');
   assert.equal(api.state.calls.filter(c => c.path === '/api/export-video').length, 2);
   await ctx.close();
@@ -214,7 +217,8 @@ test('export with WebGL: the page draws every frame as planAt plans them and the
   near(second.rgb, colour('k2'), 'cut 3: the next image');
   assert.ok(api.state.frameRequests.length < 30, `held cuts go as runs, not a request a frame: ${api.state.frameRequests.length}`);
   await page.fill('#trailRange', '40'); await page.locator('#trailRange').dispatchEvent('input');   // Trail: the cut before shows through, fading over 4 frames
-  await page.click('#exportAgainBtn');
+  await page.waitForSelector('#exportDock[data-state="idle"]', { timeout: 8000 });
+  await page.click('#exportBtn');
   await page.waitForFunction(() => document.getElementById('exportDock').dataset.state === 'ready', null, { timeout: 30000 });
   const k1i = colour('k1').map(v => 255 - v), mix = (a, b, t) => a.map((v, i) => v * (1 - t) + b[i] * t);
   near((await px(30)).rgb, mix(k1i, colour('k1'), 0.4), 'first frame of the inverted copy: 40% of the image before');
@@ -235,7 +239,7 @@ test('export: the button is always in view (pinned under the inspector) and the 
   assert.equal(await inView(), true, 'visible with the longest sound group, scrolled to the bottom');
   await page.evaluate(() => { window.__clicked = []; HTMLAnchorElement.prototype.click = function () { window.__clicked.push(this.getAttribute('download')); }; });
   await page.click('#exportBtn');
-  await page.waitForSelector('#downloadLink:not([hidden])');
+  await page.waitForSelector('#exportDock[data-state="ready"]');
   assert.deepEqual(await page.evaluate(() => window.__clicked), ['Demo-test.mp4']);
   assert.match(await text('#toast'), /Export ready, downloading/);
   await ctx.close();
@@ -751,7 +755,7 @@ test('the timeline is the rhythm control: drag or type the tempo and the Multipl
   await page.waitForFunction(() => document.getElementById('rhythmSelect').value === 'variable');
   // the export carries the speeds for its name
   await page.click('#exportBtn');
-  await page.waitForSelector('#downloadLink:not([hidden])');
+  await page.waitForSelector('#exportDock[data-state="ready"]');
   const body = api.state.calls.filter(c => c.path === '/api/export-video').pop().body;
   assert.deepEqual([body.rhythm, body.bpm, body.end_ms], ['variable', bpm, +(await val('endMsRange'))]);
   assert.deepEqual(consoleErrors, []);
@@ -776,7 +780,7 @@ test('synthesized music: the drone plays live in the page, settings swap it at o
   await shot('music-synth');
   await page.click('#playBtn');
   await page.click('#exportBtn');
-  await page.waitForSelector('#downloadLink:not([hidden])');
+  await page.waitForSelector('#exportDock[data-state="ready"]');
   assert.equal(api.state.calls.filter(c => c.path === '/api/export-video').pop().body.music, 'synth');
   const wav = api.state.exportAudio;
   assert.equal(wav.slice(0, 4).toString(), 'RIFF');

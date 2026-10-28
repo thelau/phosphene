@@ -494,7 +494,7 @@ test('the dark/light twin feature is gone from the page', () => {
   }
 });
 
-test('export leaves the preview alone and offers a download link', async () => {
+test('export leaves the preview alone and downloads the file by itself (no Download again link shown)', async () => {
   const r = baseRoutes();
   r['/api/export-video'] = { ok: true, images: 12, seconds: 6.0, video_url: '/outputs/Demo-136bpm-x4-20261025-093005.mp4', filename: 'Demo-136bpm-x4-20261025-093005.mp4' };
   const h = load({ routes: r });
@@ -510,12 +510,12 @@ test('export leaves the preview alone and offers a download link', async () => {
   assert.equal(h.$('stageImg').src, '/p/a');
   assert.equal(h.$('stageImg').style.display, 'block');
   const link = h.$('downloadLink');
-  assert.equal(link.hidden, false);
+  assert.notEqual(link.hidden, false, 'never shown: the file saves itself');
   assert.equal(link.href, '/outputs/Demo-136bpm-x4-20261025-093005.mp4');
   assert.equal(link.download, 'Demo-136bpm-x4-20261025-093005.mp4');
   assert.equal(h.$('exportFile').textContent, 'Demo-136bpm-x4-20261025-093005.mp4');
   assert.match(h.$('toast').textContent, /12 images, 6s/);
-  assert.equal(h.$('exportDock').dataset.state, 'ready');                 // "Downloaded", with Export again and Download again
+  assert.equal(h.$('exportDock').dataset.state, 'ready');                 // "Downloaded" for a moment, then Export again: no Export again / Download again
 });
 
 test('export failures show a message and unlock the button; with no images there is nothing to export', async () => {

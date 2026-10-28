@@ -23,7 +23,7 @@ import uuid
 import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from PIL import Image
 
@@ -1212,6 +1212,22 @@ class StudioHandler(SimpleHTTPRequestHandler):
             return
 
         path = parsed.path
+        if path.startswith("/outputs/"):
+            # an exported film (in the app: Application Support/Phosphene/outputs). A bare .mp4 name only, from that folder: the static
+            # fallback below serves only /assets/, and the films were left out of it (the download saved a 35-byte "Not found")
+            name = unquote(path[len("/outputs/"):])
+            f = OUTPUTS_DIR / name
+            if "/" in name or "\\" in name or name.startswith(".") or not name.lower().endswith(".mp4") or not f.is_file():
+                self.send_json({"ok": False, "error": "Not found"}, 404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(f.stat().st_size))
+            self.send_header("Content-Disposition", f"attachment; filename=\"{name}\"")
+            self.end_headers()
+            with open(f, "rb") as src:
+                shutil.copyfileobj(src, self.wfile, 1 << 20)
+            return
         if not path.startswith("/assets/") or any(seg.startswith(".") for seg in path.split("/")):   # only the old plate URLs; never studio/.secrets.json
             self.send_json({"ok": False, "error": "Not found"}, 404)
             return

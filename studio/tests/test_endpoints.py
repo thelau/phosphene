@@ -508,6 +508,10 @@ def test_export_encodes_the_frames_the_page_drew(live, srv):
                            capture_output=True, check=True).stdout
     assert frame[0] > 180 and frame[2] < 70, f"the page's red frames, not the plates' blue: {list(frame)}"
     assert _streams(out)[1] == pytest.approx(total / 30, abs=0.05)
+    status, film = live("GET", res["video_url"])                                  # what the page downloads: the film itself
+    assert status == 200 and isinstance(film, bytes) and film == out.read_bytes(), "the download is the film (it was a 35-byte Not found)"
+    assert film[4:8] == b"ftyp", "an MP4"
+    assert live("GET", "/outputs/..%2Fstate.json")[0] == 404 and live("GET", "/outputs/.secret.mp4")[0] == 404, "films only, from their folder"
     assert not srv.export_frames_dir().exists(), "the frames are used once"
     assert live("POST", "/api/export-frame?i=0", raw=b"not a jpeg")[0] == 400
     assert live("POST", "/api/export-frame?i=3&same=5", raw=b"")[0] == 400

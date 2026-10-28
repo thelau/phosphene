@@ -1599,6 +1599,7 @@
     }
     function synthStartsSec() { return rhythmFor(activePlates().length).audio; }
     // the export panel: idle (the button), busy (a bar with what is happening), ready (downloaded, with a link to get it again)
+    let EXPORT_DONE_MS = 4000;
     function setExportState(state) { document.getElementById('exportDock').dataset.state = state; }
     function setMusicState(kind, text) {
       const el = document.getElementById('musicState');
@@ -3135,9 +3136,8 @@
           const link = document.getElementById('downloadLink');
           link.href = data.video_url;
           link.setAttribute('download', data.filename || 'Demo.mp4');
-          link.hidden = false;
           document.getElementById('exportFile').textContent = data.filename || 'MP4';
-          link.click();                                                  // the file saves itself; the link stays as a way to get it again
+          link.click();                                                  // the file saves itself (to Downloads)
           ok = true;
           noteExportRate(rhythmFor(activePlates().length).end / 30, (performance.now() - t0) / 1000);
           drawInfo();
@@ -3150,6 +3150,9 @@
       } finally {
         exporting = false; applyLocks();
         setExportState(ok ? 'ready' : 'idle');
+        // "Downloaded" for a moment, then the Export button again: any change (a setting, a snapshot, a project) makes another film,
+        // not the same one "again" (the user found Export again / Download again confusing)
+        if (ok) setTimeout(() => { if (document.getElementById('exportDock').dataset.state === 'ready') setExportState('idle'); }, EXPORT_DONE_MS);
       }
     }
 
