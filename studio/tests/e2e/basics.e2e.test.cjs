@@ -1309,6 +1309,10 @@ test('the info panel on a card: less at small sizes, the text scrolls, Copy copi
   assert.equal(copied.length, 3);
   assert.match(copied[0], /^A "mirror" logo, 50mm, the brand's mark/);
   assert.deepEqual(consoleErrors, []);
+  // one open at a time: opening another card's closes the first
+  const info = async f => { await page.locator(`.card[data-filename="${f}"]`).hover(); await page.locator(`.card[data-filename="${f}"] .info-btn`).click({ force: true }); };
+  await info('k1'); await info('k2');
+  assert.deepEqual(await page.locator('.prompt-overlay.open').evaluateAll(els => els.map(e => e.closest('.card').dataset.filename)), ['k2']);
   await ctx.close();
 });
 

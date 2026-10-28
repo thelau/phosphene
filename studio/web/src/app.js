@@ -166,12 +166,7 @@
       document.getElementById('selCount').textContent = plates.length - trashedCount;
       if (typeof drawInfo === 'function') drawInfo();
       refreshIdle();
-      document.getElementById('tabSelection').className = showTrash ? '' : 'on';
-      document.getElementById('tabTrash').className = showTrash ? 'on' : '';
-
-      renderSequences();
-      renderGroups();
-      renderGrid();
+      renderView();
       renderFilmstrip();
       applyLocks();                                                          // nothing to export or trash when there are no images
       restartLoop();
@@ -1247,6 +1242,11 @@
       e.stopPropagation();
       const el = document.getElementById(`overlay-${CSS.escape(filename)}`);
       if (!el) return;
+      document.querySelectorAll('.prompt-overlay.open').forEach(o => {     // one open at a time: opening this one closes any other
+        if (o === el) return;
+        o.classList.remove('open');
+        const c = o.closest && o.closest('.card'); if (c) c.classList.remove('info-open');
+      });
       const open = el.classList.toggle('open');
       const card = el.closest ? el.closest('.card') : null;
       if (card) card.classList.toggle('info-open', open);                   // the number and the buttons step back while it is open
@@ -2797,9 +2797,18 @@
       musicChanged();
     }
 
+    // the tabs, the group row and the grid, always together (Selection or Trash)
+    function renderView() {
+      document.getElementById('tabSelection').className = showTrash ? '' : 'on';
+      document.getElementById('tabTrash').className = showTrash ? 'on' : '';
+      renderSequences();
+      renderGroups();
+      renderGrid();
+    }
     function setTrashView(on) {
       showTrash = on;
       trashSel = new Set(); pickSel = new Set();
+      renderView();                                                          // at once, from what the page has: a slow server (mid-batch) left the tab and the grid disagreeing
       return loadState();
     }
 
@@ -3539,6 +3548,7 @@
             else location.reload();
           }
           if (seen === null || !isBusy()) seen = sig;   // while busy keep the old signature so the reload still happens afterwards
+          if (window.__reloadWhenIdle && !isBusy()) location.reload();          // a page update held during the job (devguard.js)
           libraryMoved(v.state);
         } catch (e) {}  // server restarting: try again next tick
       }, 1500);
@@ -3548,6 +3558,7 @@
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
   installUpdate,
+  isBusy, setStatus,
   exportProject, importProject, importProjectPath, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
   downloadShown, setThumbSizeAt, openViewer, closeViewer, viewerStep, toggleTerrMenu, editRefine, clearRefine, closeGroupMenu, showNewGroupForm,
   openProjectMenu, switchProject, openProjectForm, closeProjectForm, readProjectMark, drawProjectPreview, saveProject,
