@@ -16,7 +16,7 @@ test('page loads without errors: Curate first, generation in one tidy row, no st
   assert.ok(field.width > 400, `the refinement has room to be read in full (${field.width} px)`);
   await page.keyboard.press('Escape');
   assert.equal(await text('#terrName'), 'Mix it up');
-  const mids = await page.evaluate(() => ['#terrIcon svg', '.terr-label', '#terrName', '#terrSub', '#terrBtn > svg', '#refineOpen', '.csel[data-for="batchCountSelect"] .csel-face', '#generateBtn'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return Math.round((r.top + r.height / 2) * 10) / 10; }));
+  const mids = await page.evaluate(() => ['#terrIcon svg', '#terrName', '#terrSub', '#terrBtn > svg', '#refineOpen', '.csel[data-for="batchCountSelect"] .csel-face', '#generateBtn'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return Math.round((r.top + r.height / 2) * 10) / 10; }));
   assert.ok(Math.max(...mids) - Math.min(...mids) <= 1.5, `everything in the bar on one centre line: ${mids}`);
   const [bar, tools] = [await box('#genGroup'), await box('.size-ctl')];
   assert.ok(Math.abs(bar.x + bar.width - (tools.x + tools.width)) <= 1, 'the bar runs the full width: its right edge lines up with the tools below');

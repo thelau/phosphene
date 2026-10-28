@@ -2827,8 +2827,8 @@
         input.placeholder = 'what is it? e.g. fog, clouds, rain, lightning';
         say = 'Custom territory: describe it and every image will be about that. A look and palette are invented for it.';
       } else if (v === '__wildcard__') {
-        input.placeholder = 'a hint for the new territory';
-        say = 'New territory: Kimi invents a fresh area we don\'t cover yet.';
+        input.placeholder = 'a hint for the unexpected territory';
+        say = 'Unexpected territory: Kimi invents a fresh area we don\'t cover yet.';
       } else {
         const opt = sel.selectedOptions[0];
         const eg = opt && opt.dataset.examples;                                   // the territory's own subjects: what typed here changes
@@ -2852,7 +2852,7 @@
       const opt = document.getElementById('worldSelect').selectedOptions[0];
       const [icon, name, sub] = v === '' ? [ICON_MIX, 'Mix it up', `all ${namedWorlds().length} territories`]
         : custom ? [ICON_PLUS, 'Custom territory', 'describe it']
-        : v === '__wildcard__' ? [ICON_SPARK, 'New territory', 'Kimi decides']
+        : v === '__wildcard__' ? [ICON_SPARK, 'Unexpected territory', 'Kimi invents one']
         : [ICON_WORLD, v, opt && opt.dataset.n ? `${opt.dataset.kept} of ${opt.dataset.n} kept` : ''];
       const ic = document.getElementById('terrIcon');
       if (ic.dataset.v !== v) { ic.innerHTML = icon; ic.dataset.v = v; }
@@ -2915,7 +2915,7 @@
       const all = [...sel.options];
       const mix = all.find(o => o.value === ''), custom = all.find(o => o.value === '__custom__'), wild = all.find(o => o.value === '__wildcard__');
       const worlds = namedWorlds().filter(o => !f || o.value.toLowerCase().includes(f));
-      return { mix: !f || 'mix it up'.includes(f) ? mix : null, worlds, custom: !f || 'custom territory'.includes(f) ? custom : null, wild: !f || 'new territory'.includes(f) ? wild : null };
+      return { mix: !f || 'mix it up'.includes(f) ? mix : null, worlds, custom: !f || 'custom territory'.includes(f) ? custom : null, wild: !f || 'unexpected territory'.includes(f) ? wild : null };
     }
     function renderTerrMenu() {
       const m = document.getElementById('terrMenu');
@@ -2932,7 +2932,7 @@
       }
       if (custom || wild) html += '<div class="tm-sep"></div>';
       if (custom) html += item('__custom__', `${ICON_PLUS}<span>Custom territory… <span class="tm-sub">describe your own</span></span>${check}`);
-      if (wild) html += item('__wildcard__', `${ICON_SPARK}<span>New territory <span class="tm-sub">Kimi decides</span></span>${check}`);
+      if (wild) html += item('__wildcard__', `${ICON_SPARK}<span>Unexpected territory <span class="tm-sub">Kimi invents one</span></span>${check}`);
       if (!html) html = '<div class="tm-none">No territory matches.</div>';
       let list = m.querySelector('.tm-list');
       if (!list) {

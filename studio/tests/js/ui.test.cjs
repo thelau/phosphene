@@ -93,7 +93,7 @@ test('direction placeholder follows the territory selection', async () => {
   assert.match($('directionInput').placeholder, /^e\.g\. wet apparel/);
   $('worldSelect').value = '__wildcard__';
   run('updateDirectionHint()');
-  assert.match($('directionInput').placeholder, /hint for the new territory/i);
+  assert.match($('directionInput').placeholder, /hint for the unexpected territory/i);
   $('worldSelect').value = '__custom__';
   run('updateDirectionHint()');
   assert.match($('directionInput').placeholder, /what is it\?/);
@@ -442,7 +442,7 @@ test('territory dropdown offers Mix it up, Custom and New', () => {
   const html = fs.readFileSync(WEB('index.html'), 'utf8');
   assert.match(html, /<option value="">Mix it up<\/option>/);
   assert.match(html, /<option value="__custom__">Custom territory…<\/option>/);
-  assert.match(html, /<option value="__wildcard__">New territory/);
+  assert.match(html, /<option value="__wildcard__">Unexpected territory/);
 });
 
 test('every inline handler in the markup and templates is exported on window', () => {
