@@ -2847,7 +2847,7 @@
         input.placeholder = 'what is it? e.g. fog, clouds, rain, lightning';
         say = 'Describe your own: every image will be about what you write. A look and palette are invented for it.';
       } else if (v === '__sampler__') {
-        input.placeholder = 'e.g. warm light (every territory follows it)';
+        input.placeholder = 'e.g. dark, daylight, rain (every territory follows it)';   // a light, mood or weather works anywhere; a subject would fight most territories
         say = 'Sampler: one image from each of as many territories as images, the ones you have tried least first.';
       } else if (v === '__wildcard__') {
         input.placeholder = 'a hint for Kimi, if you like';
