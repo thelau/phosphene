@@ -49,6 +49,7 @@ test('trash: select, shift-select, cancel, delete with a loader, empty trash', {
   const ctx = await fresh({ delays: { purge: 700 } });
   await page.click('#tabTrash');
   await page.waitForSelector('#trashBar:not([hidden])');
+  await page.waitForFunction(() => getComputedStyle(document.getElementById('tabTrash')).color === 'rgb(247, 163, 182)');   // the Trash tab in its red while open (after the buttons' fade)
   assert.equal(await page.locator('.card').count(), 4);
   assert.equal(await text('#trashEmpty'), 'Empty trash…');
   assert.equal(await text('#trashSelCount'), 'Pick images to restore or delete');

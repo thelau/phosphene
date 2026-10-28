@@ -457,6 +457,8 @@
     .seg { display: inline-flex; padding: 2px; background: var(--field); border: 1px solid var(--line-2); border-radius: 8px; }
     .seg button { border: 0; border-radius: 6px; background: transparent; color: var(--text-2); padding: 0 14px; height: 30px; white-space: nowrap; }
     .seg button.on { background: var(--text); color: #1A1A1A; }
+    #tabTrash svg { vertical-align: -2px; margin-right: 6px; }
+    #tabTrash.on { background: #3A1820; color: #F7A3B6; box-shadow: inset 0 0 0 1px #6B2B37; }   /* in the Trash: its red, as Empty trash */
     .grid-col {
       flex: 1;
       padding: 4px 24px 120px;          /* room under the last row for the floating preview */
