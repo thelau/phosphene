@@ -1471,3 +1471,23 @@ test('while images are made, the other projects and New / Import / Delete wait i
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('guards: another window opens another project → this page shows it; New project (⌘N) and Empty trash wait for a running job; the server is told a job runs', { skip }, async () => {
+  let ctx = await fresh({ width: 1512, height: 945, delays: { invent: 1500 } });
+  api.state.projects.push({ ...api.state.projects[0], slug: 'nike', name: 'Nike', fixed: false, round: false });
+  await page.click('#generateBtn');
+  await page.waitForSelector('#statusText:not([data-idle="1"])');
+  await page.waitForFunction(() => true); await page.waitForTimeout(150);
+  assert.equal(api.state.lease, 30, 'the page holds the server busy for the whole batch');
+  await page.evaluate(() => openProjectForm('new'));                                   // as the Mac menu's ⌘N does
+  assert.equal(await page.locator('#projectModal').isVisible(), false, 'no new project mid-batch');
+  assert.match(await text('#toast'), /Wait until the running job ends/);
+  await page.waitForFunction(() => /Done/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  await page.waitForTimeout(150);
+  assert.equal(api.state.lease, 0, 'and lets go when it ends');
+  api.state.project = 'nike';                                                           // another window switched
+  await page.evaluate(() => refreshLibrary(true));
+  await page.waitForFunction(() => document.getElementById('projectName').textContent === 'Nike', null, { timeout: 10000 });
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

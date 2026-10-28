@@ -99,6 +99,8 @@
       return modelStr.includes('/') ? modelStr.split('/')[1] : modelStr;
     }
 
+    // a job's requests say which project they are for: the server refuses them if another project was opened meanwhile
+    const forProject = (h = {}) => (project ? { ...h, 'X-Phosphene-Project': project.slug } : h);
     let stateCalls = 0, kreaConnected = false;
     async function loadState() {
       const call = ++stateCalls;
@@ -106,6 +108,10 @@
       const data = await res.json();
       if (call !== stateCalls) return;                                       // a newer request is on its way: an older answer must not win
       const lengthBefore = activePlates().length;
+      if (project && (!data.project || data.project.slug !== project.slug)) {   // another window (or a file opened from Finder) changed the project: show that one
+        reopen(data.project ? data.project.name : '');
+        return;
+      }
       if (data.project) showProject(data.project);
       showNoProject(data);
       plates = data.plates || [];
@@ -244,7 +250,7 @@
       return n;
     }
     async function editsCall(payload) {
-      const res = await (await fetch('/api/edits', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
+      const res = await (await fetch('/api/edits', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify(payload) })).json();
       if (!res.ok) { setStatus(res.error || 'Could not do that.'); return null; }
       await loadState();
       return res;
@@ -348,6 +354,7 @@
     function openProjectForm(kind) {
       closeProjectMenu();
       const edit = kind === 'edit' && project;
+      if (isBusy()) { setStatus('Wait until the running job ends, then open the project settings.'); return; }   // also from the Mac menu (⌘N), which skips the greyed-out menu
       if (!edit && !kimiConfigured) {                                         // a new project starts from Kimi reading the mark: the key first
         openSettingsOn('kimiKeyInput');
         setStatus('Add your Kimi API key to create a project: Kimi reads your mark and fills in the project for you.');
@@ -497,6 +504,7 @@
     }
     async function saveProject() {
       if (!projectForm) return;
+      if (isBusy()) { document.getElementById('pfError').textContent = 'Wait until the running job ends (images, an AI order or an export), then save.'; return; }
       const val = id => document.getElementById(id).value;
       const err = document.getElementById('pfError');
       if (projectForm.kind === 'new' && !projectForm.mark) { err.textContent = 'Choose the mark: a PNG or SVG with a transparent background works best.'; return; }
@@ -699,7 +707,7 @@
       groupFade();                                                           // the bar takes width from the chips
     }
     async function groupsCall(payload) {
-      const res = await (await fetch('/api/groups', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
+      const res = await (await fetch('/api/groups', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify(payload) })).json();
       if (!res.ok) { setStatus(res.error || 'Could not do that.'); return null; }
       await loadState();
       return res;
@@ -797,7 +805,7 @@
         ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // a group: its images change places among themselves
       };
       document.getElementById('aiPanel').hidden = true;
-      const start = await (await fetch('/api/order-ai', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) })).json();
+      const start = await (await fetch('/api/order-ai', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify(body) })).json();
       if (start.needs_kimi_key) { ensureKimiReady(); return; }
       if (!start.ok) { setStatus(start.error || 'Could not start the AI order.'); return; }
       const steps = start.steps || [];
@@ -870,7 +878,7 @@
       } finally { downloading = false; renderSequences(); }
     }
     async function seqCall(payload) {
-      const res = await (await fetch('/api/sequence', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
+      const res = await (await fetch('/api/sequence', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify(payload) })).json();
       if (!res.ok) { setStatus(res.error || 'Could not do that.'); return false; }
       await loadState();
       return true;
@@ -909,7 +917,7 @@
       trashSel = new Set([...trashSel].filter(f => trashed.includes(f)));
       document.getElementById('trashBar').hidden = !(showTrash && trashed.length);
       document.getElementById('trashSelCount').textContent = `${trashSel.size} selected`;
-      document.getElementById('trashDelSel').disabled = aiRunning || trashSel.size === 0;
+      document.getElementById('trashDelSel').disabled = aiRunning || exporting || trashSel.size === 0;
       document.getElementById('trashRestoreSel').disabled = aiRunning || trashSel.size === 0;
       document.getElementById('trashDelSel').textContent = trashSel.size ? `Delete ${trashSel.size} selected…` : 'Delete selected…';
       document.getElementById('trashSelAll').textContent = trashSel.size && trashSel.size === trashed.length ? 'Clear selection' : 'Select all';
@@ -939,6 +947,7 @@
     const KEEPS_LEARNING = 'The images are removed from disk for good. Your keep/trash history stays, so suggestions keep learning from them.';
     async function purge(payload, title, body, yesLabel) {
       if (blockedByAi()) return;
+      if (exporting) { setStatus('Wait until the export ends: it reads the images as it goes.'); return; }   // emptied mid-export, the film failed partway
       if (!(await askConfirm(title, body, yesLabel))) return;
       const btns = ['trashDelSel', 'trashEmpty', 'trashSelAll'].map(id => document.getElementById(id));
       btns.forEach(b => { b.disabled = true; });
@@ -946,7 +955,7 @@
       purging = true;
       showBusy(`Deleting ${count} image${count === 1 ? '' : 's'}…`);
       try {
-        const res = await (await fetch('/api/purge', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) })).json();
+        const res = await (await fetch('/api/purge', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify(payload) })).json();
         if (!res.ok) throw new Error(res.error || 'delete failed');
         trashSel = new Set();
         setStatus(`Deleted ${res.deleted} image${res.deleted === 1 ? '' : 's'} (${res.freed_mb} MB freed).`);
@@ -1088,7 +1097,7 @@
     async function restoreSelected() {
       if (blockedByAi() || !trashSel.size) return;
       const files = [...trashSel];
-      const set = trashed => async () => { for (const filename of files) await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename, trashed }) }); await loadState(); };
+      const set = trashed => async () => { for (const filename of files) await fetch('/api/trash', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify({ filename, trashed }) }); await loadState(); };
       await set(false)();
       trashSel = new Set();
       pushStep({ label: `Restore ${files.length} image${files.length === 1 ? '' : 's'}`, undo: set(true), redo: set(false) });
@@ -1151,7 +1160,7 @@
       plates.splice(toIdx, 0, moved);
       const after = plates.map(p => p.filename);
       const reorder = order => async () => {
-        await fetch('/api/reorder', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ order }) });
+        await fetch('/api/reorder', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify({ order }) });
         await loadState();
       };
       await reorder(after)();
@@ -1460,18 +1469,18 @@
       step.undo();
     }
     async function trashFile(filename) {
-      await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename, trashed: true }) });
+      await fetch('/api/trash', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify({ filename, trashed: true }) });
       await loadState();
     }
     // back from the Trash, at the place it had in the order it was trashed from (if that order is still the one shown; else at the end, as a restore does)
     async function untrash(filename, where) {
       if (blockedByAi()) return;
-      await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename, trashed: false }) });
+      await fetch('/api/trash', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify({ filename, trashed: false }) });
       await loadState();
       if (where && where.index >= 0) {
         const order = plates.filter(x => !x.trashed && x.filename !== filename).map(x => x.filename);
         order.splice(Math.min(where.index, order.length), 0, filename);
-        await fetch('/api/reorder', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ order }) });
+        await fetch('/api/reorder', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify({ order }) });
         await loadState();
       }
     }
@@ -2633,13 +2642,13 @@
       const where = { seq: activeSeq, index: plates.filter(x => !x.trashed).findIndex(x => x.filename === filename) };
       await fetch('/api/trash', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: forProject({'Content-Type': 'application/json'}),
         body: JSON.stringify({ filename, trashed })
       });
       await loadState();
       const p = plates.find(x => x.filename === filename);
       if (trashed && p) offerUndoTrash(p, where);
-      if (!trashed && p) pushStep({ label: `Restore “${p.title}”`, undo: () => trashFile(filename), redo: async () => { await fetch('/api/trash', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ filename, trashed: false }) }); await loadState(); } });
+      if (!trashed && p) pushStep({ label: `Restore “${p.title}”`, undo: () => trashFile(filename), redo: async () => { await fetch('/api/trash', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify({ filename, trashed: false }) }); await loadState(); } });
     }
 
 
@@ -2732,12 +2741,23 @@
     //  - the AI ordering: it works from a snapshot of the selection, so nothing may change the selection until it is done
     let generating = false;
     let aiRunning = false;
+    // while a batch or an export runs, the server holds it as busy for the whole job, gaps included (no project switch from another
+    // window or the Mac menu, no dev restart between two images); renewed every 10 s, it lapses by itself if the page goes away
+    let leased = false;
+    function syncLease() {
+      const on = generating || exporting;
+      if (!on && !leased) return;
+      leased = on;
+      fetch('/api/busy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ for: on ? 30 : 0 }) }).catch(() => {});
+    }
+    setInterval(() => { if (generating || exporting) syncLease(); }, 10000);
     function applyLocks() {
+      syncLease();
       const lockGen = generating || aiRunning;
       ['worldSelect', 'directionInput', 'batchCountSelect', 'modelSelect', 'generateBtn'].forEach(id => { document.getElementById(id).disabled = lockGen; });
       syncAiBtn();
       document.getElementById('exportBtn').disabled = aiRunning || !activePlates().length;
-      ['trashSelAll', 'trashEmpty'].forEach(id => { document.getElementById(id).disabled = aiRunning; });
+      ['trashSelAll', 'trashEmpty'].forEach(id => { document.getElementById(id).disabled = aiRunning || exporting; });
       document.body.classList.toggle('ai-running', aiRunning);
       syncSelects();
       document.getElementById('aiLock').hidden = !aiRunning;
@@ -2779,7 +2799,7 @@
       try {
         const invRes = await fetch('/api/invent-prompts', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json'},
+          headers: forProject({'Content-Type': 'application/json'}),
           body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction })
         });
         const invData = await invRes.json();
@@ -2816,7 +2836,7 @@
           progRender();
           const genRes = await fetch('/api/generate-image', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: forProject({'Content-Type': 'application/json'}),
             body: JSON.stringify({
               title: item.title, prompt: item.prompt, guide: item.guide || 'dark',
               world: item.world, idea: item.idea, model
@@ -2960,7 +2980,7 @@
         return im;
       };
       const shown = cut => ({ plate: (paired ? Math.floor(cut / 2) : cut) % n, invert: paired && cut % 2 === 1 ? fx.invert : 'off' });
-      const post = (query, body) => fetch(`/api/export-frame?${query}`, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: body || '' })
+      const post = (query, body) => fetch(`/api/export-frame?${query}`, { method: 'POST', headers: forProject({ 'Content-Type': 'image/jpeg' }), body: body || '' })
         .then(res => res.json()).then(d => { if (!d.ok) throw new Error(d.error || 'a frame was not accepted'); });
       const inFlight = new Set();
       const track = async job => { inFlight.add(job); job.then(() => inFlight.delete(job), () => {}); if (inFlight.size >= 6) await Promise.race(inFlight); };
@@ -2994,7 +3014,7 @@
     async function exportVideo() {
       if (blockedByAi()) return;
       if (exporting) return;
-      exporting = true;
+      exporting = true; applyLocks();
       const t0 = performance.now();
       setExportState('busy');
       setMusicState('busy', 'Exporting…');
@@ -3003,7 +3023,7 @@
         if (musicOn()) {                                   // the same WebAudio drone as the preview, rendered offline and sent along
           setMusicState('busy', 'Preparing the sound…');
           const wav = window.Drone.toWav(await window.Drone.renderExport(synthParams(), synthStartsSec()));
-          const up = await fetch('/api/export-audio', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: wav });
+          const up = await fetch('/api/export-audio', { method: 'POST', headers: forProject({ 'Content-Type': 'application/octet-stream' }), body: wav });
           const sent = await up.json();
           if (!sent.ok) throw new Error(sent.error || 'the sound was not accepted');
         }
@@ -3011,7 +3031,7 @@
         setMusicState('busy', 'Encoding…');
         const res = await fetch('/api/export-video', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json'},
+          headers: forProject({'Content-Type': 'application/json'}),
           body: JSON.stringify({
             bpm: bpmValue(),
             multiple: parseFloat(document.getElementById('multSelect').value),
@@ -3045,7 +3065,7 @@
       } catch (e) {
         setStatus(`Export failed: ${e.message}`);
       } finally {
-        exporting = false;
+        exporting = false; applyLocks();
         setExportState(ok ? 'ready' : 'idle');
       }
     }
@@ -3111,7 +3131,7 @@
 // Inline handlers in the markup (onclick=...) need these on window now that the code is an ES module.
 Object.assign(window, {
   installUpdate,
-  exportProject, importProject, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
+  exportProject, importProject, importProjectPath, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
   downloadShown,
   openProjectMenu, switchProject, openProjectForm, closeProjectForm, readProjectMark, drawProjectPreview, saveProject,
   removeChange,

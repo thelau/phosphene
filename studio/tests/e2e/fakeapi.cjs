@@ -112,6 +112,7 @@ function start(state = makeState()) {
       case '/api/worlds':
         return send({ ok: true, worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', n: 7, kept: 3, wildcard: false }, { name: 'Matter & Elements', brief: 'Fluids and fire.', n: 10, kept: 2, wildcard: false }] });
       case '/api/version': return send({ boot: state.boot || 'fake', html: 0 });
+      case '/api/busy': if (req.method === 'POST') state.lease = body.for; return send({ ok: true, busy: !!body.for });
       case '/api/stats': return send({ ok: true, models: {} });
       case '/api/save-settings': case '/api/krea-auth': return send({ ok: true });
       case '/api/reorder': {

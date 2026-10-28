@@ -244,3 +244,32 @@ def test_plate_key_of_another_mark_follows_its_size_and_place(srv, make_plate, m
     k18 = srv._plate_key(p)
     srv.PROJECT["mark_size"] = 24.0
     assert srv._plate_key(p) != k18
+
+
+def test_a_damaged_state_file_is_set_aside_never_written_over(srv):
+    """It held the whole curation: a read that fails must not replace it with an empty one (the audit's worst finding)."""
+    srv.CURATION_FILE.write_text('{"trashed": ["a.jpg"], "order": ["b.jpg"], "groups": [{"id": "g"')   # cut off mid-write
+    st = srv.load_state()
+    assert st["trashed"] == []
+    kept = list(srv.CURATION_FILE.parent.glob(f"{srv.CURATION_FILE.stem}.damaged-*"))
+    assert len(kept) == 1 and '"order": ["b.jpg"]' in kept[0].read_text(), "the damaged file is kept, whole, beside it"
+
+
+def test_saving_and_reading_the_curation_at_once_never_loses_it(srv):
+    """Parallel image saves, polling and trash clicks: a reader never sees half a file, so never starts the curation over."""
+    import threading
+    srv.save_state({"trashed": ["keep.jpg"], "order": [f"{i}.jpg" for i in range(3000)], "titles": {f"{i}.jpg": "t" * 40 for i in range(3000)}})
+    bad, stop = [], threading.Event()
+    def writer():
+        while not stop.is_set():
+            st = srv.load_state(); st["order"] = list(reversed(st["order"])); srv.save_state(st)
+    def reader():
+        for _ in range(150):
+            if srv.load_state()["trashed"] != ["keep.jpg"]:
+                bad.append(1)
+    ws = [threading.Thread(target=writer) for _ in range(2)]; rs = [threading.Thread(target=reader) for _ in range(3)]
+    for t in ws + rs: t.start()
+    for t in rs: t.join()
+    stop.set()
+    for t in ws: t.join()
+    assert bad == [] and not list(srv.CURATION_FILE.parent.glob("*.damaged-*")), "never read half-written, never reset"

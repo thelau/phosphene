@@ -36,10 +36,12 @@ def server_busy() -> bool:
     """True while a generation, AI order or export is running on the server (restarting now would lose it and its Krea credits)."""
     port = os.environ.get("PORT", "8765")
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/busy", timeout=2) as r:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/busy", timeout=4) as r:
             return bool(json.loads(r.read()).get("busy"))
-    except Exception:
-        return False
+    except Exception as e:
+        # not running (refused): nothing to lose. Any other failure (a slow answer while it works hard): busy, so wait; a restart
+        # then cut a batch off (the user's log: three images in flight, "socket hang up")
+        return not isinstance(getattr(e, "reason", e), ConnectionRefusedError)
 
 
 def wait_until_idle(max_wait: float = 900.0, poll: float = 1.5) -> None:

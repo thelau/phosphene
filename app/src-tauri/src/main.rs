@@ -24,6 +24,14 @@ struct Server(Mutex<Option<Child>>);
 struct Opened(Mutex<(u16, Vec<String>)>);
 
 // a project file double-clicked in Finder: the server imports it from where it is, then the page reloads on it
+// a file chosen in the menu's dialog or opened from Finder while the app runs: the page imports it (it waits for a running job,
+// generation or an export, and says so; posting straight to the server cut such a job off with a reload)
+fn page_import(path: &str, win: &tauri::WebviewWindow) {
+    let p = serde_json::json!(path);
+    let _ = win.eval(&format!("window.importProjectPath ? importProjectPath({p}) : location.reload()"));
+}
+
+// a file opened from Finder before the server answered (a double-click that launched the app): nothing runs yet, posted directly
 fn import_file(port: u16, path: &str, win: &tauri::WebviewWindow) {
     let body = serde_json::json!({ "path": path }).to_string();
     let ok = TcpStream::connect(("127.0.0.1", port)).and_then(|mut s| {
@@ -132,7 +140,7 @@ fn on_menu(app: &AppHandle, id: &str) {
                 let Some(path) = file.and_then(|f| f.into_path().ok()) else { return };
                 let port = handle.state::<Opened>().0.lock().unwrap().0;
                 if let Some(win) = handle.get_webview_window("main") {
-                    if port > 0 { import_file(port, &path.to_string_lossy(), &win); }   // the dialog's callback is off the main thread
+                    if port > 0 { page_import(&path.to_string_lossy(), &win); }
                 }
             });
             return;
@@ -245,7 +253,8 @@ fn main() {
                 match (o.0, handle.get_webview_window("main")) {
                     (p, Some(win)) if p > 0 => {
                         drop(o);
-                        std::thread::spawn(move || import_file(p, &path, &win));   // a big project takes a while: never on the main thread
+                        let _ = p;
+                        page_import(&path, &win);                                   // the page imports it (and waits for a running job)
                     }
                     _ => o.1.push(path),                                           // the server is still starting: imported when it answers
                 }

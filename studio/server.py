@@ -204,6 +204,7 @@ def get_cached_qa(path: Path) -> dict:
 
 def apply_critic(filename: str) -> None:
     """Score a plate with the Kimi critic. Advisory unless critic_autotrash is on (then low scores go to Trash with the reason)."""
+    started_in = PROJECT["slug"] if PROJECT else None
     st = load_state()
     if not st.get("critic_enabled", True) or not st.get("kimi_api_key"):
         return
@@ -212,13 +213,16 @@ def apply_critic(filename: str) -> None:
     except Exception as e:
         print(f"[CRITIC] {filename}: {str(e)[:120]}", flush=True)
         return
-    st = load_state()
-    st.setdefault("critic", {})[filename] = {"mean": r["mean"], "reason": r["reason"], "scores": r["scores"]}
-    if st.get("critic_autotrash") and r["verdict"] == "trash" and filename not in st.get("trashed", []):
-        st["trashed"] = sorted(set(st.get("trashed", [])) | {filename})
-        st.setdefault("trashed_at", {})[filename] = time.time()
-        st["critic_failed"] = sorted(set(st.get("critic_failed", [])) | {filename})
-    save_state(st)
+    with STATE_LOCK:                                   # the review took seconds: the state as it is now, and only in the project it was made for
+        if not PROJECT or PROJECT["slug"] != started_in:
+            return
+        st = load_state()
+        st.setdefault("critic", {})[filename] = {"mean": r["mean"], "reason": r["reason"], "scores": r["scores"]}
+        if st.get("critic_autotrash") and r["verdict"] == "trash" and filename not in st.get("trashed", []):
+            st["trashed"] = sorted(set(st.get("trashed", [])) | {filename})
+            st.setdefault("trashed_at", {})[filename] = time.time()
+            st["critic_failed"] = sorted(set(st.get("critic_failed", [])) | {filename})
+        save_state(st)
     print(f"[CRITIC] {filename} {r['mean']} {r['verdict']} - {r['reason']}", flush=True)
 
 
@@ -278,8 +282,24 @@ def load_state() -> dict:
 
 def _load_state_raw() -> dict:
     if CURATION_FILE.exists():
+        st = None
+        for attempt in range(3):                       # writes are atomic now; a read that still fails is retried before anything else
+            try:
+                st = json.loads(CURATION_FILE.read_text())
+                break
+            except Exception:
+                time.sleep(0.05)
+        if not isinstance(st, dict):
+            # damaged for real: set aside, never written over (it held the whole curation: trash, order, groups, snapshots)
+            keep = CURATION_FILE.with_name(f"{CURATION_FILE.stem}.damaged-{time.strftime('%Y%m%d-%H%M%S')}{CURATION_FILE.suffix}")
+            try:
+                os.replace(CURATION_FILE, keep)
+                print(f"[STATE] {CURATION_FILE.name} could not be read: kept as {keep.name}, starting a new one", flush=True)
+            except OSError:
+                pass
         try:
-            st = json.loads(CURATION_FILE.read_text())
+            if not isinstance(st, dict):
+                raise ValueError("no state")
             st.setdefault("trashed", [])
             st.setdefault("titles", {})
             st.setdefault("prompts", {})
@@ -303,8 +323,15 @@ def _load_state_raw() -> dict:
         "kimi_model": "kimi-k3",
     }
     sequences.ensure(state)
-    CURATION_FILE.write_text(json.dumps(state, indent=2))
+    _write_atomic(CURATION_FILE, json.dumps(state, indent=2))
     return state
+
+
+def _write_atomic(f: Path, text: str) -> None:
+    """Written whole or not at all: a reader (another request, the next start after a quit mid-save) never sees half a file."""
+    tmp = f.with_name(f".{f.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(text)
+    os.replace(tmp, f)
 
 
 def save_state(state: dict) -> None:
@@ -313,7 +340,7 @@ def save_state(state: dict) -> None:
     if key:
         SECRETS_FILE.write_text(json.dumps({"kimi_api_key": key}))
         SECRETS_FILE.chmod(0o600)
-    CURATION_FILE.write_text(json.dumps(state, indent=2))
+    _write_atomic(CURATION_FILE, json.dumps(state, indent=2))
 
 
 def ordered_plate_files(st: dict) -> list[Path]:
@@ -700,8 +727,14 @@ class inflight:
             _INFLIGHT["n"] -= 1
 
 
+# the page's long jobs (a batch of images, an export) have gaps between their requests (Kimi writing, the next image, the frames):
+# while one runs the page keeps a lease (POST /api/busy {"for": s}, renewed every 10 s), so busy() holds for the whole job: no
+# project switch, no dev restart in a gap. It lapses by itself if the page goes away.
+_LEASE = {"until": 0.0}
+
+
 def busy() -> bool:
-    return _INFLIGHT["n"] > 0 or ai_busy()
+    return _INFLIGHT["n"] > 0 or ai_busy() or time.time() < _LEASE["until"]
 
 
 def generate_with_retry(attempts: int = 3, pause=(3.0, 8.0), sleep=None, log=print, trace: list | None = None, **kw) -> bytes:
@@ -1196,6 +1229,15 @@ class StudioHandler(SimpleHTTPRequestHandler):
         if not self.from_this_computer(command=True):
             self.rfile.read(max(0, min(length, 1 << 20)))
             return
+        # the page says which project a job's request is for: another one open meanwhile (a second window, a file opened from
+        # Finder), the request is refused, so images, frames or a curation never land in the wrong project
+        meant = self.headers.get("X-Phosphene-Project")
+        if meant and not (PROJECT and PROJECT["slug"] == meant):
+            left = max(0, length)
+            while left > 0:
+                left -= len(self.rfile.read(min(left, 1 << 20)) or b"x" * left)
+            self.send_json({"ok": False, "project_changed": True, "error": "Another project was opened meanwhile: this was for the one before. Reload the page."}, 409)
+            return
         if parsed.path == "/api/export-audio":
             # the synthesized sound, rendered in the page (the same WebAudio graph as the preview), kept until the export uses it
             if length <= 44 or length > EXPORT_AUDIO_MAX_BYTES:
@@ -1361,7 +1403,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 out = zips_folder() / f"{uuid.uuid4().hex}.zip"
                 if not (body.get("slug") or PROJECT):
                     raise FileNotFoundError("none")
-                name = projects.export_zip(str(body.get("slug") or PROJECT["slug"]), out)
+                with STATE_LOCK:                               # its curation as one moment (an image being saved waits, or waits for it)
+                    name = projects.export_zip(str(body.get("slug") or PROJECT["slug"]), out)
             except FileNotFoundError:
                 self.send_json({"ok": False, "error": "There is no such project."}, 404)
                 return
@@ -1404,22 +1447,30 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "url": url})
             return
 
+        if parsed.path == "/api/busy":
+            # the page's lease while a batch or an export runs (see _LEASE): {"for": seconds}, 0 ends it
+            _LEASE["until"] = time.time() + max(0.0, min(60.0, float(body.get("for") or 0)))
+            self.send_json({"ok": True, "busy": busy()})
+            return
+
         if parsed.path == "/api/save-settings":
-            st = load_state()
             status = None
             if "kimi_api_key" in body and body["kimi_api_key"].strip():
-                status = check_kimi_key(body["kimi_api_key"].strip())   # a refused key is not kept: the one before stays
+                status = check_kimi_key(body["kimi_api_key"].strip())   # a refused key is not kept: the one before stays (checked before the state is read: it takes seconds)
                 if status == "refused":
-                    self.send_json({"ok": False, "kimi_key_status": "refused", "kimi_configured": bool(st.get("kimi_api_key")),
+                    self.send_json({"ok": False, "kimi_key_status": "refused", "kimi_configured": bool(load_state().get("kimi_api_key")),
                                     "error": "Kimi refused that key. Copy the API key (it starts with sk-) from platform.moonshot.ai or kimi.com."})
                     return
-                st["kimi_api_key"] = body["kimi_api_key"].strip()
-            if "kimi_model" in body and body["kimi_model"].strip():
-                st["kimi_model"] = body["kimi_model"].strip()
-            for flag in ("critic_enabled", "critic_autotrash"):
-                if flag in body:
-                    st[flag] = bool(body[flag])
-            save_state(st)
+            with STATE_LOCK:                                   # read, change, write as one: nothing saved meanwhile is lost
+                st = load_state()
+                if status:
+                    st["kimi_api_key"] = body["kimi_api_key"].strip()
+                if "kimi_model" in body and body["kimi_model"].strip():
+                    st["kimi_model"] = body["kimi_model"].strip()
+                for flag in ("critic_enabled", "critic_autotrash"):
+                    if flag in body:
+                        st[flag] = bool(body[flag])
+                save_state(st)
             self.send_json({"ok": True, "kimi_configured": bool(st.get("kimi_api_key")), "kimi_key_status": status})
             return
 
@@ -1488,6 +1539,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/api/invent-prompts":
+            started_in = PROJECT["slug"] if PROJECT else None
             st = load_state()
             kimi_key = body.get("kimi_api_key") or st.get("kimi_api_key", "")
             kimi_model = body.get("kimi_model") or st.get("kimi_model", "kimi-k3")
@@ -1506,11 +1558,14 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     direction=direction,
                     stats=stats,
                 )
-                for idea in ideas:
-                    t = idea.get("title", "")
-                    if t and t not in st["history"]:
-                        st["history"].append(t)
-                save_state(st)
+                with STATE_LOCK:                               # Kimi took seconds: what changed meanwhile stays; only its titles are added,
+                    if PROJECT and PROJECT["slug"] == started_in:   # and never into another project opened meanwhile
+                        now = load_state()
+                        for idea in ideas:
+                            t = idea.get("title", "")
+                            if t and t not in now.setdefault("history", []):
+                                now["history"].append(t)
+                        save_state(now)
                 gen_log.record("batch", ok=True, asked=int(body.get("count", 4)), territory_choice=body.get("world") or "mix", direction=direction, kimi_model=kimi_model,
                                seconds=round(time.time() - t_batch, 1), titles=[i.get("title") for i in ideas], **stats)
                 self.send_json({"ok": True, "ideas": ideas})
@@ -1569,7 +1624,9 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         slug = slug.replace("__", "_")
                     filename = f"{next_num:02d}_{slug}.jpg"
                     save_path = PLATES_DIR / filename
-                    im.save(save_path, quality=95)
+                    tmp_img = save_path.with_name(f".{save_path.name}.part")   # whole before it appears: an export, a thumbnail or the logo check never reads half an image
+                    im.save(tmp_img, "JPEG", quality=95)
+                    os.replace(tmp_img, save_path)
 
                     qa = get_cached_qa(save_path)
                     print(
@@ -1578,27 +1635,28 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         flush=True,
                     )
 
-                    st = load_state()
-                    st.setdefault("titles", {})[filename] = title
-                    st.setdefault("prompts", {})[filename] = raw_prompt
-                    st.setdefault("models", {})[filename] = model
-                    if body.get("world"):
-                        st.setdefault("worlds", {})[filename] = body["world"]
-                    if body.get("idea"):
-                        st.setdefault("ideas", {})[filename] = body["idea"]
-                    if title not in st.setdefault("history", []):
-                        st["history"].append(title)
+                    with STATE_LOCK:                           # read, change, write as one (parallel images, trash clicks, the critic)
+                        st = load_state()
+                        st.setdefault("titles", {})[filename] = title
+                        st.setdefault("prompts", {})[filename] = raw_prompt
+                        st.setdefault("models", {})[filename] = model
+                        if body.get("world"):
+                            st.setdefault("worlds", {})[filename] = body["world"]
+                        if body.get("idea"):
+                            st.setdefault("ideas", {})[filename] = body["idea"]
+                        if title not in st.setdefault("history", []):
+                            st["history"].append(title)
 
-                    # If Logo QA flags the image, send it to Trash instead of deleting/hiding it!
-                    if not qa["qa_passed"]:
-                        trashed_list = set(st.get("trashed", []))
-                        trashed_list.add(filename)
-                        st["trashed"] = sorted(trashed_list)
-                        st.setdefault("trashed_at", {})[filename] = time.time()
-                        st["qa_failed"] = sorted(set(st.get("qa_failed", [])) | {filename})
+                        # If Logo QA flags the image, send it to Trash instead of deleting/hiding it!
+                        if not qa["qa_passed"]:
+                            trashed_list = set(st.get("trashed", []))
+                            trashed_list.add(filename)
+                            st["trashed"] = sorted(trashed_list)
+                            st.setdefault("trashed_at", {})[filename] = time.time()
+                            st["qa_failed"] = sorted(set(st.get("qa_failed", [])) | {filename})
 
-                    sequences.append_everywhere(st, filename)
-                    save_state(st)
+                        sequences.append_everywhere(st, filename)
+                        save_state(st)
                 threading.Thread(target=apply_critic, args=(filename,), daemon=True).start()
                 took = round(time.time() - t_start, 1)
                 gen_log.record("image", id=job_id, ok=True, title=title, filename=filename, model=model, guide=guide_type, world=body.get("world"), seconds=took,
@@ -1644,22 +1702,23 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "No such image."}, 400)
                 return
             trashed = bool(body.get("trashed", True))
-            st = load_state()
-            cur = set(st.get("trashed", []))
-            group = {filename}
-            if trashed:
-                cur |= group
-                now = time.time()
-                for f in group:
-                    st.setdefault("trashed_at", {})[f] = now
-            else:
-                cur -= group
-                for f in group:
-                    st.get("trashed_at", {}).pop(f, None)
-                # a restored image joins the end of the order; it does not return to where it was
-                sequences.move_to_end_everywhere(st, sorted(group), universe=[p.name for p in PLATES_DIR.glob("*.jpg")])
-            st["trashed"] = sorted(cur)
-            save_state(st)
+            with STATE_LOCK:
+                st = load_state()
+                cur = set(st.get("trashed", []))
+                group = {filename}
+                if trashed:
+                    cur |= group
+                    now = time.time()
+                    for f in group:
+                        st.setdefault("trashed_at", {})[f] = now
+                else:
+                    cur -= group
+                    for f in group:
+                        st.get("trashed_at", {}).pop(f, None)
+                    # a restored image joins the end of the order; it does not return to where it was
+                    sequences.move_to_end_everywhere(st, sorted(group), universe=[p.name for p in PLATES_DIR.glob("*.jpg")])
+                st["trashed"] = sorted(cur)
+                save_state(st)
             self.send_json({"ok": True})
             return
 

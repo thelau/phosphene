@@ -52,12 +52,12 @@ def live(srv, monkeypatch):
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     port = httpd.server_address[1]
 
-    def call(method, path, body=None, raw=None):
+    def call(method, path, body=None, raw=None, headers=None):
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=60)
         if raw is not None:        # a file sent as it is (the music track)
             c.request(method, path, body=raw, headers={"Content-Type": "application/octet-stream"})
         else:
-            c.request(method, path, body=json.dumps(body or {}) if method == "POST" else None, headers={"Content-Type": "application/json"})
+            c.request(method, path, body=json.dumps(body or {}) if method == "POST" else None, headers={"Content-Type": "application/json", **(headers or {})})
         r = c.getresponse()
         raw = r.read()
         try:
@@ -839,3 +839,39 @@ def test_delete_project_over_http_opens_the_next_and_waits_for_a_running_job(liv
     status, d = live("POST", "/api/projects", {"action": "delete", "slug": "night-owl"})
     assert status == 200 and d["active"] == "demo" and all(p["slug"] != "night-owl" for p in d["projects"]), "gone; the next one is open"
     assert (tmp_path / "Trash" / "Night Owl (Phosphene project)").is_dir()
+
+
+def test_the_page_holds_the_server_busy_for_a_whole_job_and_it_lapses(live, srv, monkeypatch):
+    """Between two images nothing is in flight: the page's lease keeps busy() true (no switch from elsewhere, no dev restart in a gap)."""
+    assert live("GET", "/api/busy")[1]["busy"] is False
+    assert live("POST", "/api/busy", {"for": 30})[1]["busy"] is True
+    status, r = live("POST", "/api/projects", {"action": "switch", "slug": "demo"})
+    assert status == 409 and r["busy"], "no project switch from another window or the Mac menu mid-job"
+    assert live("POST", "/api/busy", {"for": 0})[1]["busy"] is False, "ended by the page"
+    live("POST", "/api/busy", {"for": 999})
+    assert srv._LEASE["until"] - srv.time.time() <= 60, "never held long: it lapses if the page goes away"
+    live("POST", "/api/busy", {"for": 0})
+
+
+def test_a_request_for_another_project_is_refused(live, srv):
+    """A second window, or a file opened from Finder, changed the project: a job's request for the one before never lands in this one."""
+    status, r = live("POST", "/api/trash", {"filename": "x.jpg", "trashed": True}, headers={"X-Phosphene-Project": "not-this-one"})
+    assert status == 409 and r["project_changed"]
+    status, r = live("POST", "/api/trash", {"filename": "nope.jpg", "trashed": True}, headers={"X-Phosphene-Project": "demo"})
+    assert status != 409, "the open project's own requests go through"
+
+
+def test_kimi_writing_scenes_never_undoes_what_was_trashed_meanwhile_nor_writes_into_another_project(live, srv, monkeypatch):
+    """invent-prompts used to save the state it read before Kimi's seconds-long call: a trash made meanwhile was undone."""
+    import json as _json
+    _three_plates(live)
+    name = live("GET", "/api/state")[1]["plates"][0]["filename"]
+    shots = [{"title": "Fresh Idea", "subject": "s", "idea": "i", "guide": "dark", "prompt": "basalt monolith glacier scene"}]
+    def kimi_while_the_user_trashes(prompt, **k):
+        live("POST", "/api/trash", {"filename": name, "trashed": True})          # done while Kimi writes
+        return _json.dumps(shots)
+    monkeypatch.setattr(srv, "call_kimi_llm", kimi_while_the_user_trashes)
+    live("POST", "/api/invent-prompts", {"count": 1, "world": "Editorial Print"})
+    st = srv.load_state()
+    assert name in st["trashed"], "the trash made during the call is kept"
+    assert "Fresh Idea" in st["history"], "and the new titles are added"
