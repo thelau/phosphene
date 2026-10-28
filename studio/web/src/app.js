@@ -2896,13 +2896,12 @@
         if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); input.blur(); }
       });
     })();
-    // the running batch shows on the button itself: "Generating 2 of 4" (Stop stays in the status bar: one control)
+    // the running batch shows on the button itself: "Generating" and a spinner (the footer has the detail; Stop stays there: one control)
     function genRunningLabel() {
       const g = document.getElementById('generateBtn');
       if (!generating) { renderGen(); return; }
       g.classList.add('running');
-      const done = prog.slots.filter(x => x === 'ok' || x === 'trash' || x === 'err' || x === 'blocked').length;
-      document.getElementById('genLabel').textContent = prog.stage === 'invent' ? 'Writing scenes…' : `Generating ${done} of ${prog.total}`;
+      document.getElementById('genLabel').textContent = 'Generating';
     }
 
     // the territory list, one column: Describe your own and Surprise me, then the territories (kept of made); ↑ ↓ and ↩. There is

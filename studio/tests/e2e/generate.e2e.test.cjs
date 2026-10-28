@@ -29,7 +29,8 @@ test('generate: a custom territory waits for its description; controls lock, pro
   assert.equal(await page.locator('#statusText .slot').count(), 4);
   await page.waitForSelector('#statusText .slot.run');
   assert.match(await text('#statusText'), /Fog & Vapor/);
-  assert.match(await text('#genLabel'), /^Generating \d of 4$/, 'the batch on the button itself');
+  assert.equal(await text('#genLabel'), 'Generating', 'just that, with a spinner (the footer has the detail)');
+  assert.equal(Math.round((await page.locator('#generateBtn').boundingBox()).width), 150, 'the same width as idle: nothing in the row moves');
   await shot('06-rendering');
   await page.waitForSelector('.pending-card');                                    // the images still coming hold their place at the end of the grid
   assert.ok(await page.locator('.pending-card').count() >= 1);

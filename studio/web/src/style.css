@@ -417,7 +417,7 @@
     .refine-k { color: var(--orange-soft); flex: none; }
     .refine-v { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
     .refine-x { flex: none; align-self: center; width: 22px; height: 22px; margin-right: 8px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: var(--line-3); color: var(--text); }
-    #generateBtn { display: flex; align-items: center; gap: 10px; margin: 4px; padding: 0 18px; border: 0; border-radius: 8px; font-size: 14px; white-space: nowrap; }
+    #generateBtn { flex: none; width: 150px; justify-content: center; display: flex; align-items: center; gap: 10px; margin: 4px; padding: 0 18px;   /* one width, idle or running: the row never moves */ border: 0; border-radius: 8px; font-size: 14px; white-space: nowrap; }
     #generateBtn:disabled:not(.running) { background: var(--line-2); border-color: var(--line-2); color: #7E796C; }
     #generateBtn.running { background: #2A2421; color: var(--orange-soft); font-weight: 600; opacity: 1; }
     .gen-spin { display: none; width: 16px; height: 16px; border-radius: 50%; border: 3px solid #4A3A30; border-top-color: var(--orange); animation: spin 1s linear infinite; box-sizing: border-box; }
