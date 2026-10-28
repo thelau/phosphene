@@ -91,8 +91,8 @@
     .csel-group { padding: 9px 12px 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
     /* where each dropdown sits */
     .row > .csel { width: 100%; }
-    .csel[data-for="batchCountSelect"] { width: 118px; }
-    .gen .csel-face { height: 44px; border: 0; border-radius: 0; background-color: transparent; font-weight: 600; font-size: 14px; }
+    .csel[data-for="batchCountSelect"] { width: 148px; }
+    .gen .csel-face { height: 44px; padding: 0 40px 0 18px; border: 0; border-radius: 0; background-color: transparent; background-position: right 16px center; font-weight: 600; font-size: 14px; }   /* room on either side of "20 images" */
     .settings-popover .csel, .ai-panel .csel { display: flex; width: 100%; }
     .look-char .csel { flex: 1; }
     .look-char .csel-face { height: 34px; border: 0; background-color: transparent; padding-left: 2px; padding-right: 32px; }
@@ -386,19 +386,19 @@
     /* ---------- curate ---------- */
     .gen-row { flex: none; display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid #22201D; position: relative; z-index: 8; }   /* making images, set apart from browsing them below */
     /* one control: Territory (the choice that matters) → Refine (optional) → how many → Generate */
-    .gen { position: relative; display: flex; align-items: stretch; height: 46px; border-radius: 11px; border: 1px solid var(--line-3); background: #1A1918; }
+    .gen { position: relative; display: flex; align-items: stretch; flex: 1; min-width: 0; height: 46px; border-radius: 11px; border: 1px solid var(--line-3); background: #1A1918; }
     .gen-sep { width: 1px; background: var(--line-3); }
     select.src-only { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }   /* the source of truth, drawn by the button */
     .terr-btn { display: flex; align-items: center; gap: 10px; width: 400px; padding: 0 12px 0 14px; border: 0; border-radius: 10px 0 0 10px; background: transparent; color: var(--text); text-align: left; }
     .terr-btn[aria-expanded="true"], .terr-btn:hover:not(:disabled) { background: #2A2825; }
     .terr-btn > svg { color: var(--muted); flex: none; }
-    .terr-icon { width: 18px; height: 18px; flex: none; display: flex; }
-    .terr-text { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; white-space: nowrap; }   /* one line: TERRITORY, the name, its count */
+    .terr-icon { width: 18px; height: 18px; flex: none; display: flex; align-items: center; justify-content: center; }
+    .terr-text { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; white-space: nowrap; line-height: 1; }   /* one line: TERRITORY, the name, its count, on the icon's centre line */
     .terr-label { font-family: var(--mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
-    .terr-line { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; min-width: 0; overflow: hidden; }
+    .terr-line { display: flex; align-items: center; gap: 8px; white-space: nowrap; min-width: 0; overflow: hidden; line-height: 1; }
     .terr-line b { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
     .terr-line span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-    .refine { display: flex; align-items: stretch; width: 320px; }
+    .refine { display: flex; align-items: stretch; flex: 1 1 320px; min-width: 320px; }   /* takes the bar's spare width, so what you type stays readable */
     .refine > * { display: none; }
     .refine[data-state="empty"] .refine-open, .refine[data-state="edit"] .refine-edit, .refine[data-state="set"] .refine-set { display: flex; }
     .refine[data-state="edit"].has-text .refine-x, .refine[data-state="set"] .refine-x { display: flex; }
@@ -424,7 +424,7 @@
     .gen-spin { display: none; width: 16px; height: 16px; border-radius: 50%; border: 3px solid #4A3A30; border-top-color: var(--orange); animation: spin 1s linear infinite; box-sizing: border-box; }
     #generateBtn.running .gen-spin { display: block; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .gen-hint { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+    .gen-hint { flex: none; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
     .gen-hint[hidden] { display: none; }
     /* the territory list: a filter, Mix it up, the project's territories with what was kept of what was made, then the two others */
     .terr-menu { position: absolute; left: 0; top: 52px; width: 400px;   /* as wide as its button (set when it opens) */ box-sizing: border-box; padding: 8px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 24px 60px rgba(0,0,0,.55); display: flex; flex-direction: column; gap: 2px; z-index: 30; max-height: calc(100vh - 160px); overflow-y: auto; }
@@ -446,8 +446,8 @@
     .tm-head { display: flex; justify-content: space-between; padding: 10px 10px 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
     .tm-sep { height: 1px; background: var(--line-2); margin: 6px 4px; }
     .tm-none { padding: 8px 10px; font-size: 13px; color: var(--faint); }
-    @media (max-width: 1400px) { .refine { width: 250px; } .gen-row { padding: 12px 20px; } }
-    @media (max-width: 1240px) { .terr-btn { width: 360px; } .refine { width: 220px; } .gen-row { padding: 10px 16px; } }
+    @media (max-width: 1400px) { .refine { min-width: 250px; } .gen-row { padding: 12px 20px; } }
+    @media (max-width: 1240px) { .terr-btn { width: 360px; } .refine { min-width: 220px; } .gen-row { padding: 10px 16px; } }
     #worldSelect { width: 210px; }
     #directionInput { flex: 1; min-width: 0; height: 36px; border-radius: 8px; background: #1C1B19; }
     #batchCountSelect { width: 110px; }

@@ -11,8 +11,15 @@ test('page loads without errors: Curate first, generation in one tidy row, no st
   const header = await box('header');
   assert.ok(header.height <= 57, `header is ${header.height}px tall`);
   assert.ok(world.x + world.width <= dir.x + 1 && dir.x + dir.width <= count.x + 1 && count.x + count.width <= gen.x + 1, 'territory, Refine, count, Generate: left to right');
-  assert.ok(world.width > dir.width, 'the territory leads: it is the bigger part');
+  await page.click('#refineOpen');
+  const field = await box('#directionInput');
+  assert.ok(field.width > 400, `the refinement has room to be read in full (${field.width} px)`);
+  await page.keyboard.press('Escape');
   assert.equal(await text('#terrName'), 'Mix it up');
+  const mids = await page.evaluate(() => ['#terrIcon svg', '.terr-label', '#terrName', '#terrSub', '#terrBtn > svg', '#refineOpen', '.csel[data-for="batchCountSelect"] .csel-face', '#generateBtn'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return Math.round((r.top + r.height / 2) * 10) / 10; }));
+  assert.ok(Math.max(...mids) - Math.min(...mids) <= 1.5, `everything in the bar on one centre line: ${mids}`);
+  const [bar, tools] = [await box('#genGroup'), await box('.size-ctl')];
+  assert.ok(Math.abs(bar.x + bar.width - (tools.x + tools.width)) <= 1, 'the bar runs the full width: its right edge lines up with the tools below');
   for (const b of [dir, count, gen]) assert.ok(Math.abs(b.y + b.height / 2 - (world.y + world.height / 2)) < 4, 'one row');
   assert.ok(settings.y < world.y, 'Settings stays in the header');
   assert.equal(await text('#tabSelection'), 'Selection 3');
