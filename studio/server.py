@@ -2000,6 +2000,15 @@ if __name__ == "__main__":
     def _stamped(*a, **k):                                                 # every line of the server's output with its time
         _print(time.strftime("%H:%M:%S"), *a, **k) if k.get("file") in (None, sys.stdout) else _print(*a, **k)
     builtins.print = _stamped
+    # one server per projects folder: the installed app and app:live on the same Documents › Phosphene would write the same
+    # curations; the second one says so and stops (exit 3: the app's splash explains). The lock goes with the process, crash or not
+    import fcntl
+    _lock_file = open(places.PROJECTS_DIR / ".phosphene.lock", "a+")
+    try:
+        fcntl.flock(_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print(f"Phosphene is already open on {places.PROJECTS_DIR} (the installed app, or app:live): quit it first.", flush=True)
+        sys.exit(3)
     if os.environ.get("PHOSPHENE_EXAMPLES"):                                 # the Mac app's first launch: Demo, the sample, copied in once
         projects.seed_examples(Path(os.environ["PHOSPHENE_EXAMPLES"]))
     open_first_project()

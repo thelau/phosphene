@@ -301,3 +301,33 @@ def test_importing_the_server_pairs_demos_places_with_cos_whatever_was_open_last
     P.create({"name": "Owl"}, star_png())
     P.set_active("owl")
     assert srv._first_project()["slug"] == "demo", "the start (open_first_project) opens the last one; importing does not"
+
+
+def test_a_second_server_on_the_same_projects_folder_says_so_and_stops(tmp_path):
+    # the installed app and app:live on the same Documents › Phosphene would both write the curations
+    import os, socket, subprocess, sys, time
+    from pathlib import Path
+    server = Path(__file__).resolve().parents[1] / "server.py"
+    home, support = tmp_path / "home", tmp_path / "support"
+    home.mkdir(); support.mkdir()
+    def port():
+        s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close(); return p
+    env = {**os.environ, "PHOSPHENE_HOME": str(home), "PHOSPHENE_SUPPORT": str(support)}
+    first = subprocess.Popen([sys.executable, str(server)], env={**env, "PORT": str(port())}, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    try:
+        for _ in range(100):
+            if (home / ".phosphene.lock").exists():
+                break
+            time.sleep(0.1)
+        time.sleep(0.5)
+        second = subprocess.run([sys.executable, str(server)], env={**env, "PORT": str(port())}, capture_output=True, text=True, timeout=30)
+        assert second.returncode == 3 and "already open" in second.stdout, (second.returncode, second.stdout[-300:])
+        assert first.poll() is None, "the first one goes on"
+    finally:
+        first.kill(); first.wait()
+    again = subprocess.Popen([sys.executable, str(server)], env={**env, "PORT": str(port())}, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    try:
+        time.sleep(2)
+        assert again.poll() is None, "the lock went with the first (even killed): a new one starts"
+    finally:
+        again.kill(); again.wait()

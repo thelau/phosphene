@@ -273,9 +273,12 @@ fn main() {
                             let _ = win.navigate(format!("http://localhost:{port}/").parse().unwrap());
                             return;
                         }
-                        let gone = handle.state::<Server>().0.lock().unwrap().as_mut().map(|c| c.try_wait().ok().flatten().is_some()).unwrap_or(true);
-                        if gone {
-                            let _ = win.eval("document.getElementById('msg').textContent = 'Phosphene could not start. Its log is in ~/Library/Application Support/Phosphene/server.log.'");
+                        let ended = handle.state::<Server>().0.lock().unwrap().as_mut().map(|c| c.try_wait().ok().flatten().map(|s| s.code())).unwrap_or(Some(None));
+                        if let Some(code) = ended {
+                            // 3: another Phosphene (an installed copy, or app:live) already has the projects open: one at a time
+                            let msg = if code == Some(3) { "Phosphene is already open (another copy, or the developer version). Quit it, then open Phosphene again." }
+                                      else { "Phosphene could not start. Its log is in ~/Library/Application Support/Phosphene/server.log." };
+                            let _ = win.eval(&format!("document.getElementById('msg').textContent = {}", serde_json::json!(msg)));
                             return;
                         }
                         if !told && t0.elapsed() > Duration::from_secs(60) {   // slow, still alive: say so and keep waiting
