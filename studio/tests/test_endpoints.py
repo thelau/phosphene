@@ -50,7 +50,7 @@ def live(srv, monkeypatch):
     st["kimi_api_key"] = "sk-test"
     srv.save_state(st)
     httpd = srv.QuietServer(("127.0.0.1", 0), srv.StudioHandler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()   # the default 0.5 s made every test wait at its end
     port = httpd.server_address[1]
 
     def call(method, path, body=None, raw=None, headers=None):

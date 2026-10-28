@@ -134,24 +134,28 @@ def test_own_mark_missing_fails(tmp_path):
     assert not qa.evaluate_plate_qa(tmp_path / "empty.jpg", spec)["qa_passed"]
 
 
+def _check(job):
+    """One logo check in a process of its own (the three below in parallel: one after another they took 26 s)."""
+    image, mark, size = job
+    return qa.evaluate_plate_qa(image, qa.mark_spec(mark, size))
+
+
 def test_a_plain_triangle_at_its_size_is_never_trashed_and_one_much_too_big_is(tmp_path):
     """The user's triangle (47.5% wide): a right one was trashed (fit 0.41 under the old 0.42 bar). Now only the clearly wrong is."""
+    from concurrent.futures import ProcessPoolExecutor
     from PIL import ImageDraw
     m = Image.new("RGBA", (300, 260), (0, 0, 0, 0))
     ImageDraw.Draw(m).polygon([(150, 0), (300, 260), (0, 260)], fill=(20, 20, 20, 255))
     m.save(tmp_path / "tri.png")
-    for scale, light in ((1.0, False), (1.0, True)):
-        spec = qa.mark_spec(tmp_path / "tri.png", 47.5)
+    jobs = []
+    for size, scale, ink, name in ((47.5, 1.0, (30, 120, 160), "full"), (47.5, 1.0, (150, 190, 205), "faint"), (30, 2.0, (30, 120, 160), "big")):
+        spec = qa.mark_spec(tmp_path / "tri.png", size)                   # faint halftone ink, or a full one; or twice too big
         tm = spec.mask(int(spec.width * scale))
         im = Image.new("RGB", (qa.TARGET_W, qa.TARGET_H), (225, 220, 210))
-        ink = (150, 190, 205) if light else (30, 120, 160)                 # faint halftone ink, or a full one
         im.paste(Image.new("RGB", tm.size, ink), (spec.center[0] - tm.width // 2, spec.center[1] - tm.height // 2), tm)
-        im.save(tmp_path / "t.jpg", quality=92)
-        assert qa.evaluate_plate_qa(tmp_path / "t.jpg", spec)["qa_passed"], f"at its size ({'faint' if light else 'full'} ink): never trashed"
-    spec = qa.mark_spec(tmp_path / "tri.png", 30)
-    tm = spec.mask(int(spec.width * 2.0))
-    im = Image.new("RGB", (qa.TARGET_W, qa.TARGET_H), (225, 220, 210))
-    im.paste(Image.new("RGB", tm.size, (30, 120, 160)), (spec.center[0] - tm.width // 2, spec.center[1] - tm.height // 2), tm)
-    im.save(tmp_path / "big.jpg", quality=92)
-    r = qa.evaluate_plate_qa(tmp_path / "big.jpg", spec)
-    assert not r["qa_passed"] or r["qa_doubt"], "twice too big: trashed or noted"
+        im.save(tmp_path / f"{name}.jpg", quality=92)
+        jobs.append((tmp_path / f"{name}.jpg", tmp_path / "tri.png", size))
+    with ProcessPoolExecutor() as pool:
+        full, faint, big = pool.map(_check, jobs)
+    assert full["qa_passed"] and faint["qa_passed"], "at its size (full or faint ink): never trashed"
+    assert not big["qa_passed"] or big["qa_doubt"], "twice too big: trashed or noted"
