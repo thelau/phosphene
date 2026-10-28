@@ -251,3 +251,22 @@ def test_delete_project_moves_its_folder_to_the_trash_and_refuses_one_whose_file
     assert projects.trash("night-owl").name == "Night Owl (Phosphene project) 2", "never over another"
     with pytest.raises(ValueError, match="outside its folder"):
         projects.trash("demo")                        # the repository's DEMO: its plates are committed, elsewhere
+
+
+def test_the_replay_measures_the_users_curation_again_and_says_where_the_check_disagrees(pdir, tmp_path):
+    import json
+    import qa_replay
+    p = projects.create({"name": "Owl", "mark_size": 25}, star_png())
+    left, top, w, h = projects.mark_box(p)
+    mark = projects.mark_alpha(Image.open(p["mark_file"])).resize((w, h))
+    p["plates_dir"].mkdir(parents=True, exist_ok=True)
+    for name, at in (("16_right.jpg", (left, top)), ("17_moved.jpg", (left, top + 500))):
+        im = Image.new("RGB", (1080, 1920), (30, 40, 60))
+        im.paste(Image.new("RGB", (w, h), (250, 240, 220)), at, mark)
+        im.save(p["plates_dir"] / name, "JPEG", quality=95)
+    # the check trashed the moved one and the user put it back; the right one was trashed by hand
+    p["state_file"].write_text(json.dumps({"trashed": ["16_right.jpg"], "qa_failed": ["17_moved.jpg"]}))
+    todo, judged = qa_replay.jobs(projects.PROJECTS_DIR)
+    assert judged == {"owl/16_right.jpg": "you trashed", "owl/17_moved.jpg": "restored"}, "DEMO is left out"
+    got = {k: v for k, v, _ in map(qa_replay._measure, todo)}
+    assert got == {"owl/16_right.jpg": "pass", "owl/17_moved.jpg": "trash"}

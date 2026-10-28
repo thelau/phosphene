@@ -9,6 +9,7 @@
     "api": "python3 studio/dev.py",
     "build": "vite build studio/web",
     "log": "python3 studio/gen_log.py",
+    "qa:replay": ".venv/bin/python studio/qa_replay.py",
     "test": "node --test studio/tests/js/ui.test.cjs",
     "test:e2e": "node --test studio/tests/e2e/*.e2e.test.cjs",
     "app": "cd app && tauri dev",
