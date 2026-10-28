@@ -2871,7 +2871,7 @@
         g.classList.remove('running');
         document.getElementById('genLabel').textContent = 'Generate';
         g.disabled = aiRunning || (custom && !text);
-        g.title = custom && !text ? 'Describe the custom territory first' : 'Generate';
+        g.title = custom && !text ? 'Describe your territory first' : '';      // a tooltip only to say why it is off
       }
       document.getElementById('genHint').hidden = !(project && !plates.length && !generating);   // a new project, until its first batch
     }
@@ -2932,9 +2932,10 @@
       }
       let list = m.querySelector('.tm-list');
       if (!list) {
-        m.innerHTML = '<div class="tm-list"></div>';
+        m.innerHTML = '<div class="tm-list"></div><div class="tm-more" aria-hidden="true">More below <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></div>';
         m.tabIndex = -1;
         list = m.querySelector('.tm-list');
+        m.addEventListener('scroll', terrMore, { passive: true });
         m.addEventListener('keydown', terrKey);
         list.addEventListener('mousedown', e => e.preventDefault());
         list.addEventListener('click', e => { const it = e.target.closest('.tm-item'); if (it) chooseTerr(it.dataset.v); });
@@ -2942,6 +2943,13 @@
       }
       list.innerHTML = html;
       markTerr();
+      terrMore();
+    }
+    // "More below" at the foot while the list has more to scroll to (macOS hides scrollbars until you scroll)
+    function terrMore() {
+      const m = document.getElementById('terrMenu');
+      if (m.scrollHeight === undefined) return;
+      m.classList.toggle('more', m.scrollTop + m.clientHeight < m.scrollHeight - 4);
     }
     function markTerr() {
       const items = [...document.querySelectorAll('#terrMenu .tm-item')];
@@ -2959,7 +2967,8 @@
       btn.setAttribute('aria-expanded', String(open));
       if (!open) return;
       renderTerrMenu();
-      m.style.width = `${Math.max(400, btn.offsetWidth || 0)}px`;              // one column (scrolls past what fits: a project's territories grow)
+      m.style.width = `${Math.max(400, btn.offsetWidth || 0)}px`;
+      terrMore();              // one column (scrolls past what fits: a project's territories grow)
       const items = [...m.querySelectorAll('.tm-item')];
       terrActive = Math.max(0, items.findIndex(it => it.getAttribute('aria-selected') === 'true'));
       markTerr();

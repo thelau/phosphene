@@ -122,6 +122,13 @@ test('many territories: one column, Describe your own and Surprise me first, the
   assert.equal(await page.locator('#terrMenu .tm-sep').count(), 3, 'a line under the two, and between the core, custom and invented groups');
   assert.equal(await page.locator('#terrMenu .tm-world').count(), 32);
   assert.equal(await page.locator('#terrMenu .tm-head').count(), 1);
+  await page.setViewportSize({ width: 1512, height: 700 });                           // a short window: the list scrolls
+  await page.click('#terrBtn'); await page.click('#terrBtn');
+  assert.equal(await page.locator('#terrMenu .tm-more').isVisible(), true, '"More below" while there is more');
+  await page.locator('#terrMenu').evaluate(m => { m.scrollTop = m.scrollHeight; m.dispatchEvent(new Event('scroll')); });
+  assert.equal(await page.locator('#terrMenu .tm-more').isVisible(), false, 'gone at the bottom');
+  await page.setViewportSize({ width: 1512, height: 945 });
+  await page.click('#terrBtn'); await page.click('#terrBtn');
   assert.equal(await page.locator('#terrMenu .tm-item[data-v="Editorial Print"] .tm-origin').textContent(), 'core', 'where it comes from (shown in capitals)');
   assert.equal(await page.locator('#terrMenu .tm-bar, #terrMenu .tm-n').count(), 0, 'no kept-of-made column');
   const groups = await page.locator('#terrMenu .tm-list').evaluate(l => [...l.children].map(c => c.classList.contains('tm-sep') ? '|' : (c.querySelector('.tm-origin') || {}).textContent).filter(Boolean).join(' ').replace(/(\w+)( \1)+/g, '$1'));
