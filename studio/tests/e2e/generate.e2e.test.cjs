@@ -11,7 +11,7 @@ test('generate: a custom territory waits for its description; controls lock, pro
   assert.equal(await page.locator('.terr-label').count(), 0, 'no TERRITORY label: they all are');
   assert.match(await page.locator('#terrMenu .tm-item[data-v="__wildcard__"]').textContent(), /Surprise me\s+Kimi invents a territory/);
   assert.equal(await page.locator('#terrMenu .tm-item[data-v=""]').count(), 0, 'no Mix it up: you pick the territory');
-  assert.match(await page.locator('#terrMenu .tm-item[data-v="__sampler__"]').textContent(), /Sampler\s+one image from every territory/, 'the count covers all 2 here');
+  assert.match(await page.locator('#terrMenu .tm-item[data-v="__sampler__"]').textContent(), /Sampler\s+2 images from your least tried territories/, 'the count, capped at the territories there are');
   await shot('04-territory-list');
   await page.click('#terrMenu .tm-item[data-v="__custom__"]');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'directionInput', 'its description opens at once');
@@ -123,7 +123,7 @@ test('many territories: one column, Describe your own and Surprise me first, the
   assert.equal(await page.locator('#terrMenu .tm-sep').count(), 3, 'a line under the two, and between the core, custom and invented groups');
   assert.equal(await page.locator('#terrMenu .tm-world').count(), 32);
   assert.equal(await page.locator('#terrMenu .tm-head').count(), 1);
-  assert.match(await page.locator('#terrMenu .tm-item[data-v="__sampler__"]').textContent(), /one image from each of the 4 you've tried least/, 'fewer than all: the least tried');
+  assert.match(await page.locator('#terrMenu .tm-item[data-v="__sampler__"]').textContent(), /4 images from your least tried territories/);
   await page.setViewportSize({ width: 1512, height: 700 });                           // a short window: the list scrolls
   await page.click('#terrBtn'); await page.click('#terrBtn');
   assert.equal(await page.locator('#terrMenu .tm-more').isVisible(), true, '"More below" while there is more');

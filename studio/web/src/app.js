@@ -2944,7 +2944,7 @@
       if (custom) html += item('__custom__', `${ICON_PLUS}<span>Describe your own <span class="tm-sub">in your own words</span></span>${check}`);
       if (wild) html += item('__wildcard__', `${ICON_SPARK}<span>Surprise me <span class="tm-sub">Kimi invents a territory</span></span>${check}`);
       const n = Math.min(parseInt(document.getElementById('batchCountSelect').value, 10) || 4, worlds.length);   // the count picks how many territories
-      const which = n >= worlds.length ? 'one image from every territory' : `one image from each of the ${n} you've tried least`;   // not random: least tried first
+      const which = `${n} image${n === 1 ? '' : 's'} from your least tried territories`;   // one each; not random: least tried first
       if (sampler && worlds.length > 1) html += item('__sampler__', `${ICON_SAMPLER}<span>Sampler <span class="tm-sub">${which}</span></span>${check}`);
       if (custom || wild || sampler) html += '<div class="tm-sep"></div>';
       if (worlds.length) {
@@ -2991,7 +2991,6 @@
       btn.setAttribute('aria-expanded', String(open));
       if (!open) return;
       renderTerrMenu();
-      m.style.width = `${Math.max(400, btn.offsetWidth || 0)}px`;
       terrMore();              // one column (scrolls past what fits: a project's territories grow)
       const items = [...m.querySelectorAll('.tm-item')];
       terrActive = Math.max(0, items.findIndex(it => it.getAttribute('aria-selected') === 'true'));

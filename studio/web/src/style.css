@@ -426,7 +426,7 @@
     .gen-hint { flex: none; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
     .gen-hint[hidden] { display: none; }
     /* the territory list: a filter, Mix it up, the project's territories with what was kept of what was made, then the two others */
-    .terr-menu { position: absolute; left: 0; top: 52px; width: 400px;   /* as wide as its button (set when it opens) */ box-sizing: border-box; padding: 8px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 24px 60px rgba(0,0,0,.55); display: flex; flex-direction: column; gap: 2px; z-index: 30; max-height: calc(100vh - 160px); overflow-y: auto; }
+    .terr-menu { position: absolute; left: 0; top: 52px; width: max-content; min-width: 400px; max-width: min(600px, calc(100vw - 48px));   /* as wide as its longest line */ box-sizing: border-box; padding: 8px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line-3); box-shadow: 0 24px 60px rgba(0,0,0,.55); display: flex; flex-direction: column; gap: 2px; z-index: 30; max-height: calc(100vh - 160px); overflow-y: auto; }
     .terr-menu[hidden] { display: none; }
     .terr-menu:focus { outline: none; }
     .tm-more { display: none; position: sticky; bottom: -8px; margin: 0 -8px -8px; padding: 18px 0 8px; text-align: center; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: linear-gradient(to bottom, transparent, var(--raised) 55%); pointer-events: none; }
