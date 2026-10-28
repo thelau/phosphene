@@ -2121,3 +2121,15 @@ test('the Sampler: asks for one image from each of N territories and names the b
   assert.equal(h.calls.find(c => c.url === '/api/invent-prompts').body.world, '__sampler__');
   assert.equal(h.run('prog.world'), 'Sampler', 'the status bar names it, not the first territory');
 });
+
+test('after a reload mid-batch, Resume leaves out the images the server is still making, and a duplicate answer is not a failure', async () => {
+  const r = genRoutes({ n: 2, gen: async () => ({ ok: false, duplicate: true, error: 'already being made' }) });
+  r['/api/state'] = { ...r['/api/state'], making: ['Idea 0'] };
+  const pending = JSON.stringify({ items: ['Idea 0', 'Idea 1'].map((title, i) => ({ title, prompt: `p${i}`, guide: 'dark', world: 'Fog' })), model: 'm', at: 1 });
+  const h = load({ routes: r, storage: { 'studioPending:demo': pending } });
+  await settle(); await settle();
+  assert.match(h.$('statusText').innerHTML, /1 image of the last batch wasn't made/, 'the one still being made is not offered');
+  await h.run("prog.actions.find(a => a.label === 'Resume').run()"); await settle(); await settle();
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(prog.slots)')), ['ok'], 'already being made: it arrives by itself');
+  assert.doesNotMatch(h.$('statusText').innerHTML, /Retry/);
+});

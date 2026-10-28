@@ -1,4 +1,5 @@
     let plates = [];
+    let making = [];                                                         // titles the server is making now (/api/state)
     let showTrash = false;
     let isPlaying = false;
     let currentIdx = 0;
@@ -132,6 +133,7 @@
       if (data.project) showProject(data.project);
       showNoProject(data);
       plates = data.plates || [];
+      making = data.making || [];
       sequences = data.sequences || [];
       groups = data.groups || [];
       editsList = data.edits || [];
@@ -3186,6 +3188,7 @@
           if (batchStop) return;
         }
         if (genData.project_changed) { batchStop = true; prog.slots[idx] = 'wait'; return; }
+        if (genData.duplicate) { prog.slots[idx] = 'ok'; prog.why[idx] = 'already being made: it arrives by itself'; left.delete(idx); keep(); progRender(); return; }
         if (genData.needs_auth) { authFailed = true; prog.slots[idx] = 'err'; prog.why[idx] = 'Krea login needed: Settings › Connect Krea'; return; }
         if (!genData.ok) {
           // a moderation refusal is not a failure to retry: nothing was made (and nothing goes to the Trash), its bar is grey
@@ -3239,7 +3242,7 @@
     }
     async function retryBatch(items, model) {
       if (isBusy()) { setStatus('Wait until the running job ends.'); return; }
-      const made = new Set(plates.map(p => p.title));                       // made meanwhile (a reload let one finish on the server): not again
+      const made = new Set([...plates.map(p => p.title), ...making]);       // made meanwhile, or being made now (a reload let them go on on the server): not again
       items = items.filter(it => !made.has(it.title));
       if (!items.length) { savePending([], model); batchActions([]); setStatus('Those images were made after all.'); return; }
       if (!ensureKreaReady()) return;
@@ -3251,7 +3254,7 @@
     function offerPending() {
       const p = readPending();
       if (!p || generating) return;
-      const made = new Set(plates.map(x => x.title));
+      const made = new Set([...plates.map(x => x.title), ...making]);       // being made now on the server: not offered again
       const items = p.items.filter(it => !made.has(it.title));
       if (!items.length) { savePending([], p.model); return; }
       document.getElementById('statusText').dataset.idle = '';

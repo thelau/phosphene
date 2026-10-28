@@ -295,6 +295,27 @@ def test_a_retry_that_works_is_recorded_as_one_ok_image_with_two_attempts(live, 
     assert done["ok"] and [a["ok"] for a in done["attempts"]] == [False, True] and gen_log.summarize(gen_log.read(None))["retried"] == 1
 
 
+def test_an_image_already_being_made_is_not_made_twice_and_the_page_is_told(live, srv, monkeypatch):
+    # the page reloaded mid-batch; Resume asked again for the images still being made, and each came out twice
+    started, release = threading.Event(), threading.Event()
+    real = srv.generate_plate_via_krea_mcp
+    def slow(**kw):
+        started.set(); release.wait(10)
+        return real(**kw)
+    monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", slow)
+    first = threading.Thread(target=live, args=("POST", "/api/generate-image", {"title": "Glyph on the Column", "prompt": "p", "model": "m"}))
+    first.start()
+    assert started.wait(10)
+    try:
+        assert live("GET", "/api/state")[1]["making"] == ["Glyph on the Column"], "the page knows it is being made"
+        status, res = live("POST", "/api/generate-image", {"title": "Glyph on the Column", "prompt": "p", "model": "m"})
+        assert status == 409 and res["duplicate"], res
+    finally:
+        release.set(); first.join(10)
+    assert live("GET", "/api/state")[1]["making"] == []
+    assert len(list(srv.PLATES_DIR.glob("*.jpg"))) == 1, "made once"
+
+
 def test_trash_and_restore_answer_at_once_while_a_new_image_is_checked(live, srv, monkeypatch):
     # the logo check takes ~2.5 s an image on a project's own mark: it ran holding the curation's lock, so a Trash or Restore click
     # during a batch waited for every image being checked (the user saw the buttons do nothing)

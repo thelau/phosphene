@@ -793,6 +793,28 @@ def measure_in_background() -> None:
 
 _INFLIGHT = {"n": 0}
 _INFLIGHT_LOCK = threading.Lock()
+# the images being made now, per project and title: a second request for one (the page reloaded mid-batch and Resume asked again)
+# is refused, and the page is told which they are, so Resume skips them (duplicates came out of exactly that)
+MAKING: dict = {}
+MAKING_LOCK = threading.Lock()
+
+
+class making:
+    def __init__(self, key):
+        self.key = key
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        with MAKING_LOCK:
+            MAKING.pop(self.key, None)
+
+
+def making_titles() -> list:
+    slug = PROJECT["slug"] if PROJECT else ""
+    with MAKING_LOCK:
+        return [t for (s, t) in MAKING if s == slug]
 
 
 class inflight:
@@ -1289,6 +1311,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 "plates": plates,
                 "krea_connected": bool(auth.get("connected") and not auth.get("expired")),
                 "kimi_configured": bool(kimi_key),
+                "making": making_titles(),                                  # images being made now: Resume skips them
                 "kimi_key_masked": (kimi_key[:6] + "••••••••" + kimi_key[-4:]) if len(kimi_key) > 10 else "",
                 "kimi_model": st.get("kimi_model", "kimi-k3"),
                 "critic_enabled": st.get("critic_enabled", True),
@@ -1727,13 +1750,19 @@ class StudioHandler(SimpleHTTPRequestHandler):
             after_filename = body.get("after_filename")
 
             full_prompt = build_full_prompt(raw_prompt)
+            mkey = (PROJECT["slug"] if PROJECT else "", title)
+            with MAKING_LOCK:
+                if mkey in MAKING:
+                    self.send_json({"ok": False, "duplicate": True, "error": f"“{title}” is already being made: it arrives by itself."}, 409)
+                    return
+                MAKING[mkey] = time.time()
             t_start = time.time()
             job_id = uuid.uuid4().hex[:8]
             trace: list = []
             gen_log.record("image_start", id=job_id, title=title, model=model, guide=guide_type, world=body.get("world"))
             softened = None
             try:
-                with inflight():
+                with inflight(), making(mkey):
                     try:
                         img_bytes = generate_with_retry(prompt=full_prompt, guide_type=guide_type, model=model, trace=trace, **guide_kw)
                     except Exception as refused:
@@ -1965,6 +1994,12 @@ class QuietServer(ThreadingHTTPServer):
 
 
 if __name__ == "__main__":
+    import builtins
+    _print = builtins.print
+
+    def _stamped(*a, **k):                                                 # every line of the server's output with its time
+        _print(time.strftime("%H:%M:%S"), *a, **k) if k.get("file") in (None, sys.stdout) else _print(*a, **k)
+    builtins.print = _stamped
     if os.environ.get("PHOSPHENE_EXAMPLES"):                                 # the Mac app's first launch: Demo, the sample, copied in once
         projects.seed_examples(Path(os.environ["PHOSPHENE_EXAMPLES"]))
     open_first_project()
