@@ -903,8 +903,13 @@ test('a change on the timeline drives the cuts in frames, the summary, the sound
   h.$('rhythmSelect').value = 'variable'; h.$('changeFrom').value = '0.5'; h.$('changeTo').value = '1'; h.$('endMsRange').value = '600'; h.$('curveVal').value = '0';
   h.run('updateRhythm()');
   assert.deepEqual(clean(h.run('changeParams()')), { from: 0.5, to: 1, end_ms: 600, curve: 0 });
-  assert.match(h.$('rhythmInfo').textContent, /^3 images · \d+(\.\d)? s · pictures 100→\d+ ms$/);
   const starts = clean(h.run('timelineFor(3)'));
+  h.$('repeatSelect').value = '2'; h.run('updateTempo()');                          // Repeat ×2: the images go round twice, the film twice as long
+  const twice = clean(h.run('timelineFor(3)'));
+  assert.equal(twice.length - 1, 2 * (starts.length - 1));
+  assert.equal(h.run("document.getElementById('repeatVal').textContent"), '×2');
+  assert.equal(h.$('rsLoops').innerHTML.split('<i').length - 1, 1, 'one line where the images start round again');
+  h.$('repeatSelect').value = '1'; h.run('updateTempo()');
   assert.equal(starts.length, 4); assert.equal(starts[1], 3);
   assert.ok(starts[3] - starts[2] > starts[2] - starts[1], 'slowing down at the end');
   h.$('musicSelect').value = 'on';

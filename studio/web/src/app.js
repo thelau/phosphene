@@ -1724,7 +1724,8 @@
     function rhythmFor(nPlates) {
       const invert = document.getElementById('invertSelect').value;
       const paired = invert === 'mono' || invert === 'colour';
-      const nCuts = nPlates * (paired ? 2 : 1);
+      const repeat = Math.max(1, parseInt(document.getElementById('repeatSelect').value, 10) || 1);   // the images go round this many times
+      const nCuts = nPlates * repeat * (paired ? 2 : 1);                    // (planAt wraps the image index round the list)
       const mult = parseFloat(document.getElementById('multSelect').value) || 1;
       const bpm = bpmValue();
       const follow = followCuts();
@@ -2122,22 +2123,15 @@
     function randomAll() { return rollCharacter(document.getElementById('characterSelect').value); }
     function pickCharacter() { saveSettings(); randomAll(); }
 
-    // how many images, how long the result runs, and how long the cuts are
+    // the lanes, the paused frame and the export's line follow the settings (the length shows in the ruler)
     function drawInfo() {
       const n = activePlates().length;
-      const info = document.getElementById('rhythmInfo');
       renderRhythmStrip();
       if (!isPlaying) drawFrame();                                         // paused: the time and the length follow the new settings at once
-      if (!n) { info.textContent = ''; return; }
+      if (!n) return;
       const starts = timelineFor(n);
-      const cuts = starts.length - 1;
       const sec = c => c / 30;
-      const lens = starts.slice(1).map((v, i) => sec(v - starts[i]));
-      const f = v => (v < 1 ? `${Math.round(v * 1000)} ms` : `${v.toFixed(1)} s`);
-      const lo = Math.min(...lens), hi = Math.max(...lens);
-      const pace = changeParams() && Math.abs(lens[0] - lens[lens.length - 1]) > 0.002 ? `${f(lens[0]).replace(' ms', '')}→${f(lens[lens.length - 1])}` : hi > lo * 1.05 ? `${f(lo)} – ${f(hi)}` : f(lo);
-      info.textContent = `${n} images · ${fmtDuration(sec(starts[cuts]))} · pictures ${pace}`;   // the one place that counts in pictures
-      if (info.parentNode) info.parentNode.title = info.textContent;              // the whole line on hover, when it is cut short
+      const cuts = starts.length - 1;
       const est = exportEstimate(sec(starts[cuts]));
       document.getElementById('exportMeta').textContent = `1080 × 1920 · ${fmtDuration(sec(starts[cuts]))} · ${musicOn() ? 'sound included' : 'silent'}${est ? ` · about ${est} to make` : ''}`;
     }
@@ -2185,11 +2179,14 @@
         handle = { x: X(ht), y: yOfMs(msAtFrame(ht, nBase, nMusic, bpm, ch, base)), curve: ch.curve, t: ht };
         linear = [xs, points[0].y, xe, points[1].y];
       }
+      const paired = ['mono', 'colour'].includes(document.getElementById('invertSelect').value), round = n * (paired ? 2 : 1);
+      const loops = [];                                                     // where the images start round again (Repeat)
+      for (let k = round; k < pic.length - 1; k += round) loops.push(X(pic[k]));
       const beats = r.audio.slice(0, -1).map(t => X(t * 30)).filter(x => x < 1000).slice(0, 2000);
       const sec = total / 30, step = sec <= 3 ? 0.5 : sec <= 8 ? 1 : sec <= 20 ? 2 : sec <= 60 ? 5 : 10;
       const axis = [];
       for (let t = 0; t <= sec + 1e-6; t += step) axis.push({ left: (t / sec) * 100, text: `${+t.toFixed(1)} s` });
-      return { total, ticks: pic.slice(0, -1).map(X), curve, points, band, handle, linear, beats, axis, mult, flatY: yOfMs(60000 / bpm), oneFrame: Math.min(...lens) <= 1.0001, tAt, base, nBase, nMusic };
+      return { total, ticks: pic.slice(0, -1).map(X), curve, points, band, handle, linear, beats, axis, mult, flatY: yOfMs(60000 / bpm), tAt, base, nBase, nMusic, loops };
     }
     let rsModel = null;
     function renderRhythmStrip() {
@@ -2228,8 +2225,8 @@
       const lin = el('rsLinear');
       lin.toggleAttribute('hidden', !(m.linear && rsDrag === 'curve'));         // an SVG element: the attribute, it has no .hidden
       if (m.linear) { lin.setAttribute('x1', f(m.linear[0])); lin.setAttribute('y1', f(m.linear[1])); lin.setAttribute('x2', f(m.linear[2])); lin.setAttribute('y2', f(m.linear[3])); }
+      el('rsLoops').innerHTML = m.loops.map(x => `<i style="left:${x / 10}%"></i>`).join('');
       el('rsAxis').innerHTML = m.axis.map((a, i) => `<span style="left:${a.left}%"${i === 0 ? ' class="first"' : ''}>${a.text}</span>`).join('');
-      el('rsFast').textContent = m.oneFrame ? 'fastest cut = 1 frame at 30 fps' : '';
       showDragTip();
       shownHead = -1;
       movePlayhead();
@@ -2389,6 +2386,13 @@
         text: v => String(Math.round(v)),
         parse: t => { const ms = /ms\s*$/i.test(t), x = parseFloat(t.replace(',', '.')); return Number.isFinite(x) && x > 0 ? (ms ? 60000 / x : x) : null; },   // "441 ms" works too
         set: v => { setv('bpmInput', Math.round(Math.min(BPM_RANGE[1], Math.max(BPM_RANGE[0], v)))); updateTempo(); },
+      },
+      repeatField: {
+        label: 'Repeat',
+        values: () => [...document.getElementById('repeatSelect').options].map(o => o.value),
+        get: () => document.getElementById('repeatSelect').value,
+        set: v => { setv('repeatSelect', String(v)); updateTempo(); },
+        parse: t => { const n = parseInt(t.replace(/[×x\s]/g, ''), 10); return Number.isFinite(n) ? n : null; },
       },
       multField: {
         label: 'Multiple',
@@ -2712,7 +2716,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
     // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved
@@ -2784,6 +2788,9 @@
       document.getElementById('multVal').textContent = opt ? opt.textContent : `×${sel.value}`;
       document.getElementById('tempoField').setAttribute('aria-valuetext', `${Math.round(bpm)} BPM, ${Math.round(60000 / bpm)} ms a music cut`);
       document.getElementById('multField').setAttribute('aria-valuetext', `${opt ? opt.textContent : sel.value} picture cuts a music cut`);
+      const rep = document.getElementById('repeatSelect').value || '1';
+      document.getElementById('repeatVal').textContent = `×${rep}`;
+      document.getElementById('repeatField').setAttribute('aria-valuetext', `the images ${rep === '1' ? 'once' : `${rep} times`}`);
     }
     // a change of speed added, moved or removed
     function updateRhythm() {

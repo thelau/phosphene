@@ -262,8 +262,6 @@
     .vfield:hover svg, .vfield.dragging svg { color: var(--text); }
     .vf-input { width: 64px; height: 22px; border: 0; outline: none; background: transparent; color: var(--text); font-family: var(--mono); font-size: 13px; font-weight: 600; text-align: right; padding: 0; }
     .vfield.typing { border-color: var(--orange); background: #121110; cursor: text; }
-    .rs-readout { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-    .rs-fast { color: var(--orange-soft); }
     .rs-grid { display: grid; grid-template-columns: 100px minmax(0, 1fr); column-gap: 12px; }   /* room for "Speed" beside the ms values */
     .rs-labels { display: flex; flex-direction: column; gap: 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .06em; color: var(--faint); }
     .rs-labels > span { display: flex; align-items: center; text-transform: uppercase; }
@@ -319,6 +317,8 @@
     .rs-tip .pic { color: #5d5a4f; }
     .rs-beats { display: block; width: 100%; height: 12px; overflow: visible; }
     .rs-beats path { stroke: var(--blue); stroke-width: 5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+    .rs-loops { position: absolute; inset: 0; pointer-events: none; }
+    .rs-loops i { position: absolute; top: 0; bottom: 0; border-left: 1px dashed rgba(254, 255, 231, .38); }
     .rs-playhead { position: absolute; top: -3px; bottom: 0; left: 0; width: 2px; margin-left: -1px; background: var(--orange); border-radius: 1px; pointer-events: none; }
     .rs-axis { position: relative; height: 18px; border-top: 1px solid var(--line-3); font-family: var(--mono); font-size: 10px; color: var(--faint); border-radius: 0 0 4px 4px; }
     .rs-axis span { position: absolute; top: 4px; transform: translateX(-50%); white-space: nowrap; pointer-events: none; }

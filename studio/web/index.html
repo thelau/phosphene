@@ -352,7 +352,7 @@
                 <input type="checkbox" id="followCuts" onchange="updateTempo()" /> <span>Also changes the music</span>
               </label>
               <span class="grow"></span>
-              <span class="rs-readout"><span id="rhythmInfo"></span> <span id="rsFast" class="rs-fast"></span></span>
+              <div class="vfield mult" id="repeatField" role="spinbutton" tabindex="0" title="How many times the images go round: a longer film, the music as long. Drag up or down, double-click to type, arrows to step." aria-label="Repeat"><span class="vf-lbl">Repeat</span><span class="vf-val" id="repeatVal">×1</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div>
               <span class="rhythm-src" hidden>
                 <input type="range" id="bpmInput" min="40" max="1200" step="1" value="136" oninput="updateTempo()" />
                 <select id="multSelect" onchange="updateTempo()">
@@ -367,6 +367,7 @@
                   <option value="8">×8</option>
                   <option value="9">×9</option>
                 </select>
+                <select id="repeatSelect" onchange="updateTempo()"><option value="1" selected>×1</option><option value="2">×2</option><option value="3">×3</option><option value="4">×4</option></select>
                 <select id="rhythmSelect" onchange="updateRhythm()"><option value="flat">One speed</option><option value="variable">A change</option></select>
                 <input type="number" id="changeFrom" value="0.6" step="any" />
                 <input type="number" id="changeTo" value="1" step="any" />
@@ -398,6 +399,7 @@
                 </div>
                 <svg class="rs-beats" viewBox="0 0 1000 14" preserveAspectRatio="none" aria-hidden="true"><path id="rsBeats" d=""></path></svg>
                 <div class="rs-axis rs-jump" id="rsAxis" onclick="rhythmStripClick(event)" title="Click to jump"></div>
+                <div class="rs-loops" id="rsLoops" aria-hidden="true"></div>
                 <div class="rs-playhead" id="rsPlayhead"></div>
               </div>
             </div>

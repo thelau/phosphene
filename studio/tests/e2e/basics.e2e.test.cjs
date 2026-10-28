@@ -791,7 +791,13 @@ test('the timeline is the rhythm control: drag or type the tempo and the Multipl
 test('synthesized music: the drone plays live in the page, settings swap it at once, export renders it in the page and sends it', { skip }, async () => {
   const ctx = await fresh();
   await film();
-  assert.match(await text('#rhythmInfo'), /^3 images · \d+ s · pictures \d+ ms$/);
+  assert.equal(await page.locator('#rhythmInfo').count(), 0, 'no summary line: the length is in the ruler, the count in the group menu');
+  const fol = await page.locator('.tl-follow').boundingBox(), rpt = await page.locator('#repeatField').boundingBox(), row = await page.locator('.tl-fields').boundingBox();
+  assert.ok(rpt.x > fol.x + fol.width + 40 && Math.abs(rpt.x + rpt.width - (row.x + row.width)) < 2, 'Repeat, for the film and not the music, sits apart at the right');
+  assert.equal(await page.locator('#rsLoops i').count(), 0, 'played once: no repeat lines');
+  await page.evaluate(() => { const s = document.getElementById('repeatSelect'); s.value = '4'; s.onchange(); });
+  assert.equal(await page.locator('#rsLoops i').count(), 3, 'four times round: three lines where it starts again');
+  await page.evaluate(() => { const s = document.getElementById('repeatSelect'); s.value = '1'; s.onchange(); });
   assert.deepEqual(await page.locator('.segctl[data-for="musicSelect"] button').allTextContents(), ['Off', 'Synthesized']);
   await choose('musicSelect', 'on');
   await page.fill('#pulseRange', '80');
@@ -963,7 +969,6 @@ test('the timeline in the page: ticks, band, beats and axis follow the settings;
   await shot('19-rhythm-landing');
   const band = await page.locator('#rsBand').boundingBox();
   assert.ok(band.x > body0.x + body0.width / 4 && Math.abs(band.x + band.width - (body0.x + body0.width)) < 2, 'the landing sits at the end, in time');
-  assert.match(await text('#rhythmInfo'), /^3 images · .* · pictures 100→\d+ ms$/, 'the summary counts in pictures: the first and last picture cut');
   await page.click('#rsCuts', { position: { x: body0.width * 0.75, y: 10 } });
   const at = await page.evaluate(() => parseFloat(document.getElementById('rsPlayhead').style.left));
   assert.ok(Math.abs(at - 75) < 1, `playhead at ${at}%`);
@@ -990,7 +995,6 @@ test('the rhythm strip stays readable from 1 image to 300 at one frame a cut', {
   await film();
   await tempo(450);
   await mult('4');
-  assert.match(await text('#rsFast'), /1 frame at 30 fps/);
   assert.equal((await page.locator('#rsTicks').getAttribute('d')).split('M').length - 1, 303);
   const fits = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
   assert.ok(fits, 'no sideways scroll');
@@ -1165,7 +1169,7 @@ test('edge states: an empty library says what to do, the Trash has no film previ
   await page.click('#generateBtn');                                                // a job: the status bar appears
   await page.waitForSelector('#statusText:not([data-idle="1"])');
   await film();
-  const strip = await page.locator('.rs-readout').boundingBox(), bar = await page.locator('#statusText').boundingBox();
+  const strip = await page.locator('.tl-fields').boundingBox(), bar = await page.locator('#statusText').boundingBox();
   assert.ok(strip.y + strip.height <= bar.y + 1, `the strip stays above the status bar (${strip.y + strip.height} vs ${bar.y})`);
   await page.waitForFunction(() => /Done/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   await ctx.close();
