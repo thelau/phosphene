@@ -2726,6 +2726,7 @@
       el.innerHTML = `<div class="prog">
         <span class="prog-world">${escapeHtml(prog.world || 'New batch')}</span>${bar}${count}
         <span class="prog-note">${escapeHtml(prog.summary || prog.note)}</span>
+        ${(prog.actions || []).map((x, i) => `<button type="button" class="small-btn prog-act" data-act="${i}">${escapeHtml(x.label)}</button>`).join('')}
         ${prog.timer ? `<span class="prog-time">${fmtElapsed(Date.now() - prog.t0)}${running ? ` · ${running} ${prog.world === 'AI order' ? 'working' : 'rendering'}` : ''}</span>` : ''}
       </div>`;
     }
@@ -2735,6 +2736,10 @@
       document.getElementById('statusText').dataset.idle = '';
       clearInterval(prog.timer); prog.timer = setInterval(progRender, 1000); progRender();
     }
+    document.addEventListener('click', e => {                                 // the status bar's own buttons (Stop, Retry, Resume, Discard)
+      const b = e.target.closest && e.target.closest('.prog-act');
+      if (b && prog.actions && prog.actions[+b.dataset.act]) prog.actions[+b.dataset.act].run();
+    });
     function progStop(summary) { clearInterval(prog.timer); prog.timer = null; prog.summary = summary; progRender(); }
     // Two busy states keep the app consistent:
     //  - generating images: new images may arrive, so the AI cannot order yet
@@ -2751,8 +2756,11 @@
       fetch('/api/busy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ for: on ? 30 : 0 }) }).catch(() => {});
     }
     setInterval(() => { if (generating || exporting) syncLease(); }, 10000);
+    let toldBusy = false;
     function applyLocks() {
       syncLease();
+      const T = window.__TAURI__;                                            // (not TAURI: declared further down, and this runs early)
+      if (T && T.event && isBusy() !== toldBusy) { toldBusy = isBusy(); T.event.emit('page-busy', toldBusy).catch(() => {}); }   // the Mac app asks before quitting mid-job
       const lockGen = generating || aiRunning;
       ['worldSelect', 'directionInput', 'batchCountSelect', 'modelSelect', 'generateBtn'].forEach(id => { document.getElementById(id).disabled = lockGen; });
       syncAiBtn();
@@ -2777,6 +2785,141 @@
       return true;
     }
 
+    // ---- a batch of images: Kimi's scenes, made 3 at a time. Built to survive the real world:
+    //  - the connection or Krea is lost: the batch pauses ("Connection lost: waiting…") and carries on by itself when it is back
+    //  - no Krea credits: it stops (nothing else would work)
+    //  - an image fails on its own: the rest carry on; at the end "Retry N" makes them again, with the same scenes (no Kimi)
+    //  - Stop, a reload, a quit or a crash: what was not made is kept on this computer (studioPending:<slug>), and the status bar
+    //    offers "N images weren't made · Resume · Discard" the next time
+    let batchStop = false, pausedWait = null, stopWake = () => {};
+    const pendingKey = () => `studioPending:${filmSlug || ''}`;
+    function savePending(items, model) {
+      try { if (items.length) localStorage.setItem(pendingKey(), JSON.stringify({ items, model, at: Date.now() })); else localStorage.removeItem(pendingKey()); } catch (e) {}
+    }
+    function readPending() { try { const p = JSON.parse(localStorage.getItem(pendingKey()) || 'null'); return p && Array.isArray(p.items) && p.items.length ? p : null; } catch (e) { return null; } }
+    const pause = ms => (ms ? new Promise(r => setTimeout(r, ms)) : Promise.resolve());
+    let NET_POLL_MS = 5000;
+    function waitForConnection() {                                          // one wait shared by the three workers
+      if (!pausedWait) pausedWait = (async () => {
+        prog.note = 'Connection lost: waiting to carry on…'; progRender();
+        while (!batchStop) {
+          await Promise.race([pause(NET_POLL_MS), new Promise(r => { stopWake = r; })]);   // Stop does not wait out the pause
+          try { if ((await (await fetch('/api/net', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json()).online) break; } catch (e) {}
+        }
+        prog.note = batchStop ? 'Stopping…' : 'Back online: carrying on'; progRender();
+      })().finally(() => { pausedWait = null; });
+      return pausedWait;
+    }
+    function batchActions(list) { prog.actions = list; progRender(); }
+    async function runBatch(ideas, model) {
+      batchStop = false;
+      let added = 0, trashedByQa = 0, lastRejectReason = '', authFailed = false, creditsOut = false;
+      const reasons = [], failedItems = [], left = new Map(ideas.map((it, i) => [i, it]));
+      prog.stage = 'render';
+      prog.total = ideas.length;
+      prog.world = (ideas[0] && ideas[0].world) || '';
+      prog.slots = ideas.map(() => 'wait');
+      prog.titles = ideas.map(i => i.title);
+      prog.why = ideas.map(() => '');
+      prog.note = `${formatModelShort(model)} · 3 at a time`;
+      const keep = () => savePending([...failedItems, ...left.values()], model);
+      keep();
+      batchActions([{ label: 'Stop', run: () => { batchStop = true; stopWake(); prog.note = 'Stopping after the images in progress…'; batchActions([]); } }]);
+      const runOne = async (item, idx) => {
+        if (authFailed || creditsOut || batchStop) { prog.slots[idx] = 'wait'; return; }
+        let genData;
+        for (;;) {
+          prog.slots[idx] = 'run';
+          prog.note = `Rendering “${item.title}”`;
+          progRender();
+          try {
+            const genRes = await fetch('/api/generate-image', {
+              method: 'POST',
+              headers: forProject({'Content-Type': 'application/json'}),
+              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, model })
+            });
+            genData = await genRes.json();
+          } catch (e) {
+            genData = { ok: false, offline: true, error: 'The app did not answer' };   // the page lost its own server, or the network
+          }
+          if (!genData.offline || genData.project_changed) break;
+          prog.slots[idx] = 'wait';
+          await waitForConnection();
+          if (batchStop) return;
+        }
+        if (genData.project_changed) { batchStop = true; prog.slots[idx] = 'wait'; return; }
+        if (genData.needs_auth) { authFailed = true; prog.slots[idx] = 'err'; lastRejectReason = 'Krea login needed: Settings › Connect Krea'; prog.why[idx] = lastRejectReason; reasons.push(lastRejectReason); return; }
+        if (!genData.ok) {
+          prog.slots[idx] = 'err'; lastRejectReason = genData.error || 'Generation failed'; prog.why[idx] = lastRejectReason; reasons.push(lastRejectReason);
+          if (genData.stop) creditsOut = true;
+          left.delete(idx);
+          if (genData.retryable !== false) failedItems.push(item);
+          keep();
+          return;
+        }
+        left.delete(idx); keep();
+        if (genData.qa_passed) {
+          added++;
+          prog.slots[idx] = 'ok';
+          prog.note = `Added “${item.title}”`;
+        } else {
+          trashedByQa++;
+          prog.slots[idx] = 'trash';
+          if (genData.qa_issues && genData.qa_issues.length) lastRejectReason = genData.qa_issues[0];
+          prog.note = `“${item.title}” failed the logo check → Trash`;
+        }
+        progRender();
+        await loadState();
+      };
+      const queue = ideas.map((item, idx) => [item, idx]);                  // 3 in parallel
+      await Promise.all([0, 1, 2].map(async () => {
+        while (queue.length) {
+          const [item, idx] = queue.shift();
+          try { await runOne(item, idx); } catch (e) { prog.slots[idx] = 'err'; lastRejectReason = e.message; prog.why[idx] = e.message; reasons.push(e.message); left.delete(idx); failedItems.push(item); keep(); }
+        }
+      }));
+      loadWorlds();
+      const failed = prog.slots.filter(x => x === 'err').length, notMade = left.size;
+      const parts = [`${added} added`];
+      if (trashedByQa) parts.push(`${trashedByQa} in Trash (${lastRejectReason})`);
+      if (failed) {
+        const distinct = [...new Set(reasons.map(r => String(r).slice(0, 90)))].slice(0, 2);
+        parts.push(`${failed} failed (${distinct.join(' · ') || lastRejectReason}) — hover the red bars for each reason`);
+      }
+      if (creditsOut) parts.push('Krea is out of credits: add some at krea.ai, then Retry');
+      if (notMade) parts.push(`${notMade} not made`);
+      progStop(`${batchStop && notMade ? 'Stopped' : 'Done'} — ${parts.join(', ')}`);
+      const again = [...failedItems, ...left.values()];
+      batchActions(again.length ? [
+        { label: `Retry ${again.length}`, run: () => retryBatch(again, model) },
+        { label: 'Discard', run: () => { savePending([], model); batchActions([]); } },
+      ] : []);
+    }
+    async function retryBatch(items, model) {
+      if (isBusy()) { setStatus('Wait until the running job ends.'); return; }
+      const made = new Set(plates.map(p => p.title));                       // made meanwhile (a reload let one finish on the server): not again
+      items = items.filter(it => !made.has(it.title));
+      if (!items.length) { savePending([], model); batchActions([]); setStatus('Those images were made after all.'); return; }
+      if (!ensureKreaReady()) return;
+      setGenerating(true);
+      progStart(items.length);
+      try { await runBatch(items, model); } catch (e) { progStop(`Error: ${e.message}`); } finally { setGenerating(false); }
+    }
+    // opening the page: a batch left unfinished (Stop, a reload, a quit, a crash) is offered again
+    function offerPending() {
+      const p = readPending();
+      if (!p || generating) return;
+      const made = new Set(plates.map(x => x.title));
+      const items = p.items.filter(it => !made.has(it.title));
+      if (!items.length) { savePending([], p.model); return; }
+      document.getElementById('statusText').dataset.idle = '';
+      prog.stage = 'render'; prog.world = items[0].world || 'Unfinished batch'; prog.slots = items.map(() => 'wait'); prog.titles = items.map(i => i.title); prog.why = items.map(() => '');
+      prog.total = items.length; prog.summary = `${items.length} image${items.length === 1 ? '' : 's'} of the last batch ${items.length === 1 ? 'wasn\'t' : 'weren\'t'} made`;
+      batchActions([
+        { label: 'Resume', run: () => retryBatch(items, p.model) },
+        { label: 'Discard', run: () => { savePending([], p.model); batchActions([]); prog.summary = ''; document.getElementById('statusText').dataset.idle = '1'; refreshIdle(); } },
+      ]);
+    }
     async function generateImages() {
       if (blockedByAi()) return;
       if (!project) { setStatus('Make a project or import one first: the project menu, at the top.'); openProjectMenu(); return; }
@@ -2813,68 +2956,8 @@
           throw new Error(invData.error || 'Prompt generation failed');
         }
 
-        const ideas = invData.ideas;
         ran = true;
-        let added = 0;
-        let trashedByQa = 0;
-        let lastRejectReason = '';
-        const reasons = [];
-        let authFailed = false;
-        prog.stage = 'render';
-        prog.total = ideas.length;
-        prog.world = (ideas[0] && ideas[0].world) || '';
-        prog.slots = ideas.map(() => 'wait');
-        prog.titles = ideas.map(i => i.title);
-        prog.why = ideas.map(() => '');
-        prog.note = `${formatModelShort(model)} · 3 at a time`;
-        progRender();
-
-        const runOne = async (item, idx) => {
-          if (authFailed) { prog.slots[idx] = 'err'; return; }
-          prog.slots[idx] = 'run';
-          prog.note = `Rendering “${item.title}”`;
-          progRender();
-          const genRes = await fetch('/api/generate-image', {
-            method: 'POST',
-            headers: forProject({'Content-Type': 'application/json'}),
-            body: JSON.stringify({
-              title: item.title, prompt: item.prompt, guide: item.guide || 'dark',
-              world: item.world, idea: item.idea, model
-            })
-          });
-          const genData = await genRes.json();
-          if (genData.needs_auth) { authFailed = true; prog.slots[idx] = 'err'; lastRejectReason = 'Krea login needed: Settings › Connect Krea'; prog.why[idx] = lastRejectReason; reasons.push(lastRejectReason); return; }
-          if (!genData.ok) { prog.slots[idx] = 'err'; lastRejectReason = genData.error || 'Generation failed'; prog.why[idx] = lastRejectReason; reasons.push(lastRejectReason); return; }
-          if (genData.qa_passed) {
-            added++;
-            prog.slots[idx] = 'ok';
-            prog.note = `Added “${item.title}”`;
-          } else {
-            trashedByQa++;
-            prog.slots[idx] = 'trash';
-            if (genData.qa_issues && genData.qa_issues.length) lastRejectReason = genData.qa_issues[0];
-            prog.note = `“${item.title}” failed the logo check → Trash`;
-          }
-          progRender();
-          await loadState();
-        };
-        // 3 in parallel
-        const queue = ideas.map((item, idx) => [item, idx]);
-        await Promise.all([0, 1, 2].map(async () => {
-          while (queue.length) {
-            const [item, idx] = queue.shift();
-            try { await runOne(item, idx); } catch (e) { prog.slots[idx] = 'err'; lastRejectReason = e.message; prog.why[idx] = e.message; reasons.push(e.message); }
-          }
-        }));
-        loadWorlds();
-        const failed = prog.slots.filter(x => x === 'err').length;
-        const parts = [`${added} added`];
-        if (trashedByQa) parts.push(`${trashedByQa} in Trash (${lastRejectReason})`);
-        if (failed) {
-          const distinct = [...new Set(reasons.map(r => String(r).slice(0, 90)))].slice(0, 2);
-          parts.push(`${failed} failed (${distinct.join(' · ') || lastRejectReason}) — hover the red bars for each reason`);
-        }
-        progStop(`Done — ${parts.join(', ')}`);
+        await runBatch(invData.ideas, model);
       } catch (e) {
         progStop(`Error: ${e.message}`);
       } finally {
@@ -3100,6 +3183,7 @@
         clearTimeout(slow);
       }
       warmSound();
+      offerPending();                                                        // a batch left unfinished last time: Resume or Discard
       try {                                                                  // back from a reload that mended the sound: playing on, from there
         const resume = JSON.parse(sessionStorage.getItem('studioResume') || 'null');
         sessionStorage.removeItem('studioResume');

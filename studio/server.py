@@ -17,6 +17,7 @@ import subprocess
 import sys
 import threading
 import time
+import socket
 import urllib.error
 import uuid
 import urllib.request
@@ -1448,6 +1449,18 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "url": url})
             return
 
+        if parsed.path == "/api/net":
+            # is Krea reachable from here? The batch pauses on a lost connection and asks this until it is back
+            try:
+                urllib.request.urlopen(urllib.request.Request("https://api.krea.ai/", method="HEAD"), timeout=6)
+                ok = True
+            except urllib.error.HTTPError:
+                ok = True                                          # it answered (any status): reachable
+            except Exception:
+                ok = False
+            self.send_json({"ok": True, "online": ok})
+            return
+
         if parsed.path == "/api/busy":
             # the page's lease while a batch or an export runs (see _LEASE): {"for": seconds}, 0 ends it
             _LEASE["until"] = time.time() + max(0.0, min(60.0, float(body.get("for") or 0)))
@@ -1681,7 +1694,12 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 message = ("Krea's moderation rejected this image" + (" even after the prompt was softened" if softened else "") + " (content policy). Regenerate it, or change the wording." if code == "content_policy" else str(e))
                 gen_log.record("image", id=job_id, ok=False, title=title, model=model, guide=guide_type, world=body.get("world"), seconds=round(time.time() - t_start, 1),
                                attempts=trace, error=str(e)[:500], error_code=code, krea_job=getattr(e, "job_id", None), prompt=raw_prompt[:700], softened=bool(softened))
-                self.send_json({"ok": False, "error": message, "code": code}, 500)
+                # what the page does next: a lost connection or Krea down pauses the batch until it is back; no credits stops it;
+                # anything else is this image's own failure (Retry them, at the end)
+                offline = code in ("http_502", "http_503", "http_504", "http_520", "http_522", "http_524") or isinstance(e, (urllib.error.URLError, TimeoutError, ConnectionError, socket.timeout)) \
+                    or bool(re.search(r"timed out|connection (refused|reset|aborted)|network is unreachable|nodename nor servname|name or service not known|temporary failure in name resolution|no route to host|urlopen error", str(e), re.I))
+                self.send_json({"ok": False, "error": message, "code": code, "offline": bool(offline), "stop": code == "insufficient_credits",
+                                "retryable": bool(getattr(e, "retryable", True)) and code not in ("content_policy", "insufficient_credits")}, 500)
             return
 
         if parsed.path == "/api/purge":

@@ -16,7 +16,27 @@ use std::time::{Duration, Instant};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::webview::DownloadEvent;
 use tauri::{AppHandle, Listener, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, Wry};
-use tauri_plugin_dialog::DialogExt;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+
+// the page says when a job runs (images being made, an AI order, an export): quitting or closing then asks first, it would lose them
+static PAGE_BUSY: AtomicBool = AtomicBool::new(false);
+static QUIT_ANYWAY: AtomicBool = AtomicBool::new(false);
+
+fn ask_before_quitting(app: &AppHandle) {
+    let handle = app.clone();
+    app.dialog()
+        .message("Images are being made (or an export or an AI order runs). Quitting now loses the ones in progress; what was not made can be resumed next time.")
+        .title("Quit Phosphene?")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom("Quit anyway".into(), "Keep working".into()))
+        .show(move |quit| {
+            if quit {
+                QUIT_ANYWAY.store(true, Ordering::SeqCst);
+                handle.exit(0);
+            }
+        });
+}
 
 struct Server(Mutex<Option<Child>>);
 // the server's port once it answers (0 before), and .phos files opened before that (a double-click that launched the app)
@@ -188,6 +208,7 @@ fn main() {
             // the page's Import project…: the same macOS file dialog and import as the menu's Open Project File… (⌘O)
             let handle = app.handle().clone();
             app.listen_any("open-project-file", move |_| on_menu(&handle, "open_project"));
+            app.listen_any("page-busy", |e| PAGE_BUSY.store(e.payload() == "true", Ordering::SeqCst));
             let dev = cfg!(debug_assertions);
             let port = if dev { 0 } else { free_port() };
             if dev { app.state::<Opened>().0.lock().unwrap().0 = 8765; }       // npm run app:live: the dev server
@@ -243,6 +264,18 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("Phosphene could not start");
     app.run(|handle, event| {
+        match &event {
+            RunEvent::ExitRequested { api, .. } if PAGE_BUSY.load(Ordering::SeqCst) && !QUIT_ANYWAY.load(Ordering::SeqCst) => {
+                api.prevent_exit();                           // ⌘Q, Quit in the menu: asked first while a job runs
+                ask_before_quitting(handle);
+            }
+            RunEvent::WindowEvent { event: tauri::WindowEvent::CloseRequested { api, .. }, .. }
+                if PAGE_BUSY.load(Ordering::SeqCst) && !QUIT_ANYWAY.load(Ordering::SeqCst) => {
+                api.prevent_close();                          // the window's close button: the same
+                ask_before_quitting(handle);
+            }
+            _ => {}
+        }
         #[cfg(target_os = "macos")]
         if let RunEvent::Opened { urls } = &event {
             for u in urls {

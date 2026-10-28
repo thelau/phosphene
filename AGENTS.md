@@ -35,6 +35,16 @@ Phosphene.app (Tauri 2, `app/src-tauri`): a native window (macOS's WebKit) aroun
 - A damaged project never stops the server: `open_first_project` passes it over (the next project, else the first screen). Imports: numeric names are made text, Finder's `__MACOSX`/`._` entries are ignored, a damaged zip says so and leaves nothing behind, two imports at once cannot delete each other's folder. Switching project holds `STATE_LOCK`. Krea token refreshes are one at a time (`_REFRESH_LOCK`). In the app no folder is made inside Phosphene.app (it may run read-only from the DMG).
 - The app's port is fixed (47615) when free: the Krea sign-in comes back to the same address and the page's remembered settings (tied to the address) survive a relaunch. The menu bar: About Phosphene (the icon, the version, one line on what it is: `AboutMetadata`), New Project ⌘N, Open Project File… ⌘O (the macOS file dialog), Export Project… ⌘E, Curate ⌘1, Film ⌘2, Settings ⌘,, the standard Edit menu (the page gets every shortcut first: its own ⌘Z / ⌘S / ⌘A are not doubled). Files opened from Finder are imported off the main thread.
 
+## Batches survive the real world (studio/web/src/app.js `runBatch`)
+A lost connection or Krea down (`offline` from /api/generate-image: 5xx gateway codes, URL / socket errors, or the page's request
+throwing) pauses the batch ("Connection lost: waiting to carry on…") and `/api/net` (Krea reachable?) is asked every 5 s until it is
+back, then it carries on by itself; no Krea credits (`stop`) stops it; an image failing on its own is kept for "Retry N" at the end
+(same scenes, Kimi not asked again; `retryable` false for a moderation rejection); Stop (in the status bar, it wakes a waiting batch) or
+a reload, quit or crash keeps what was not made on this computer (`studioPending:<slug>`), offered when the page opens: "N images of
+the last batch weren't made · Resume · Discard" (`offerPending`; images already made meanwhile, by title, are skipped). The status
+bar's buttons are `prog.actions`. The Mac app asks before quitting or closing the window while a job runs (`page-busy` event from the
+page, `PAGE_BUSY`, `ask_before_quitting`: "Quit anyway" / "Keep working").
+
 ## Secrets
 - A key is checked when saved (`check_kimi_key`: each endpoint's `/models`): one that Kimi refuses everywhere is not kept (the page says Key refused and that keys start with sk-); the endpoint that took a key is remembered and tried first (`KIMI_ENDPOINT`, `kimi_endpoints`), so a call does not go round the others. The key field is a text field masked with `-webkit-text-security` (as a password field, macOS filled a saved password into it).
 - The Kimi API key lives in `studio/.secrets.json` (gitignored) or `KIMI_API_KEY` / `MOONSHOT_API_KEY`. Never write it into `curation_state.json` or any committed file.

@@ -190,7 +190,7 @@ test('generateImages: success path locks controls, reports progress, then unlock
   assert.deepEqual(observed, [true, true, true, true]);                            // locked while running
   ['worldSelect', 'directionInput', 'batchCountSelect', 'generateBtn', 'modelSelect'].forEach(id => assert.equal(h.$(id).disabled, false, id));
   assert.equal(h.$('directionInput').value, '');                                   // cleared after the batch
-  assert.deepEqual(h.run('prog.slots'), ['ok', 'ok', 'ok', 'ok']);
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(prog.slots)')), ['ok', 'ok', 'ok', 'ok']);
   assert.match(h.$('statusText').innerHTML, /Done — 4 added/);
   assert.equal(h.run('prog.timer'), null);
   const gen = h.calls.filter(c => c.url === '/api/generate-image');
@@ -240,12 +240,58 @@ test('generateImages: server errors on an image become err slots, batch continue
   assert.match(h.$('statusText').innerHTML, /2 added, 1 failed \(Krea 500\)/);
 });
 
-test('generateImages: thrown network errors do not freeze the page', async () => {
-  const h = load({ routes: genRoutes({ n: 2, gen: async () => { throw new Error('socket hang up'); } }) });
+test('generateImages: the connection is lost (a request throws, or Krea is unreachable): the batch waits, then carries on by itself', async () => {
+  let n = 0, net = 0;
+  const r = genRoutes({ n: 2, gen: async () => { if (n++ < 2) throw new Error('socket hang up'); return { ok: true, qa_passed: true, filename: 'f.jpg' }; } });
+  r['/api/net'] = async () => (++net < 2 ? { ok: true, online: false } : { ok: true, online: true });
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.run('NET_POLL_MS = 0');
+  await runGenerate(h);
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(prog.slots)')), ['ok', 'ok'], 'nothing failed: it waited and carried on');
+  assert.ok(net >= 2, 'it asked until Krea was reachable again');
+  assert.equal(h.$('generateBtn').disabled, false);
+  assert.equal(h.store['studioPending:demo'], undefined, 'nothing left to resume');
+});
+
+test('generateImages: Krea answers "unreachable" (offline): the same wait; Stop during it keeps the rest for Resume, offered after a reload', async () => {
+  const r = genRoutes({ n: 4, gen: async () => ({ ok: false, offline: true, error: 'urlopen error' }) });
+  r['/api/net'] = { ok: true, online: false };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  const run = runGenerate(h);
+  for (let i = 0; i < 20 && !/Connection lost/.test(h.$('statusText').innerHTML); i++) await settle();
+  assert.match(h.$('statusText').innerHTML, /Connection lost: waiting to carry on/);
+  h.run("prog.actions.find(a => a.label === 'Stop').run()");
+  await run;
+  assert.match(h.$('statusText').innerHTML, /Stopped — 0 added, 4 not made/);
+  const pending = JSON.parse(h.store['studioPending:demo']);
+  assert.equal(pending.items.length, 4, 'kept on this computer');
+  // the page opens again later: the batch is offered
+  const again = load({ routes: genRoutes({ n: 4 }), storage: { ...h.store } });
+  await settle(); await settle();
+  again.run('offerPending()');
+  assert.match(again.$('statusText').innerHTML, /4 images of the last batch weren't made/);
+  assert.deepEqual(JSON.parse(again.run('JSON.stringify(prog.actions.map(a => a.label))')), ['Resume', 'Discard']);
+  await again.run("prog.actions[0].run()");
+  assert.deepEqual(JSON.parse(again.run('JSON.stringify(prog.slots)')), ['ok', 'ok', 'ok', 'ok'], 'Resume makes them, from the same scenes (Kimi is not asked again)');
+  assert.equal(again.calls.filter(c => c.url === '/api/invent-prompts').length, 0);
+  assert.equal(again.store['studioPending:demo'], undefined);
+});
+
+test('generateImages: an image that fails on its own is offered again (Retry N, same scenes); out of credits stops the batch', async () => {
+  let n = 0;
+  const h = load({ routes: genRoutes({ n: 3, gen: async () => (n++ === 1 ? { ok: false, error: 'No image URL returned', retryable: true } : { ok: true, qa_passed: true, filename: 'f.jpg' }) }) });
   await settle(); await settle();
   await runGenerate(h);
-  assert.deepEqual(h.run('prog.slots'), ['err', 'err']);
-  assert.equal(h.$('generateBtn').disabled, false);
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(prog.actions.map(a => a.label))')), ['Retry 1', 'Discard']);
+  await h.run('prog.actions[0].run()');
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(prog.slots)')), ['ok'], 'the failed one, made');
+  const broke = load({ routes: genRoutes({ n: 6, gen: async () => ({ ok: false, error: 'out', stop: true, code: 'insufficient_credits' }) }) });
+  await settle(); await settle();
+  await runGenerate(broke);
+  assert.ok(broke.calls.filter(c => c.url === '/api/generate-image').length <= 3, 'no credits: no more asked');
+  assert.match(broke.$('statusText').innerHTML, /out of credits/);
 });
 
 test('generateImages: Krea login needed stops remaining renders', async () => {
@@ -253,8 +299,9 @@ test('generateImages: Krea login needed stops remaining renders', async () => {
   await settle(); await settle();
   await runGenerate(h);
   assert.ok(h.calls.filter(c => c.url === '/api/generate-image').length <= 3);     // only the in-flight ones were sent
-  assert.equal(h.run('prog.slots').every(s => s === 'err'), true);
+  assert.equal(h.run('prog.slots').some(s => s === 'ok'), false);
   assert.match(h.$('statusText').innerHTML, /Krea login needed/);
+  assert.ok(h.run("prog.actions.some(a => /^Retry/.test(a.label))"), 'once signed in, Retry makes them');
 });
 
 test('generateImages: prompt-writing failure shows an error and unlocks', async () => {
