@@ -253,6 +253,45 @@ test('generateImages: a moderation refusal is its own grey bar and count, not a 
   assert.match(h.$('statusText').innerHTML, /class="slot blocked" title="[^"]*also with a softened prompt/);
 });
 
+test('generateImages: out of Krea credits stops the batch and keeps every image not made for Retry (the one that hit the limit too)', async () => {
+  let n = 0;
+  const h = load({ routes: genRoutes({ n: 4, gen: async () => (n++ < 1 ? { ok: true, qa_passed: true } : { ok: false, stop: true, code: 'insufficient_credits', retryable: true, error: 'Krea: insufficient credits' }) }) });
+  await settle(); await settle();
+  await runGenerate(h);
+  assert.match(h.$('statusText').innerHTML, /out of credits/);
+  assert.ok(h.run("prog.actions.some(a => a.label === 'Retry 3')"), JSON.stringify(h.run('prog.actions.map(a => a.label)')));
+  assert.equal(JSON.parse(h.store['studioPending:demo']).items.length, 3, 'kept for Resume too');
+});
+
+test('generateImages: Krea reachable but an image keeps failing as offline: after 3 rounds it fails on its own, for Retry (not sent again until Stop)', async () => {
+  let calls = 0;
+  const r = genRoutes({ n: 1, gen: async () => { calls++; return { ok: false, offline: true, code: 'http_502', error: 'Krea 502' }; } });
+  r['/api/net'] = { ok: true, online: true };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.run('NET_POLL_MS = 0');
+  h.$('batchCountSelect').value = '1';
+  h.$('kimiKeyInput').value = 'sk-x';
+  await h.run('generateImages()');
+  assert.equal(calls, 3);
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(prog.slots)')), ['err']);
+  assert.ok(h.run("prog.actions.some(a => a.label === 'Retry 1')"));
+  assert.match(h.$('statusText').innerHTML, /Krea kept failing \(Krea 502\)/);
+});
+
+test('the sound watchdog never reloads the page while a job runs (a fresh sound instead); idle, a second stall soon after still reloads', async () => {
+  const h = load({ routes: baseRoutes() });
+  await settle(); await settle();
+  h.$('musicSelect').value = 'on';
+  h.run('isPlaying = true; generating = true');
+  h.run('droneLive.onStall(); droneLive.onStall()');
+  assert.equal(h.run('__drone.renews'), 2);
+  assert.ok(!h.run('window.__reloaded'), 'no reload mid-batch');
+  h.run('generating = false; lastStallFix = 0');
+  h.run('droneLive.onStall(); droneLive.onStall()');
+  assert.equal(h.run('window.__reloaded'), true);
+});
+
 test('generateImages: the connection is lost (a request throws, or Krea is unreachable): the batch waits, then carries on by itself', async () => {
   let n = 0, net = 0;
   const r = genRoutes({ n: 2, gen: async () => { if (n++ < 2) throw new Error('socket hang up'); return { ok: true, qa_passed: true, filename: 'f.jpg' }; } });

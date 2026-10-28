@@ -184,20 +184,26 @@ def _flush_qa_cache() -> None:
 
 
 def get_cached_qa(path: Path) -> dict:
-    global _QA_LAST_FLUSH
     key = _plate_key(path)
     if key in QA_CACHE:
         return QA_CACHE[key]
     with QA_LOCK:  # each plate is evaluated once, even when several requests ask at the same time
         if key not in QA_CACHE:
-            QA_CACHE[key] = evaluate_plate_qa(path, current_mark())
-            if time.time() - _QA_LAST_FLUSH > 5:  # throttle: not a full rewrite per plate
-                _QA_LAST_FLUSH = time.time()
-                try:
-                    _flush_qa_cache()
-                except Exception:
-                    pass
+            _remember_qa(key, evaluate_plate_qa(path, current_mark()))
         return QA_CACHE[key]
+
+
+def _remember_qa(key: str, result: dict, now: bool = False) -> None:
+    """A logo check's result, kept and written to disk (at most every 5 s: not a full rewrite per plate; now: a new image, written
+    at once, seconds apart at most, so a quit right after a batch loses none). Under QA_LOCK."""
+    global _QA_LAST_FLUSH
+    QA_CACHE[key] = result
+    if now or time.time() - _QA_LAST_FLUSH > 5:
+        _QA_LAST_FLUSH = time.time()
+        try:
+            _flush_qa_cache()
+        except Exception:
+            pass
 
 
 
@@ -1671,7 +1677,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     os.replace(tmp_img, save_path)
                     qa = {**qa, "filename": filename}
                     with QA_LOCK:
-                        QA_CACHE[_plate_key(save_path)] = qa
+                        _remember_qa(_plate_key(save_path), qa, now=True)
                     print(
                         f"[QA] {filename} ({model}) -> passed={qa['qa_passed']} score={qa['qa_score']}% "
                         f"corr={qa['center_corr']} asym={qa['core_asymmetry']} issues={qa['issues']}",
@@ -1725,10 +1731,14 @@ class StudioHandler(SimpleHTTPRequestHandler):
                                attempts=trace, error=str(e)[:500], error_code=code, krea_job=getattr(e, "job_id", None), prompt=raw_prompt[:700], softened=bool(softened))
                 # what the page does next: a lost connection or Krea down pauses the batch until it is back; no credits stops it;
                 # anything else is this image's own failure (Retry them, at the end)
-                offline = code in ("http_502", "http_503", "http_504", "http_520", "http_522", "http_524") or isinstance(e, (urllib.error.URLError, TimeoutError, ConnectionError, socket.timeout)) \
+                # (an HTTPError is a URLError too, but Krea answered: only its gateway codes mean Krea is unreachable; a 401 / 403 / 404 is its refusal)
+                gateway = ("http_502", "http_503", "http_504", "http_520", "http_522", "http_524")
+                offline = code in gateway or (isinstance(e, urllib.error.HTTPError) and f"http_{e.code}" in gateway) \
+                    or (isinstance(e, (urllib.error.URLError, TimeoutError, ConnectionError, socket.timeout)) and not isinstance(e, urllib.error.HTTPError)) \
                     or bool(re.search(r"timed out|connection (refused|reset|aborted)|network is unreachable|nodename nor servname|name or service not known|temporary failure in name resolution|no route to host|urlopen error", str(e), re.I))
                 self.send_json({"ok": False, "error": message, "code": code, "offline": bool(offline), "stop": code == "insufficient_credits",
-                                "retryable": bool(getattr(e, "retryable", True)) and code not in ("content_policy", "insufficient_credits")}, 500)
+                                "needs_auth": isinstance(e, urllib.error.HTTPError) and e.code == 401,      # the sign-in was refused: Connect Krea again
+                                "retryable": code == "insufficient_credits" or (bool(getattr(e, "retryable", True)) and code != "content_policy")}, 500)   # out of credits: Retry once topped up
             return
 
         if parsed.path == "/api/purge":

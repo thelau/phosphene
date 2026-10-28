@@ -388,6 +388,31 @@ def test_the_ai_order_is_recorded(live, srv, monkeypatch):
     assert ev["ok"] and ev["images"] == 4 and ev["direction"] == "start soft" and ev["kimi_ok"] is False
 
 
+def test_krea_refusing_is_not_a_lost_connection_and_out_of_credits_can_be_retried(live, srv, monkeypatch):
+    # an HTTPError is a URLError too: every Krea refusal (401, 403, 404) read as "offline", and the page resubmitted it forever
+    import urllib.error
+    import krea_mcp_client as kc
+    monkeypatch.setattr(srv.time, "sleep", lambda s: None)
+    errors = [urllib.error.HTTPError("https://api.krea.ai/mcp", 403, "Forbidden", {}, None),
+              urllib.error.HTTPError("https://api.krea.ai/mcp", 401, "Unauthorized", {}, None),
+              urllib.error.HTTPError("https://api.krea.ai/mcp", 502, "Bad Gateway", {}, None),
+              kc.KreaError("Krea: insufficient credits", code="insufficient_credits", retryable=False)]
+    res = []
+    for i, err in enumerate(errors):
+        monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", lambda err=err, **kw: (_ for _ in ()).throw(err))
+        res.append(live("POST", "/api/generate-image", {"title": f"T{i}", "prompt": "p", "model": "m"})[1])
+    assert not res[0]["offline"] and not res[0]["needs_auth"] and res[0]["retryable"], "403: Krea said no, the image fails on its own"
+    assert not res[1]["offline"] and res[1]["needs_auth"], "401: the sign-in was refused"
+    assert res[2]["offline"], "502: Krea is unreachable, the batch waits"
+    assert res[3]["stop"] and res[3]["retryable"], "out of credits: the batch stops and the image waits for Retry"
+
+
+def test_a_new_images_logo_check_is_written_to_disk_at_once(live, srv, monkeypatch):
+    # kept only in memory, every image of a session was measured again after a restart (~2.5 s each, before the page opened)
+    name = live("POST", "/api/generate-image", {"title": "Saved Check", "prompt": "p", "model": "m"})[1]["filename"]
+    assert any(k.startswith(name + ":") for k in json.loads(srv.QA_CACHE_FILE.read_text()))
+
+
 def test_a_moderation_rejection_is_not_retried_explained_and_written_down(live, srv, monkeypatch):
     import krea_mcp_client as kc
     calls = []

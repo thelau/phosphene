@@ -2298,7 +2298,8 @@
     let lastStallFix = 0;
     droneLive.onStall = () => {
       if (!isPlaying || !musicOn()) return;
-      if (Date.now() - lastStallFix > 20000) { lastStallFix = Date.now(); droneLive.renew(); return; }
+      // never a reload while a job runs (a batch's images in flight, an export): a fresh sound again, and the reload waits
+      if (Date.now() - lastStallFix > 20000 || isBusy()) { lastStallFix = Date.now(); droneLive.renew(); return; }
       try { sessionStorage.setItem('studioResume', JSON.stringify({ pos: cutPos, mode })); } catch (e) {}
       location.reload();
     };
@@ -2757,7 +2758,7 @@
       fetch('/api/busy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ for: on ? 30 : 0 }) }).catch(() => {});
     }
     setInterval(() => { if (generating || exporting) syncLease(); }, 10000);
-    let toldBusy = false;
+    let toldBusy = null;                                                     // null: the first look always tells the app (a reload mid-job left it thinking a job runs)
     function applyLocks() {
       syncLease();
       const T = window.__TAURI__;                                            // (not TAURI: declared further down, and this runs early)
@@ -2828,7 +2829,7 @@
       batchActions([{ label: 'Stop', run: () => { batchStop = true; stopWake(); prog.note = 'Stopping after the images in progress…'; batchActions([]); } }]);
       const runOne = async (item, idx) => {
         if (authFailed || creditsOut || batchStop) { prog.slots[idx] = 'wait'; return; }
-        let genData;
+        let genData, rounds = 0;
         for (;;) {
           prog.slots[idx] = 'run';
           prog.note = `Rendering “${item.title}”`;
@@ -2844,6 +2845,9 @@
             genData = { ok: false, offline: true, error: 'The app did not answer' };   // the page lost its own server, or the network
           }
           if (!genData.offline || genData.project_changed) break;
+          // Krea answers the connection check but this image keeps failing as if offline (a gateway error, a timeout): after 3
+          // rounds it fails on its own (Retry covers it) instead of being sent again until Stop, a new paid job each time
+          if (++rounds >= 3) { genData = { ...genData, offline: false, error: `Krea kept failing (${genData.error || 'no answer'}): Retry later` }; break; }
           prog.slots[idx] = 'wait';
           await waitForConnection();
           if (batchStop) return;
