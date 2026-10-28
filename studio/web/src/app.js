@@ -303,12 +303,16 @@
       if (!m.hidden) { closeProjectMenu(); return; }
       let list = [];
       try { list = (await (await fetch('/api/projects')).json()).projects || []; } catch (err) { list = project ? [project] : []; }
-      m.innerHTML = list.map(x => `<button type="button" class="gm-item${project && x.slug === project.slug ? ' on' : ''}" data-slug="${escapeHtml(x.slug)}" onclick="switchProject(this.dataset.slug)"><img src="${escapeHtml(x.mark_url)}" alt="" />${escapeHtml(x.name)}</button>`).join('')
-        + (list.length ? '<hr>' : '') + '<button type="button" class="gm-item" onclick="openProjectForm(\'new\')">New project…</button>'
-        + (project ? '<button type="button" class="gm-item" onclick="openProjectForm(\'edit\')">Project settings…</button>' : '')
+      // while images are made (or an AI order, an export, a purge runs) the project stays: the page drives that work, a switch would cut it
+      const busy = isBusy(), off = busy ? ' disabled' : '';
+      const why = generating ? 'Images are being made' : aiRunning ? 'The AI is ordering' : exporting ? 'A film is being exported' : 'Images are being deleted';
+      m.innerHTML = (busy ? `<p class="gm-note">${why}: other projects wait until it ends.</p>` : '')
+        + list.map(x => { const here = project && x.slug === project.slug; return `<button type="button" class="gm-item${here ? ' on' : ''}" data-slug="${escapeHtml(x.slug)}" onclick="switchProject(this.dataset.slug)"${here ? '' : off}><img src="${escapeHtml(x.mark_url)}" alt="" />${escapeHtml(x.name)}</button>`; }).join('')
+        + (list.length ? '<hr>' : '') + `<button type="button" class="gm-item" onclick="openProjectForm('new')"${off}>New project…</button>`
+        + (project ? `<button type="button" class="gm-item" onclick="openProjectForm('edit')"${off}>Project settings…</button>` : '')
         + '<hr>' + (project ? '<button type="button" class="gm-item" onclick="exportProject()" title="This project as one file (.phos): its mark, settings, images, groups and snapshots, to send or keep">Export project…</button>' : '')
-        + '<button type="button" class="gm-item" onclick="closeProjectMenu(); chooseProjectFile()" title="Open a .phos file someone exported: it comes in as a new project">Import project…</button>'
-        + (project ? '<hr><button type="button" class="gm-item danger-text" onclick="deleteProject()" title="This project\'s folder goes to the Trash: it can be put back until the Trash is emptied">Delete project…</button>' : '');
+        + `<button type="button" class="gm-item" onclick="closeProjectMenu(); chooseProjectFile()" title="Open a .phos file someone exported: it comes in as a new project"${off}>Import project…</button>`
+        + (project ? `<hr><button type="button" class="gm-item danger-text" onclick="deleteProject()" title="This project's folder goes to the Trash: it can be put back until the Trash is emptied"${off}>Delete project…</button>` : '');
       m.querySelectorAll('img').forEach(fitMarkTone);
       const a = btn.getBoundingClientRect();
       m.hidden = false; btn.setAttribute('aria-expanded', 'true');

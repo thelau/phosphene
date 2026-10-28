@@ -1449,3 +1449,25 @@ test('Delete project…: asked first (Cancel keeps it), then the project goes an
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('while images are made, the other projects and New / Import / Delete wait in the menu, and it says why; after, they are back', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945, delays: { invent: 1500 } });
+  api.state.projects.push({ ...api.state.projects[0], slug: 'nike', name: 'Nike', fixed: false, round: false });
+  await page.click('#generateBtn');
+  await page.waitForSelector('#statusText:not([data-idle="1"])');
+  await page.click('#projectBtn');
+  await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');
+  assert.match(await text('#projectMenu .gm-note'), /^Images are being made: other projects wait until it ends\.$/);
+  assert.equal(await page.locator('#projectMenu .gm-item[data-slug="nike"]').isDisabled(), true);
+  assert.equal(await page.locator('#projectMenu .gm-item[data-slug="demo"]').isDisabled(), false, 'this one stays itself');
+  for (const t of ['New project…', 'Import project…', 'Delete project…']) assert.equal(await page.locator('#projectMenu .gm-item', { hasText: t }).isDisabled(), true, t);
+  assert.equal(await page.locator('#projectMenu .gm-item', { hasText: 'Export project…' }).isDisabled(), false, 'a copy can still be made');
+  await page.keyboard.press('Escape'); await page.mouse.click(700, 500);
+  await page.waitForFunction(() => /Done/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  await page.click('#projectBtn');
+  await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');
+  assert.equal(await page.locator('#projectMenu .gm-note').count(), 0);
+  assert.equal(await page.locator('#projectMenu .gm-item[data-slug="nike"]').isDisabled(), false, 'back once it ends');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

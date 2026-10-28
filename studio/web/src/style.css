@@ -616,6 +616,7 @@
     .project-menu .gm-item.on { color: var(--text); }
     .project-menu .gm-item.on::after { content: '✓'; margin-left: auto; font-size: 11px; color: var(--orange); }
     .project-menu hr { border: 0; border-top: 1px solid var(--line-2); margin: 4px 2px; }
+    .project-menu .gm-note { margin: 2px 8px 6px; font-size: 11px; color: var(--muted); max-width: 230px; }   /* why the other projects wait */
     .project-menu .gm-item:disabled { color: var(--off); background: transparent; }
     .project-form { width: min(720px, 94vw); }
     .pf-note { margin-bottom: 14px; }
