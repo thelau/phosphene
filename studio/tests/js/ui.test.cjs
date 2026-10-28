@@ -279,6 +279,15 @@ test('generateImages: Krea reachable but an image keeps failing as offline: afte
   assert.match(h.$('statusText').innerHTML, /Krea kept failing \(Krea 502\)/);
 });
 
+test('in the Mac app the page says when it is ready (files opened from Finder while it loaded come then), and tells the app it is idle', async () => {
+  const emitted = [];
+  const h = load({ routes: baseRoutes(), globals: { __TAURI__: { event: { emit: async (name, payload) => { emitted.push([name, payload]); } } } } });
+  await settle(); await settle();
+  assert.ok(emitted.some(([n]) => n === 'page-ready'), JSON.stringify(emitted));
+  h.run('applyLocks()');
+  assert.ok(emitted.some(([n, p]) => n === 'page-busy' && p === false), 'a page loaded after a reload mid-job says it is idle');
+});
+
 test('the sound watchdog never reloads the page while a job runs (a fresh sound instead); idle, a second stall soon after still reloads', async () => {
   const h = load({ routes: baseRoutes() });
   await settle(); await settle();

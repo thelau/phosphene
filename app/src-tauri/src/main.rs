@@ -45,10 +45,11 @@ struct Opened(Mutex<(u16, Vec<String>)>);
 
 // a project file double-clicked in Finder: the server imports it from where it is, then the page reloads on it
 // a file chosen in the menu's dialog or opened from Finder while the app runs: the page imports it (it waits for a running job,
-// generation or an export, and says so; posting straight to the server cut such a job off with a reload)
+// generation or an export, and says so; posting straight to the server cut such a job off with a reload). A page not ready yet
+// (loading, reloading) hands it back (import-later): kept, and given to the page when it says it is ready (page-ready)
 fn page_import(path: &str, win: &tauri::WebviewWindow) {
     let p = serde_json::json!(path);
-    let _ = win.eval(&format!("window.importProjectPath ? importProjectPath({p}) : location.reload()"));
+    let _ = win.eval(&format!("window.importProjectPath ? importProjectPath({p}) : window.__TAURI__ && window.__TAURI__.event.emit('import-later', {p})"));
 }
 
 // a file opened from Finder before the server answered (a double-click that launched the app): nothing runs yet, posted directly
@@ -209,6 +210,22 @@ fn main() {
             let handle = app.handle().clone();
             app.listen_any("open-project-file", move |_| on_menu(&handle, "open_project"));
             app.listen_any("page-busy", |e| PAGE_BUSY.store(e.payload() == "true", Ordering::SeqCst));
+            let handle = app.handle().clone();
+            app.listen_any("import-later", move |e| {
+                if let Ok(path) = serde_json::from_str::<String>(e.payload()) { handle.state::<Opened>().0.lock().unwrap().1.push(path); }
+            });
+            let handle = app.handle().clone();
+            app.listen_any("page-ready", move |_| {
+                let waiting: Vec<String> = {
+                    let state = handle.state::<Opened>();
+                    let mut o = state.0.lock().unwrap();
+                    if o.0 == 0 { return; }                                   // the server is still starting: it imports them when it answers
+                    o.1.drain(..).collect()
+                };
+                if let Some(win) = handle.get_webview_window("main") {
+                    for path in &waiting { page_import(path, &win); }
+                }
+            });
             let dev = cfg!(debug_assertions);
             let port = if dev { 0 } else { free_port() };
             if dev { app.state::<Opened>().0.lock().unwrap().0 = 8765; }       // npm run app:live: the dev server

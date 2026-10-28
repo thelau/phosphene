@@ -30,7 +30,7 @@ class El {
 
 const WEB = (...p) => path.join(__dirname, '..', '..', 'web', ...p);
 
-function load({ routes = {}, storage = {} } = {}) {
+function load({ routes = {}, storage = {}, globals = {} } = {}) {   // globals: e.g. __TAURI__, to be the Mac app
   routes = { '/api/export-frame': { ok: true }, ...routes };              // the export's frames, drawn by the (fake) renderer
   const els = {};
   const calls = [];
@@ -98,6 +98,7 @@ function load({ routes = {}, storage = {} } = {}) {
     create: (canvas, opts) => (opts && opts.keep ? { draw() { ctx.__render.draws++; }, forget() {}, canvas } : null),
     loadImage: async url => ({ url, width: 1080, height: 1920 }),
   };
+  Object.assign(ctx, globals);
   ctx.window = ctx;
   vm.createContext(ctx);
   const script = fs.readFileSync(WEB('src', 'app.js'), 'utf8');

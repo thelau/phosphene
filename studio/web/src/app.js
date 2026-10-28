@@ -3194,6 +3194,7 @@
       }
       warmSound();
       offerPending();                                                        // a batch left unfinished last time: Resume or Discard
+      if (TAURI && TAURI.event) TAURI.event.emit('page-ready').catch(() => {});   // the Mac app: files opened while the page was loading come now
       try {                                                                  // back from a reload that mended the sound: playing on, from there
         const resume = JSON.parse(sessionStorage.getItem('studioResume') || 'null');
         sessionStorage.removeItem('studioResume');
