@@ -397,11 +397,12 @@ test('many groups: those that do not fit go behind "+N more" (never the chosen o
   });
   await page.click('#refreshBtn');
   await page.waitForSelector('#moreChip:not([hidden])');
-  const row = await page.locator('#groupRow').boundingBox(), auto = await page.locator('#autoMenus').boundingBox();
-  const shown = await page.locator('#groupBar .chip:not(.out):not(.chip-overflow)').evaluateAll(b => b.map(x => ({ key: x.dataset.key, right: x.getBoundingClientRect().right })));
-  assert.ok(shown.length >= 3 && shown.every(c => c.right <= auto.x), `the chips that fit end before the Auto menus: ${JSON.stringify(shown)}`);
+  const row = await page.locator('#groupRow').boundingBox(), auto = await page.locator('#autoMenus').boundingBox(), all = await page.locator('#groupAll').boundingBox();
+  const shown = await page.locator('#groupBar .chip:not(.out):not(.chip-overflow)').evaluateAll(b => b.map(x => ({ key: x.dataset.key, left: x.getBoundingClientRect().left, right: x.getBoundingClientRect().right })));
+  assert.ok(all.x < auto.x && shown.length >= 3 && shown.every(c => c.left > auto.x + auto.width && c.right <= row.x + row.width), `All | Auto [Look] | Custom [your groups]: ${JSON.stringify(shown)}`);
+  assert.equal(await text('#ownLabel'), 'CUSTOM');
   const n = +(await text('#moreChip')).match(/\+(\d+)/)[1];
-  assert.equal(shown.length + n, 12, 'All and 11 groups: shown or behind +N more');
+  assert.equal(shown.length + n, 11, 'the 11 groups: shown or behind +N more');
   await page.click('#moreChip');
   assert.equal(await page.locator('#groupMenu .gm-item').count(), n);
   await page.click('#groupMenu .gm-item >> text=Last one here');
@@ -1167,7 +1168,7 @@ test('the Keys panel: ? opens a tidy list under the hint, Esc and a click elsewh
   const ctx = await fresh({ width: 1512, height: 945 });
   await page.keyboard.press('?');
   await page.waitForSelector('#keysPanel:not([hidden])');
-  assert.equal(await page.locator('#keysPanel dt:not(.app-only)').count(), 14);
+  assert.equal(await page.locator('#keysPanel dt:not(.app-only)').count(), 15);
   assert.deepEqual(await page.locator('#keysPanel h5').allTextContents(), ['Everywhere', 'Film', 'Curate'], 'universal keys, then each tab\'s own');
   assert.equal(await page.locator('#keysPanel dt.app-only').isVisible(), false, 'the app menu\'s shortcuts only in the app');
   const p = await page.locator('#keysPanel').boundingBox();
@@ -1300,7 +1301,7 @@ test('the info panel on a card: less at small sizes, the text scrolls, Copy copi
 
 test('groups: chips for All, yours and the automatic looks; pick cards, make a group, the film plays just the group; undo', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945 });
-  const chips = async () => page.locator('#groupBar .chip:not(.chip-overflow)').evaluateAll(b => b.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
+  const chips = async () => page.locator('#groupRow .chip:not(.chip-overflow)').evaluateAll(b => b.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
   assert.deepEqual(await chips(), ['All 3'], 'your groups as chips');
   assert.match(await page.locator('#autoMenus').textContent(), /Auto\s*Look\s*1/, 'automatic groups (once they have two images) in the Auto menus');
   await page.click('#auto-look');
@@ -1318,7 +1319,7 @@ test('groups: chips for All, yours and the automatic looks; pick cards, make a g
   assert.equal(await page.locator('#filmstrip button').count(), 2, 'and so does the film');
   await curate();
   await page.click('#autoMenus .auto-x');                                          // × clears it: All again
-  await page.waitForSelector('#groupBar .chip.on[data-key="all"]');
+  await page.waitForSelector('#groupRow .chip.on[data-key="all"]');
   // pick two with Cmd-click, make a group of them
   const rowBox = () => page.locator('#groupRow').evaluate(r => { const b = r.getBoundingClientRect(), c = r.querySelector('.chip').getBoundingClientRect(); return [b.height, c.top]; });
   const before = await rowBox();
@@ -1350,12 +1351,12 @@ test('groups: chips for All, yours and the automatic looks; pick cards, make a g
   await page.waitForFunction(() => /Night chrome/.test(document.querySelector('#groupBar .chip.on').textContent));
   await page.click('#groupMenuBtn');
   await page.click('.gm-item.danger-text');
-  await page.waitForFunction(() => document.querySelector('#groupBar .chip.on').dataset.key === 'all');
+  await page.waitForFunction(() => document.querySelector('#groupRow .chip.on').dataset.key === 'all');
   assert.equal(await page.locator('.card[data-filename]').count(), 3, 'deleting a group keeps the images');
   await page.click('#toast button');                                              // Undo
   await page.waitForSelector('#groupBar .chip.own');
   // Cmd+A picks every card shown, Esc clears
-  await page.click('#groupBar .chip[data-key="all"]');
+  await page.click('#groupRow .chip[data-key="all"]');
   await page.keyboard.press('Meta+a');
   assert.equal(await text('#pickCount'), '3 picked');
   await page.keyboard.press('Escape');

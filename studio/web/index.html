@@ -61,6 +61,7 @@
         </dl>
         <h5>Curate</h5>
         <dl>
+          <dt><kbd>⌘</kbd> <kbd>↩</kbd></dt><dd>Generate (in the territory list: choose and generate)</dd>
           <dt>Double-click</dt><dd>The image large: <kbd>←</kbd> <kbd>→</kbd> the next, <kbd>Esc</kbd> closes</dd>
           <dt>Pinch</dt><dd>Thumbnail size</dd>
           <dt><kbd>⌘</kbd> · <kbd>⇧</kbd> click</dt><dd>Pick images (a run with ⇧) to group them</dd>
@@ -241,10 +242,14 @@
           </label>
           <input type="hidden" id="thumbSizeVal" value="M" />
         </div>
-        <!-- your own groups as chips (those that do not fit behind "+N more"); the automatic ones in two menus on the right -->
-        <div class="group-row" id="groupRow">
-          <div class="group-bar" id="groupBar" role="tablist" aria-label="Groups"></div>
+        <!-- All | Auto [Look] [Territory] | Custom [your groups…] (those that do not fit behind "+N more") -->
+        <div class="group-row" id="groupRow" role="tablist" aria-label="Groups">
+          <span class="group-all" id="groupAll"></span>
+          <i class="group-sep" id="autoSep"></i>
           <div class="auto-menus" id="autoMenus"></div>
+          <i class="group-sep" id="ownSep"></i>
+          <span class="group-label" id="ownLabel">Custom</span>
+          <div class="group-bar" id="groupBar"></div>
         </div>
         <!-- picking floats at the bottom, never over the chips -->
         <div class="pick-bar" id="pickBar" role="toolbar" aria-label="Picked images" hidden>

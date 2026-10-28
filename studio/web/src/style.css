@@ -582,7 +582,10 @@
     .group-bar .out { display: none; }                                   /* behind "+N more" */
     .chip-overflow[hidden] { display: none; }
     .auto-menus { flex: none; display: flex; align-items: center; gap: 6px; }
-    .auto-label { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin-right: 2px; }
+    .auto-label, .group-label { flex: none; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin-right: 2px; }
+    .group-all { flex: none; display: flex; }
+    .group-sep { flex: none; width: 1px; height: 20px; margin: 0 6px; background: var(--line-2); }
+    .group-sep[hidden], .group-label[hidden], .auto-menus:empty { display: none; }
     .auto-btn { display: inline-flex; align-items: center; height: 30px; box-sizing: border-box; border-radius: 7px; border: 1px solid #34312C; }
     .auto-btn > button.auto-main { height: 28px; padding: 0 10px 0 12px; display: flex; align-items: center; gap: 7px; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; white-space: nowrap; }
     .auto-btn > button.auto-main span { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--faint); }

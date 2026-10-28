@@ -655,9 +655,12 @@
       const { chips, auto } = groupChips();
       const menu = '<button type="button" class="chip-more" id="groupMenuBtn" onclick="openGroupMenu(event, \'edit\')" title="Rename or delete this group" aria-label="Rename or delete this group"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></button>';
       const chip = c => `<button type="button" class="chip${c.key === currentGroup ? ' on' : ''}${c.own ? ' own' : ''}" data-key="${escapeHtml(c.key)}" onclick="setGroup(this.dataset.key)">${escapeHtml(c.name)} <span>${c.n}</span></button>${c.own && c.key === currentGroup ? menu : ''}`;   // your group's menu sits right after its chip
-      bar.innerHTML = chips.map(chip).join('') + '<button type="button" class="chip chip-overflow" id="moreChip" onclick="openGroupMenu(event, \'more\')" aria-haspopup="menu" hidden></button>';
-      fitChips();
-      const kinds = autoKinds();
+      document.getElementById('groupAll').innerHTML = chip(chips[0]);
+      const own = chips.slice(1);
+      bar.innerHTML = own.map(chip).join('') + '<button type="button" class="chip chip-overflow" id="moreChip" onclick="openGroupMenu(event, \'more\')" aria-haspopup="menu" hidden></button>';
+      const kinds = autoKinds(), hasAuto = !!(kinds.look.length || kinds.terr.length);
+      document.getElementById('autoSep').hidden = !hasAuto;
+      document.getElementById('ownSep').hidden = document.getElementById('ownLabel').hidden = !own.length;
       const autoBtn = (kind, list, label) => {
         if (!list.length) return '';
         const on = list.find(c => c.key === currentGroup);
@@ -667,11 +670,11 @@
           ? `<span class="auto-btn on"><button type="button" class="auto-main" id="auto-${kind}" onclick="openGroupMenu(event, '${kind}')" aria-haspopup="menu" title="${tip}">${label}: ${escapeHtml(on.name)} <span>${on.n}</span></button><button type="button" class="auto-x" onclick="setGroup('all')" aria-label="Clear ${label}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span>`
           : `<span class="auto-btn"><button type="button" class="auto-main" id="auto-${kind}" onclick="openGroupMenu(event, '${kind}')" aria-haspopup="menu" title="${tip}">${label} <span>${list.length}</span>${caret}</button></span>`;
       };
-      const am = kinds.look.length || kinds.terr.length ? '<span class="auto-label">Auto</span>' + autoBtn('look', kinds.look, 'Look') + autoBtn('terr', kinds.terr, 'Territory') : '';
+      const am = hasAuto ? '<span class="auto-label">Auto</span>' + autoBtn('look', kinds.look, 'Look') + autoBtn('terr', kinds.terr, 'Territory') : '';
       const amEl = document.getElementById('autoMenus');
       if (amEl.innerHTML !== am) amEl.innerHTML = am;
-      const own = ownGroup();
-      document.getElementById('removeFromGroupBtn').hidden = !own;
+      fitChips();                                                            // after the Auto menus: the room left for your groups
+      document.getElementById('removeFromGroupBtn').hidden = !ownGroup();
       // the same choice in Film, as a dropdown above the film strip: your groups, then Look, then Territory
       const fg = document.getElementById('filmGroup');
       const opt = c => `<option value="${escapeHtml(c.key)}">${escapeHtml(c.name)} (${c.n})</option>`;
@@ -769,7 +772,7 @@
       document.querySelectorAll('#autoMenus [aria-haspopup]').forEach(b => b.setAttribute('aria-expanded', String(b === anchorEl)));
       if (mode === 'add') m.style.top = `${anchor.top - m.offsetHeight - 8}px`;                    // the pick bar is at the bottom: the menu opens upward
       else m.style.top = `${anchor.bottom + 6}px`;
-      const left = mode === 'look' || mode === 'terr' ? anchor.right - m.offsetWidth : anchor.left;   // the Auto menus line up with the right edge
+      const left = anchor.left;
       m.style.left = `${Math.max(8, Math.min(left, innerWidth - m.offsetWidth - 8))}px`;
       if (mode === 'add' && !groups.length) showNewGroupForm();
       if (mode === 'edit') { const i = document.getElementById('groupNameInput'); if (i && i.focus) i.focus(); if (i && i.select) i.select(); }
