@@ -389,7 +389,7 @@
     .gen { position: relative; display: flex; align-items: stretch; flex: 1; min-width: 0; height: 46px; border-radius: 11px; border: 1px solid var(--line-3); background: #1A1918; }
     .gen-sep { width: 1px; background: var(--line-3); }
     select.src-only { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }   /* the source of truth, drawn by the button */
-    .terr-btn { display: flex; align-items: center; gap: 10px; min-width: 200px; max-width: 380px; padding: 0 12px 0 14px; border: 0; border-radius: 10px 0 0 10px; background: transparent; color: var(--text); text-align: left; }
+    .terr-btn { flex: none; display: flex; align-items: center; gap: 10px; width: 260px;   /* fixed: the bar does not shift when the territory changes */ padding: 0 12px 0 14px; border: 0; border-radius: 10px 0 0 10px; background: transparent; color: var(--text); text-align: left; }
     .terr-btn[aria-expanded="true"], .terr-btn:hover:not(:disabled) { background: #2A2825; }
     .terr-btn > svg { color: var(--muted); flex: none; }
     .terr-icon { width: 18px; height: 18px; flex: none; display: flex; align-items: center; justify-content: center; }

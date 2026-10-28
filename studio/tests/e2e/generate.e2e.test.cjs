@@ -117,6 +117,12 @@ test('many territories: two columns, no scrolling, no search; the ones never mad
   assert.equal(await page.locator('#terrMenu .tm-cols.n2 .tm-world').count(), 32);
   assert.equal(await page.locator('#terrMenu .tm-item.big + .tm-sep').count(), 1, 'a line under Mix it up');
   assert.equal(await page.locator('#terrMenu .tm-head').count(), 1, 'one header over both columns');
+  const w0 = (await page.locator('#terrBtn').boundingBox()).width;
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => { const s = document.getElementById('worldSelect'); s.value = '__wildcard__'; s.dispatchEvent(new Event('change')); });
+  assert.equal((await page.locator('#terrBtn').boundingBox()).width, w0, 'the button keeps its width whatever the territory');
+  await page.evaluate(() => { const s = document.getElementById('worldSelect'); s.value = ''; s.dispatchEvent(new Event('change')); });
+  await page.click('#terrBtn');
   const m = await page.locator('#terrMenu').evaluate(e => ({ w: e.getBoundingClientRect().width, scrolls: e.scrollHeight > e.clientHeight + 1 }));
   assert.ok(m.w >= 800 && !m.scrolls, `twice as wide, everything in view: ${JSON.stringify(m)}`);
   assert.equal(await page.locator('#terrMenu .tm-item[data-v="Territory 2"] .tm-n').textContent(), '–');
