@@ -185,22 +185,25 @@
       <div class="gallery-col">
         <div class="gallery-head">
           <div class="seg">
-            <button id="tabSelection" onclick="setTrashView(false)">Selection (<span id="selCount">0</span>)</button>
-            <button id="tabTrash" onclick="setTrashView(true)">🗑️ Trash (<span id="trashCount">0</span>)</button>
+            <button id="tabSelection" onclick="setTrashView(false)">Selection <span class="seg-n" id="selCount">0</span></button>
+            <button id="tabTrash" onclick="setTrashView(true)">Trash <span class="seg-n" id="trashCount">0</span></button>
           </div>
-          <div class="trash-bar" id="trashBar" hidden>
-            <span id="trashSelCount">0 selected</span>
-            <button id="trashSelAll" onclick="selectAllTrash()">Select all</button>
-            <button id="trashRestoreSel" onclick="restoreSelected()">Restore</button>
-            <button id="trashDelSel" class="danger" onclick="deleteSelected()">Delete selected…</button>
-            <button id="trashEmpty" class="danger" onclick="emptyTrash()">Empty trash…</button>
+          <div class="trash-lead" id="trashLead" hidden>
+            <span id="trashSelCount">Pick images to restore or delete</span>
+            <button type="button" class="link-btn" id="trashSelAll" onclick="selectAllTrash()">Select all</button>
           </div>
           <span class="grow"></span>
           <span class="grid-hint" id="gridHint"></span>
+          <div class="trash-bar" id="trashBar" hidden>
+            <button id="trashRestoreSel" onclick="restoreSelected()">Restore</button>
+            <button id="trashDelSel" onclick="deleteSelected()" hidden>Delete…</button>
+            <button id="trashEmpty" class="danger" onclick="emptyTrash()">Empty trash…</button>
+            <span class="tool-sep"></span>
+          </div>
           <div class="order-tools" id="seqBox">
-            <button id="aiBtn" onclick="toggleAiPanel(event)" title="Let the AI rearrange your order (⌘Z puts it back)">✨ AI re-order…</button>
+            <button id="aiBtn" onclick="toggleAiPanel(event)" title="Let the AI rearrange your order (⌘Z puts it back)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>AI order…</button>
             <div class="ai-panel" id="aiPanel" hidden onclick="event.stopPropagation()">
-              <h4>AI re-order</h4>
+              <h4>AI order</h4>
               <p class="ai-panel-note">The AI rearranges your order. ⌘Z or Undo puts it back.</p>
               <label>Use
                 <select id="aiLength">
@@ -220,20 +223,22 @@
               </div>
             </div>
           </div>
-          <button onclick="downloadShown()" id="downloadBtn" class="icon-btn" title="Download the images shown, full size, in their order (a zip)" aria-label="Download the images shown">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"></path><path d="M7 10l5 5 5-5"></path><path d="M5 20h14"></path></svg>
-          </button>
-          <button onclick="toggleReticle()" id="gridTargetBtn" class="icon-btn" title="Show where the logo must sit on every image: dead-center, 18% of the width (T)" aria-label="Show logo target" aria-pressed="false">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 1v4M12 19v4M1 12h4M19 12h4"></path></svg>
-          </button>
-          <div class="size-seg" role="group" aria-label="Thumbnail size">
-            <button id="thumbS" onclick="setThumbSize('S')" aria-label="Thumbnails S" title="S (pinch the grid to change the size)"><i style="width:7px;height:10px"></i></button>
-            <button id="thumbM" onclick="setThumbSize('M')" aria-label="Thumbnails M" title="M (pinch the grid to change the size)"><i style="width:8px;height:12px"></i></button>
-            <button id="thumbL" onclick="setThumbSize('L')" aria-label="Thumbnails L" title="L (pinch the grid to change the size)"><i style="width:10px;height:15px"></i></button>
-            <button id="thumbXL" onclick="setThumbSize('XL')" aria-label="Thumbnails XL" title="XL (pinch the grid to change the size)"><i style="width:12px;height:18px"></i></button>
-            <button id="thumbXXL" onclick="setThumbSize('XXL')" aria-label="Thumbnails XXL" title="XXL: to look closely (pinch the grid to change the size)"><i style="width:14px;height:21px"></i></button>
+          <div class="tool-group" role="toolbar" aria-label="Grid tools">
+            <button onclick="downloadShown()" id="downloadBtn" title="Download the images shown, full size, in their order (a zip)" aria-label="Download the images shown">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"></path><path d="M7 10l5 5 5-5"></path><path d="M5 20h14"></path></svg>
+            </button>
+            <button onclick="toggleReticle()" id="gridTargetBtn" title="Show where the logo must sit on every image: dead-center, 18% of the width (T)" aria-label="Show logo target" aria-pressed="false">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 1v4M12 19v4M1 12h4M19 12h4"></path></svg>
+            </button>
+            <button class="refresh-btn" id="refreshBtn" onclick="refreshLibrary(true)" title="Check for new images now (the page also checks by itself every so often). Film refreshes with it." aria-label="Refresh the library"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
           </div>
-          <button class="icon-btn refresh-btn" id="refreshBtn" onclick="refreshLibrary(true)" title="Check for new images now (the page also checks by itself every so often). Film refreshes with it." aria-label="Refresh the library"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
+          <!-- thumbnail size: five steps on a slider with a tick each (a pinch on the grid steps too) -->
+          <label class="size-ctl" title="Thumbnail size (pinch the grid also works)">
+            <svg width="8" height="12" viewBox="0 0 8 12" aria-hidden="true"><rect x="0.75" y="0.75" width="6.5" height="10.5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"></rect></svg>
+            <span class="size-track"><i></i><i></i><i></i><i></i><i></i><input type="range" id="thumbRange" min="0" max="4" step="1" value="1" aria-label="Thumbnail size" oninput="setThumbSizeAt(this.value)" /></span>
+            <svg width="12" height="20" viewBox="0 0 12 20" aria-hidden="true"><rect x="0.75" y="0.75" width="10.5" height="18.5" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.5"></rect></svg>
+            <span class="size-name" id="thumbName">M</span>
+          </label>
           <input type="hidden" id="thumbSizeVal" value="M" />
         </div>
         <!-- your own groups as chips (those that do not fit behind "+N more"); the automatic ones in two menus on the right -->

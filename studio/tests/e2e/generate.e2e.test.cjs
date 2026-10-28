@@ -33,7 +33,7 @@ test('generate: a custom territory waits for its description; controls lock, pro
   assert.equal(await page.inputValue('#directionInput'), 'fog, clouds, rain', 'the description stays for the next batch');
   assert.equal(await text('#genLabel'), 'Generate');
   assert.equal(await page.locator('#statusText .slot.ok').count(), 4);
-  await page.waitForFunction(() => document.getElementById('tabSelection').textContent.includes('(7)'));
+  await page.waitForFunction(() => document.getElementById('tabSelection').textContent.replace(/\s+/g, ' ').trim().endsWith(' 7'));
   assert.equal(await page.locator('.pending-card').count(), 0);
   assert.equal(await page.locator('.card .card-new').count(), 4, 'the new images are marked New');
   const inv = api.state.calls.find(c => c.path === '/api/invent-prompts').body;
@@ -54,7 +54,7 @@ test('generate: failed images are explained (hover) and counted, the rest still 
   const reds = await page.locator('#statusText .slot.err').evaluateAll(els => els.map(e => e.title));
   assert.equal(reds.length, 3);
   assert.ok(reds.every(t => /Fog \d — Krea is busy/.test(t)), JSON.stringify(reds));
-  assert.equal(await page.locator('#tabSelection').innerText().then(t => /\(4\)/.test(t)), true);
+  assert.equal(await page.locator('#tabSelection').innerText().then(t => /^Selection 4$/.test(t.trim())), true);
   await ctx.close();
 });
 
@@ -98,7 +98,7 @@ test('the batch size list offers up to 20 images and sends the chosen number', {
   await page.waitForFunction(() => /Done · 12 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
   assert.equal(api.state.calls.find(c => c.path === '/api/invent-prompts').body.count, 12);
   assert.equal(await page.locator('#statusText .slot.ok').count(), 12);
-  assert.equal(await page.locator('#tabSelection').innerText().then(t => /\(15\)/.test(t)), true);          // 3 kept + 12 new
+  assert.equal(await page.locator('#tabSelection').innerText().then(t => /^Selection 15$/.test(t.trim())), true);          // 3 kept + 12 new
   await page.reload();
   await page.waitForSelector('.card');
   assert.equal(await page.inputValue('#batchCountSelect'), '12');                                          // remembered

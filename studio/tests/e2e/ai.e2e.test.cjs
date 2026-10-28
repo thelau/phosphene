@@ -70,7 +70,7 @@ test('AI order: while it works nothing that changes the selection can run', { sk
   assert.equal(await page.locator('body.ai-running').count(), 0);
   await page.locator('.card[data-filename="k1"]').hover();
   await page.locator('.card[data-filename="k1"] .trash-btn').click();
-  await page.waitForFunction(() => document.getElementById('tabTrash').textContent.includes('(5)'));
+  await page.waitForFunction(() => document.getElementById('tabTrash').textContent.replace(/\s+/g, ' ').trim().endsWith(' 5'));
   await ctx.close();
 });
 

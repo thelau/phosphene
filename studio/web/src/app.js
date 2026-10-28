@@ -664,8 +664,8 @@
         const caret = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>';
         const tip = kind === 'look' ? 'Automatic groups by look' : 'Automatic groups, one per territory with 6+ images';
         return on
-          ? `<span class="auto-btn on"><button type="button" id="auto-${kind}" onclick="openGroupMenu(event, '${kind}')" aria-haspopup="menu" title="${tip}">${label}: ${escapeHtml(on.name)} <span>${on.n}</span></button><button type="button" class="auto-x" onclick="setGroup('all')" aria-label="Clear ${label}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span>`
-          : `<span class="auto-btn"><button type="button" id="auto-${kind}" onclick="openGroupMenu(event, '${kind}')" aria-haspopup="menu" title="${tip}">${label} <span>${list.length}</span>${caret}</button></span>`;
+          ? `<span class="auto-btn on"><button type="button" class="auto-main" id="auto-${kind}" onclick="openGroupMenu(event, '${kind}')" aria-haspopup="menu" title="${tip}">${label}: ${escapeHtml(on.name)} <span>${on.n}</span></button><button type="button" class="auto-x" onclick="setGroup('all')" aria-label="Clear ${label}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span>`
+          : `<span class="auto-btn"><button type="button" class="auto-main" id="auto-${kind}" onclick="openGroupMenu(event, '${kind}')" aria-haspopup="menu" title="${tip}">${label} <span>${list.length}</span>${caret}</button></span>`;
       };
       const am = kinds.look.length || kinds.terr.length ? '<span class="auto-label">Auto</span>' + autoBtn('look', kinds.look, 'Look') + autoBtn('terr', kinds.terr, 'Territory') : '';
       const amEl = document.getElementById('autoMenus');
@@ -971,13 +971,17 @@
     function updateTrashBar() {
       const trashed = plates.filter(p => p.trashed).map(p => p.filename);
       trashSel = new Set([...trashSel].filter(f => trashed.includes(f)));
-      document.getElementById('trashBar').hidden = !(showTrash && trashed.length);
-      document.getElementById('trashSelCount').textContent = `${trashSel.size} selected`;
-      document.getElementById('trashDelSel').disabled = aiRunning || exporting || trashSel.size === 0;
-      document.getElementById('trashRestoreSel').disabled = aiRunning || trashSel.size === 0;
-      document.getElementById('trashDelSel').textContent = trashSel.size ? `Delete ${trashSel.size} selected…` : 'Delete selected…';
-      document.getElementById('trashSelAll').textContent = trashSel.size && trashSel.size === trashed.length ? 'Clear selection' : 'Select all';
-      document.getElementById('trashEmpty').textContent = `Empty trash (${trashed.length})…`;
+      const n = trashSel.size;
+      document.getElementById('trashBar').hidden = document.getElementById('trashLead').hidden = !(showTrash && trashed.length);
+      document.getElementById('trashSelCount').textContent = n ? `${n} picked` : 'Pick images to restore or delete';
+      document.getElementById('trashDelSel').hidden = !n;                    // only once something is picked
+      document.getElementById('trashDelSel').disabled = aiRunning || exporting || !n;
+      document.getElementById('trashRestoreSel').disabled = aiRunning || !n;
+      document.getElementById('trashRestoreSel').textContent = n ? `Restore ${n}` : 'Restore';
+      document.getElementById('trashDelSel').textContent = `Delete ${n}…`;
+      document.getElementById('trashSelAll').textContent = n && n === trashed.length ? 'Clear selection' : 'Select all';
+      document.getElementById('trashEmpty').textContent = 'Empty trash…';
+      document.getElementById('trashEmpty').title = `Delete all ${trashed.length} images in the Trash for good`;
     }
     function selectAllTrash() {
       const all = plates.filter(p => p.trashed).map(p => p.filename);
@@ -1125,7 +1129,7 @@
           </div>
         </div>`;
     }
-    function gridHintText() { return showTrash ? 'Trashed images stay restorable' : aiRunning ? 'Locked while the AI orders' : ''; }   // dragging needs no hint
+    function gridHintText() { return aiRunning && !showTrash ? 'Locked while the AI orders' : ''; }   // dragging needs no hint
     // the images still being made, at the end of the selection while a batch runs
     function pendingCards() {
       if (!generating || prog.stage !== 'render') return [];
@@ -1138,11 +1142,18 @@
     const THUMB_SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
     function setThumbSize(v) {
       if (!THUMB_SIZES.includes(v)) v = 'M';
+      const i = THUMB_SIZES.indexOf(v);
       document.getElementById('thumbSizeVal').value = v;
       document.getElementById('grid').dataset.size = v;
-      for (const k of THUMB_SIZES) document.getElementById(`thumb${k}`).setAttribute('aria-pressed', String(k === v));
+      const r = document.getElementById('thumbRange');
+      if (String(r.value) !== String(i)) r.value = i;
+      r.setAttribute('aria-valuetext', ['Small', 'Medium', 'Large', 'Extra large', 'Largest'][i]);
+      document.getElementById('thumbName').textContent = v;
+      const ticks = document.querySelectorAll('.size-track i');
+      if (ticks.forEach) ticks.forEach((t, k) => t.classList.toggle('lit', k <= i));          // the steps up to the size, lighter
       saveSettings();
     }
+    function setThumbSizeAt(i) { setThumbSize(THUMB_SIZES[Math.round(+i)] || 'M'); }
     function stepThumbSize(d) {
       const i = THUMB_SIZES.indexOf(document.getElementById('thumbSizeVal').value);
       const j = Math.max(0, Math.min(THUMB_SIZES.length - 1, i + d));
@@ -3506,7 +3517,7 @@
 Object.assign(window, {
   installUpdate,
   exportProject, importProject, importProjectPath, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
-  downloadShown, openViewer, closeViewer, viewerStep, toggleTerrMenu, editRefine, clearRefine, closeGroupMenu, showNewGroupForm,
+  downloadShown, setThumbSizeAt, openViewer, closeViewer, viewerStep, toggleTerrMenu, editRefine, clearRefine, closeGroupMenu, showNewGroupForm,
   openProjectMenu, switchProject, openProjectForm, closeProjectForm, readProjectMark, drawProjectPreview, saveProject,
   removeChange,
   includeAll,

@@ -631,14 +631,18 @@ const ev = (o = {}) => ({ shiftKey: false, ...o });
 test('trash bar only shows in the trash view and counts what is selected', async () => {
   const h = await inTrash();
   assert.equal(h.$('trashBar').hidden, false);
-  assert.equal(h.$('trashEmpty').textContent, 'Empty trash (4)…');
-  assert.equal(h.$('trashDelSel').disabled, true);
+  assert.equal(h.$('trashEmpty').textContent, 'Empty trash…');
+  assert.match(h.$('trashEmpty').title, /all 4 images/);
+  assert.equal(h.$('trashSelCount').textContent, 'Pick images to restore or delete');
+  assert.equal(h.$('trashDelSel').hidden, true, 'Delete only once something is picked');
+  assert.equal(h.$('trashRestoreSel').disabled, true);
   h.run(`cardClick(${JSON.stringify(ev())}, '2_b')`);
-  assert.equal(h.$('trashSelCount').textContent, '1 selected');
-  assert.equal(h.$('trashDelSel').textContent, 'Delete 1 selected…');
-  assert.equal(h.$('trashDelSel').disabled, false);
+  assert.equal(h.$('trashSelCount').textContent, '1 picked');
+  assert.equal(h.$('trashDelSel').textContent, 'Delete 1…');
+  assert.equal(h.$('trashDelSel').hidden, false);
+  assert.equal(h.$('trashRestoreSel').textContent, 'Restore 1');
   h.run(`cardClick(${JSON.stringify(ev())}, '2_b')`);                  // click again deselects
-  assert.equal(h.$('trashSelCount').textContent, '0 selected');
+  assert.equal(h.$('trashSelCount').textContent, 'Pick images to restore or delete');
   await h.run('setTrashView(false)');
   assert.equal(h.$('trashBar').hidden, true);
 });
