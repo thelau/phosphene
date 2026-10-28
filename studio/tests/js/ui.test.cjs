@@ -2108,3 +2108,16 @@ test('your groups keep their own order: shown and played in it; a drag or AI ord
   h.run('startAiOrder()'); await settle(); await settle();
   assert.equal(h.calls.find(c => c.url === '/api/order-ai').body.group, 'g1', 'AI order in your group: its own order');
 });
+
+test('the Sampler: asks for one image from each of N territories and names the batch Sampler', async () => {
+  const r = genRoutes({ n: 4 });
+  r['/api/invent-prompts'] = { ok: true, ideas: ['Editorial Print', 'Harbor & Signal', 'Fog', 'Sea'].map((w, i) => ({ title: `Idea ${i}`, prompt: `p${i}`, guide: 'dark', world: w })) };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('worldSelect').value = '__sampler__';
+  h.run('renderGen()');
+  assert.equal(h.$('terrName').textContent, 'Sampler');
+  await runGenerate(h);
+  assert.equal(h.calls.find(c => c.url === '/api/invent-prompts').body.world, '__sampler__');
+  assert.equal(h.run('prog.world'), 'Sampler', 'the status bar names it, not the first territory');
+});

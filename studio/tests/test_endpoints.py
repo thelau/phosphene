@@ -963,6 +963,28 @@ def test_an_unexpected_territory_is_kept_and_listed_once_it_has_an_image(live, s
     assert {w["name"]: w["origin"] for w in live("GET", "/api/worlds")[1]["worlds"]}["Fog & Vapor"] == "custom"
 
 
+def test_the_sampler_writes_one_scene_in_each_of_the_territories_tried_least(live, srv, monkeypatch):
+    import json as _json
+    import threading as _th
+    asked, lock = [], _th.Lock()
+    def kimi(prompt, **k):
+        world = next(w["name"] for w in srv.chapters.WORLDS if w["name"] in prompt)
+        with lock:
+            asked.append(world)
+        return _json.dumps([{"title": f"Shot in {world}", "subject": f"subject {world}", "idea": "i", "guide": "dark", "prompt": f"a {world} scene, unique {len(asked)}"}])
+    monkeypatch.setattr(srv, "call_kimi_llm", kimi)
+    st = srv.load_state()
+    tried = srv.chapters.WORLDS[0]["name"]
+    st.setdefault("worlds", {})["x.jpg"] = tried                                       # one territory already tried: it comes last
+    srv.save_state(st)
+    status, res = live("POST", "/api/invent-prompts", {"count": 4, "world": "__sampler__"})
+    assert status == 200 and len(res["ideas"]) == 4, res
+    worlds = [i["world"] for i in res["ideas"]]
+    assert len(set(worlds)) == 4 and tried not in worlds, "four different territories, the least tried"
+    st = srv.load_state()
+    assert all(w in st.get("recent_subjects", {}) for w in worlds), "each one's memory kept, so later batches do not repeat it"
+
+
 def test_kimi_writing_scenes_never_undoes_what_was_trashed_meanwhile_nor_writes_into_another_project(live, srv, monkeypatch):
     """invent-prompts used to save the state it read before Kimi's seconds-long call: a trash made meanwhile was undone."""
     import json as _json

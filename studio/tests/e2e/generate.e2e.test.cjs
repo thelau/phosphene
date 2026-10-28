@@ -11,6 +11,7 @@ test('generate: a custom territory waits for its description; controls lock, pro
   assert.equal(await page.locator('.terr-label').count(), 0, 'no TERRITORY label: they all are');
   assert.match(await page.locator('#terrMenu .tm-item[data-v="__wildcard__"]').textContent(), /Surprise me\s+Kimi invents a territory/);
   assert.equal(await page.locator('#terrMenu .tm-item[data-v=""]').count(), 0, 'no Mix it up: you pick the territory');
+  assert.match(await page.locator('#terrMenu .tm-item[data-v="__sampler__"]').textContent(), /Sampler\s+one image from each of 2 territories/, 'the count picks how many territories (2 here: all there are)');
   await shot('04-territory-list');
   await page.click('#terrMenu .tm-item[data-v="__custom__"]');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'directionInput', 'its description opens at once');
@@ -118,7 +119,7 @@ test('many territories: one column, Describe your own and Surprise me first, the
   await page.waitForSelector('#terrMenu:not([hidden])');
   assert.equal(await page.locator('#terrMenu input').count(), 0, 'no search');
   const order = await page.locator('#terrMenu .tm-item').evaluateAll(els => els.slice(0, 4).map(e => e.dataset.v));
-  assert.deepEqual(order, ['__custom__', '__wildcard__', 'Editorial Print', 'Matter & Elements'], 'the two ways to a new territory, then the territories');
+  assert.deepEqual(order, ['__custom__', '__wildcard__', '__sampler__', 'Editorial Print'], 'Describe your own, Surprise me, Sampler, then the territories');
   assert.equal(await page.locator('#terrMenu .tm-sep').count(), 3, 'a line under the two, and between the core, custom and invented groups');
   assert.equal(await page.locator('#terrMenu .tm-world').count(), 32);
   assert.equal(await page.locator('#terrMenu .tm-head').count(), 1);

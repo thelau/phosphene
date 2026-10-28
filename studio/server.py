@@ -659,6 +659,8 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     Returns exactly `count` scenes whenever Kimi can supply them: large batches are asked in chunks of up to 10,
     and a short answer is followed up with a request for just the missing ones.
     """
+    if world == "__sampler__":
+        return ask_kimi_sampler(st, api_key, kimi_model, count, direction, stats)
     w = chapters.choose_world(st, world or "")
     if direction and not world:
         w = match_world(st, api_key, kimi_model, direction) or invent_world(st, api_key, kimi_model, direction)
@@ -689,6 +691,48 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     if stats is not None:
         stats.update(world=w["name"], returned=len(out), wanted=count, **totals)
     return out[:count]
+
+
+def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direction: str = "", stats: dict | None = None) -> list[dict]:
+    """The Sampler: one scene from each of `count` territories, the ones tried least first (to explore at large). Each territory's
+    scene is written by its own Kimi request, 6 at a time, each on a copy of the state; their memory (subjects, territories, axes
+    used) is merged back into `st` after, so later batches still avoid repeating them."""
+    from concurrent.futures import ThreadPoolExecutor
+    made = chapters.world_stats(st)
+    worlds = sorted(chapters.all_worlds(st), key=lambda w: (made.get(w["name"], {}).get("n", 0), random.random()))[:max(1, count)]
+
+    def one(w):
+        mine = json.loads(json.dumps(st))
+        try:
+            got, info = _ask_chunk(mine, api_key, kimi_model, w, 1, direction, [])
+            return w, mine, got[:1], info
+        except Exception as e:
+            print(f"[KIMI] sampler: {w['name']} failed ({str(e)[:120]})", flush=True)
+            return w, None, [], {}
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        done = list(pool.map(one, worlds))
+    out, totals, errors = [], {"asked_kimi": 0, "from_kimi": 0, "dropped_duplicates": 0, "topped_up": 0, "kimi_calls": 0}, 0
+    for w, mine, got, info in done:
+        if mine is None:
+            errors += 1
+            continue
+        out += got
+        totals["kimi_calls"] += 1
+        for k, v in info.items():
+            totals[k] = totals.get(k, 0) + v
+        name = w["name"]                                   # what this request remembered, into the batch's state
+        st.setdefault("recent_subjects", {})[name] = mine.get("recent_subjects", {}).get(name, [])
+        st.setdefault("recent_worlds", []).append(name)
+        for axis, vals in (mine.get("recent_axes") or {}).items():
+            if vals:
+                st.setdefault("recent_axes", {}).setdefault(axis, []).append(vals[-1])
+                st["recent_axes"][axis] = st["recent_axes"][axis][-12:]
+    st["recent_worlds"] = st.get("recent_worlds", [])[-8:]
+    if not out and errors:
+        raise RuntimeError("Kimi could not write the sampler's scenes")
+    if stats is not None:
+        stats.update(world="Sampler", returned=len(out), wanted=count, territories=[w["name"] for w, *_ in done], **totals)
+    return out
 
 
 AI_JOBS: dict = {}

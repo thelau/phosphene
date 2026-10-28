@@ -2846,6 +2846,9 @@
       } else if (v === '__custom__') {
         input.placeholder = 'what is it? e.g. fog, clouds, rain, lightning';
         say = 'Describe your own: every image will be about what you write. A look and palette are invented for it.';
+      } else if (v === '__sampler__') {
+        input.placeholder = 'e.g. warm light (every territory follows it)';
+        say = 'Sampler: one image from each of as many territories as images, the ones you have tried least first.';
       } else if (v === '__wildcard__') {
         input.placeholder = 'a hint for Kimi, if you like';
         say = 'Surprise me: Kimi invents a territory we don\'t cover yet.';
@@ -2863,13 +2866,14 @@
     // ---- the generation row: Territory (all Generate needs) → Refine (optional; Describe, required, for a custom territory) → count → Generate ----
     const ICON_WORLD = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EC540C" stroke-width="2"><rect x="7" y="3" width="10" height="18" rx="2"></rect><circle cx="12" cy="12" r="2" fill="#EC540C" stroke="none"></circle></svg>';
     const ICON_PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>';
+    const ICON_SAMPLER = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg>';
     const ICON_SPARK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>';
     let refineEditing = false;
-    function namedWorlds() { return [...document.getElementById('worldSelect').options].filter(o => o.value && o.value !== '__custom__' && o.value !== '__wildcard__'); }
+    function namedWorlds() { return [...document.getElementById('worldSelect').options].filter(o => o.value && !o.value.startsWith('__')); }
     function renderGen() {
       const v = document.getElementById('worldSelect').value, custom = v === '__custom__';
       const opt = document.getElementById('worldSelect').selectedOptions[0];
-      const [icon, name] = v === '' ? ['', 'Choose a territory'] : custom ? [ICON_PLUS, 'Describe your own'] : v === '__wildcard__' ? [ICON_SPARK, 'Surprise me'] : [ICON_WORLD, v];   // just the name (the counts are in the list)
+      const [icon, name] = v === '' ? ['', 'Choose a territory'] : custom ? [ICON_PLUS, 'Describe your own'] : v === '__wildcard__' ? [ICON_SPARK, 'Surprise me'] : v === '__sampler__' ? [ICON_SAMPLER, 'Sampler'] : [ICON_WORLD, v];   // just the name (the counts are in the list)
       const ic = document.getElementById('terrIcon');
       if (ic.dataset.v !== v) { ic.innerHTML = icon; ic.dataset.v = v; }
       document.getElementById('terrName').textContent = name;
@@ -2927,19 +2931,21 @@
     let terrActive = 0;
     function terrOptions() {
       const all = [...document.getElementById('worldSelect').options];
-      return { worlds: namedWorlds(), custom: all.find(o => o.value === '__custom__'), wild: all.find(o => o.value === '__wildcard__') };
+      return { worlds: namedWorlds(), custom: all.find(o => o.value === '__custom__'), wild: all.find(o => o.value === '__wildcard__'), sampler: all.find(o => o.value === '__sampler__') };
     }
     function renderTerrMenu() {
       const m = document.getElementById('terrMenu');
       const cur = document.getElementById('worldSelect').value;
-      const { worlds, custom, wild } = terrOptions();
+      const { worlds, custom, wild, sampler } = terrOptions();
       const item = (v, inner, cls = '') => `<div class="tm-item ${cls}" role="option" data-v="${escapeHtml(v)}" aria-selected="${v === cur}">${inner}</div>`;
       const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
       // one column: the two ways to a new territory first, then the territories (new ones join at the end)
       let html = '';
       if (custom) html += item('__custom__', `${ICON_PLUS}<span>Describe your own <span class="tm-sub">in your own words</span></span>${check}`);
       if (wild) html += item('__wildcard__', `${ICON_SPARK}<span>Surprise me <span class="tm-sub">Kimi invents a territory</span></span>${check}`);
-      if (custom || wild) html += '<div class="tm-sep"></div>';
+      const n = Math.min(parseInt(document.getElementById('batchCountSelect').value, 10) || 4, worlds.length);   // the count picks how many territories
+      if (sampler && worlds.length > 1) html += item('__sampler__', `${ICON_SAMPLER}<span>Sampler <span class="tm-sub">one image from each of ${n} territories</span></span>${check}`);
+      if (custom || wild || sampler) html += '<div class="tm-sep"></div>';
       if (worlds.length) {
         // where each comes from, on the right: CORE (built in), INVENTED (Surprise me), CUSTOM (Describe your own); the ones never made a little dimmer
         const row = o => item(o.value, `<span class="tm-name">${escapeHtml(o.value)}</span><span class="tm-origin">${escapeHtml(o.dataset.origin || 'core')}</span>${check}`, 'tm-world' + (+o.dataset.n ? '' : ' unmade'));
@@ -3137,7 +3143,7 @@
       const failedItems = [], left = new Map(ideas.map((it, i) => [i, it]));
       prog.stage = 'render';
       prog.total = ideas.length;
-      prog.world = (ideas[0] && ideas[0].world) || '';
+      prog.world = new Set(ideas.map(i => i.world)).size > 1 ? 'Sampler' : (ideas[0] && ideas[0].world) || '';   // the Sampler: many territories
       prog.slots = ideas.map(() => 'wait');
       prog.titles = ideas.map(i => i.title);
       prog.why = ideas.map(() => '');
