@@ -63,3 +63,27 @@ npm run setup        # only needed when packages changed; safe to run any time
 ## For developers
 
 `AGENTS.md` describes how everything works. Tests: `.venv/bin/python -m pytest studio/tests -q`.
+
+## Releasing the Mac app
+
+```sh
+npm run release 0.1.1     # builds, signs and publishes to github.com/thelau/phosphene-releases
+```
+
+The automatic tests (`.venv/bin/python -m pytest studio/tests -q`, `npm test`, `node --test studio/tests/e2e/*.e2e.test.cjs`) cover
+the page and the server. They cannot reach the Mac app's own shell, where several bugs were only found by hand, so before
+publishing, open the built app (`app/src-tauri/target/release/bundle/macos/Phosphene.app`) and check, about 5 minutes:
+
+- [ ] **It opens**, on the last project, with the Phosphene icon in the Dock and in ⌘Tab; About Phosphene shows the new version.
+- [ ] **Menu bar**: File › New Project (⌘N) opens the form; File › Open Project File… (⌘O) opens the macOS file dialog; Project ›
+      Import project… opens the same dialog; Export project… saves a `.phos` file to Downloads.
+- [ ] **A `.phos` file double-clicked in Finder** opens as a project.
+- [ ] **Settings › Connect Krea** opens Krea's sign-in in your browser and comes back connected.
+- [ ] **Generate** a small batch (2 images): they arrive with the logo check's badges.
+- [ ] **Sound**: Film › play: the drone plays. Put Phosphene behind other windows for 5 minutes, come back: it still plays.
+- [ ] **Export** a short film: "Downloaded", and the MP4 in Downloads plays (not a tiny broken file).
+- [ ] **⌘Q while generating** asks "Quit anyway / Keep working"; reopening offers to Resume the images not made.
+- [ ] **Full screen** and back: the window's red / yellow / green buttons sit right in the top bar.
+- [ ] **Update** (from the previous version installed): the "Restart to update" bar appears and the app comes back as the new version.
+
+Keep the update signing key (`~/.tauri/phosphene.key`) backed up: without it, installed apps can never update again.
