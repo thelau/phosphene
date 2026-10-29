@@ -49,9 +49,9 @@ def test_scattered_is_away_from_the_target_and_all_over(srv):
     got = draws(srv, "scattered")
     inside_the_frame(srv, got)
     for pl in got:
-        assert pl["kind"] == "scattered" and away(pl) >= 18 - 0.1, pl
+        assert pl["kind"] == "scattered" and away(pl) >= 8 - 0.1, pl
         f = pl["size"] / 18
-        assert 0.5 - 0.01 <= f <= 0.8 + 0.01 or 1.25 - 0.01 <= f <= 1.8 + 0.01, pl
+        assert 0.6 - 0.01 <= f <= 0.85 + 0.01 or 1.2 - 0.01 <= f <= 1.6 + 0.01, pl
     xs, ys = [pl["x"] for pl in got], [pl["y"] for pl in got]
     assert min(xs) < 20 and max(xs) > 80 and min(ys) < 20 and max(ys) > 80, "to the corners"
     assert placement.clean(got[0]) == got[0]

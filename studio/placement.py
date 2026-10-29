@@ -18,7 +18,7 @@ LEVELS = {                    # per level, bands that never overlap, so each rea
     # how far from the project's place (% of the frame, the larger of across and down; None: as far as the frame goes),
     # and its size, times the project's (one of two bands: smaller or bigger, never about the same)
     "loose": {"away": (0.5, 2.0), "size": ((0.9, 0.96), (1.04, 1.1))},   # as the reference films: a breath off, felt across cuts more than seen
-    "scattered": {"away": (18.0, None), "size": ((0.5, 0.8), (1.25, 1.8))},
+    "scattered": {"away": (8.0, None), "size": ((0.6, 0.85), (1.2, 1.6))},
 }
 SIZE_PCT = (6.0, 45.0)        # never smaller or bigger than this share of the width
 MARGIN = 6.0                  # % of the frame kept clear between the mark's box and the frame's edge
