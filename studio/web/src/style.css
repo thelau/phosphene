@@ -888,10 +888,17 @@
 
 /* your own images: added with Add images or dropped on the grid */
 .card-model-badge.uploaded { color: #BFE3C8; background: rgba(110, 200, 140, .14); }
-.gallery-col { position: relative; }
-.drop-veil { position: absolute; inset: 8px; z-index: 40; display: flex; align-items: center; justify-content: center; border-radius: 14px; border: 2px dashed var(--orange); background: rgba(18, 17, 16, .82); pointer-events: none; }
-.drop-veil[hidden] { display: none; }
-.drop-veil span { font-size: 18px; font-weight: 700; color: var(--text); }
+/* files dragged over the window: the dim below the app bar and the tray (Claude Design, "Drop zone · tray"); no frame, no other orange */
+.drop-zone { position: fixed; inset: 0; z-index: 200; pointer-events: none; }
+.drop-zone[hidden] { display: none; }
+.drop-dim { position: absolute; left: 0; right: 0; top: var(--dim-top, 56px); bottom: 0; background: linear-gradient(180deg, rgba(12, 11, 10, .35) 0%, rgba(12, 11, 10, .78) 70%); }
+.drop-tray { position: absolute; left: 50%; bottom: var(--tray-b, 28px); width: min(620px, calc(100vw - 48px)); box-sizing: border-box; display: flex; align-items: center; gap: 22px; padding: 20px 24px; border-radius: 16px; background: #1E1D1B; border: 1.5px solid #FEFFE7; box-shadow: 0 30px 80px rgba(0, 0, 0, .6); opacity: 0; transform: translate(-50%, 12px); transition: opacity 150ms ease-out, transform 150ms ease-out; }
+.drop-zone.on .drop-tray { opacity: 1; transform: translate(-50%, 0); }
+.drop-tray svg { flex: none; }
+.drop-words { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.drop-words b { font-size: 20px; font-weight: 700; color: #FEFFE7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drop-words span { font-size: 14px; color: #A8A390; }
+@media (prefers-reduced-motion: reduce) { .drop-tray { transition: none; } }
 
 /* a project of your own images, no mark yet: nothing to place, nothing to target */
 body.no-mark .place, body.no-mark .place-sep { display: none; }

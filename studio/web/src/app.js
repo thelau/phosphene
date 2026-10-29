@@ -3444,19 +3444,40 @@
       await loadState();
       setStatus(`${added} image${added === 1 ? '' : 's'} added${failed.length ? ` · ${failed.length} could not be added (${failed.slice(0, 2).join('; ')})` : ''}`);
     }
-    (() => {                                                                 // files dropped on the grid (a card dragged inside the grid carries none)
-      const col = document.querySelector('.gallery-col'), veil = document.getElementById('dropVeil');
-      if (!col || !col.addEventListener) return;
+    // files dragged over the window (a card dragged inside the grid carries none): a dim and a tray that says what a drop does; a drop
+    // anywhere adds them, at the end of the Selection, from the Trash too. A depth count, so passing over child elements never flickers
+    (() => {
+      const zone = document.getElementById('dropZone');
+      if (!zone || !window.addEventListener) return;
       const hasFiles = e => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
-      let depth = 0;
-      col.addEventListener('dragenter', e => { if (!hasFiles(e) || showTrash) return; depth++; veil.hidden = false; }, true);
-      col.addEventListener('dragleave', e => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) veil.hidden = true; }, true);
-      col.addEventListener('dragover', e => { if (hasFiles(e) && !showTrash) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }, true);
-      col.addEventListener('drop', e => {
-        if (!hasFiles(e)) return;
-        e.preventDefault(); e.stopPropagation(); depth = 0; veil.hidden = true;
-        if (!showTrash) uploadImages(e.dataTransfer.files);
-      }, true);
+      const inForm = () => document.getElementById('projectModal').classList.contains('open');   // the project form takes its own drops (a mark)
+      let depth = 0, hideTimer = null;
+      const show = e => {
+        clearTimeout(hideTimer);
+        const n = e.dataTransfer.items ? [...e.dataTransfer.items].filter(it => it.kind === 'file').length : 0;
+        document.getElementById('dropTitle').textContent = n ? `Add ${n} image${n === 1 ? '' : 's'} to ${project.name}` : `Add images to ${project.name}`;
+        const bar = document.querySelector('.topbar'), st = document.getElementById('statusText');
+        zone.style.setProperty('--dim-top', `${bar ? bar.getBoundingClientRect().bottom : 56}px`);
+        const stTop = st && st.offsetHeight ? st.getBoundingClientRect().top : innerHeight;      // the batch's status bar showing: 12 px above it
+        zone.style.setProperty('--tray-b', `${stTop < innerHeight ? innerHeight - stTop + 12 : 28}px`);
+        zone.hidden = false;
+        void zone.offsetWidth;                                               // laid out first, so the tray rises from 12 px lower
+        zone.classList.add('on');
+      };
+      const hide = () => {
+        depth = 0;
+        zone.classList.remove('on');
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => { if (!zone.classList.contains('on')) zone.hidden = true; }, 160);   // after the tray has sunk back
+      };
+      addEventListener('dragenter', e => { if (!hasFiles(e) || inForm()) return; e.preventDefault(); if (depth++ === 0 && project) show(e); });
+      addEventListener('dragleave', e => { if (!hasFiles(e) || inForm()) return; depth = Math.max(0, depth - 1); if (!depth) hide(); });
+      addEventListener('dragover', e => { if (!hasFiles(e) || inForm()) return; e.preventDefault(); e.dataTransfer.dropEffect = project ? 'copy' : 'none'; });
+      addEventListener('drop', e => {
+        if (!hasFiles(e) || inForm()) return;
+        e.preventDefault(); hide();                                          // never the browser opening the file instead
+        uploadImages(e.dataTransfer.files);
+      });
     })();
     const isBusy = () => generating || aiRunning || exporting || purging || uploading;
     // a manual or automatic reload in the middle of a batch would lose the images still waiting to be generated

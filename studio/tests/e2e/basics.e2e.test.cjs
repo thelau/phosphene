@@ -1311,11 +1311,20 @@ test('your own images: Add images or a drop on the grid; each framed to 9:16 her
     for (const n of ['a.png', 'b.png']) { const c = document.createElement('canvas'); c.width = 50; c.height = 90; const blob = await new Promise(r => c.toBlob(r, 'image/png')); d.items.add(new File([blob], n, { type: 'image/png' })); }
     return d;
   });
+  await page.click('#tabTrash');                                             // dropped while the Trash is open: they still go to the Selection
   await page.dispatchEvent('.gallery-col', 'dragenter', { dataTransfer: dt });
-  assert.equal(await page.locator('#dropVeil').isVisible(), true, 'says it will add them');
-  await page.dispatchEvent('.gallery-col', 'drop', { dataTransfer: dt });
+  await page.dispatchEvent('#grid', 'dragenter', { dataTransfer: dt });           // over a child: still one tray (a depth count)
+  await page.dispatchEvent('.gallery-col', 'dragleave', { dataTransfer: dt });
+  assert.equal(await page.locator('#dropZone').isVisible(), true, 'says what a drop does, without flickering between elements');
+  assert.equal(await text('#dropTitle'), `Add 2 images to ${api.state.projects.find(p => p.slug === api.state.project).name}`);
+  await page.waitForTimeout(200);
+  const tray = await page.locator('.drop-tray').evaluate(t => { const r = t.getBoundingClientRect(); return { bottom: Math.round(innerHeight - r.bottom), w: Math.round(r.width), opacity: getComputedStyle(t).opacity, mid: Math.round(r.left + r.width / 2 - innerWidth / 2) }; });
+  assert.deepEqual(tray, { bottom: 28, w: 620, opacity: '1', mid: 0 }, 'centred, 28 px from the bottom, 620 px wide');
+  await shot('31-drop-tray');
+  await page.dispatchEvent('#grid', 'drop', { dataTransfer: dt });
   await page.waitForFunction(() => /2 images added/.test(document.getElementById('toast').textContent));
-  assert.equal(await page.locator('#dropVeil').isVisible(), false);
+  await page.waitForFunction(() => document.getElementById('dropZone').hidden);
+  await page.click('#tabSelection');
   assert.equal(await page.locator('.card-model-badge.uploaded').count(), 3);
   assert.deepEqual(consoleErrors, []);
   await ctx.close();

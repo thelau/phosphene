@@ -263,7 +263,6 @@
           <span>The selection is locked until it finishes: no trashing, dragging or generating.</span>
         </div>
         <div class="grid-col" id="grid" data-size="M"></div>
-        <div class="drop-veil" id="dropVeil" hidden><span>Drop to add these images</span></div>
         <p class="grid-empty" id="gridEmpty" hidden></p>
       </div>
 
@@ -673,6 +672,14 @@
   </div>
 
   <div class="status-text" id="statusText" data-idle="1">Ready</div>
+  <!-- files dragged over the window: a dim and a tray that says what a drop does (Claude Design, "Drop zone · tray"); a drop anywhere adds them -->
+  <div class="drop-zone" id="dropZone" hidden aria-hidden="true">
+    <div class="drop-dim"></div>
+    <div class="drop-tray">
+      <svg width="84" height="72" viewBox="0 0 26 22" fill="none" stroke="#FEFFE7" stroke-width="0.9" aria-hidden="true"><rect x="1" y="4" width="10" height="17" rx="1.2" transform="rotate(-8 6 12)"></rect><rect x="8" y="2" width="10" height="17" rx="1.2" fill="#1E1D1B"></rect><rect x="15" y="3" width="10" height="17" rx="1.2" fill="#1E1D1B" transform="rotate(8 20 11)"></rect><rect x="18.6" y="9.6" width="3" height="3" stroke="#EC540C" stroke-dasharray="0.8 0.6" transform="rotate(8 20 11)"></rect></svg>
+      <span class="drop-words"><b id="dropTitle">Add images</b><span>They land at the end of Selection.</span></span>
+    </div>
+  </div>
   <div class="toast" id="toast" role="status"></div>
 
   <div class="busy-bg" id="busy" hidden>
