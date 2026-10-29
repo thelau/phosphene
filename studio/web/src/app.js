@@ -329,7 +329,7 @@
       if (typeof renderPlace === 'function') renderPlace();
     }
     // the Mark menu: which of the project's marks (with several), where it goes, and Keep it as designed; one button, sections inside
-    const POSITIONS = [['exact', 'On target', "the project's place and size"], ['loose', 'Loose', 'a slight drift off it'], ['scattered', 'Scattered', 'anywhere in the frame']];
+    const POSITIONS = [['exact', 'On target', 'same spot and size in every image'], ['loose', 'Loose', 'a little off, a little bigger or smaller'], ['scattered', 'Scattered', 'anywhere, much bigger or smaller']];
     function markChoices() {
       const marks = (project && project.marks) || [];
       return marks.length ? [['main', 'Main mark', project.mark_url], ...marks.map(m => [m.id, m.name, m.url]), ['mix', 'Mix', null]] : [];
@@ -349,10 +349,10 @@
       const img = url => `<img class="pm-thumb" src="${escapeHtml(url)}" alt="" />`;
       const mix = `<span class="pm-mix">${choices.filter(c => c[2]).slice(0, 2).map(c => img(c[2])).join('')}</span>`;
       m.innerHTML = (choices.length ? '<div class="tm-head"><span>Mark</span></div>' + choices.map(([v, name, url]) =>
-          item('mark', v, `${url ? img(url) : mix}<span>${escapeHtml(name)}${v === 'mix' ? ' <span class="tm-sub">each image one of them</span>' : ''}</span>`, v === mk)).join('') + '<div class="tm-sep"></div>' : '')
+          item('mark', v, `${url ? img(url) : mix}<span>${escapeHtml(name)}${v === 'mix' ? ' <span class="tm-sub">switches between your marks</span>' : ''}</span>`, v === mk)).join('') + '<div class="tm-sep"></div>' : '')
         + '<div class="tm-head"><span>Position</span></div>' + POSITIONS.map(([v, name, sub]) => item('position', v, `<span>${name} <span class="tm-sub">${sub}</span></span>`, v === t)).join('')
         + '<div class="tm-sep"></div>'
-        + `<div class="tm-item pm-keep" role="menuitemcheckbox" data-list="keep" data-v="keep" aria-checked="${keep}"><span class="pm-box"></span><span>Keep it as designed <span class="tm-sub">its colours, lettering and details</span></span></div>`;
+        + `<div class="tm-item pm-keep" role="menuitemcheckbox" data-list="keep" data-v="keep" aria-checked="${keep}"><span class="pm-box"></span><span>Keep it as designed <span class="tm-sub">same colours and lettering as your file</span></span></div>`;
       m.querySelectorAll('img.pm-thumb').forEach(fitMarkTone);
     }
     function togglePlaceMenu(e, open) {

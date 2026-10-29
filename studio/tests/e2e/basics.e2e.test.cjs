@@ -1243,7 +1243,7 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.equal(await text('#placeName'), 'Main · On target', 'two marks: the menu names the mark too');
   await page.click('#placeBtn');
   assert.deepEqual(await page.locator('#placeMenu .tm-head').allTextContents(), ['Mark', 'Position']);
-  assert.deepEqual(await page.locator('#placeMenu .tm-item[data-list="mark"]').allTextContents(), ['Main mark', 'Bar', 'Mix each image one of them']);
+  assert.deepEqual(await page.locator('#placeMenu .tm-item[data-list="mark"]').allTextContents(), ['Main mark', 'Bar', 'Mix switches between your marks']);
   assert.equal(await page.locator('#placeMenu .tm-item[data-list="mark"] img.pm-thumb').first().isVisible(), true, 'each mark previewed');
   assert.equal(await page.locator('#keepCheck').evaluate(e => getComputedStyle(e).opacity), '0', 'its source of truth stays out of sight');
   await shot('27-mark-menu');
