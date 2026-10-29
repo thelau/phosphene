@@ -49,7 +49,6 @@
     }
 
     function toggleSettings(forceOpen = null) {
-      loadModelStats();
       const pop = document.getElementById('settingsPopover');
       if (forceOpen === true) pop.classList.add('open');
       else if (forceOpen === false) pop.classList.remove('open');
@@ -3369,17 +3368,6 @@
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ critic_enabled: document.getElementById('criticOn').checked, critic_autotrash: document.getElementById('criticTrash').checked })
       });
-    }
-
-    async function loadModelStats() {
-      try {
-        const data = await (await fetch('/api/stats')).json();
-        const rows = Object.entries(data.models)
-          .filter(([, s]) => s.n > 0)
-          .sort((a, b) => b[1].score - a[1].score)
-          .map(([m, s]) => `${formatModelShort(m)}: ${s.n} gen · kept ${s.kept} · 🗑 ${s.trashed} · QA✗ ${s.qa_failed}`);
-        document.getElementById('modelStats').innerHTML = rows.map(escapeHtml).join('<br>') || 'No data yet';
-      } catch (e) {}
     }
 
     // Krea: sign in from here (MCP OAuth). The sign-in page opens in a new tab; Krea sends it back to the app, and the page

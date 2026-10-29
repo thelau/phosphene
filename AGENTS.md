@@ -63,7 +63,7 @@ page, `PAGE_BUSY`, `ask_before_quitting`: "Quit anyway" / "Keep working").
 
 ## Roadmap
 Done:
-1. Taste loop (`studio/taste.py`): kept = liked, trashed = disliked (logo-QA auto-trash is tracked separately in `qa_failed`), liked/disliked brief injected into prompt generation, per-model scorecard in Settings, "Auto" model that exploits/explores by score. Added Ideogram 4.5, Luma UNI-1, Meta Muse, Runway Gen-4 (all take the logo guide image).
+1. Taste loop (`studio/taste.py`): kept = liked, trashed = disliked (logo-QA auto-trash is tracked separately in `qa_failed`), liked/disliked brief injected into prompt generation, a per-model score (no longer shown in Settings: the scorecard was removed on request, 2026-10-29; `/api/stats` still serves it), "Auto" model that exploits/explores by score. Added Ideogram 4.5, Luma UNI-1, Meta Muse, Runway Gen-4 (all take the logo guide image).
 2. Diversity (`studio/diversity.py`): no fixed categories; each shot is a random combo of subject/material/setting/light/camera/logo/palette, recent values avoided, near-duplicate prompts dropped (Jaccard novelty).
 3. Tempo: BPM slider + cuts-per-beat multiple in preview and export.
 
