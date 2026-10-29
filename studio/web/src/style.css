@@ -98,9 +98,23 @@
     .gen .vfield.gen-count .vf-val { min-width: 0; text-align: left; font-family: inherit; font-size: 14px; }
     .gen .vfield.gen-count:hover:not([aria-disabled="true"]), .gen .vfield.gen-count:focus-visible { background: #2A2825; }
     .vfield[aria-disabled="true"] { opacity: .5; pointer-events: none; }
-    .csel[data-for="targetSelect"] { width: 150px; }
-    .csel[data-for="markSelect"] { width: 160px; }
-    body:not(.multi-mark) .csel[data-for="markSelect"], body:not(.multi-mark) .gen-sep.mark-only { display: none; }   /* only for a project with several marks */
+    /* the Mark menu: which mark (with several), where it goes, and Keep it as designed: one button, sections inside */
+    .place { position: relative; display: flex; }
+    .place-btn { min-width: 170px; max-width: 300px; display: flex; align-items: center; gap: 8px; padding: 0 16px 0 18px; border: 0; border-radius: 0; background: transparent; color: var(--text); font-size: 14px; font-weight: 600; white-space: nowrap; }
+    .place-btn > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+    .place-btn[aria-expanded="true"], .place-btn:hover:not(:disabled) { background: #2A2825; }
+    .place-btn > svg { color: var(--muted); flex: none; }
+    .place-thumb, .pm-thumb { width: 22px; height: 22px; flex: none; object-fit: contain; border-radius: 4px; background: #6E6E6E; }   /* mid grey: a dark mark and a light one both show */
+    .place-thumb[hidden] { display: none; }
+    .pm-mix { position: relative; width: 22px; height: 22px; flex: none; }
+    .pm-mix .pm-thumb { position: absolute; width: 16px; height: 16px; }
+    .pm-mix .pm-thumb + .pm-thumb { right: 0; bottom: 0; }
+    .place-menu { left: auto; right: 0; min-width: 340px; }
+    .place-menu .tm-item { gap: 10px; }
+    .pm-keep .pm-box { width: 16px; height: 16px; flex: none; border-radius: 4px; border: 1.5px solid var(--line-3); display: flex; align-items: center; justify-content: center; }
+    .pm-keep[aria-checked="true"] .pm-box { background: var(--orange); border-color: var(--orange); }
+    .pm-keep[aria-checked="true"] .pm-box::after { content: "✓"; color: #1A1A1A; font-size: 11px; font-weight: 800; }
+    .pm-keep .tm-check { display: none; }
     .pf-marks { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-2); display: flex; flex-direction: column; gap: 6px; }
     .pf-marks[hidden] { display: none; }
     .pf-marks-head { font-size: 12px; font-weight: 600; color: var(--text-2); }
@@ -114,6 +128,7 @@
     .pf-add-mark:hover { color: var(--text); border-color: var(--muted); }
     .pf-add-mark input { display: none; }
     .pf-add-mark.off { opacity: .4; pointer-events: none; }
+    .card-model-badge.designed { color: #F5C2A8; background: rgba(236, 84, 12, .14); }   /* kept exactly as designed */
     .card-model-badge.mark { color: #E6D3A8; background: rgba(230, 200, 140, .13); }   /* made with another of the project's marks */
     .gen .csel-face { height: 44px; padding: 0 40px 0 18px; border: 0; border-radius: 0; background-color: transparent; background-position: right 16px center; font-weight: 600; font-size: 14px; }   /* room on either side of "20 images" */
     .settings-popover .csel, .ai-panel .csel { display: flex; width: 100%; }
@@ -413,7 +428,7 @@
     /* one control: Territory (the choice that matters) → Refine (optional) → how many → Generate */
     .gen { position: relative; display: flex; align-items: stretch; flex: 1; min-width: 0; height: 46px; border-radius: 11px; border: 1px solid var(--line-3); background: #1A1918; }
     .gen-sep { width: 1px; background: var(--line-3); }
-    select.src-only { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }   /* the source of truth, drawn by the button */
+    select.src-only, input.src-only { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }   /* the source of truth, drawn by the button */
     .terr-btn { flex: none; display: flex; align-items: center; gap: 10px; width: 260px;   /* fixed: the bar does not shift when the territory changes */ padding: 0 12px 0 14px; border: 0; border-radius: 10px 0 0 10px; background: transparent; color: var(--text); text-align: left; }
     .terr-btn[aria-expanded="true"], .terr-btn:hover:not(:disabled) { background: #2A2825; }
     .terr-btn > svg { color: var(--muted); flex: none; }

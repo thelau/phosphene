@@ -221,6 +221,25 @@ def mark_box(p: dict, width_px: float | None = None) -> tuple[int, int, int, int
     return cx - w // 2, cy - h // 2, w, h
 
 
+def mark_artwork(p: dict) -> Image.Image:
+    """The mark as designed (its own colours and details, RGBA), trimmed to it: what Keep it as designed shows Krea."""
+    img = Image.open(p["mark_file"]).convert("RGBA")
+    a = img.split()[3]
+    if a.getextrema()[0] > 250:                       # opaque: its background taken out as mark_alpha does
+        img.putalpha(_opaque_alpha(img))
+    box = img.split()[3].getbbox()
+    return img.crop(box) if box else img
+
+
+def _opaque_alpha(img: Image.Image) -> Image.Image:
+    rgb = img.convert("RGB")
+    w, h = rgb.size
+    corners = [rgb.getpixel(xy) for xy in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1))]
+    bg = tuple(sum(c[i] for c in corners) // 4 for i in range(3))
+    d = ImageChops.difference(rgb, Image.new("RGB", rgb.size, bg)).convert("L")
+    return d.point(lambda v: 255 if v > 40 else int(v * 255 / 40))
+
+
 def make_guides(p: dict) -> None:
     """The two guide images Krea draws from: the mark in cream on near-black (dark) and in ink on cream (light), at its size and place."""
     a = mark_alpha(Image.open(p["mark_file"]))
@@ -570,6 +589,8 @@ def _clean_state(f: Path) -> None:
     for g in st.get("groups") or []:
         if isinstance(g, dict) and isinstance(g.get("files"), list):
             g["files"] = [n for n in g["files"] if isinstance(n, str) and _bare(n)]
+    if isinstance(st.get("as_designed"), list):        # images made with Keep it as designed
+        st["as_designed"] = [n for n in st["as_designed"] if isinstance(n, str) and _bare(n)]
     if isinstance(st.get("marks_used"), dict):        # which images were made with another of the project's marks
         st["marks_used"] = {k: v for k, v in st["marks_used"].items() if _bare(k) and isinstance(v, str) and MARK_ID.match(v)}
     elif "marks_used" in st:

@@ -326,8 +326,56 @@
         sel.innerHTML = opts.map(([v, t]) => `<option value="${escapeHtml(v)}">${escapeHtml(t)}</option>`).join('');
       }
       sel.value = opts.some(o => o[0] === cur) ? cur : 'main';
-      if (typeof syncSelects === 'function') syncSelects();
+      if (typeof renderPlace === 'function') renderPlace();
     }
+    // the Mark menu: which of the project's marks (with several), where it goes, and Keep it as designed; one button, sections inside
+    const POSITIONS = [['exact', 'On target', "the project's place and size"], ['loose', 'Loose', 'a slight drift off it'], ['scattered', 'Scattered', 'anywhere in the frame']];
+    function markChoices() {
+      const marks = (project && project.marks) || [];
+      return marks.length ? [['main', 'Main mark', project.mark_url], ...marks.map(m => [m.id, m.name, m.url]), ['mix', 'Mix', null]] : [];
+    }
+    function renderPlace() {
+      const t = document.getElementById('targetSelect').value || 'exact', mk = document.getElementById('markSelect').value || 'main';
+      const keep = document.getElementById('keepCheck').checked, choices = markChoices(), mine = choices.find(c => c[0] === mk) || choices[0];
+      const pos = (POSITIONS.find(p => p[0] === t) || POSITIONS[0])[1];
+      document.getElementById('placeName').textContent = [mine ? (mk === 'main' ? 'Main' : mine[1]) : '', pos, keep ? 'As designed' : ''].filter(Boolean).join(' · ');
+      const thumb = document.getElementById('placeThumb');
+      thumb.hidden = !(mine && mine[2]);
+      if (mine && mine[2] && thumb.getAttribute('src') !== mine[2]) thumb.src = mine[2];
+      const m = document.getElementById('placeMenu');
+      if (m.hidden) return;
+      const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
+      const item = (list, v, inner, on) => `<div class="tm-item" role="menuitemradio" data-list="${list}" data-v="${escapeHtml(v)}" aria-selected="${on}" aria-checked="${on}">${inner}${check}</div>`;
+      const img = url => `<img class="pm-thumb" src="${escapeHtml(url)}" alt="" />`;
+      const mix = `<span class="pm-mix">${choices.filter(c => c[2]).slice(0, 2).map(c => img(c[2])).join('')}</span>`;
+      m.innerHTML = (choices.length ? '<div class="tm-head"><span>Mark</span></div>' + choices.map(([v, name, url]) =>
+          item('mark', v, `${url ? img(url) : mix}<span>${escapeHtml(name)}${v === 'mix' ? ' <span class="tm-sub">each image one of them</span>' : ''}</span>`, v === mk)).join('') + '<div class="tm-sep"></div>' : '')
+        + '<div class="tm-head"><span>Position</span></div>' + POSITIONS.map(([v, name, sub]) => item('position', v, `<span>${name} <span class="tm-sub">${sub}</span></span>`, v === t)).join('')
+        + '<div class="tm-sep"></div>'
+        + `<div class="tm-item pm-keep" role="menuitemcheckbox" data-list="keep" data-v="keep" aria-checked="${keep}"><span class="pm-box"></span><span>Keep it as designed <span class="tm-sub">its colours, lettering and details</span></span></div>`;
+    }
+    function togglePlaceMenu(e, open) {
+      if (e && e.stopPropagation) e.stopPropagation();
+      const m = document.getElementById('placeMenu');
+      open = open === undefined ? m.hidden : open;
+      if (open && (generating || aiRunning)) return;
+      m.hidden = !open;
+      document.getElementById('placeBtn').setAttribute('aria-expanded', String(open));
+      renderPlace();
+    }
+    function choosePlace(list, v) {
+      if (list === 'keep') { const k = document.getElementById('keepCheck'); k.checked = !k.checked; }
+      else setv(list === 'mark' ? 'markSelect' : 'targetSelect', v);
+      saveSettings();
+      renderPlace();                                                         // it stays open: a pick in each section
+    }
+    (() => {
+      const m = document.getElementById('placeMenu');
+      if (!m || !m.addEventListener) return;
+      m.addEventListener('mousedown', e => e.preventDefault());
+      m.addEventListener('click', e => { e.stopPropagation(); const it = e.target.closest('.tm-item'); if (it) choosePlace(it.dataset.list, it.dataset.v); });
+      document.addEventListener('click', () => { if (!m.hidden) togglePlaceMenu(null, false); });
+    })();
     async function openProjectMenu(e) {
       if (e && e.stopPropagation) e.stopPropagation();
       const m = document.getElementById('projectMenu'), btn = document.getElementById('projectBtn');
@@ -1251,6 +1299,7 @@
           <div class="card-title" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</div>
           <div class="card-meta">
             <span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>
+            ${p.as_designed ? '<span class="card-model-badge designed" title="Kept exactly as designed: its colours, lettering and details">As designed</span>' : ''}
             ${p.mark_name ? `<span class="card-model-badge mark" title="Made with ${escapeHtml(p.mark_name)}, one of the project's marks">${escapeHtml(p.mark_name)}</span>` : ''}
             ${p.placement && p.placement.kind !== 'exact' ? `<span class="card-model-badge target" title="${escapeHtml(targetTip(p.placement))}">${p.placement.kind === 'scattered' ? 'Scattered' : 'Loose'}</span>` : ''}
             ${p.critic ? `<span class="card-model-badge" title="${escapeHtml(p.critic.reason)}">AI ${p.critic.mean}</span>` : ''}
@@ -1986,7 +2035,7 @@
     // Not in it: permanent deletes and generation (they say so when you start them), the mode and the views.
     const history = [], future = [];
     let applyingHistory = false;
-    const NOT_UNDONE = ['targetSelect', 'markSelect', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
+    const NOT_UNDONE = ['targetSelect', 'markSelect', 'keepCheck', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
     function pushStep(step) { if (!step.settings) commitSettings(); history.push(step); if (history.length > 100) history.shift(); future.length = 0; showUndo(); return step; }
     function showUndo() {
       const b = document.getElementById('undoRandomBtn');
@@ -2851,7 +2900,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect'];
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'keepCheck'];
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
     // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved
@@ -3030,6 +3079,7 @@
     }
     function renderGen() {
       showCount();
+      renderPlace();
       const v = document.getElementById('worldSelect').value, custom = v === '__custom__';
       const opt = document.getElementById('worldSelect').selectedOptions[0];
       const [icon, name] = v === '' ? ['', 'Choose a territory'] : custom ? [ICON_PLUS, 'Describe your own'] : v === '__wildcard__' ? [ICON_SPARK, 'Surprise me'] : v === '__sampler__' ? [ICON_SAMPLER, 'Sampler'] : [ICON_WORLD, v];   // just the name (the counts are in the list)
@@ -3252,7 +3302,7 @@
       const T = window.__TAURI__;                                            // (not TAURI: declared further down, and this runs early)
       if (T && T.event && isBusy() !== toldBusy) { toldBusy = isBusy(); T.event.emit('page-busy', toldBusy).catch(() => {}); }   // the Mac app asks before quitting mid-job
       const lockGen = generating || aiRunning;
-      ['worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'batchCountSelect', 'modelSelect', 'generateBtn', 'terrBtn', 'refineOpen', 'refineSet', 'refineClear'].forEach(id => { document.getElementById(id).disabled = lockGen; });
+      ['worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'placeBtn', 'batchCountSelect', 'modelSelect', 'generateBtn', 'terrBtn', 'refineOpen', 'refineSet', 'refineClear'].forEach(id => { document.getElementById(id).disabled = lockGen; });
       document.getElementById('countField').setAttribute('aria-disabled', String(!!lockGen));
       genRunningLabel();
       syncAiBtn();
@@ -3328,7 +3378,7 @@
             const genRes = await fetch('/api/generate-image', {
               method: 'POST',
               headers: forProject({'Content-Type': 'application/json'}),
-              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, target: item.target || 'exact', placement: item.placement || null, mark: item.mark || null, model })
+              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, target: item.target || 'exact', placement: item.placement || null, mark: item.mark || null, keep: !!item.keep, model })
             });
             genData = await genRes.json();
           } catch (e) {
@@ -3444,7 +3494,7 @@
         const invRes = await fetch('/api/invent-prompts', {
           method: 'POST',
           headers: forProject({'Content-Type': 'application/json'}),
-          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main' })
+          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main', keep: document.getElementById('keepCheck').checked })
         });
         const invData = await invRes.json();
         if (invData.needs_kimi_key) {
@@ -3458,8 +3508,8 @@
         }
 
         ran = true;
-        const target = document.getElementById('targetSelect').value || 'exact';  // each image keeps the batch's target and the place its scene was written for (a Resume too)
-        await runBatch(invData.ideas.map(i => ({ ...i, target })), model);
+        const target = document.getElementById('targetSelect').value || 'exact', keep = document.getElementById('keepCheck').checked;   // each image keeps the batch's choices and the place its scene was written for (a Resume too)
+        await runBatch(invData.ideas.map(i => ({ ...i, target, keep })), model);
         if (worldChoice === '__custom__' && invData.world) {                     // your territory exists now: the next batch carries on in it
           await loadWorlds();
           const sel = document.getElementById('worldSelect');
@@ -3775,6 +3825,7 @@ Object.assign(window, {
   renameGroup,
   deleteGroup,
   clearPicks,
+  togglePlaceMenu,
   addProjectMark,
   editProjectMark,
   removeProjectMark,

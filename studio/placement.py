@@ -70,11 +70,22 @@ def as_project(project: dict, pl: dict | None) -> dict:
     return {**project, "mark_size": pl["size"], "mark_x": pl["x"], "mark_y": pl["y"]}
 
 
-def guide(project: dict, pl: dict) -> dict:
-    """This placement's guide images (dark and light), drawn once into a temporary folder; the `guide` the Krea client uploads."""
-    key = hashlib.sha1(f"{project['mark_file']}:{Path(project['mark_file']).stat().st_mtime}:{pl['x']}:{pl['y']}:{pl['size']}".encode()).hexdigest()[:16]
+def guide(project: dict, pl: dict, keep: bool = False) -> dict:
+    """This placement's guide images (dark and light), drawn once into a temporary folder; the `guide` the Krea client uploads.
+    keep (Keep it as designed): the mark's own artwork, its colours and details, instead of its silhouette."""
+    key = hashlib.sha1(f"{project['mark_file']}:{Path(project['mark_file']).stat().st_mtime}:{pl['x']}:{pl['y']}:{pl['size']}:{keep}".encode()).hexdigest()[:16]
     files = {kind: GUIDE_DIR / f"{key}-{kind}.png" for kind in ("dark", "light")}
     if not all(f.exists() for f in files.values()):
         GUIDE_DIR.mkdir(parents=True, exist_ok=True)
-        projects.make_guides({**as_project(project, pl), "guides": files})
+        seen = {**as_project(project, pl), "guides": files}
+        if keep:
+            art = projects.mark_artwork(seen)
+            left, top, w, h = projects.mark_box(seen)
+            art = art.resize((w, h), Image.Resampling.LANCZOS)
+            for kind, bg in {"dark": projects.GUIDE_DARK, "light": projects.GUIDE_LIGHT}.items():
+                frame = Image.new("RGB", (projects.FRAME_W, projects.FRAME_H), bg)
+                frame.paste(art, (left, top), art)
+                frame.save(files[kind], "PNG")
+        else:
+            projects.make_guides(seen)
     return {"files": files, "cache": GUIDE_DIR / f"{key}-urls.json"}

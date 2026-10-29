@@ -1087,3 +1087,22 @@ def test_a_project_with_several_marks_makes_each_image_with_its_own(live, srv, m
     live("POST", "/api/projects", {"action": "remove_mark", "slug": "Kestrel", "mark_id": "bird"})
     plates = {p["filename"]: p for p in live("GET", "/api/state")[1]["plates"]}
     assert plates[bird["filename"]]["mark"] is None, "a mark since removed: its images read as the main one's"
+
+
+def test_keep_it_as_designed_shows_krea_the_marks_own_colours_and_asks_for_it_unchanged(live, srv, monkeypatch, tmp_path):
+    import base64
+    from PIL import Image
+    from test_projects import star_png
+    monkeypatch.setattr(srv.placement, "GUIDE_DIR", tmp_path / "guides")
+    live("POST", "/api/projects", {"action": "create", "name": "Badge", "mark": "data:image/png;base64," + base64.b64encode(star_png()).decode(), "mark_noun": "badge"})
+    _, plain = live("POST", "/api/generate-image", {"title": "Plain", "prompt": "a wall", "model": "m"})
+    assert "AS DESIGNED" not in live.calls["krea"][-1]["prompt"], "off by default"
+    _, kept = live("POST", "/api/generate-image", {"title": "Kept", "prompt": "a wall", "model": "m", "keep": True})
+    kw = live.calls["krea"][-1]
+    assert kept["keep"] is True and "reproduced EXACTLY AS DESIGNED" in kw["prompt"] and "#F03C14" in kw["prompt"], "its own colours, named"
+    g = Image.open(kw["guide"]["files"]["light"]).convert("RGB")
+    assert (240, 60, 20) in {c for _, c in g.getcolors(1 << 20)}, "the guide shows the mark in its own orange, not a silhouette"
+    plates = {p["filename"]: p for p in live("GET", "/api/state")[1]["plates"]}
+    assert plates[kept["filename"]]["as_designed"] is True and plates[plain["filename"]]["as_designed"] is False
+    live("POST", "/api/invent-prompts", {"count": 1, "world": "Editorial Print", "keep": True})
+    assert "THE MARK IS KEPT EXACTLY AS DESIGNED" in live.calls["kimi"][-1]

@@ -370,11 +370,12 @@ test('modes: Tab switches, Space plays (also after clicking a button), switching
   await page.click('#modeCurate');
   await page.click('#refineOpen');                                            // Refine opens in place, the field focused
   assert.equal(await page.evaluate(() => document.activeElement.id), 'directionInput');
-  await page.keyboard.press('Tab');                                           // typing: Tab moves to the next field
-  assert.equal(await page.evaluate(() => document.body.dataset.mode), 'curate');
-  await page.keyboard.type('a b');
-  assert.equal(await page.locator('#directionInput').inputValue(), '');      // focus left the field for the count select
+  await page.keyboard.type('a b');                                            // typing in a field: the letters, and a space, are the field's
+  assert.equal(await page.locator('#directionInput').inputValue(), 'a b');
   assert.equal(await page.locator('#playBtn').getAttribute('aria-label'), 'Play', 'typing a space does not play');
+  await page.keyboard.press('Tab');                                           // Tab leaves the field for the next control, it does not switch modes
+  assert.equal(await page.evaluate(() => document.body.dataset.mode), 'curate');
+  assert.ok(await page.evaluate(() => document.activeElement.closest('.gen') && document.activeElement.id !== 'directionInput'), 'on to the next control in the row');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
@@ -1209,7 +1210,10 @@ test('the Selection: picked images go to the Trash from the floating bar, in one
 
 test('several marks: added in Project settings, then the generation row offers which one a batch uses; a single-mark project shows nothing new', { skip }, async () => {
   const ctx = await fresh({ setup: st => { st.projects[0].fixed = false; st.plates[1].mark = 'bird'; st.plates[1].mark_name = 'Bird'; st.plates[1].box = { x: 50, y: 50, size: 12, ar: 1 }; } });
-  assert.equal(await page.locator('.csel[data-for="markSelect"]').isVisible(), false, 'one mark: the row as before');
+  assert.equal(await text('#placeName'), 'On target', 'one mark: the menu speaks of where only');
+  await page.click('#placeBtn');
+  assert.deepEqual(await page.locator('#placeMenu .tm-head').allTextContents(), ['Position'], 'no Mark section with one mark');
+  await page.mouse.click(10, 600);
   await page.evaluate(() => openProjectForm('edit'));
   assert.equal(await page.locator('#pfMarks').isVisible(), true);
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAHklEQVR4nGNgYGD4z0AEYBxVSF2Fo6EwGgqjoTA4AAD2dQf5kV0x5AAAAABJRU5ErkJggg==', 'base64');
@@ -1219,13 +1223,23 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.match(api.state.markAdded.mark, /^data:image\/png;base64,/);
   await shot('26-other-marks');
   await page.click('#projectModal button >> text=Cancel');
-  assert.equal(await page.locator('.csel[data-for="markSelect"]').isVisible(), true, 'two marks: the choice appears');
-  assert.deepEqual(await page.locator('#markSelect option').allTextContents(), ['Main mark', 'Bar', 'Mix']);
+  assert.equal(await text('#placeName'), 'Main · On target', 'two marks: the menu names the mark too');
+  await page.click('#placeBtn');
+  assert.deepEqual(await page.locator('#placeMenu .tm-head').allTextContents(), ['Mark', 'Position']);
+  assert.deepEqual(await page.locator('#placeMenu .tm-item[data-list="mark"]').allTextContents(), ['Main mark', 'Bar', 'Mix each image one of them']);
+  assert.equal(await page.locator('#placeMenu .tm-item[data-list="mark"] img.pm-thumb').first().isVisible(), true, 'each mark previewed');
+  assert.equal(await page.locator('#keepCheck').evaluate(e => getComputedStyle(e).opacity), '0', 'its source of truth stays out of sight');
+  await shot('27-mark-menu');
   assert.equal(await page.locator(`.card[data-filename="${api.state.plates[1].filename}"] .card-model-badge.mark`).textContent(), 'Bird', 'each card says which mark');
-  await page.selectOption('#markSelect', 'mix');
+  await page.click('#placeMenu .tm-item[data-v="mix"]');
+  await page.click('#placeMenu .pm-keep');
+  assert.equal(await text('#placeName'), 'Mix · On target · As designed');
+  await page.mouse.click(10, 600);
   await page.click('#generateBtn');
   await page.waitForFunction(() => /Done/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
-  assert.equal(api.state.calls.find(c => c.path === '/api/invent-prompts').body.mark, 'mix');
+  const inv = api.state.calls.find(c => c.path === '/api/invent-prompts').body;
+  assert.deepEqual([inv.mark, inv.keep], ['mix', true]);
+  assert.ok(api.state.calls.filter(c => c.path === '/api/generate-image').every(c => c.body.keep === true), 'each image kept as designed');
   await ctx.close();
 });
 
@@ -1274,7 +1288,7 @@ test('the logo target: each image with its own placement (Loose) has its box the
   assert.equal(await page.locator(`.card[data-filename="${api.state.plates[1].filename}"] .card-model-badge.target`).textContent(), 'Loose', 'labelled, so nobody wonders');
   assert.equal(await page.locator(`.card[data-filename="${api.state.plates[0].filename}"] .card-model-badge.target`).count(), 0);
   await shot('23-loose-target');
-  assert.deepEqual(await page.locator('.csel[data-for="targetSelect"] .csel-face').textContent(), 'On target');
+  assert.equal(await text('#placeName'), 'On target');
   await ctx.close();
 });
 
