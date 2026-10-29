@@ -1,7 +1,7 @@
 """Where each image's mark goes: the target a batch asks for.
 
-On target (the default) is the project's own place and size, as always: no placement is stored. Loose gives every image its own
-place and size, chosen here, drawn into that image's guide for Krea, named in its prompt and kept with the image, so the logo
+On target (the default) is the project's own place and size, as always: no placement is stored. Loose and Scattered give every
+image its own place and size, chosen here (Loose drifts around the project's place, Scattered goes anywhere in the frame), drawn into that image's guide for Krea, named in its prompt and kept with the image, so the logo
 check and the logo target know exactly where its mark should be."""
 
 import hashlib
@@ -13,8 +13,11 @@ from PIL import Image
 
 import projects
 
-KINDS = ("exact", "loose")
-LOOSE_SIZE = (0.6, 1.6)       # times the project's size
+KINDS = ("exact", "loose", "scattered")
+LEVELS = {                    # per level: how far from the project's place (% of the frame, either way; None: anywhere), and its size (times the project's)
+    "loose": {"reach": 20.0, "size": (0.75, 1.35)},
+    "scattered": {"reach": None, "size": (0.6, 1.6)},
+}
 SIZE_PCT = (6.0, 45.0)        # never smaller or bigger than this share of the width
 MARGIN = 6.0                  # % of the frame kept clear between the mark's box and the frame's edge
 GUIDE_DIR = Path(tempfile.gettempdir()) / "phosphene-guides"
@@ -26,16 +29,21 @@ def _ratio(project: dict) -> float:
 
 
 def choose(kind: str, project: dict, rng: random.Random | None = None) -> dict | None:
-    """A placement for one image: None on target; for Loose, a place and size inside the frame (its box clear of the edges)."""
-    if kind != "loose":
+    """A placement for one image: None on target; for Loose or Scattered, a place and size inside its level's reach (its box clear of
+    the frame's edges)."""
+    level = LEVELS.get(kind)
+    if not level:
         return None
     rng = rng or random.Random()
-    lo, hi = LOOSE_SIZE
-    size = min(SIZE_PCT[1], max(SIZE_PCT[0], project["mark_size"] * rng.uniform(lo, hi)))
+    size = min(SIZE_PCT[1], max(SIZE_PCT[0], project["mark_size"] * rng.uniform(*level["size"])))
     h_pct = size * _ratio(project) * projects.FRAME_W / projects.FRAME_H        # its height, in % of the frame's height
-    x = rng.uniform(size / 2 + MARGIN, 100 - size / 2 - MARGIN)
-    y = rng.uniform(h_pct / 2 + MARGIN, 100 - h_pct / 2 - MARGIN)
-    return {"kind": "loose", "x": round(x, 1), "y": round(y, 1), "size": round(size, 1)}
+    def along(home, half):                                                      # one axis: within reach of home, never past the margin
+        lo, hi = half + MARGIN, 100 - half - MARGIN
+        if level["reach"] is not None:
+            lo, hi = max(lo, home - level["reach"]), min(hi, home + level["reach"])
+        return rng.uniform(lo, hi) if lo < hi else min(max(home, half + MARGIN), 100 - half - MARGIN)
+    x, y = along(project["mark_x"], size / 2), along(project["mark_y"], h_pct / 2)
+    return {"kind": kind, "x": round(x, 1), "y": round(y, 1), "size": round(size, 1)}
 
 
 def clean(pl) -> dict | None:

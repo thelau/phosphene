@@ -17,19 +17,45 @@ def test_on_target_has_no_placement(srv):
     assert placement.as_project(demo(srv), None) is demo(srv)
 
 
-def test_loose_places_stay_inside_the_frame_and_vary(srv):
-    p, rng = demo(srv), random.Random(7)
-    ratio = placement._ratio(p)
-    got = [placement.choose("loose", p, rng) for _ in range(300)]
+def draws(srv, kind, n=300):
+    rng = random.Random(7)
+    return [placement.choose(kind, demo(srv), rng) for _ in range(n)]
+
+
+def inside_the_frame(srv, got):
+    ratio = placement._ratio(demo(srv))
     for pl in got:
-        assert pl["kind"] == "loose"
-        assert p["mark_size"] * 0.6 - 0.1 <= pl["size"] <= p["mark_size"] * 1.6 + 0.1
         h = pl["size"] * ratio * 1080 / 1920
         assert pl["x"] - pl["size"] / 2 >= placement.MARGIN - 0.1 and pl["x"] + pl["size"] / 2 <= 100 - placement.MARGIN + 0.1
         assert pl["y"] - h / 2 >= placement.MARGIN - 0.1 and pl["y"] + h / 2 <= 100 - placement.MARGIN + 0.1
-    xs, ys, sizes = ([pl[k] for pl in got] for k in ("x", "y", "size"))
-    assert max(xs) - min(xs) > 40 and max(ys) - min(ys) > 50 and max(sizes) - min(sizes) > 12, "spread over the frame, small and large"
+
+
+def test_loose_drifts_around_the_projects_place(srv):
+    got = draws(srv, "loose")
+    inside_the_frame(srv, got)
+    for pl in got:
+        assert pl["kind"] == "loose" and 30 - 0.1 <= pl["x"] <= 70 + 0.1 and 30 - 0.1 <= pl["y"] <= 70 + 0.1, pl
+        assert 18 * 0.75 - 0.1 <= pl["size"] <= 18 * 1.35 + 0.1
+    xs, ys = [pl["x"] for pl in got], [pl["y"] for pl in got]
+    assert max(xs) - min(xs) > 30 and max(ys) - min(ys) > 30, "it does move"
     assert placement.clean(got[0]) == got[0]
+
+
+def test_scattered_goes_anywhere_in_the_frame(srv):
+    got = draws(srv, "scattered")
+    inside_the_frame(srv, got)
+    assert all(pl["kind"] == "scattered" and 18 * 0.6 - 0.1 <= pl["size"] <= 18 * 1.6 + 0.1 for pl in got)
+    xs, ys = [pl["x"] for pl in got], [pl["y"] for pl in got]
+    assert min(xs) < 20 and max(xs) > 80 and min(ys) < 20 and max(ys) > 80, "to the corners"
+    assert placement.clean(got[0]) == got[0]
+
+
+def test_loose_follows_a_project_whose_mark_is_off_centre(srv):
+    p = {**demo(srv), "mark_x": 25.0, "mark_y": 80.0}
+    rng = random.Random(3)
+    for _ in range(100):
+        pl = placement.choose("loose", p, rng)
+        assert 5 - 0.1 <= pl["x"] <= 45 + 0.1 and pl["y"] >= 60 - 0.1, pl
 
 
 def test_a_placement_from_outside_is_checked(srv):
