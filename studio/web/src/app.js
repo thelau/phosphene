@@ -834,13 +834,22 @@
     }
     let currentGroup = (() => { try { return localStorage.getItem('studioGroup') || 'all'; } catch (e) { return 'all'; } })();
     const LOOKS = [['warm', 'Warm'], ['cold', 'Cold'], ['mono', 'Mono'], ['dark', 'Dark'], ['bright', 'Bright']];
-    // the members of a group key ('all', 'g:<id>', 'look:<tag>', 'world:<name>'), or null when there is no such group
+    // how each image was made, for the automatic groups Mark, Position and Source (an upload has no mark and no position)
+    const POSITION_NAMES = { exact: 'On target', loose: 'Loose', scattered: 'Scattered' };
+    const MADE_BY = {
+      mark: p => (p.uploaded ? null : p.mark || 'main'),
+      pos: p => (p.uploaded ? null : ['loose', 'scattered'].includes(p.placement && p.placement.kind) ? p.placement.kind : 'exact'),   // Angled's few images read as on target
+      src: p => (p.uploaded ? 'uploaded' : 'generated'),
+    };
+    // the members of a group key ('all', 'g:<id>', 'look:<tag>', 'world:<name>', 'mark:<id>', 'pos:<kind>', 'src:<kind>'), or null when there is no such group
     function groupMembers(key) {
       if (key === 'all') return 'all';
       const shown = plates.filter(p => !p.trashed);
       if (key.startsWith('g:')) { const g = groups.find(x => x.id === key.slice(2)); return g ? new Set(g.files) : null; }
       if (key.startsWith('look:')) { const set = new Set(shown.filter(p => (p.look || []).includes(key.slice(5))).map(p => p.filename)); return set.size ? set : null; }
       if (key.startsWith('world:')) { const set = new Set(shown.filter(p => p.world === key.slice(6)).map(p => p.filename)); return set.size ? set : null; }
+      const by = MADE_BY[key.slice(0, key.indexOf(':'))];
+      if (by) { const v = key.slice(key.indexOf(':') + 1), set = new Set(shown.filter(p => by(p) === v).map(p => p.filename)); return set.size ? set : null; }
       return null;
     }
     // what a group shows: All and the automatic groups in the one order of the selection; one of your groups in its OWN order
@@ -861,14 +870,28 @@
       const worlds = {};
       shown.forEach(p => { if (p.world) worlds[p.world] = (worlds[p.world] || 0) + 1; });
       Object.entries(worlds).filter(([, n]) => n >= 6).sort((a, b) => b[1] - a[1]).forEach(([w, n]) => auto.push({ key: `world:${w}`, name: w, n }));
+      // Mark, Position and Source: each only when the selection holds two kinds or more (one mark only: nothing to choose between)
+      const marks = new Map(markChoices().filter(c => c[0] !== 'mix').map(c => [c[0], c]));
+      const names = { mark: v => (marks.get(v) || [v, v === 'main' ? 'Main mark' : v])[1], pos: v => POSITION_NAMES[v], src: v => (v === 'uploaded' ? 'Uploaded' : 'Generated') };
+      const order = { mark: [...marks.keys()], pos: Object.keys(POSITION_NAMES), src: ['generated', 'uploaded'] };
+      Object.entries(MADE_BY).forEach(([kind, by]) => {
+        const n = {};
+        shown.forEach(p => { const v = by(p); if (v) n[v] = (n[v] || 0) + 1; });
+        const kinds = Object.keys(n).sort((a, b) => ((order[kind].indexOf(a) + 1) || 99) - ((order[kind].indexOf(b) + 1) || 99));
+        if (kinds.length >= 2) kinds.forEach(v => auto.push({ key: `${kind}:${v}`, name: names[kind](v), n: n[v], img: kind === 'mark' && marks.get(v) ? marks.get(v)[2] : null }));
+      });
       return { chips, auto };
     }
     // Curate's group row: All and your own groups as chips (those that do not fit behind "+N more", never the chosen one), then on
     // the right the automatic groups in two menus, Look and Territory (a chosen one shows in its button: "Look: Warm ×")
+    const AUTO_MENUS = [['look', 'Look'], ['terr', 'Territory'], ['mark', 'Mark'], ['pos', 'Position'], ['src', 'Source']];
+    const AUTO_TIPS = { look: 'Automatic groups by look', terr: 'Automatic groups, one per territory with 6+ images', mark: 'Automatic groups: the images made with each of your marks',
+      pos: 'Automatic groups: On target, Loose, Scattered', src: 'Automatic groups: the images made here and the ones you added' };
     const LOOK_SWATCH = { warm: '#C8743A', cold: '#4C7BD1', mono: '#8A877C', dark: '#1A1A1A', bright: '#F3EFD9' };
     function autoKinds() {
       const { auto } = groupChips();
-      return { look: auto.filter(c => c.key.startsWith('look:')), terr: auto.filter(c => c.key.startsWith('world:')) };
+      const of = prefix => auto.filter(c => c.key.startsWith(prefix));
+      return { look: of('look:'), terr: of('world:'), mark: of('mark:'), pos: of('pos:'), src: of('src:') };
     }
     function renderGroups() {
       const bar = document.getElementById('groupBar');
@@ -879,19 +902,19 @@
       document.getElementById('groupAll').innerHTML = chip(chips[0]);
       const own = chips.slice(1);
       bar.innerHTML = own.map(chip).join('') + '<button type="button" class="chip chip-overflow" id="moreChip" onclick="openGroupMenu(event, \'more\')" aria-haspopup="menu" hidden></button>';
-      const kinds = autoKinds(), hasAuto = !!(kinds.look.length || kinds.terr.length);
+      const kinds = autoKinds(), hasAuto = Object.values(kinds).some(l => l.length);
       document.getElementById('autoSep').hidden = !hasAuto;
       document.getElementById('ownSep').hidden = document.getElementById('ownLabel').hidden = !own.length;
       const autoBtn = (kind, list, label) => {
         if (!list.length) return '';
         const on = list.find(c => c.key === currentGroup);
         const caret = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>';
-        const tip = kind === 'look' ? 'Automatic groups by look' : 'Automatic groups, one per territory with 6+ images';
+        const tip = AUTO_TIPS[kind];
         return on
           ? `<span class="auto-btn on"><button type="button" class="auto-main" id="auto-${kind}" onclick="openGroupMenu(event, '${kind}')" aria-haspopup="menu" title="${tip}">${label}: ${escapeHtml(on.name)} <span>${on.n}</span></button><button type="button" class="auto-x" onclick="setGroup('all')" aria-label="Clear ${label}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span>`
           : `<span class="auto-btn"><button type="button" class="auto-main" id="auto-${kind}" onclick="openGroupMenu(event, '${kind}')" aria-haspopup="menu" title="${tip}">${label} <span>${list.length}</span>${caret}</button></span>`;
       };
-      const am = hasAuto ? '<span class="auto-label">Auto</span>' + autoBtn('look', kinds.look, 'Look') + autoBtn('terr', kinds.terr, 'Territory') : '';
+      const am = hasAuto ? '<span class="auto-label">Auto</span>' + AUTO_MENUS.map(([kind, label]) => autoBtn(kind, kinds[kind], label)).join('') : '';
       const amEl = document.getElementById('autoMenus');
       if (amEl.innerHTML !== am) amEl.innerHTML = am;
       fitChips();                                                            // after the Auto menus: the room left for your groups
@@ -899,7 +922,7 @@
       // the same choice in Film, as a dropdown above the film strip: your groups, then Look, then Territory
       const fg = document.getElementById('filmGroup');
       const opt = c => `<option value="${escapeHtml(c.key)}">${escapeHtml(c.name)} (${c.n})</option>`;
-      fg.innerHTML = chips.map(opt).join('') + (kinds.look.length ? `<optgroup label="Look">${kinds.look.map(opt).join('')}</optgroup>` : '') + (kinds.terr.length ? `<optgroup label="Territory">${kinds.terr.map(opt).join('')}</optgroup>` : '');
+      fg.innerHTML = chips.map(opt).join('') + AUTO_MENUS.map(([kind, label]) => (kinds[kind].length ? `<optgroup label="${label}">${kinds[kind].map(opt).join('')}</optgroup>` : '')).join('');
       fg.value = currentGroup;
       syncSelects();
       document.getElementById('miniTitle').textContent = currentGroup === 'all' ? 'Film' : (chips.concat(auto).find(c => c.key === currentGroup) || { name: 'Film' }).name;
@@ -997,7 +1020,7 @@
       if (!m.hidden && groupMenuFor === mode) { closeGroupMenu(); return; }
       groupMenuFor = mode;
       const own = ownGroup();
-      const pick = c => `<button type="button" class="gm-item${c.key === currentGroup ? ' on' : ''}" data-key="${escapeHtml(c.key)}" onclick="closeGroupMenu(); setGroup(this.dataset.key)">${c.sw ? `<i class="sw" style="background:${c.sw}"></i>` : ''}<span>${escapeHtml(c.name)}</span><span class="gm-n">${c.n}</span></button>`;
+      const pick = c => `<button type="button" class="gm-item${c.key === currentGroup ? ' on' : ''}" data-key="${escapeHtml(c.key)}" onclick="closeGroupMenu(); setGroup(this.dataset.key)">${c.sw ? `<i class="sw" style="background:${c.sw}"></i>` : ''}${c.img ? `<img class="pm-thumb" src="${escapeHtml(c.img)}" alt="" />` : ''}<span>${escapeHtml(c.name)}</span><span class="gm-n">${c.n}</span></button>`;
       const kinds = autoKinds();
       const hiddenOwn = [...document.querySelectorAll('#groupBar .chip.out')].map(el => groupChips().chips.find(c => c.key === el.dataset.key)).filter(Boolean);
       m.innerHTML = mode === 'add'
@@ -1008,8 +1031,10 @@
             + `<button type="button" class="gm-item danger-text" onclick="deleteGroup()">Delete group</button>`
         : mode === 'more' ? hiddenOwn.map(pick).join('')
         : mode === 'look' ? '<div class="gm-title">Auto · Look</div>' + kinds.look.map(c => pick({ ...c, sw: LOOK_SWATCH[c.key.slice(5)] })).join('')
-        : '<div class="gm-title">Auto · Territory</div>' + kinds.terr.map(pick).join('') + '<div class="gm-note">One group for every territory with 6 or more images. Smaller ones join once they grow.</div>';
-      const anchorEl = document.getElementById({ add: 'addToGroupBtn', edit: 'groupMenuBtn', more: 'moreChip', look: 'auto-look', terr: 'auto-terr' }[mode]);
+        : mode === 'terr' ? '<div class="gm-title">Auto · Territory</div>' + kinds.terr.map(pick).join('') + '<div class="gm-note">One group for every territory with 6 or more images. Smaller ones join once they grow.</div>'
+        : `<div class="gm-title">Auto · ${(AUTO_MENUS.find(a => a[0] === mode) || [, ''])[1]}</div>` + (kinds[mode] || []).map(pick).join('');
+      m.querySelectorAll('img.pm-thumb').forEach(fitMarkTone);                // marks as the top bar shows them
+      const anchorEl = document.getElementById(mode in kinds ? `auto-${mode}` : { add: 'addToGroupBtn', edit: 'groupMenuBtn', more: 'moreChip' }[mode]);
       if (!anchorEl) return;
       const anchor = anchorEl.getBoundingClientRect();
       m.hidden = false;
@@ -1391,7 +1416,8 @@
     // (in a group, only those that will belong to it: a territory's own; your groups and the looks get images only once they are made)
     function pendingCards() {
       if (!generating || prog.stage !== 'render') return [];
-      const belongs = i => currentGroup === 'all' || (currentGroup.startsWith('world:') && (prog.worlds || [])[i] === currentGroup.slice(6));
+      const made = { world: prog.worlds, mark: prog.marks, pos: prog.positions, src: prog.slots.map(() => 'generated') }, kind = currentGroup.slice(0, currentGroup.indexOf(':'));
+      const belongs = i => currentGroup === 'all' || (kind in made && (made[kind] || [])[i] === currentGroup.slice(kind.length + 1));
       return prog.slots.map((st, i) => ((st === 'wait' || st === 'run') && belongs(i)
         ? `<div class="card pending-card" aria-hidden="true"><div class="card-thumb"><div class="pending-ring"></div><span class="pending-label">${st === 'run' ? 'Rendering' : 'Queued'}</span><div class="pending-bar ${st}"><i></i></div></div><div class="card-title">${escapeHtml(prog.titles[i] || '')}</div><div class="card-meta"><span class="card-model-badge">generating…</span></div></div>`
         : '')).filter(Boolean);
@@ -3352,7 +3378,7 @@
       </div>`;
     }
     function progStart(count) {
-      prog.t0 = Date.now(); prog.slots = []; prog.titles = []; prog.worlds = []; prog.why = []; prog.world = ''; prog.stage = 'invent';
+      prog.t0 = Date.now(); prog.slots = []; prog.titles = []; prog.worlds = []; prog.marks = []; prog.positions = []; prog.why = []; prog.world = ''; prog.stage = 'invent';
       prog.total = count; prog.summary = ''; prog.detail = ''; prog.note = `Choosing a territory and writing ${count} scenes…`;
       document.getElementById('statusText').dataset.idle = '';
       clearInterval(prog.timer); prog.timer = setInterval(progRender, 1000); progRender();
@@ -3495,6 +3521,7 @@
       prog.slots = ideas.map(() => 'wait');
       prog.titles = ideas.map(i => i.title);
       prog.worlds = ideas.map(i => i.world || prog.world);
+      prog.marks = ideas.map(i => i.mark || 'main'); prog.positions = ideas.map(i => (i.placement && i.placement.kind) || 'exact');
       prog.why = ideas.map(() => '');
       prog.note = `${formatModelShort(model)} · 3 at a time`;
       const keep = () => savePending([...failedItems, ...left.values()], model);
@@ -3596,7 +3623,7 @@
       const items = p.items.filter(it => !made.has(it.title));
       if (!items.length) { savePending([], p.model); return; }
       document.getElementById('statusText').dataset.idle = '';
-      prog.stage = 'render'; prog.world = items[0].world || 'Unfinished batch'; prog.slots = items.map(() => 'wait'); prog.titles = items.map(i => i.title); prog.worlds = items.map(i => i.world || prog.world); prog.why = items.map(() => '');
+      prog.stage = 'render'; prog.world = items[0].world || 'Unfinished batch'; prog.slots = items.map(() => 'wait'); prog.titles = items.map(i => i.title); prog.worlds = items.map(i => i.world || prog.world); prog.marks = items.map(i => i.mark || 'main'); prog.positions = items.map(i => (i.placement && i.placement.kind) || 'exact'); prog.why = items.map(() => '');
       prog.total = items.length; prog.summary = `${items.length} image${items.length === 1 ? '' : 's'} of the last batch ${items.length === 1 ? 'wasn\'t' : 'weren\'t'} made`;
       batchActions([
         { label: 'Resume', run: () => retryBatch(items, p.model) },

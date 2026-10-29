@@ -73,10 +73,12 @@ test('generate: a custom territory waits for its description; controls lock, pro
     setGroup('world:Editorial Print'); out.other = n();                            // another territory: none of these
     setGroup('world:Fog & Vapor'); out.own = n();                                  // the batch's own territory: all of them
     setGroup('all'); out.all = n();
+    setGroup('pos:exact'); out.pos = n(); setGroup('src:generated'); out.src = n(); setGroup('all');   // an On target batch: its Position and Source groups too
     return out;
   });
   assert.equal(inGroups.other, 0, 'no placeholder in a group the new images will not be in');
   assert.ok(inGroups.own >= 1 && inGroups.own === inGroups.all, `the batch's territory shows them (${JSON.stringify(inGroups)})`);
+  assert.ok(inGroups.pos === inGroups.all && inGroups.src === inGroups.all, `and its position and source (${JSON.stringify(inGroups)})`);
   await page.waitForFunction(() => /Done · 4 added/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   for (const id of ['#worldSelect', '#directionInput', '#batchCountSelect', '#generateBtn']) await enabled(id);
   await page.waitForFunction(() => document.getElementById('worldSelect').value === 'Fog & Vapor');

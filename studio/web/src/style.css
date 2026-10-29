@@ -631,6 +631,7 @@
     .gm-title { padding: 4px 10px 6px; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
     .group-menu .gm-item { display: flex; align-items: center; gap: 10px; min-height: 34px; }
     .gm-item .sw { display: block; width: 12px; height: 12px; border-radius: 3px; flex: none; box-shadow: inset 0 0 0 1px rgba(254,255,231,.2); }
+    .gm-item .pm-thumb { width: 16px; height: 16px; }   /* a mark in the Auto · Mark menu, as the top bar shows it */
     .gm-item .gm-n { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted); }
     .gm-item.on { background: #2A2825; color: var(--text); }
     .gm-note { padding: 8px 10px 2px; font-size: 12px; line-height: 1.4; color: var(--faint); max-width: 260px; }

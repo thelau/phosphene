@@ -1522,6 +1522,37 @@ test('the info panel on a card: less at small sizes, the text scrolls, Copy copi
   await ctx.close();
 });
 
+test('automatic groups by how images were made: Mark, Position and Source, each only with two kinds or more; the grid, the film and its dropdown follow', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945, setup: st => {
+    const p = st.projects.find(x => x.slug === st.project);
+    p.marks = [{ id: 'tri', name: 'Triangle', size: 18, x: 50, y: 50, shape: 'triangle', noun: 'triangle', ratio: 1, url: p.mark_url }];
+    const shown = st.plates.filter(x => !x.trashed);
+    shown[1].mark = 'tri'; shown[1].mark_name = 'Triangle';
+    shown[2].placement = { kind: 'loose', x: 51, y: 49, size: 17 };
+    st.plates.push({ ...shown[0], filename: 'up1', title: 'My photo', url: '/assets/ai-plates/up1.svg', uploaded: true, model: null });
+    st.sequences[0].order.push('up1');
+  } });
+  const menu = async kind => { await page.click(`#auto-${kind}`); const items = await page.locator('#groupMenu .gm-item').allTextContents(); return items; };
+  assert.match(await page.locator('#autoMenus').textContent(), /Mark\s*2.*Position\s*2.*Source\s*2/s);
+  assert.deepEqual(await menu('mark'), ['Main mark2', 'Triangle1'], 'each mark, an upload in none');
+  assert.equal(await page.locator('#groupMenu .gm-item img.pm-thumb').count(), 2, 'each previewed as in the Mark menu');
+  await shot('30-auto-mark-menu');
+  assert.deepEqual(await menu('pos'), ['On target2', 'Loose1']);
+  assert.deepEqual(await menu('src'), ['Generated3', 'Uploaded1']);
+  await page.click('#auto-pos'); await page.click('#groupMenu .gm-item[data-key="pos:loose"]');
+  assert.match(await text('#auto-pos'), /^Position: Loose\s*1$/);
+  const loose = api.state.plates.filter(x => !x.trashed)[2].filename;
+  assert.deepEqual(await names(), [loose], 'the grid shows the group');
+  await film();
+  assert.equal(await page.locator('#filmstrip button').count(), 1, 'and so does the film');
+  assert.deepEqual(await page.locator('#filmGroup optgroup').evaluateAll(g => g.map(x => x.label)), ['Look', 'Mark', 'Position', 'Source'], "Film's dropdown has them too");
+  await curate();
+  await page.click('#autoMenus .auto-x');
+  await page.waitForSelector('#groupRow .chip.on[data-key="all"]');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('groups: chips for All, yours and the automatic looks; pick cards, make a group, the film plays just the group; undo', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945 });
   const chips = async () => page.locator('#groupRow .chip:not(.chip-overflow)').evaluateAll(b => b.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
