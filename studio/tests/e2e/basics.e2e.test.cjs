@@ -1035,8 +1035,28 @@ test('Curate: thumbnail sizes, trash from the grid with Undo, restore picked ima
   await page.keyboard.press('ArrowRight');
   assert.notEqual(await text('#viewerCount'), first);
   await shot('20-viewer');
+  const targetShown = () => page.locator('#viewerFrame').evaluate(f => getComputedStyle(f, '::after').borderTopStyle);
+  assert.equal(await targetShown(), 'none', 'no target unless T is on');
+  await page.keyboard.press('t');                                                 // T works in the viewer: the target on the image, as on its card
+  assert.equal(await targetShown(), 'dashed');
+  await page.keyboard.press('t');
+  await page.click('#viewerInfoBtn');                                            // the card's Info and Trash, in the viewer too
+  assert.equal(await page.locator('#viewerInfo').isVisible(), true, 'Info opens beside the image, the viewer stays');
+  await page.keyboard.press('t'); await shot('20b-viewer-info-target'); await page.keyboard.press('t');
+  const shownNowT = await text('#viewerTitle'), shownNow = api.state.plates.find(x => x.title === shownNowT);
+  assert.ok((await text('#viewerInfo')).includes((shownNow.prompt || shownNow.title).slice(0, 20)), 'its prompt');
+  await page.keyboard.press('ArrowRight');
+  const nextNowT = await text('#viewerTitle'), nextNow = api.state.plates.find(x => x.title === nextNowT);
+  assert.notEqual(nextNow.filename, shownNow.filename);
+  const before = await text('#viewerCount');
+  await page.click('#viewerTrashBtn');
+  await page.waitForFunction(b => document.getElementById('viewerCount').textContent !== b, before);
+  assert.equal(api.state.plates.find(x => x.filename === nextNow.filename).trashed, true, 'trashed from the viewer');
+  assert.notEqual(await text('#viewerTitle'), nextNow.title, 'the next image takes its place; the viewer stays open');
   await page.keyboard.press('Escape');
   await page.waitForSelector('#viewer[hidden]', { state: 'attached' });
+  await page.keyboard.press('Meta+z');                                            // one undo step, as a trash from the card
+  await page.waitForFunction(f => !!document.querySelector(`.card[data-filename="${f}"]`), nextNow.filename);
   await page.reload(); await page.waitForSelector('#loader', { state: 'detached' });
   assert.equal(await page.locator('#thumbRange').inputValue(), '2', 'the size is remembered');
   // trash from the grid, then Undo: back in its place

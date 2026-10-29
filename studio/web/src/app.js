@@ -1380,7 +1380,7 @@
               }
             </div>
             <div class="prompt-overlay" id="overlay-${CSS.escape(p.filename)}" onclick="togglePromptOverlay(event, '${p.filename}')">
-              <div class="prompt-overlay-text">${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-check po-qa">Mark check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : p.qa_doubt ? `<span class="po-check po-doubt">Mark check: ${escapeHtml(p.qa_doubt)}</span>` : ''}</div>
+              <div class="prompt-overlay-text">${promptInfoHtml(p)}</div>
               <div class="prompt-overlay-meta"><button class="po-copy" onclick="copyPromptText(event, '${p.filename}')">Copy prompt</button></div>
             </div>
           </div>
@@ -1394,6 +1394,9 @@
             ${!p.qa_passed ? (p.trash_reason === 'Mark check' ? '' : `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>`) : p.qa_doubt ? `<span class="card-model-badge doubt" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : ''}
           </div>
         </div>`;
+    }
+    function promptInfoHtml(p) {
+      return `${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-check po-qa">Mark check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : p.qa_doubt ? `<span class="po-check po-doubt">Mark check: ${escapeHtml(p.qa_doubt)}</span>` : ''}`;
     }
     function gridHintText() { return aiRunning && !showTrash ? 'Locked while the AI orders' : ''; }   // (which order a group shows needs no words: as Photos' albums)   // dragging needs no hint
     // the images still being made, at the end of the selection while a batch runs
@@ -1468,12 +1471,29 @@
       viewerAt = (viewerAt + list.length) % list.length;
       const p = list[viewerAt];
       document.getElementById('viewerImg').src = p.url;
+      document.getElementById('viewerFrame').setAttribute('style', placeVars(p.box || p.placement));   // the mark target (T) as on its card
       document.getElementById('viewerTitle').textContent = p.title || '';
       document.getElementById('viewerCount').textContent = `${viewerAt + 1} / ${list.length}`;
+      document.getElementById('viewerTrashBtn').hidden = !!p.trashed;            // in the Trash: Info only
+      const info = document.getElementById('viewerInfo');
+      if (!info.hidden) info.innerHTML = promptInfoHtml(p) + `<button type="button" class="po-copy" onclick="copyPromptText(event, '${p.filename}')">Copy prompt</button>`;
       for (const d of [1, -1]) { const q = list[(viewerAt + d + list.length) % list.length]; if (q && window.Image) new Image().src = q.url; }   // the next ones ready
     }
     function viewerStep(d) { viewerAt += d; showViewer(); }
     function closeViewer() { document.getElementById('viewer').hidden = true; viewerAt = -1; }
+    // the card's Info and Trash in the viewer (the user's ask: check or delete while looking); Info stays open from image to image
+    function toggleViewerInfo() {
+      const info = document.getElementById('viewerInfo');
+      info.hidden = !info.hidden;
+      document.getElementById('viewerInfoBtn').setAttribute('aria-pressed', String(!info.hidden));
+      showViewer();
+    }
+    async function viewerTrash() {
+      const p = visiblePlates()[viewerAt];
+      if (!p || p.trashed) return;
+      await setTrash({ stopPropagation() {} }, p.filename, true);           // the same as the card's: one undo step, the toast
+      if (viewerOpen()) showViewer();                                       // the next image takes its place
+    }
     // the floating film preview in Curate: the same stage, moved here, so there is one player and one sound
     let miniOpen = true;
     function toggleMini(open) {
@@ -1631,6 +1651,7 @@
         e.preventDefault();
         if (key === 'ArrowRight' || key === 'ArrowLeft') viewerStep(key === 'ArrowRight' ? 1 : -1);
         else if (key === 'Escape' || key === ' ') closeViewer();
+        else if (key === 't') toggleReticle();                               // the mark target: a universal key, seen on the image too
         return;
       }
       // everywhere
@@ -3939,6 +3960,8 @@ Object.assign(window, {
   deleteSelected,
   emptyTrash,
   selectAllTrash,
+  toggleViewerInfo,
+  viewerTrash,
   copyPromptText,
   exportVideo,
   generateImages,

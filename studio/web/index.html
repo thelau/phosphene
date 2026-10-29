@@ -267,10 +267,12 @@
       </div>
 
       <div class="viewer" id="viewer" hidden onclick="closeViewer()" role="dialog" aria-label="Image viewer">
-        <img id="viewerImg" alt="" />
+        <div class="viewer-frame" id="viewerFrame"><img id="viewerImg" alt="" /></div>
         <button type="button" class="viewer-nav prev" onclick="event.stopPropagation(); viewerStep(-1)" aria-label="Previous image">‹</button>
         <button type="button" class="viewer-nav next" onclick="event.stopPropagation(); viewerStep(1)" aria-label="Next image">›</button>
-        <div class="viewer-bar"><span id="viewerTitle"></span><span id="viewerCount"></span></div>
+        <div class="viewer-bar"><span id="viewerTitle"></span><span id="viewerCount"></span>
+          <span class="viewer-tools"><button type="button" class="viewer-tool" id="viewerInfoBtn" onclick="event.stopPropagation(); toggleViewerInfo()" title="The prompt and the mark check" aria-label="Info"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></button><button type="button" class="viewer-tool" id="viewerTrashBtn" onclick="event.stopPropagation(); viewerTrash()" title="Move to the Trash" aria-label="Move to the Trash"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button></span></div>
+        <div class="viewer-info" id="viewerInfo" hidden onclick="event.stopPropagation()"></div>
       </div>
 
       <aside class="mini" id="miniPlayer" aria-label="Film preview">
