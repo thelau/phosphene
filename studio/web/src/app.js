@@ -713,12 +713,35 @@
     }
     function pickClick(e, filename) { e.stopPropagation(); togglePick(e, filename); }   // the circle on a card: picking without knowing ⌘-click
     function pickAll() { pickSel = new Set(visiblePlates().map(p => p.filename)); syncSelection(); }
-    function clearPicks() { pickSel = new Set(); closeGroupMenu(); syncSelection(); }
+    function clearPicks() { if (showTrash) trashSel = new Set(); else pickSel = new Set(); closeGroupMenu(); syncSelection(); }
+    // one floating bar for what is picked: in the Selection, groups and the Trash; in the Trash, Restore and Delete
     function updatePickBar() {
-      const n = showTrash ? 0 : pickSel.size;
-      document.getElementById('pickBar').hidden = !n || mode !== 'curate';
+      const n = showTrash ? trashSel.size : pickSel.size, bar = document.getElementById('pickBar');
+      bar.hidden = !n || mode !== 'curate';
+      bar.classList.toggle('in-trash', showTrash);
       document.getElementById('pickCount').textContent = `${n} picked`;
-      document.body.classList.toggle('picking', n > 0);                     // every card shows its circle while picking
+      document.getElementById('pickTrashBtn').disabled = aiRunning;
+      document.body.classList.toggle('picking', !showTrash && n > 0);       // every card shows its circle while picking
+    }
+    // the picked images to the Trash in one go; one undo step puts them all back where they were
+    async function trashPicked() {
+      if (blockedByAi() || !pickSel.size) return;
+      const files = [...pickSel], before = plates.filter(p => !p.trashed).map(p => p.filename), n = files.length;
+      const post = (filename, trashed) => fetch('/api/trash', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify({ filename, trashed }) });
+      const out = async () => { for (const f of files) await post(f, true); await loadState(); };
+      const back = async () => {
+        if (blockedByAi()) return;
+        for (const f of files) await post(f, false);
+        await loadState();
+        const now = new Set(plates.filter(p => !p.trashed).map(p => p.filename)), order = before.filter(f => now.has(f));
+        await fetch('/api/reorder', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify({ order: order.concat([...now].filter(f => !order.includes(f))) }) });
+        await loadState();
+      };
+      pickSel = new Set(); closeGroupMenu();
+      await out();
+      syncSelection();
+      const step = pushStep({ label: `Trash ${n} image${n === 1 ? '' : 's'}`, undo: back, redo: out });
+      setStatus(`${n} image${n === 1 ? '' : 's'} moved to Trash`, { label: 'Undo', run: () => undoStep(step) });
     }
     // the chips that fit, in order, the chosen one always among them; the rest behind "+N more"
     function fitChips() {
@@ -981,8 +1004,7 @@
       trashSel = new Set([...trashSel].filter(f => trashed.includes(f)));
       const n = trashSel.size;
       document.getElementById('trashBar').hidden = document.getElementById('trashLead').hidden = !(showTrash && trashed.length);
-      document.getElementById('trashSelCount').textContent = n ? `${n} picked` : 'Pick images to restore or delete';
-      document.getElementById('trashDelSel').hidden = !n;                    // only once something is picked
+      document.getElementById('trashSelCount').textContent = 'Pick images to restore or delete';   // what to do with them: the floating bar
       document.getElementById('trashDelSel').disabled = aiRunning || exporting || !n;
       document.getElementById('trashRestoreSel').disabled = aiRunning || !n;
       document.getElementById('trashRestoreSel').textContent = n ? `Restore ${n}` : 'Restore';
@@ -1388,7 +1410,7 @@
       if (key === ' ') { e.preventDefault(); if (mode === 'curate' && !miniOpen) toggleMini(true); togglePlay(); return; }
       if (key === 't') { e.preventDefault(); flash(mode === 'film' ? 'targetBtn' : 'gridTargetBtn'); toggleReticle(); return; }
       if (key === '?') { e.preventDefault(); toggleKeys(); return; }
-      if (key === 'Escape') { document.getElementById('keysPanel').hidden = true; if (pickSel.size) clearPicks(); if (rsSel) { rsSel = null; renderRhythmStrip(); } return; }
+      if (key === 'Escape') { document.getElementById('keysPanel').hidden = true; if (pickSel.size || trashSel.size) clearPicks(); if (rsSel) { rsSel = null; renderRhythmStrip(); } return; }
       // the tab's own
       if (mode === 'film') {
         if ((key === 'Delete' || key === 'Backspace') && rsSel) { removeChange(); return; }      // a selected point of the change: the change goes (never an image)
@@ -3652,6 +3674,7 @@ Object.assign(window, {
   renameGroup,
   deleteGroup,
   clearPicks,
+  trashPicked,
   pickClick,
   toggleFullscreen,
   toggleKeys,

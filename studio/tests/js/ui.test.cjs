@@ -655,23 +655,46 @@ async function inTrash(extra) {
 }
 const ev = (o = {}) => ({ shiftKey: false, ...o });
 
-test('trash bar only shows in the trash view and counts what is selected', async () => {
+test('the Trash: Empty trash at the top; what is picked gets Restore and Delete in the floating bar, as in the Selection', async () => {
   const h = await inTrash();
   assert.equal(h.$('trashBar').hidden, false);
   assert.equal(h.$('trashEmpty').textContent, 'Empty trash…');
   assert.match(h.$('trashEmpty').title, /all 4 images/);
   assert.equal(h.$('trashSelCount').textContent, 'Pick images to restore or delete');
-  assert.equal(h.$('trashDelSel').hidden, true, 'Delete only once something is picked');
-  assert.equal(h.$('trashRestoreSel').disabled, true);
+  assert.equal(h.$('pickBar').hidden, true, 'nothing picked: no bar');
   h.run(`cardClick(${JSON.stringify(ev())}, '2_b')`);
-  assert.equal(h.$('trashSelCount').textContent, '1 picked');
+  assert.equal(h.$('pickBar').hidden, false);
+  assert.ok(h.$('pickBar').classList.contains('in-trash'), 'the Trash\'s actions in it');
+  assert.equal(h.$('pickCount').textContent, '1 picked');
   assert.equal(h.$('trashDelSel').textContent, 'Delete 1…');
-  assert.equal(h.$('trashDelSel').hidden, false);
   assert.equal(h.$('trashRestoreSel').textContent, 'Restore 1');
   h.run(`cardClick(${JSON.stringify(ev())}, '2_b')`);                  // click again deselects
-  assert.equal(h.$('trashSelCount').textContent, 'Pick images to restore or delete');
+  assert.equal(h.$('pickBar').hidden, true);
+  h.run(`cardClick(${JSON.stringify(ev())}, '2_b')`);
+  h.run('clearPicks()');                                                // × or Esc
+  assert.equal(h.$('pickBar').hidden, true);
   await h.run('setTrashView(false)');
   assert.equal(h.$('trashBar').hidden, true);
+});
+
+test('the Selection: picked images go to the Trash in one go, and one undo puts them all back where they were', async () => {
+  const h = load({ routes: trashRoutes({ '/api/state': { plates: [mkPlate('1_a', false), mkPlate('2_b', false), mkPlate('3_c', false), mkPlate('4_d', true)] },
+                                          '/api/trash': { ok: true }, '/api/reorder': { ok: true } }) });
+  await settle(); await settle();
+  const live = h.run('JSON.stringify(plates.filter(p => !p.trashed).map(p => p.filename))');
+  const two = JSON.parse(live).slice(0, 2);
+  h.run(`pickSel = new Set(${JSON.stringify(two)}); syncSelection()`);
+  assert.equal(h.$('pickBar').hidden, false);
+  assert.ok(!h.$('pickBar').classList.contains('in-trash'));
+  h.calls.length = 0;
+  await h.run('trashPicked()');
+  assert.deepEqual(h.calls.filter(c => c.url === '/api/trash').map(c => [c.body.filename, c.body.trashed]), two.map(f => [f, true]));
+  assert.equal(h.$('pickBar').hidden, true, 'the picks are done with');
+  assert.match(h.$('toast').textContent, /2 images moved to Trash/);
+  h.calls.length = 0;
+  await h.run('undoLast()');
+  assert.deepEqual(h.calls.filter(c => c.url === '/api/trash').map(c => [c.body.filename, c.body.trashed]), two.map(f => [f, false]), 'one undo, both back');
+  assert.deepEqual(h.calls.find(c => c.url === '/api/reorder').body.order.slice(0, 2), two, 'in their places');
 });
 
 test('in the selection view a click previews instead of selecting', async () => {

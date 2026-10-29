@@ -207,8 +207,6 @@
           <span class="grow"></span>
           <span class="grid-hint" id="gridHint"></span>
           <div class="trash-bar" id="trashBar" hidden>
-            <button id="trashRestoreSel" onclick="restoreSelected()">Restore</button>
-            <button id="trashDelSel" onclick="deleteSelected()" hidden>Delete…</button>
             <button id="trashEmpty" class="danger" onclick="emptyTrash()">Empty trash…</button>
             <span class="tool-sep"></span>
           </div>
@@ -265,9 +263,12 @@
         <!-- picking floats at the bottom, never over the chips -->
         <div class="pick-bar" id="pickBar" role="toolbar" aria-label="Picked images" hidden>
           <span class="pick-n" id="pickCount">0 picked</span>
-          <span class="pick-hint">⌘-click to add</span>
-          <button type="button" class="pick-add" id="addToGroupBtn" onclick="openGroupMenu(event, 'add')" aria-haspopup="menu">Add to group <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"></path></svg></button>
-          <button type="button" class="pick-out" id="removeFromGroupBtn" onclick="removeFromGroup()" hidden>Remove from group</button>
+          <span class="pick-hint sel-only">⌘-click to add</span>
+          <button type="button" class="pick-add trash-only" id="trashRestoreSel" onclick="restoreSelected()">Restore</button>
+          <button type="button" class="pick-out pick-danger trash-only" id="trashDelSel" onclick="deleteSelected()">Delete…</button>
+          <button type="button" class="pick-add sel-only" id="addToGroupBtn" onclick="openGroupMenu(event, 'add')" aria-haspopup="menu">Add to group <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"></path></svg></button>
+          <button type="button" class="pick-out sel-only" id="removeFromGroupBtn" onclick="removeFromGroup()" hidden>Remove from group</button>
+          <button type="button" class="pick-x pick-trash sel-only" id="pickTrashBtn" onclick="trashPicked()" title="Move them to the Trash (⌘Z puts them back)" aria-label="Move the picked images to the Trash"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path></svg></button>
           <button type="button" class="pick-x" id="clearPickBtn" onclick="clearPicks()" title="Clear the picks (Esc)" aria-label="Clear picks">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
           </button>

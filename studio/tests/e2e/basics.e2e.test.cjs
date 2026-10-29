@@ -69,9 +69,12 @@ test('trash: select, shift-select, cancel, delete with a loader, empty trash', {
   await cards.nth(0).click({ position: { x: 100, y: 120 } });
   await cards.nth(2).click({ position: { x: 100, y: 120 }, modifiers: ['Shift'] });
   assert.equal(await page.locator('.card.sel').count(), 3);
-  assert.equal(await text('#trashSelCount'), '3 picked');
+  assert.equal(await text('#pickCount'), '3 picked', 'in the floating bar, as in the Selection');
   assert.equal(await text('#trashDelSel'), 'Delete 3…');
   assert.equal(await text('#trashRestoreSel'), 'Restore 3');
+  assert.equal(await page.locator('#addToGroupBtn').isVisible(), false, 'no groups in the Trash');
+  const bar = await page.locator('#pickBar').boundingBox(), vw = page.viewportSize().width;
+  assert.ok(Math.abs(bar.x + bar.width / 2 - vw / 2) < 2, 'centred at the bottom');
   await shot('02-trash-selected');
 
   await page.click('#trashDelSel');
@@ -1178,6 +1181,25 @@ test('edge states: an empty library says what to do, the Trash has no film previ
   await film();
   assert.equal(await page.locator('#exportBtn').isDisabled(), true, 'nothing to export');
   assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
+test('the Selection: picked images go to the Trash from the floating bar, in one go', { skip }, async () => {
+  const ctx = await fresh();
+  const cards = page.locator('.card');
+  await cards.nth(0).click({ position: { x: 100, y: 120 }, modifiers: ['Meta'] });
+  await cards.nth(1).click({ position: { x: 100, y: 120 }, modifiers: ['Meta'] });
+  assert.equal(await text('#pickCount'), '2 picked');
+  for (const id of ['#addToGroupBtn', '#pickTrashBtn']) assert.equal(await page.locator(id).isVisible(), true, id);
+  assert.equal(await page.locator('#trashRestoreSel').isVisible(), false, 'no Restore in the Selection');
+  await shot('24-pick-trash');
+  await page.click('#pickTrashBtn');
+  await page.waitForFunction(() => document.getElementById('tabTrash').textContent.trim().endsWith('6'));
+  assert.equal(await page.locator('.card').count(), 1);
+  assert.equal(await page.locator('#pickBar').isVisible(), false);
+  assert.match(await text('#toast'), /2 images moved to Trash/);
+  await page.keyboard.press('Meta+z');
+  await page.waitForFunction(() => document.querySelectorAll('.card').length === 3);
   await ctx.close();
 });
 
