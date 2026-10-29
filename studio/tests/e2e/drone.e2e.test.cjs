@@ -629,3 +629,33 @@ test('the sound\'s clock stops while the page is in front (WebKit lost the outpu
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('modes: Minor, Dorian, Phrygian, Harmonic minor; every chord change lands where the open fifth of the bed is in the mode, the pad and the arpeggio play the notes of the mode', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(() => {
+    const D = window.Drone, out = [];
+    for (const [mi, m] of D.MODES.entries()) {
+      const inKey = st => m.scale.includes(((st % 12) + 12) % 12);
+      for (const pr of D.PROGRESSIONS.filter(Boolean)) {
+        const steps = (m.steps && m.steps[pr.name]) || pr.steps || pr.walk;
+        for (const d of steps) {
+          if (!inKey(d) || !inKey(d + 7)) out.push(`${m.name} ${pr.name}: ${d} or its fifth is not in the mode`);
+          if (D.padChord(d, m).some(t => !inKey(t))) out.push(`${m.name} ${pr.name}: the pad's chord on ${d} leaves the mode`);
+          if (Math.abs(d) > 7) out.push(`${m.name} ${pr.name}: ${d} is too far from the root`);
+        }
+      }
+      if (mi === 1 && D.inMode(8, m) !== 9) out.push('Dorian: the minor sixth becomes the major sixth');
+      if (mi === 2 && D.inMode(2, m) !== 1) out.push('Phrygian: the second becomes flat');
+      if (mi === 3 && D.inMode(10, m) !== 11) out.push('Harmonic minor: the seventh is raised');
+    }
+    return out;
+  });
+  assert.deepEqual(r, []);
+  const lv = await page.evaluate(async BASE => {                                 // each mode keeps the drone's character: sub-heavy, level
+    const starts = Array.from({ length: 33 }, (_, i) => i * 0.25), res = [];
+    for (let mode = 0; mode < 4; mode++) { const x = await window.Drone.renderExport({ ...BASE, pitch: 0.5, chord: 1, prog: 1, progEvery: 1, pad: 0.6, arp: 0.6, arpMood: 4, mode }, starts); let s = 0; for (let i = 0; i < x.left.length; i++) s += x.left[i] * x.left[i]; res.push(Math.sqrt(s / x.left.length)); }
+    return res;
+  }, BASE);
+  assert.ok(lv.every(v => v > 0.08 && v < 0.35), `every mode plays at the drone's level: ${lv.map(v => v.toFixed(3))}`);
+  await ctx.close();
+});

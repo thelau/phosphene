@@ -511,12 +511,20 @@
                     <option value="3">Suspended</option>
                   </select>
                 </label>
+                <label class="row"><span class="lbl">Mode</span>
+                  <select id="modeSelect" onchange="updateMusic()" title="The key everything plays in: the pad's chords, the changes and the arpeggio's notes">
+                    <option value="0">Minor</option>
+                    <option value="1">Dorian · warmer</option>
+                    <option value="2">Phrygian · darkest</option>
+                    <option value="3">Harmonic minor · tension</option>
+                  </select>
+                </label>
                 <label class="row"><span class="lbl">Changes</span>
-                  <select id="progSelect" onchange="updateMusic()" title="Chord changes in the minor key: the bed moves to another chord every few cuts and comes round; the arpeggio stays in the key above it. With changes on, Minor plays suspended and the Dark cluster an open fifth, so every chord stays in key.">
+                  <select id="progSelect" onchange="updateMusic()" title="Chord changes in the mode's key: the bed moves to another chord every few cuts and comes round; the arpeggio stays in the key above it. With changes on, Minor plays suspended and the Dark cluster an open fifth, so every chord stays in key.">
                     <option value="0">Off · one chord</option>
-                    <option value="1">Descend · i VII VI V</option>
-                    <option value="2">Lift · i III iv III</option>
-                    <option value="3">Pendulum · i v</option>
+                    <option value="1">Descend · stepping down</option>
+                    <option value="2">Lift · up and back</option>
+                    <option value="3">Pendulum · two chords</option>
                     <option value="4">Wander · in the key</option>
                   </select>
                 </label>

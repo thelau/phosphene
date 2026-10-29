@@ -176,6 +176,21 @@
     { name: 'Wander', walk: [0, -2, 3, -5, 5, -4] },
   ];
   const PROG_EVERY = [2, 4, 8, 16];
+  // Modes: the key the whole sound plays in (more variety in the same dark style, the user's ask, 2026-10-30). The natural minor as before;
+  // Dorian (its major sixth: dark but warm), Phrygian (its flat second: the darkest), Harmonic minor (its raised seventh: tension). The pad's
+  // chords and the arpeggio's notes take the mode's degrees (`inMode`), and each mode has its own chord changes: the bed moves in parallel
+  // open fifths, so it only lands on degrees whose fifth is in the mode (in Dorian the VI's is not, in Phrygian the v's, in Harmonic minor the
+  // VII's and III's), the progressions keep their shape (Descend steps down, Lift goes up and back, Pendulum swings between two)
+  const MODES = [
+    { name: 'Minor', scale: [0, 2, 3, 5, 7, 8, 10], steps: null },
+    { name: 'Dorian', scale: [0, 2, 3, 5, 7, 9, 10], steps: { Descend: [0, -2, -7, -5], Lift: [0, 3, 5, 3], Pendulum: [0, -7], Wander: [0, -2, 3, -5, 5, 2] } },
+    { name: 'Phrygian', scale: [0, 1, 3, 5, 7, 8, 10], steps: { Descend: [0, -2, -4, -2], Lift: [0, 1, 3, 1], Pendulum: [0, 1], Wander: [0, -2, 1, 3, 5, -4] } },
+    { name: 'Harmonic minor', scale: [0, 2, 3, 5, 7, 8, 11], steps: { Descend: [0, -4, -7, -5], Lift: [0, 5, 7, 5], Pendulum: [0, -5], Wander: [0, -4, 5, -5, -7] } },
+  ];
+  function inMode(st, mode) {                                          // a degree of the natural minor (semitones over the tonic) as the same degree of the mode
+    const o = Math.floor(st / 12), n = st - 12 * o, i = [0, 2, 3, 5, 7, 8, 10].indexOf(n);
+    return i < 0 ? st : mode.scale[i] + 12 * o;                         // anything else (Dark's flat second) as it is
+  }
   // The bassline: a sequencer on a plucked saw an octave over the sub (it follows the chord changes). Only root, fifth and octave, so it
   // stays in key on every chord; the rhythm comes from rests and accents. Four steps, 1 / 2 / 4 a cut.
   const BASS_PATTERNS = [
@@ -211,10 +226,9 @@
     { name: 'Acid', scale: [0, 3, 5, 7, 10], lo: 0.5, hi: 1.6, open: 2200, close: 170, q: 13, sustain: 1.0, gain: 0.7, voices: 1, shape: 'walk', acid: true },
   ];
   const MOOD_DETUNE = 0.004, MOOD_ATTACK = 0.0015;                   // the first arpeggio's: two saws a hair apart, a pluck
-  // the natural minor over the root: the Pad voices its chords on these degrees (i m7, III maj7, iv m7, v m7, VI maj7, VII 7)
-  const MINOR = [0, 2, 3, 5, 7, 8, 10];
-  function padChord(degree) {                                           // semitones from the tonic, voiced root, fifth, seventh, third an octave up
-    const dn = ((degree % 12) + 12) % 12, idx = Math.max(0, MINOR.indexOf(dn)), at = k => MINOR[(idx + k) % 7] + 12 * Math.floor((idx + k) / 7) - dn + degree;
+  // the Pad voices its chords on the mode's degrees (in the natural minor: i m7, III maj7, iv m7, v m7, VI maj7, VII 7)
+  function padChord(degree, mode = MODES[0]) {                        // semitones from the tonic, voiced root, fifth, seventh, third an octave up, in the mode
+    const S = mode.scale, dn = ((degree % 12) + 12) % 12, idx = Math.max(0, S.indexOf(dn)), at = k => S[(idx + k) % 7] + 12 * Math.floor((idx + k) / 7) - dn + degree;
     return [at(0), at(4), at(6), at(2) + 12];
   }
   // tape: wow and flutter, saturation, a darker top, dust. The dust is a few sparse clicks, made once per sample rate
@@ -227,9 +241,9 @@
     }
     return dustCache.get(ctx.sampleRate);
   }
-  const moodNotes = (m, tonic) => {                                    // every note of the mood's scale inside its register, low to high
+  const moodNotes = (m, tonic, mode = MODES[0]) => {                  // every note of the mood's scale (in the mode) inside its register, low to high
     const out = [];
-    for (let o = -2; o <= 3; o++) for (const st of m.scale) { const f = tonic * Math.pow(2, (st + 12 * o) / 12); if (f >= tonic * m.lo && f <= tonic * m.hi) out.push(f); }
+    for (let o = -2; o <= 3; o++) for (const st0 of m.scale) { const st = m.name === 'Dark' ? st0 : inMode(st0, mode); const f = tonic * Math.pow(2, (st + 12 * o) / 12); if (f >= tonic * m.lo && f <= tonic * m.hi) out.push(f); }
     return out.sort((a, b) => a - b);
   };
   const phaseLoop = a => [...a.slice(0, a.length >> 1), a[a.length >> 1], ...a.slice(a.length >> 1)];   // Phase's second loop: the same notes, one repeated, a step longer
@@ -282,7 +296,8 @@
     const arpAmt = clamp01(p.arp || 0), arpSteps = ARP_STEPS[pick(p.arpSteps, ARP_STEPS.length)], arpRate = pick(p.arpRate, ARP_PER_CUT.length);
     const dynamics = opts.dynamics === false ? 0 : pick(p.dynamics, 4);
     const prog = PROGRESSIONS[pick(p.prog, PROGRESSIONS.length)], progEvery = PROG_EVERY[pick(p.progEvery, PROG_EVERY.length)];
-    const progSeq = !prog ? [0] : prog.steps || (() => { const r = mulberry32(seedN + 31), out = [0]; for (let k = 1; k < 8; k++) out.push(prog.walk[1 + Math.floor(r() * (prog.walk.length - 1))]); return out; })();
+    const mode = MODES[pick(p.mode, MODES.length)], own = prog && mode.steps ? mode.steps[prog.name] : null;   // the mode's own chord changes
+    const progSeq = !prog ? [0] : prog.steps ? own || prog.steps : (() => { const r = mulberry32(seedN + 31), walk = own || prog.walk, out = [0]; for (let k = 1; k < 8; k++) out.push(walk[1 + Math.floor(r() * (walk.length - 1))]); return out; })();
     const degreeAt = i => progSeq[Math.floor(i / progEvery) % progSeq.length];   // the chord at music cut i, in semitones from the root
     const padAmt = clamp01(p.pad || 0), tape = clamp01(p.tape || 0);
     const bassAmt = clamp01(p.bass || 0), bassPat = BASS_PATTERNS[pick(p.bassPattern, BASS_PATTERNS.length)], bassPer = BASS_PER_CUT[pick(p.bassRate, BASS_PER_CUT.length)];
@@ -551,7 +566,7 @@
 
     // ---- arpeggio: a short pattern of plucked notes that repeats, stepping with the cuts. One voice (two detuned saws), its pitch automated ----
     if (arpAmt > 0.01 && arpMood.scale) {
-      const notes = moodNotes(arpMood, f0 * 4), m = arpMood;
+      const notes = moodNotes(arpMood, f0 * 4, mode), m = arpMood;
       const phase = m.shape === 'phase';
       const loopA = phase ? Math.max(4, Math.min(8, arpSteps)) : arpSteps;
       const pattern = moodPattern(m.shape, notes.length, loopA, rand).map(i => notes[i]);
@@ -619,7 +634,7 @@
 
     // ---- the pad: a warm analog chord (two detuned saws a note, chorus, a slow filter), voiced in the key on each chord of the changes ----
     if (padAmt > 0.01) {
-      const T = f0 * 4, chordAt = i => padChord(degreeAt(i));
+      const T = f0 * 4, chordAt = i => padChord(degreeAt(i), mode);
       const first = chordAt(Math.min(cursor, Math.max(0, nCuts - 1)));
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1100; lp.Q.value = 0.6;
       lfo(0.06 * move, 320, lp.frequency);
@@ -702,7 +717,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   const cutSignature = starts => { const head = []; for (const t of starts) { head.push(Math.round(t * 1000)); if (t > 4) break; } return head.join(','); };   // the cuts of the window the level is measured on: faster cuts pump differently
-  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.tape]);
+  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.mode, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.tape]);
   async function level(p, starts) {
     starts = cleanStarts(starts);
     const key = levelKey(p, starts);
@@ -985,5 +1000,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, inMode, MODES, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz };
 })();
