@@ -1344,7 +1344,7 @@ test('the logo target: one switch for the Film preview and every Curate card (T 
 test('arpeggio moods: Random draws them all (Pluck often), a type keeps to its own, Phase unhurried', async () => {
   const h = await playerWith();
   const n = id => +h.$(id).value;
-  const seen = [0, 0, 0, 0, 0, 0, 0];
+  const seen = [0, 0, 0, 0, 0, 0, 0, 0];
   const rules = why => {
     if ([2, 6].includes(n('arpMoodSelect')) && h.run('rhythmCutsPerSecond()') > 2.5) assert.ok(n('arpRateSelect') <= 1, `${why}: Phase and Acid on fast cuts play a note a cut at most`);
     if (n('choirRange') > 0) assert.ok(![0, 1, 6].includes(n('arpMoodSelect')) && n('padRange') <= 35, `${why}: under the choir, no Pluck, Dark or Acid, and a quieter pad`);

@@ -309,7 +309,7 @@ test('Choir and Industrial over the drone: the same level, still sub-heavy, each
 test('arpeggio moods: one instrument (Pluck\'s patch) played differently; each renders level and dark (measured, not heard)', { skip }, async () => {
   const ctx = await fresh();
   const arp = { arp: 0.45, arpRate: 1, arpSteps: 2, chord: 1 };
-  const rows = await spectra([0, 1, 2, 3, 4, 5].map(m => ({ ...arp, arpMood: m })));
+  const rows = await spectra([0, 1, 2, 3, 4, 5, 7].map(m => ({ ...arp, arpMood: m })));   // (Acid has its own test)
   console.log('moods: ' + JSON.stringify(rows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, +(+v).toFixed(4)])))));
   for (const [i, m] of rows.entries()) {
     assert.ok(!m.bad && Math.abs(m.rms - 0.17) < 0.01 && m.peak <= 0.97, `mood ${i}: level ${m.rms.toFixed(3)}, peak ${m.peak.toFixed(2)}`);
@@ -657,5 +657,25 @@ test('modes: Minor, Dorian, Phrygian, Harmonic minor; every chord change lands w
     return res;
   }, BASE);
   assert.ok(lv.every(v => v > 0.08 && v < 0.35), `every mode plays at the drone's level: ${lv.map(v => v.toFixed(3))}`);
+  await ctx.close();
+});
+
+test('Euclid: notes on a Euclidean rhythm (k hits spread evenly over n steps), rests between, the melody moving on only on hits, each hit to the other side; level and dark', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(async BASE => {
+    const D = window.Drone, show = (k, n) => D.euclid(k, n).map(x => (x ? 'x' : '.')).join('');
+    const g = D.euclid(5, 12), plan = Array.from({ length: 24 }, (_, s) => D.euclidHit(g, 5, s));
+    const x = await D.renderExport({ ...BASE, pitch: 0.5, chord: 1, arp: 0.6, arpMood: 7, arpRate: 1, arpSteps: 2 }, Array.from({ length: 33 }, (_, i) => i * 0.25));
+    let s = 0, peak = 0; for (let i = 0; i < x.left.length; i++) { s += x.left[i] * x.left[i]; peak = Math.max(peak, Math.abs(x.left[i])); }
+    return { e38: show(3, 8), e516: show(5, 16), plan, rms: Math.sqrt(s / x.left.length), peak, euclidMoods: D.ARP_MOODS.filter(m => m.euclid).map(m => m.name) };
+  }, BASE);
+  assert.equal(r.e38, '..x..x.x', '3 in 8, evenly');
+  assert.equal(r.e516.split('x').length - 1, 5);
+  const hits = r.plan.filter(h => h >= 0);
+  assert.equal(hits.length, 10, 'two rounds of 5 in 12: ten notes, fourteen rests');
+  assert.deepEqual(hits, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], 'the melody moves on one note per hit, never on a rest');
+  assert.deepEqual(hits.map(h => h % 2), [0, 1, 0, 1, 0, 1, 0, 1, 0, 1], 'left, right, left, right (ping-pong)');
+  assert.deepEqual(r.euclidMoods, ['Euclid']);
+  assert.ok(r.rms > 0.1 && r.rms < 0.3 && r.peak <= 0.97, `level: ${r.rms.toFixed(3)}, peak ${r.peak.toFixed(2)}`);
   await ctx.close();
 });

@@ -224,7 +224,14 @@
     // Acid: the same saws, low, with a very resonant filter, some steps accented (the filter opens wider, louder), some sliding into the
     // next note, and saturation after the filter: the squelch of Maelstrom, Plant43, Kangding Ray
     { name: 'Acid', scale: [0, 3, 5, 7, 10], lo: 0.5, hi: 1.6, open: 2200, close: 170, q: 13, sustain: 1.0, gain: 0.7, voices: 1, shape: 'walk', acid: true },
+    // Euclid: the same patch, its notes on a Euclidean rhythm (k hits spread as evenly as they go over n steps: 3 in 8, 5 in 12, 7 in 16...,
+    // the off-kilter modular pulse of Barbieri or Ikeda; still the arpeggio's own steps, never a drum), each hit thrown to the other side
+    // (ping-pong); the melody moves on only on hits (2026-10-30, more variety in the same style)
+    { name: 'Euclid', scale: [0, 3, 5, 7, 10], lo: 0.75, hi: 2.6, open: 1800, close: 340, q: 4, sustain: 1.3, gain: 1.0, voices: 2, shape: 'walk', euclid: true },
   ];
+  const EUCLID = [[3, 8], [5, 8], [5, 12], [7, 12], [5, 16], [7, 16], [9, 16]];
+  const euclid = (k, n) => Array.from({ length: n }, (_, i) => Math.floor(((i + 1) * k) / n) > Math.floor((i * k) / n));   // Bresenham: k hits, evenly
+  const euclidHit = (gate, k, step) => (gate[step % gate.length] ? Math.floor(step / gate.length) * k + gate.slice(0, step % gate.length).filter(Boolean).length : -1);   // which hit a step is, or -1: a rest
   const MOOD_DETUNE = 0.004, MOOD_ATTACK = 0.0015;                   // the first arpeggio's: two saws a hair apart, a pluck
   // the Pad voices its chords on the mode's degrees (in the natural minor: i m7, III maj7, iv m7, v m7, VI maj7, VII 7)
   function padChord(degree, mode = MODES[0]) {                        // semitones from the tonic, voiced root, fifth, seventh, third an octave up, in the mode
@@ -575,7 +582,7 @@
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = m.q; lp.frequency.value = m.open;
         const env = gain(0);
         if (m.acid) lp.connect(shaper(satCurve(1.6), env)); else lp.connect(env);   // Acid: driven after the filter
-        const pan = phase ? (vi ? [0.15, 1] : [1, 0.15]) : [1, 1];            // Phase: one loop leans left, the other right
+        const pan = phase || m.euclid ? (vi ? [0.15, 1] : [1, 0.15]) : [1, 1];   // Phase: one loop leans left, the other right; Euclid: ping-pong
         env.connect(gain(0.6 * m.gain * pan[0], arr.arp[0])); env.connect(gain(0.6 * m.gain * pan[1], arr.arp[1]));
         const oscs = [-MOOD_DETUNE, MOOD_DETUNE].map(det => { const o = osc('sawtooth', 200); o.connect(lp); return [o, det]; });
         return { lp, env, oscs };
@@ -587,6 +594,7 @@
       let mutCycle = 0; const mutated = pattern.slice();                 // Mutate: the pattern as it stands this round; one note changes per round
       const mutateTo = cycle => { while (mutCycle < cycle) { mutated[Math.floor(mrand() * L)] = notes[Math.floor(mrand() * notes.length)]; mutCycle++; } };
       const noteAt = st => m.accumulate ? pattern[accPos[st % accPos.length]] : m.mutate ? (mutateTo(Math.floor(st / L)), mutated[st % L]) : pattern[st % L];
+      const [ek, en] = EUCLID[Math.floor(mrand() * EUCLID.length)], gate = m.euclid ? euclid(ek, en) : null;
       const per = ARP_PER_CUT[arpRate];
       perCut.push((i, tc) => {
         for (const [step, at0, len] of noteTimes(starts, i, per)) {
@@ -602,6 +610,7 @@
             strike(v.env, tt, 2.2 * arpAmt * (accent ? (acc > 1 ? 1.2 : 0.85) : 1), decay);
           };
           if (phase) { play(voices[0], f, t); play(voices[1], patternB[step % patternB.length] * lift(s, 1.2), t); }   // both on every step, each round its own loop
+          else if (gate) { const h = euclidHit(gate, ek, step); if (h >= 0) play(voices[h % 2], noteAt(h) * lift(s, 1.2), t); }   // a rest, or the next note, on the other side
           else play(voices[step % voices.length], f, t);
         }
       });
@@ -1000,5 +1009,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, inMode, MODES, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, inMode, MODES, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz, EUCLID, euclid, euclidHit };
 })();
