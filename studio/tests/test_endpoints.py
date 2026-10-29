@@ -979,9 +979,12 @@ def test_an_unexpected_territory_is_kept_and_listed_once_it_has_an_image(live, s
     listed = {w["name"]: w["origin"] for w in live("GET", "/api/worlds")[1]["worlds"]}
     assert listed["Salt & Tide"] == "invented" and listed["Editorial Print"] == "core", "where each comes from: Kimi's, built in"
     world["name"] = "Fog & Vapor"                                                   # Describe your own: yours
-    live("POST", "/api/invent-prompts", {"count": 1, "world": "__custom__", "direction": "fog, clouds, rain"})
+    brief = "Fog, clouds, rain. " + "Low cloud over wet stone, never a sunny sky. " * 40   # a whole brief, past the old 300 characters
+    _, res = live("POST", "/api/invent-prompts", {"count": 1, "world": "__custom__", "direction": brief})
+    assert res["world"] == "Fog & Vapor", "the page learns the territory it made, to carry on in it"
     live("POST", "/api/generate-image", {"title": "Fog Bank", "prompt": "p", "model": "m", "world": "Fog & Vapor"})
-    assert {w["name"]: w["origin"] for w in live("GET", "/api/worlds")[1]["worlds"]}["Fog & Vapor"] == "custom"
+    mine = next(w for w in live("GET", "/api/worlds")[1]["worlds"] if w["name"] == "Fog & Vapor")
+    assert mine["origin"] == "custom" and mine["prompt"] == brief.strip(), "your words, whole and as written"
 
 
 def test_the_sampler_writes_one_scene_in_each_of_the_territories_tried_least(live, srv, monkeypatch):

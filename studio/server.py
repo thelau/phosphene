@@ -514,6 +514,9 @@ def parse_llm_json(out: str, opener: str):
     return value
 
 
+DIRECTION_MAX = 4000                                       # Describe your own takes a whole brief; Refine a line
+
+
 def invent_world(st: dict, api_key: str, kimi_model: str, direction: str = "", origin: str = "invented") -> dict:
     """Wildcard: Kimi authors a brand-new world in the same format as chapters.WORLDS."""
     known = ", ".join(w["name"] for w in chapters.all_worlds(st))
@@ -534,6 +537,8 @@ def invent_world(st: dict, api_key: str, kimi_model: str, direction: str = "", o
     w["weight"] = 1.0
     w["wildcard"] = True
     w["origin"] = origin                                   # "invented" (Surprise me: Kimi's) or "custom" (Describe your own: yours)
+    if origin == "custom" and direction:
+        w["prompt"] = direction                            # your words, kept as written: every batch of this territory follows them
     st.setdefault("custom_worlds", [])
     st["custom_worlds"] = [x for x in st["custom_worlds"] if x["name"] != w["name"]] + [w]
     print(f"[KIMI] invented world '{w['name']}'", flush=True)
@@ -595,6 +600,8 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
         f"Return ONLY a raw JSON array (no markdown fences) of {n_ask} objects with keys \"title\", \"subject\" (the shot's main subject in 2-6 words), \"idea\", \"guide\" ('dark' or 'light' = whether the frame is mostly dark or mostly light) and \"prompt\". "
         f"They are shots for a 9:16 vertical match-cut film where one small {mw['noun']} sits at the {mw['at']} at {mw['size']}% frame width.\n\n"
         f"WORLD: {w['name']}. {w['brief']}\n"
+        + (f"THE DIRECTOR'S BRIEF FOR THIS WORLD (their own words; follow it closely: where it and the world above differ, the brief wins):\n\"\"\"\n{w['prompt']}\n\"\"\"\n"
+           if w.get("prompt") and w["prompt"] != direction else "")
         + (f"DIRECTOR'S DIRECTION (a HARD REQUIREMENT): \"{direction}\". Every shot's central subject must plainly be this; nothing in a shot may belong to a different subject area "
            f"(for example if the direction is weather, do not show plants, sand or webs). The world below only supplies the palette, finish and how the mark emerges.\n" if direction else "")
         + f"Palette for this whole batch: {w['palette']}. Every shot lives inside this world and palette so the cut sequence coheres; "
@@ -666,6 +673,8 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
         w = match_world(st, api_key, kimi_model, direction) or invent_world(st, api_key, kimi_model, direction)
     elif w is None:
         w = invent_world(st, api_key, kimi_model, direction, origin="custom" if world == "__custom__" else "invented")
+        if w.get("prompt"):
+            direction = ""                                 # your words are the territory's brief now: its first batch reads them as every later one will
 
     out: list = []
     totals = {"asked_kimi": 0, "from_kimi": 0, "dropped_duplicates": 0, "topped_up": 0, "kimi_calls": 0}
@@ -1261,7 +1270,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
             stats = chapters.world_stats(st)
             self.send_json({"ok": True, "worlds": [
                 {"name": w["name"], "brief": w["brief"], "examples": world_examples(w), "n": stats.get(w["name"], {}).get("n", 0), "kept": stats.get(w["name"], {}).get("kept", 0), "wildcard": bool(w.get("wildcard")),
-                 "origin": w.get("origin") or ("invented" if w.get("wildcard") else "core")}   # where it comes from: built in, Kimi's, or yours
+                 "origin": w.get("origin") or ("invented" if w.get("wildcard") else "core"),   # where it comes from: built in, Kimi's, or yours
+                 "prompt": w.get("prompt", "")}                                                # Describe your own: your words, as written
                 for w in chapters.all_worlds(st)
                 if not w.get("wildcard") or stats.get(w["name"], {}).get("n", 0) > 0  # invented worlds only list once they have images
             ]})
@@ -1693,7 +1703,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "needs_kimi_key": True, "error": "Enter your Kimi API key in ⚙️ Settings first"}, 400)
                 return
             stats, t_batch = {}, time.time()
-            direction = (body.get("direction") or "").strip()[:300]
+            direction = (body.get("direction") or "").strip()[:DIRECTION_MAX]
             try:
                 ideas = ask_kimi_for_prompts(
                     st,
@@ -1724,7 +1734,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         save_state(now)
                 gen_log.record("batch", ok=True, asked=int(body.get("count", 4)), territory_choice=body.get("world") or "mix", direction=direction, kimi_model=kimi_model,
                                seconds=round(time.time() - t_batch, 1), titles=[i.get("title") for i in ideas], **stats)
-                self.send_json({"ok": True, "ideas": ideas})
+                self.send_json({"ok": True, "ideas": ideas, "world": stats.get("world")})
             except Exception as e:
                 print(f"[KIMI] invent-prompts failed: {e!r}", flush=True)
                 gen_log.record("batch", ok=False, asked=int(body.get("count", 4)), territory_choice=body.get("world") or "mix", direction=direction,

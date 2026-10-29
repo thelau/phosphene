@@ -2862,8 +2862,8 @@
         input.placeholder = 'e.g. wet apparel, warm light';
         say = 'Choose a territory';
       } else if (v === '__custom__') {
-        input.placeholder = 'what is it? e.g. fog, clouds, rain, lightning';
-        say = 'Describe your own: every image will be about what you write. A look and palette are invented for it.';
+        input.placeholder = 'what is it? e.g. fog, clouds, rain, lightning, or paste a whole brief';
+        say = 'Describe your own: a few words or a whole brief. It becomes a territory that keeps your words as written: every batch of it follows them.';
       } else if (v === '__sampler__') {
         input.placeholder = 'e.g. dark, daylight, rain (every territory follows it)';   // a light, mood or weather works anywhere; a subject would fight most territories
         say = 'Sampler: one image from each of as many territories as images, the ones you have tried least first.';
@@ -2874,7 +2874,7 @@
         const opt = sel.selectedOptions[0];
         const eg = opt && opt.dataset.examples;                                   // the territory's own subjects: what typed here changes
         input.placeholder = `focus inside ${v}${eg ? `, e.g. ${eg}` : ''}`;
-        say = `${v}: ${(opt && opt.dataset.brief) || ''}`;
+        say = opt && opt.dataset.prompt ? `${v}, in your words: ${opt.dataset.prompt}` : `${v}: ${(opt && opt.dataset.brief) || ''}`;
       }
       sel.title = say;
       document.getElementById('terrBtn').title = say;
@@ -2928,11 +2928,13 @@
     (() => {
       const input = document.getElementById('directionInput');
       if (!input.addEventListener) return;
-      input.addEventListener('input', renderGen);
-      input.addEventListener('focus', () => { refineEditing = true; renderGen(); });
-      input.addEventListener('blur', () => { refineEditing = false; renderGen(); });
+      const r = document.getElementById('refine');
+      const fit = () => { input.style.height = 'auto'; input.style.height = `${Math.min(280, input.scrollHeight)}px`; };   // grows with the text, then scrolls
+      input.addEventListener('input', () => { renderGen(); if (r.classList.contains('open')) fit(); });
+      input.addEventListener('focus', () => { refineEditing = true; renderGen(); r.classList.add('open'); fit(); });
+      input.addEventListener('blur', () => { refineEditing = false; r.classList.remove('open'); input.style.height = ''; input.scrollTop = 0; renderGen(); });
       input.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); input.blur(); }
+        if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Escape') { e.preventDefault(); input.blur(); }   // ⇧↩ for a new line in a brief
       });
     })();
     // the running batch shows on the button itself: "Generating" and a spinner (the footer has the detail; Stop stays there: one control)
@@ -2955,7 +2957,7 @@
       const m = document.getElementById('terrMenu');
       const cur = document.getElementById('worldSelect').value;
       const { worlds, custom, wild, sampler } = terrOptions();
-      const item = (v, inner, cls = '') => `<div class="tm-item ${cls}" role="option" data-v="${escapeHtml(v)}" aria-selected="${v === cur}">${inner}</div>`;
+      const item = (v, inner, cls = '', tip = '') => `<div class="tm-item ${cls}" role="option" data-v="${escapeHtml(v)}" aria-selected="${v === cur}"${tip ? ` title="${escapeHtml(tip)}"` : ''}>${inner}</div>`;
       const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
       // one column: the two ways to a new territory first, then the territories (new ones join at the end)
       let html = '';
@@ -2967,7 +2969,7 @@
       if (custom || wild || sampler) html += '<div class="tm-sep"></div>';
       if (worlds.length) {
         // where each comes from, on the right: CORE (built in), INVENTED (Surprise me), CUSTOM (Describe your own); the ones never made a little dimmer
-        const row = o => item(o.value, `<span class="tm-name">${escapeHtml(o.value)}</span><span class="tm-origin">${escapeHtml(o.dataset.origin || 'core')}</span>${check}`, 'tm-world' + (+o.dataset.n ? '' : ' unmade'));
+        const row = o => item(o.value, `<span class="tm-name">${escapeHtml(o.value)}</span><span class="tm-origin">${escapeHtml(o.dataset.origin || 'core')}</span>${check}`, 'tm-world' + (+o.dataset.n ? '' : ' unmade'), o.dataset.prompt || o.dataset.brief);   // hover: your brief, or the territory's
         // grouped by where they come from (core, then yours, then Kimi's), a line between the groups
         const order = ['core', 'custom', 'invented'], by = k => worlds.filter(o => (o.dataset.origin || 'core') === k);
         html += '<div class="tm-head"><span>Territories</span></div>' + order.map(by).filter(g => g.length).map(g => g.map(row).join('')).join('<div class="tm-sep"></div>');
@@ -3042,6 +3044,7 @@
           o.value = w.name;
           o.dataset.brief = w.brief || '';
           o.dataset.examples = (w.examples || []).join(', ');
+          o.dataset.prompt = w.prompt || '';                                       // Describe your own: your words, as written
           o.dataset.kept = w.kept; o.dataset.n = w.n; o.dataset.wild = w.wildcard ? '1' : ''; o.dataset.origin = w.origin || (w.wildcard ? 'invented' : 'core');
           o.textContent = w.name;
           sel.appendChild(o);
@@ -3311,6 +3314,15 @@
 
         ran = true;
         await runBatch(invData.ideas, model);
+        if (worldChoice === '__custom__' && invData.world) {                     // your territory exists now: the next batch carries on in it
+          await loadWorlds();
+          const sel = document.getElementById('worldSelect');
+          if ([...sel.options].some(o => o.value === invData.world)) {
+            sel.value = invData.world;
+            document.getElementById('directionInput').value = '';
+            saveSettings(); updateDirectionHint(); syncSelects();
+          }
+        }
       } catch (e) {
         progStop(plainError(e));
       } finally {

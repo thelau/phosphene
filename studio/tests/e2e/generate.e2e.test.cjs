@@ -21,7 +21,21 @@ test('generate: a custom territory waits for its description; controls lock, pro
   assert.equal(await page.locator('#directionInput').evaluate(e => getComputedStyle(e).backgroundColor), 'rgba(0, 0, 0, 0)', 'the field takes the tinted area\'s colour, no box of its own');
   assert.equal(await page.locator('#generateBtn').isDisabled(), true, 'Generate waits for the description');
   await page.selectOption('#batchCountSelect', '4');
+  const oneLine = (await page.locator('#directionInput').boundingBox()).height;
   await page.fill('#directionInput', 'fog, clouds, rain');
+  await page.keyboard.press('Shift+Enter');                                        // a whole brief: ⇧↩ for new lines, the field grows
+  for (const [k, line] of ['Low cloud over wet stone.', 'Never a sunny sky.', 'No people.'].entries()) {
+    if (k) await page.keyboard.press('Shift+Enter');
+    await page.keyboard.type(line);
+  }
+  const open = await page.locator('#directionInput').boundingBox();
+  assert.ok(open.height > oneLine * 3, `the field grows with the brief (${oneLine} → ${open.height})`);
+  await shot('04b-describe-brief');
+  await page.keyboard.press('Enter');                                              // ↩ alone: done
+  assert.notEqual(await page.evaluate(() => document.activeElement.id), 'directionInput');
+  assert.ok((await page.locator('#directionInput').boundingBox()).height <= oneLine + 1, 'back to one line in the row');
+  const brief = 'fog, clouds, rain\nLow cloud over wet stone.\nNever a sunny sky.\nNo people.';
+  assert.equal(await page.inputValue('#directionInput'), brief);
   await page.click('#generateBtn');
   for (const id of ['#worldSelect', '#directionInput', '#batchCountSelect', '#generateBtn']) assert.equal(await page.locator(id).isDisabled(), true, `${id} locked`);
   await page.waitForSelector('#statusText .indeterminate');
@@ -38,14 +52,17 @@ test('generate: a custom territory waits for its description; controls lock, pro
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.pending-ring')).borderRadius), '2px', 'the mark\'s box, as the logo target, not a circle');
   await page.waitForFunction(() => /Done · 4 added/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   for (const id of ['#worldSelect', '#directionInput', '#batchCountSelect', '#generateBtn']) await enabled(id);
-  assert.equal(await page.inputValue('#directionInput'), 'fog, clouds, rain', 'the description stays for the next batch');
+  await page.waitForFunction(() => document.getElementById('worldSelect').value === 'Fog & Vapor');
+  assert.equal(await text('#terrName'), 'Fog & Vapor', 'your territory exists now: the next batch carries on in it');
+  assert.equal(await page.inputValue('#directionInput'), '', 'its brief lives in the territory, not in the field');
+  assert.match(await page.locator('#terrBtn').getAttribute('title'), /in your words: fog, clouds, rain/);
   assert.equal(await text('#genLabel'), 'Generate');
   assert.equal(await page.locator('#statusText .slot.ok').count(), 4);
   await page.waitForFunction(() => document.getElementById('tabSelection').textContent.replace(/\s+/g, ' ').trim().endsWith(' 7'));
   assert.equal(await page.locator('.pending-card').count(), 0);
   assert.equal(await page.locator('.card .card-new').count(), 4, 'the new images are marked New');
   const inv = api.state.calls.find(c => c.path === '/api/invent-prompts').body;
-  assert.deepEqual([inv.world, inv.direction, inv.count], ['__custom__', 'fog, clouds, rain', 4]);
+  assert.deepEqual([inv.world, inv.direction, inv.count], ['__custom__', brief, 4], 'the brief as written, new lines and all');
   await shot('07-done');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();

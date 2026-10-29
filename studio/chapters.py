@@ -247,8 +247,8 @@ def all_worlds(st: dict) -> list[dict]:
         if w["name"] in names:
             continue
         stats = world_stats(st).get(w["name"], {"n": 0, "kept": 0})
-        if stats["n"] >= 6 and stats["kept"] == 0:
-            continue  # flopped: never kept anything, retire it
+        if stats["n"] >= 6 and stats["kept"] == 0 and w.get("origin") != "custom":
+            continue  # Kimi's that flopped (never kept anything) retire; one you described stays yours
         out.append(w)
     return out
 

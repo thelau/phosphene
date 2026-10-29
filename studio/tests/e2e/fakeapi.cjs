@@ -168,7 +168,9 @@ function start(state = makeState()) {
       case '/api/invent-prompts': {
         await sleep(state.delays.invent);
         const n = body.count || 4;
-        return send({ ok: true, ideas: Array.from({ length: n }, (_, i) => ({ title: `Fog ${i + 1}`, prompt: `fog scene ${i}`, guide: i % 2 ? 'light' : 'dark', world: body.world && !body.world.startsWith('__') ? body.world : 'Fog & Vapor', idea: 'idea', subject: `fog ${i}` })) });
+        if (body.world === '__custom__' && !(state.moreWorlds || []).some(w => w.name === 'Fog & Vapor'))   // Describe your own: a territory of yours, your words kept
+          (state.moreWorlds || (state.moreWorlds = [])).push({ name: 'Fog & Vapor', brief: 'Weather.', n: 4, kept: 4, wildcard: true, origin: 'custom', prompt: body.direction });
+        return send({ ok: true, world: body.world && !body.world.startsWith('__') ? body.world : 'Fog & Vapor', ideas: Array.from({ length: n }, (_, i) => ({ title: `Fog ${i + 1}`, prompt: `fog scene ${i}`, guide: i % 2 ? 'light' : 'dark', world: body.world && !body.world.startsWith('__') ? body.world : 'Fog & Vapor', idea: 'idea', subject: `fog ${i}` })) });
       }
       case '/api/generate-image': {
         await sleep(state.delays.generate);

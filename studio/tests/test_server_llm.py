@@ -151,6 +151,29 @@ def test_ask_kimi_direction_replaces_the_worlds_random_subjects(srv, fake_llm):
     assert not any(f"subject = {a} " in p for a in w["applications"])
 
 
+def test_describe_your_own_keeps_your_words_and_every_batch_follows_them(srv, monkeypatch):
+    brief = "Night markets in Taipei.\nSteam, neon reflected in wet tarmac, hands at work.\nNever a face; never daylight."
+    seen = []
+    def llm(prompt, **k):
+        seen.append(prompt)
+        return json.dumps(NEW_WORLD) if "Invent ONE new creative world" in prompt else json.dumps(shots(8))
+    monkeypatch.setattr(srv, "call_kimi_llm", llm)
+    st = srv.load_state()
+    srv.ask_kimi_for_prompts(st, "k", "kimi-k3", count=4, world="__custom__", direction=brief)
+    w = next(x for x in st["custom_worlds"] if x["name"] == "Harbor & Signal")
+    assert w["origin"] == "custom" and w["prompt"] == brief                   # kept as written, newlines and all
+    first = seen[1]
+    assert first.count(brief) == 1 and "THE DIRECTOR'S BRIEF" in first        # the first batch reads it once, as the brief
+    assert "HARD REQUIREMENT" not in first
+    srv.ask_kimi_for_prompts(st, "k", "kimi-k3", count=4, world="Harbor & Signal")
+    assert brief in seen[-1] and "THE DIRECTOR'S BRIEF" in seen[-1]            # and every later batch of it too
+    srv.ask_kimi_for_prompts(st, "k", "kimi-k3", count=4, world="Harbor & Signal", direction="only the fruit stalls")
+    assert brief in seen[-1] and "only the fruit stalls" in seen[-1]          # a refinement narrows it, the brief stays
+    seen.clear()
+    srv.ask_kimi_for_prompts(st, "k", "kimi-k3", count=4, world="Editorial Print")
+    assert "THE DIRECTOR'S BRIEF" not in seen[0]                              # a built-in territory has none
+
+
 def test_ask_kimi_without_direction_makes_kimi_invent_the_subjects(srv, fake_llm):
     w = next(w for w in chapters.WORLDS if w["name"] == "Packaging & Product")
     srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=8, world="Packaging & Product")

@@ -43,6 +43,12 @@ def test_custom_world_retired_after_six_with_no_keeps():
     assert "Flop" not in [w["name"] for w in chapters.all_worlds(st)]
 
 
+def test_a_territory_you_described_never_retires():
+    worlds = {f"f{i}": "Mine" for i in range(6)}
+    st = {"custom_worlds": [{**mk_world("Mine"), "origin": "custom"}], "worlds": worlds, "trashed": list(worlds)}
+    assert "Mine" in [w["name"] for w in chapters.all_worlds(st)]
+
+
 def test_custom_world_kept_if_any_keep_or_too_few_samples():
     worlds = {f"f{i}": "Flop" for i in range(6)}
     st = {"custom_worlds": [mk_world("Flop")], "worlds": worlds, "trashed": list(worlds)[:5]}
