@@ -627,7 +627,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     if direction:
         # the director's words choose the subjects; the territory only supplies look, palette and how the mark emerges
         shot_lines = "\n".join(
-            f"Shot {i + 1}: subject = invent a DIFFERENT concrete subject that is a clear instance of the direction \"{direction}\" | optional inspiration: light {sh['lighting']}, camera {sh['camera']}"
+            f"Shot {i + 1}: subject = invent a DIFFERENT concrete subject that is a clear instance of the direction \"{direction}\" | optional inspiration: camera {sh['camera']}"
             for i, sh in enumerate(shots)
         )
     else:
@@ -668,14 +668,17 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
         f"WORLD: {w['name']}. {w['brief']}\n"
         + (f"THE DIRECTOR'S BRIEF FOR THIS WORLD (their own words; follow it closely: where it and the world above differ, the brief wins):\n\"\"\"\n{w['prompt']}\n\"\"\"\n"
            if w.get("prompt") and w["prompt"] != direction else "")
-        + (f"DIRECTOR'S DIRECTION (a HARD REQUIREMENT): \"{direction}\". Every shot's central subject must plainly be this; nothing in a shot may belong to a different subject area "
+        + (f"DIRECTOR'S DIRECTION (a HARD REQUIREMENT): \"{direction}\". Every shot must plainly follow ALL of it: its subject, and whatever it says about time of day, light, "
+           f"weather, mood and place (if it says night, every shot is at night; if it says dark, every frame is dark); nothing in a shot may belong to a different subject area "
            f"(for example if the direction is weather, do not show plants, sand or webs). The world below only supplies the palette, finish and how the mark emerges.\n" if direction else "")
         + f"Palette for this whole batch: {w['palette']}. Every shot lives inside this world and palette so the cut sequence coheres; "
-        f"vary subject, framing and light, not the world.\n\n"
-        f"For each shot first write \"idea\": ONE line on how the mark physically emerges from the scene (inspirations: {'; '.join(w['marks'])}; or something better). "
+        + (f"vary subject and framing, and light only within what the direction allows, not the world.\n\n" if direction else f"vary subject, framing and light, not the world.\n\n")
+        + f"For each shot first write \"idea\": ONE line on how the mark physically emerges from the scene (inspirations: {'; '.join(w['marks'])}; or something better). "
         f"Reject gimmicks like 'logo on a thing'. Then write \"prompt\" from that idea.\n\n"
         f"Alternate registers: odd-numbered shots are DARK register (mostly black or deep tones, luminous emitted light, \"guide\":\"dark\"); even-numbered shots are LIGHT register (mostly bone or pale tones, soft light, \"guide\":\"light\"). "
-        f"Each register uses the world's palette for that register.\n\n{avoid_block}Shots:\n{shot_lines}\n\n{quality_bar()}\n\n"
+        + ("BUT if the director's words above set the light, time of day or tone (night, dark, daylight, bright, pale...), they win over this alternation: every shot follows them, "
+           "and \"guide\" says which the frame really is. " if direction or w.get("prompt") else "")   # a 'dark night' batch came back half pale: the alternation asked for it
+        + f"Each register uses the world's palette for that register.\n\n{avoid_block}Shots:\n{shot_lines}\n\n{quality_bar()}\n\n"
         f"TASTE (learned from what the director kept):\nLiked:\n{liked}\nSteer away from the feel of: {disliked}\n\n"
         f"RULES:\n"
         f"1. The mark is physically part of the scene (same perspective, light, material). Never a flat sticker, no outer rings, exactly one mark.\n"

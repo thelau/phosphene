@@ -151,6 +151,16 @@ def test_ask_kimi_direction_replaces_the_worlds_random_subjects(srv, fake_llm):
     assert not any(f"subject = {a} " in p for a in w["applications"])
 
 
+def test_a_refinement_sets_the_light_too_not_only_the_subject(srv, fake_llm):
+    # "dark busy megalopolis streets at night" came back half pale: every other shot was asked to be LIGHT, and each had a random light (overcast daylight...)
+    srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=4, world="Out-of-Home & City", direction="dark busy megalopolis streets at night")
+    p = fake_llm[-1]
+    assert "if it says night, every shot is at night" in p and "they win over this alternation" in p
+    assert "optional inspiration: camera" in p and "optional inspiration: light" not in p
+    srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=2, world="Out-of-Home & City")
+    assert "they win over this alternation" not in fake_llm[-1] and "vary subject, framing and light" in fake_llm[-1]   # no direction: as before
+
+
 def test_describe_your_own_keeps_your_words_and_every_batch_follows_them(srv, monkeypatch):
     brief = "Night markets in Taipei.\nSteam, neon reflected in wet tarmac, hands at work.\nNever a face; never daylight."
     seen = []
