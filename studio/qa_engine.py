@@ -262,6 +262,11 @@ OWN_CHECK_VERSION = 4       # in the QA cache's keys: a new version measures the
 OWN_ABSENT = 0.33           # the fit at its size under this: the mark is not there (trashed)
 OWN_FIT_MIN = 0.42          # under this: doubtful
 OWN_SHARP_MIN = 0.055       # fit at 1.0x minus the mean of 0.8x and 1.2x: under this, doubtful (another size fits as well)
+OWN_FAINT = (0.2, 0.15)     # under OWN_ABSENT but a fit of 0.2+ that peaks sharply at its own size (0.15+ over 0.8x and 1.2x): a faint
+                            # mark at the right size (a seam in mesh, a blind emboss), doubtful rather than trashed. On the 21 images
+                            # trashed with a fit of 0.18-0.33 (2026-10-29): the two the user restored were the sharpest (0.18, 0.16); two
+                            # others reach it (0.16, 0.15) and now wait for the user's eye; the rest stay trashed. The version is not
+                            # raised: images measured before keep their result (re-measuring Halo's 50% marks takes many minutes)
 OWN_AROUND = (0.8, 1.2)
 OWN_SCALES = (0.6, 0.7, 0.78, 0.8, 0.85, 0.92, 1.0, 1.08, 1.16, 1.2, 1.25, 1.4, 1.6, 2.0, 2.5)
 OWN_CLEAR = 0.04            # a size this much better than its own, 1.4x or more (or 0.7x or less): clearly the wrong size (trashed)
@@ -298,7 +303,9 @@ def _check_project_mark(image_path: Path, im: Image.Image, gray: Image.Image, ma
     best = max(fit, key=lambda sc: fit[sc][0])
     gain = fit[best][0] - at
     issues, doubt = [], ""
-    if at < OWN_ABSENT:
+    if at < OWN_ABSENT and at >= OWN_FAINT[0] and sharp >= OWN_FAINT[1]:
+        doubt = f"Check the mark: it is faint, but sharpest at its own size (fit {at:.2f})"
+    elif at < OWN_ABSENT:
         issues.append(f"The mark is not at its place and size (fit {at:.2f})")
     elif best >= 1.4 and gain > OWN_CLEAR:
         issues.append(f"The mark is too big: it fits best at about {best:g}x its size")

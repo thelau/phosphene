@@ -159,3 +159,17 @@ def test_a_plain_triangle_at_its_size_is_never_trashed_and_one_much_too_big_is(t
         full, faint, big = pool.map(_check, jobs)
     assert full["qa_passed"] and faint["qa_passed"], "at its size (full or faint ink): never trashed"
     assert not big["qa_passed"] or big["qa_doubt"], "twice too big: trashed or noted"
+
+
+def test_a_faint_mark_sharpest_at_its_own_size_is_doubtful_not_trashed(tmp_path, monkeypatch):
+    # Halo's "Construction Scrim Square": the frame as faint seams in dark mesh, fit 0.24 but sharply at its size; the user restored it
+    mark = _swoosh(tmp_path / "mark.png")
+    ok, spec = _plate_with_own_mark(tmp_path / "ok.jpg", mark)
+    curve = lambda peak, around: (lambda g, e, m, sc: ((peak if sc == 1.0 else around), "outline"))
+    monkeypatch.setattr(qa, "_fit", curve(0.24, 0.08))
+    r = qa.evaluate_plate_qa(ok, spec)
+    assert r["qa_passed"] and r["qa_doubt"].startswith("Check the mark: it is faint"), r
+    monkeypatch.setattr(qa, "_fit", curve(0.24, 0.2))                       # as faint, but other sizes fit about as well: not there
+    assert not qa.evaluate_plate_qa(ok, spec)["qa_passed"]
+    monkeypatch.setattr(qa, "_fit", curve(0.15, 0.0))                       # too faint to say
+    assert not qa.evaluate_plate_qa(ok, spec)["qa_passed"]
