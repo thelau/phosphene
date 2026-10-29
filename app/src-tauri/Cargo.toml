@@ -1,6 +1,6 @@
 [package]
 name = "phosphene"
-version = "0.1.3"
+version = "0.1.4"
 description = "Phosphene: match-cut films around a brand mark"
 edition = "2021"
 
