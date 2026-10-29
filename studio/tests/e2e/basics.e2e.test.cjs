@@ -1207,6 +1207,16 @@ test('the Selection: picked images go to the Trash from the floating bar, in one
   await ctx.close();
 });
 
+test('Look: each slider under its own setting (the zoom\'s Amount under Zoom, Trail on the left)', { skip }, async () => {
+  const ctx = await fresh();
+  await film();
+  const box = async sel => page.locator(sel).boundingBox();
+  const [zoom, amount, invert, trail] = [await box('.segctl[data-for="zoomSelect"]'), await box('#zoomAmtRow'), await box('.segctl[data-for="invertSelect"]'), await box('#trailRow')];
+  assert.ok(amount.y > zoom.y && Math.abs(amount.x + amount.width - (zoom.x + zoom.width)) < 40, 'Amount under Zoom');
+  assert.ok(trail.y > invert.y && trail.x < amount.x, 'Trail on the left, under Invert');
+  await ctx.close();
+});
+
 test('the logo target: each image with its own placement (Loose) has its box there, the others the project\'s', { skip }, async () => {
   const ctx = await fresh({ setup: st => { st.plates[1].placement = { kind: 'loose', x: 30, y: 70, size: 25 }; } });
   await page.keyboard.press('t');
