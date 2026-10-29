@@ -25,6 +25,9 @@
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
+    /* an app, not a web page: nothing is selected by a click, a Shift-click or a drag, except where text is typed or worth copying */
+    body { -webkit-user-select: none; user-select: none; }
+    input, textarea, [contenteditable], .prompt-overlay-text, .selectable { -webkit-user-select: text; user-select: text; }
     body {
       background: var(--bg);
       color: var(--text);
@@ -252,7 +255,7 @@
     .tl-fields .lock { width: 30px; height: 30px; border: 1px solid var(--line-3); }
     .tl-follow { min-height: 30px; gap: 7px; font-size: 12px; color: var(--muted); white-space: nowrap; margin-left: 4px; }
     .tl-follow input { width: 14px; height: 14px; }
-    .vfield { flex: none; height: 30px; display: inline-flex; align-items: center; gap: 8px; padding: 0 6px 0 10px; border-radius: 6px; border: 1px solid var(--line-3); background: var(--field); color: var(--text); cursor: ns-resize; user-select: none; touch-action: none; transition: none; }
+    .vfield { flex: none; height: 30px; display: inline-flex; align-items: center; gap: 8px; padding: 0 6px 0 10px; border-radius: 6px; border: 1px solid var(--line-3); background: var(--field); color: var(--text); cursor: ns-resize; -webkit-user-select: none; user-select: none; touch-action: none; transition: none; }
     .vfield:hover { border-color: #6B665A; background: #262522; }
     .vfield.dragging { border-color: var(--orange); background: rgba(236, 84, 12, .18); }
     .vfield.dragging .vf-val { color: #FFB48A; }
@@ -361,7 +364,7 @@
     .lock:has(input:checked) .lk-shut { display: block; }
     .lock:has(input:checked) { color: var(--orange); }
     .lock:has(input:focus-visible) { outline: 2px solid var(--orange); outline-offset: 1px; }
-    .check-line { display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 13px; color: var(--text-2); cursor: pointer; user-select: none; }
+    .check-line { display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 13px; color: var(--text-2); cursor: pointer; -webkit-user-select: none; user-select: none; }
     .check-line input { accent-color: var(--orange); width: 16px; height: 16px; margin: 0; flex: none; }
     .check-line.indent { padding-left: 98px; }
     .subhead { margin-top: 6px; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
@@ -492,7 +495,7 @@
     .viewer-nav.prev { left: 24px; } .viewer-nav.next { right: 24px; }
     .viewer-bar { position: absolute; bottom: 22px; left: 0; right: 0; display: flex; justify-content: center; gap: 14px; font-size: 13px; color: var(--text-2); pointer-events: none; }
     .viewer-bar span:first-child { color: var(--text); }
-    .card { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; cursor: grab; user-select: none; transition: opacity .15s; }
+    .card { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; cursor: grab; -webkit-user-select: none; user-select: none; transition: opacity .15s; }
     .card:active { cursor: grabbing; }
     .card.out { opacity: .5; }
     .card.dragging { opacity: .35; }
@@ -524,7 +527,7 @@
     /* the info panel on a card: what it shows depends on the thumbnail size; the text scrolls, Copy stays */
     .prompt-overlay { position: absolute; inset: 0; background: #161514; padding: 12px 12px 10px; display: none; flex-direction: column; gap: 8px; z-index: 7; color: var(--text-2); font-size: 12px; line-height: 1.45; cursor: default; }
     .prompt-overlay.open { display: flex; }
-    .prompt-overlay-text { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; word-break: break-word; user-select: text; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+    .prompt-overlay-text { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; word-break: break-word; -webkit-user-select: text; user-select: text; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
     .po-world { color: var(--text); font-weight: 700; }
     .po-idea { color: var(--muted); }
     .po-critic { color: var(--faint); font-size: 11px; }

@@ -1190,6 +1190,10 @@ test('the Selection: picked images go to the Trash from the floating bar, in one
   await cards.nth(0).click({ position: { x: 100, y: 120 }, modifiers: ['Meta'] });
   await cards.nth(1).click({ position: { x: 100, y: 120 }, modifiers: ['Meta'] });
   assert.equal(await text('#pickCount'), '2 picked');
+  await cards.nth(2).click({ position: { x: 100, y: 120 }, modifiers: ['Shift'] });
+  assert.equal(await page.evaluate(() => String(getSelection())), '', 'an app: a Shift-click selects images, never the page\'s text');
+  await cards.nth(2).click({ position: { x: 100, y: 120 }, modifiers: ['Meta'] });
+  assert.equal(await text('#pickCount'), '2 picked');
   for (const id of ['#addToGroupBtn', '#pickTrashBtn']) assert.equal(await page.locator(id).isVisible(), true, id);
   assert.equal(await page.locator('#trashRestoreSel').isVisible(), false, 'no Restore in the Selection');
   await shot('24-pick-trash');
