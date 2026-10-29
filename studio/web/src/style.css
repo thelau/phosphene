@@ -92,6 +92,7 @@
     /* where each dropdown sits */
     .row > .csel { width: 100%; }
     .csel[data-for="batchCountSelect"] { width: 148px; }
+    .csel[data-for="targetSelect"] { width: 150px; }
     .gen .csel-face { height: 44px; padding: 0 40px 0 18px; border: 0; border-radius: 0; background-color: transparent; background-position: right 16px center; font-weight: 600; font-size: 14px; }   /* room on either side of "20 images" */
     .settings-popover .csel, .ai-panel .csel { display: flex; width: 100%; }
     .look-char .csel { flex: 1; }

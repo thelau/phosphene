@@ -463,6 +463,11 @@ def _clean_state(f: Path) -> None:
     for g in st.get("groups") or []:
         if isinstance(g, dict) and isinstance(g.get("files"), list):
             g["files"] = [n for n in g["files"] if isinstance(n, str) and _bare(n)]
+    if isinstance(st.get("placements"), dict):
+        import placement                            # (it imports this module)
+        st["placements"] = {k: c for k, v in st["placements"].items() if _bare(k) and (c := placement.clean(v))}
+    elif "placements" in st:
+        del st["placements"]
     f.write_text(json.dumps(st, indent=1))
 
 

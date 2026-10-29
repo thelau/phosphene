@@ -173,6 +173,11 @@
             <button type="button" class="refine-x" id="refineClear" onmousedown="event.preventDefault()" onclick="clearRefine()" aria-label="Clear the refinement"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
           </div>
           <span class="gen-sep"></span>
+          <select id="targetSelect" title="Where the mark goes in this batch's images: on target (the project's place and size, every image the same), or loose (each image its own place and size, kept with it)">
+            <option value="exact" selected>On target</option>
+            <option value="loose">Loose</option>
+          </select>
+          <span class="gen-sep"></span>
           <select id="batchCountSelect" title="Number of images per batch">
           <option value="2">2 images</option>
           <option value="4" selected>4 images</option>

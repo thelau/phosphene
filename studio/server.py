@@ -36,6 +36,7 @@ import edits
 import features
 import sequences
 import diversity
+import placement
 import places
 import projects
 import qa_engine
@@ -155,8 +156,11 @@ def is_demo() -> bool:
     return bool(PROJECT) and PROJECT.get("qa") == "demo-tuned"
 
 
-def current_mark():
-    """What the logo check looks for in this project: DEMO's orbital mask, or the project's own mark at its size and place."""
+def current_mark(pl: dict | None = None):
+    """What the logo check looks for in this project: DEMO's orbital mask, or the project's own mark at its size and place.
+    An image with its own placement (a Loose batch): the mark at that size and place, DEMO's too (the general check)."""
+    if pl:
+        return mark_spec(PROJECT["mark_file"], pl["size"], pl["x"], pl["y"])
     return DEMO_MARK if is_demo() else mark_spec(PROJECT["mark_file"], PROJECT["mark_size"], PROJECT["mark_x"], PROJECT["mark_y"])
 
 
@@ -179,10 +183,12 @@ def mark_words(p: dict | None = None) -> dict:
     }
 
 
-def _plate_key(path: Path) -> str:
+def _plate_key(path: Path, pl: dict | None = None) -> str:
     # size, not mtime: git checkouts rewrite mtimes and used to invalidate every cached result. Another project's mark: the check's
     # version too (2: fitted at other sizes and by its outline), so results from an older check are measured again; DEMO's keys stay
     # and the mark's size and place: changed in Project settings, every image is measured again against the new ones
+    if pl:                                         # its own placement: measured there
+        return f"{path.name}:{path.stat().st_size}:{qa_engine.OWN_CHECK_VERSION}:at:{pl['size']:g}:{pl['x']:g}:{pl['y']:g}"
     return f"{path.name}:{path.stat().st_size}" + ("" if is_demo() else f":{qa_engine.OWN_CHECK_VERSION}:{PROJECT['mark_size']:g}:{PROJECT['mark_x']:g}:{PROJECT['mark_y']:g}")
 
 
@@ -196,13 +202,13 @@ def _flush_qa_cache() -> None:
     os.replace(tmp, QA_CACHE_FILE)  # atomic: a reader never sees a half-written file
 
 
-def get_cached_qa(path: Path) -> dict:
-    key = _plate_key(path)
+def get_cached_qa(path: Path, pl: dict | None = None) -> dict:
+    key = _plate_key(path, pl)
     if key in QA_CACHE:
         return QA_CACHE[key]
     with QA_LOCK:  # each plate is evaluated once, even when several requests ask at the same time
         if key not in QA_CACHE:
-            _remember_qa(key, evaluate_plate_qa(path, current_mark()))
+            _remember_qa(key, evaluate_plate_qa(path, current_mark(pl)))
         return QA_CACHE[key]
 
 
@@ -222,9 +228,9 @@ def _remember_qa(key: str, result: dict, now: bool = False) -> None:
 
 
 
-def check_new_image(path: Path) -> dict:
+def check_new_image(path: Path, pl: dict | None = None) -> dict:
     """The logo check on an image not yet among the plates (its result is cached under its final name by the caller)."""
-    return evaluate_plate_qa(path, current_mark())
+    return evaluate_plate_qa(path, current_mark(pl))
 
 
 def apply_critic(filename: str) -> None:
@@ -233,8 +239,10 @@ def apply_critic(filename: str) -> None:
     st = load_state()
     if not st.get("critic_enabled", True) or not st.get("kimi_api_key"):
         return
+    pl = st.get("placements", {}).get(filename)
     try:
-        r = critic.review_plate(PLATES_DIR / filename, call_kimi_llm, st["kimi_api_key"], st.get("kimi_model", "kimi-k3"), mark=None if is_demo() else f"small {PROJECT['mark_noun']} sits at {mark_words()['short']}")
+        r = critic.review_plate(PLATES_DIR / filename, call_kimi_llm, st["kimi_api_key"], st.get("kimi_model", "kimi-k3"),
+                                mark=None if is_demo() and not pl else f"small {PROJECT['mark_noun']} sits at {mark_words(placement.as_project(PROJECT, pl))['short']}")
     except Exception as e:
         print(f"[CRITIC] {filename}: {str(e)[:120]}", flush=True)
         return
@@ -1288,8 +1296,9 @@ class StudioHandler(SimpleHTTPRequestHandler):
             auth = get_krea_oauth_token()
 
             plates = []
+            placed = st.get("placements", {})
             for p in ordered_plate_files(st):
-                qa = get_cached_qa(p)
+                qa = get_cached_qa(p, placed.get(p.name))
                 plates.append({
                     "filename": p.name,
                     "url": f"/api/plate?f={quote(p.name)}&t={int(p.stat().st_mtime)}",   # the project's own folder
@@ -1312,6 +1321,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "qa_score": qa["qa_score"],
                     "qa_issues": qa.get("issues", []),
                     "qa_doubt": qa.get("qa_doubt", ""),
+                    "placement": placed.get(p.name),                 # its own place and size (a Loose batch), else the project's
                 })
 
             kimi_key = st.get("kimi_api_key", "")
@@ -1752,14 +1762,16 @@ class StudioHandler(SimpleHTTPRequestHandler):
             title = body.get("title", "Outdoor Plate").strip()
             raw_prompt = body.get("prompt", "").strip()
             guide_type = body.get("guide", "dark")
-            guide_kw = {"guide": current_guide()} if current_guide() else {}   # another project: its own guide image
+            pl = placement.choose(body.get("target") or "exact", PROJECT)       # Loose: this image's own place and size
+            guide_kw = {"guide": placement.guide(PROJECT, pl)} if pl else {"guide": current_guide()} if current_guide() else {}   # another project: its own guide image
             model = body.get("model", "google/nano-banana-pro")
             if model == "auto":
                 model = taste.pick_model(load_state())
                 print(f"[TASTE] auto-picked model {model}", flush=True)
             after_filename = body.get("after_filename")
 
-            full_prompt = build_full_prompt(raw_prompt)
+            seen_as = placement.as_project(PROJECT, pl)                        # the prompt names this image's place and size
+            full_prompt = build_full_prompt(raw_prompt, seen_as)
             mkey = (PROJECT["slug"] if PROJECT else "", title)
             with MAKING_LOCK:
                 if mkey in MAKING:
@@ -1784,7 +1796,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         if not softened:
                             raise
                         print(f"[GENERATE] moderation rejected '{title}': retrying once with a softened prompt", flush=True)
-                        img_bytes = generate_with_retry(attempts=1, prompt=build_full_prompt(softened), guide_type=guide_type, model=model, trace=trace, **guide_kw)
+                        img_bytes = generate_with_retry(attempts=1, prompt=build_full_prompt(softened, seen_as), guide_type=guide_type, model=model, trace=trace, **guide_kw)
                         trace[-1]["softened"] = True
                         raw_prompt = softened
                 im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
@@ -1794,7 +1806,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 tmp_img = PLATES_DIR / f".new-{uuid.uuid4().hex}.jpg.part"
                 im.save(tmp_img, "JPEG", quality=95)
                 try:
-                    qa = check_new_image(tmp_img)
+                    qa = check_new_image(tmp_img, pl)
                 except BaseException:
                     tmp_img.unlink(missing_ok=True)
                     raise
@@ -1808,7 +1820,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     os.replace(tmp_img, save_path)
                     qa = {**qa, "filename": filename}
                     with QA_LOCK:
-                        _remember_qa(_plate_key(save_path), qa, now=True)
+                        _remember_qa(_plate_key(save_path, pl), qa, now=True)
                     print(
                         f"[QA] {filename} ({model}) -> passed={qa['qa_passed']} score={qa['qa_score']}% "
                         f"corr={qa['center_corr']} asym={qa['core_asymmetry']} issues={qa['issues']}",
@@ -1824,6 +1836,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                             st.setdefault("worlds", {})[filename] = body["world"]
                         if body.get("idea"):
                             st.setdefault("ideas", {})[filename] = body["idea"]
+                        if pl:
+                            st.setdefault("placements", {})[filename] = pl
                         if title not in st.setdefault("history", []):
                             st["history"].append(title)
 
@@ -1840,7 +1854,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 threading.Thread(target=apply_critic, args=(filename,), daemon=True).start()
                 took = round(time.time() - t_start, 1)
                 gen_log.record("image", id=job_id, ok=True, title=title, filename=filename, model=model, guide=guide_type, world=body.get("world"), seconds=took,
-                               attempts=trace, qa_passed=qa["qa_passed"], qa_score=qa["qa_score"], qa_issues=qa.get("issues", []), softened=bool(softened))
+                               attempts=trace, qa_passed=qa["qa_passed"], qa_score=qa["qa_score"], qa_issues=qa.get("issues", []), softened=bool(softened), placement=pl)
                 print(f"[GENERATE] OK {filename} ({model}) {took}s, attempt {len(trace)}/3" + ("  (prompt softened after a moderation rejection)" if softened else "") + ("" if qa["qa_passed"] else "  LOGO CHECK FAILED -> trash"), flush=True)
 
                 self.send_json({
@@ -1853,6 +1867,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "qa_issues": qa.get("issues", []),
                     "qa_doubt": qa.get("qa_doubt", ""),
                     "softened": bool(softened),
+                    "placement": pl,
                 })
             except Exception as e:
                 print(f"[GENERATE] FAILED '{title}' ({model}, guide={guide_type}) after {time.time() - t_start:.0f}s: {str(e)[:300]}", flush=True)

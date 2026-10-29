@@ -1181,6 +1181,22 @@ test('edge states: an empty library says what to do, the Trash has no film previ
   await ctx.close();
 });
 
+test('the logo target: each image with its own placement (Loose) has its box there, the others the project\'s', { skip }, async () => {
+  const ctx = await fresh({ setup: st => { st.plates[1].placement = { kind: 'loose', x: 30, y: 70, size: 25 }; } });
+  await page.keyboard.press('t');
+  await page.waitForSelector('body.target-on');
+  const box = async name => page.locator(`.card[data-filename="${name}"] .card-thumb`).evaluate(e => {
+    const t = e.getBoundingClientRect(), a = getComputedStyle(e, '::after');
+    return { x: (parseFloat(a.left)) / t.width, y: parseFloat(a.top) / t.height, w: parseFloat(a.width) / t.width };
+  });
+  const [own, other] = [await box(api.state.plates[1].filename), await box(api.state.plates[0].filename)];
+  assert.ok(Math.abs(own.x - 0.30) < 0.01 && Math.abs(own.y - 0.70) < 0.01 && Math.abs(own.w - 0.25) < 0.01, `its own box: ${JSON.stringify(own)}`);
+  assert.ok(Math.abs(other.x - 0.5) < 0.01 && Math.abs(other.w - 0.18) < 0.01, `the project's: ${JSON.stringify(other)}`);
+  await shot('23-loose-target');
+  assert.deepEqual(await page.locator('.csel[data-for="targetSelect"] .csel-face').textContent(), 'On target');
+  await ctx.close();
+});
+
 test('the Keys panel: ? opens a tidy list under the hint, Esc and a click elsewhere close it', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945 });
   await page.keyboard.press('?');

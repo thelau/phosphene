@@ -1097,6 +1097,8 @@
       });
       old.forEach(el => el.remove());
     }
+    // an image with its own placement (a Loose batch): the logo target draws its box there (the project's otherwise)
+    function placeVars(pl) { return pl ? `--mark-x:${pl.x}%;--mark-y:${pl.y}%;--mark-w:${pl.size}%` : ''; }
     function cardHtml(p) {
       return `
         <div class="card"
@@ -1110,7 +1112,7 @@
              ondragend="onDragEnd(event)"
              onclick="cardClick(event, '${p.filename}')"
              ondblclick="openViewer(event, '${p.filename}')">
-          <div class="card-thumb">
+          <div class="card-thumb"${p.placement ? ` style="${placeVars(p.placement)}"` : ''}>
             <img src="${p.thumb || p.url}" loading="lazy" decoding="async" alt="" />
             <span class="card-num"></span>
             ${!showTrash && seenAtLoad && !seenAtLoad.has(p.filename) ? '<span class="card-new">New</span>' : ''}
@@ -1864,7 +1866,7 @@
     // Not in it: permanent deletes and generation (they say so when you start them), the mode and the views.
     const history = [], future = [];
     let applyingHistory = false;
-    const NOT_UNDONE = ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
+    const NOT_UNDONE = ['targetSelect', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
     function pushStep(step) { if (!step.settings) commitSettings(); history.push(step); if (history.length > 100) history.shift(); future.length = 0; showUndo(); return step; }
     function showUndo() {
       const b = document.getElementById('undoRandomBtn');
@@ -2645,6 +2647,7 @@
     // the picture at cutPos: the stage image, its effects (while playing), the film strip mark and the time
     let shownTime = '';
     let aheadFrom = -1;
+    let shownBox = null;
     function drawFrame() {
       const active = activePlates();
       const stageImg = document.getElementById('stageImg');
@@ -2654,6 +2657,8 @@
       const plan = planAt(cutPos, active.length, fx.invert, tl);
       currentIdx = plan.plate;
       const url = active[plan.plate].preview || active[plan.plate].url;
+      const box = placeVars(active[plan.plate].placement);
+      if (box !== shownBox) { shownBox = box; document.querySelector('#reticle .reticle-circle').style.cssText = box; }   // this image's own box
       if (plan.plate !== aheadFrom) { aheadFrom = plan.plate; preloadAhead(plan.plate); }
       let held = false;
       if (stageImg.getAttribute('src') !== url) {
@@ -2716,7 +2721,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'];
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect'];
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
     // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved
@@ -3111,7 +3116,7 @@
       const T = window.__TAURI__;                                            // (not TAURI: declared further down, and this runs early)
       if (T && T.event && isBusy() !== toldBusy) { toldBusy = isBusy(); T.event.emit('page-busy', toldBusy).catch(() => {}); }   // the Mac app asks before quitting mid-job
       const lockGen = generating || aiRunning;
-      ['worldSelect', 'directionInput', 'batchCountSelect', 'modelSelect', 'generateBtn', 'terrBtn', 'refineOpen', 'refineSet', 'refineClear'].forEach(id => { document.getElementById(id).disabled = lockGen; });
+      ['worldSelect', 'directionInput', 'targetSelect', 'batchCountSelect', 'modelSelect', 'generateBtn', 'terrBtn', 'refineOpen', 'refineSet', 'refineClear'].forEach(id => { document.getElementById(id).disabled = lockGen; });
       genRunningLabel();
       syncAiBtn();
       document.getElementById('exportBtn').disabled = aiRunning || !activePlates().length;
@@ -3186,7 +3191,7 @@
             const genRes = await fetch('/api/generate-image', {
               method: 'POST',
               headers: forProject({'Content-Type': 'application/json'}),
-              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, model })
+              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, target: item.target || 'exact', model })
             });
             genData = await genRes.json();
           } catch (e) {
@@ -3316,7 +3321,8 @@
         }
 
         ran = true;
-        await runBatch(invData.ideas, model);
+        const target = document.getElementById('targetSelect').value;              // each image keeps the batch's target (a Resume too)
+        await runBatch(invData.ideas.map(i => ({ ...i, target })), model);
         if (worldChoice === '__custom__' && invData.world) {                     // your territory exists now: the next batch carries on in it
           await loadWorlds();
           const sel = document.getElementById('worldSelect');
@@ -3533,7 +3539,7 @@
     try { toggleMini(localStorage.getItem('studioMini') !== '0'); } catch (e) { toggleMini(true); }
     setThumbSize(document.getElementById('thumbSizeVal').value);
     settled = settingsSnap(); showUndo();                                    // the history starts here
-    ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput'].forEach(id => document.getElementById(id).addEventListener('change', saveSettings));
+    ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect'].forEach(id => document.getElementById(id).addEventListener('change', saveSettings));
     document.getElementById('worldSelect').addEventListener('change', () => { document.getElementById('directionInput').value = ''; saveSettings(); updateDirectionHint(); });
     loadWorlds();
     (async () => {

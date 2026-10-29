@@ -24,7 +24,7 @@ def live(srv, monkeypatch):
     calls = {"krea": [], "kimi": []}
     monkeypatch.setattr(srv, "get_krea_oauth_token", lambda: {"connected": True, "expired": False, "token": "t"})
     monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", lambda **kw: calls["krea"].append(kw) or png.getvalue())
-    monkeypatch.setattr(srv, "check_new_image", lambda p: {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2})
+    monkeypatch.setattr(srv, "check_new_image", lambda p, pl=None: {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2})
     monkeypatch.setattr(srv, "apply_critic", lambda f: None)
     real_popen = srv.subprocess.Popen                                  # only the browser-login helper is faked, ffmpeg etc. stay real
     monkeypatch.setattr(srv.subprocess, "Popen", lambda cmd, *a, **k: None if "opencode" in str(cmd) else real_popen(cmd, *a, **k))
@@ -322,7 +322,7 @@ def test_trash_and_restore_answer_at_once_while_a_new_image_is_checked(live, srv
     first = live("POST", "/api/generate-image", {"title": "Already Here", "prompt": "p", "model": "m"})[1]["filename"]
     checking, release = threading.Event(), threading.Event()
 
-    def slow_check(p):
+    def slow_check(p, pl=None):
         checking.set()
         release.wait(10)
         return {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2}
@@ -346,7 +346,7 @@ def test_trash_and_restore_answer_at_once_while_a_new_image_is_checked(live, srv
 
 
 def test_a_logo_check_failure_is_recorded(live, srv, monkeypatch):
-    monkeypatch.setattr(srv, "check_new_image", lambda p: {"qa_passed": False, "qa_score": 12, "issues": ["Low center logo fidelity"], "center_corr": 0.1, "core_asymmetry": 0.0})
+    monkeypatch.setattr(srv, "check_new_image", lambda p, pl=None: {"qa_passed": False, "qa_score": 12, "issues": ["Low center logo fidelity"], "center_corr": 0.1, "core_asymmetry": 0.0})
     assert live("POST", "/api/generate-image", {"title": "Bad Logo", "prompt": "p", "model": "m"})[1]["trashed"] is True
     done = [e for e in gen_log.read(None) if e["event"] == "image"][0]
     assert done["ok"] and done["qa_passed"] is False and done["qa_issues"] == ["Low center logo fidelity"]
@@ -1024,3 +1024,21 @@ def test_kimi_writing_scenes_never_undoes_what_was_trashed_meanwhile_nor_writes_
     assert name in st["trashed"], "the trash made during the call is kept"
     assert "Fresh Idea" in st["history"], "and the new titles are added"
     assert st["recent_worlds"][-1] == "Editorial Print" and st.get("recent_axes"), "and the memory that keeps batches from repeating"
+
+
+def test_a_loose_batch_gives_each_image_its_own_place_kept_with_it(live, srv, monkeypatch, tmp_path):
+    monkeypatch.setattr(srv.placement, "GUIDE_DIR", tmp_path / "guides")
+    checked = []
+    monkeypatch.setattr(srv, "check_new_image", lambda p, pl=None: checked.append(pl) or {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2})
+    _, on = live("POST", "/api/generate-image", {"title": "On Target", "prompt": "a basalt slab", "model": "m"})
+    assert on["placement"] is None and checked[-1] is None
+    assert "EXACT DEAD-CENTER" in live.calls["krea"][-1]["prompt"], "on target: the words it always had"
+    _, res = live("POST", "/api/generate-image", {"title": "Loose One", "prompt": "a basalt slab", "model": "m", "target": "loose"})
+    pl = res["placement"]
+    assert pl["kind"] == "loose" and checked[-1] == pl, "the logo check measures it where it was placed"
+    kw = live.calls["krea"][-1]
+    assert f"EXACT POINT {pl['x']:g}% from the left and {pl['y']:g}% from the top" in kw["prompt"] and f"~{pl['size']:g}% frame width" in kw["prompt"]
+    assert kw["guide"]["files"]["dark"].exists(), "its own guide, drawn at its place"
+    assert srv.load_state()["placements"] == {res["filename"]: pl}
+    plates = {p["filename"]: p for p in live("GET", "/api/state")[1]["plates"]}
+    assert plates[res["filename"]]["placement"] == pl and plates[on["filename"]]["placement"] is None, "the page draws each image's own box"

@@ -426,6 +426,19 @@ test('custom territory requires a description before anything is generated', asy
   assert.equal(h.$('generateBtn').disabled, false);
 });
 
+test('the target: On target by default; Loose goes with every image of the batch, and is locked while it runs', async () => {
+  let locked = null;
+  const h = load({ routes: genRoutes({ n: 2, gen: async () => { locked = locked ?? h.$('targetSelect').disabled; return { ok: true, qa_passed: true, filename: 'f.jpg' }; } }) });
+  await settle(); await settle();
+  await runGenerate(h);                                                             // nothing chosen: on target
+  assert.deepEqual(h.calls.filter(c => c.url === '/api/generate-image').map(c => c.body.target), ['exact', 'exact']);
+  h.$('targetSelect').value = 'loose';
+  h.calls.length = 0;
+  await runGenerate(h);
+  assert.deepEqual(h.calls.filter(c => c.url === '/api/generate-image').map(c => c.body.target), ['loose', 'loose']);
+  assert.equal(locked, true, 'locked while the batch runs');
+});
+
 test('custom territory sends its description as the direction', async () => {
   const h = load({ routes: genRoutes({ n: 2 }) });
   await settle(); await settle();
