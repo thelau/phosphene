@@ -22,12 +22,12 @@ test('generate: a custom territory waits for its description; controls lock, pro
   assert.equal(await page.locator('#generateBtn').isDisabled(), true, 'Generate waits for the description');
   await page.selectOption('#batchCountSelect', '4');
   const oneLine = (await page.locator('#directionInput').boundingBox()).height;
-  const edit = () => page.locator('.refine-edit').evaluate(e => { const r = e.getBoundingClientRect(), t = e.querySelector('textarea').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, tx: t.x, ty: t.y, radius: getComputedStyle(e).borderTopLeftRadius, shadow: getComputedStyle(e).boxShadow }; });
+  const edit = () => page.locator('.refine-edit').evaluate(e => { const r = e.getBoundingClientRect(), t = e.querySelector('textarea').getBoundingClientRect(); const mid = q => { const b = e.querySelector(q).getBoundingClientRect(); return Math.round((b.y + b.height / 2) * 2) / 2; }; return { label: mid('.refine-label'), tag: mid('.refine-req'), x: r.x, y: r.y, w: r.width, tx: t.x, ty: t.y, radius: getComputedStyle(e).borderTopLeftRadius, shadow: getComputedStyle(e).boxShadow }; });
   await page.locator('#directionInput').blur();
   const resting = await edit();
   await page.locator('#directionInput').focus();
   const typing = await edit();
-  assert.deepEqual([typing.x, typing.y, typing.w, typing.tx, typing.ty], [resting.x, resting.y, resting.w, resting.tx, resting.ty], 'a click in it changes nothing: no box, no shift');
+  assert.deepEqual([typing.x, typing.y, typing.w, typing.tx, typing.ty, typing.label, typing.tag], [resting.x, resting.y, resting.w, resting.tx, resting.ty, resting.label, resting.tag], 'a click in it changes nothing: no box, no shift, Describe and Required stay put');
   assert.equal(typing.shadow, 'none', 'no edge while it is one line');
   await page.fill('#directionInput', 'fog, clouds, rain');
   await page.keyboard.press('Shift+Enter');                                        // a whole brief: ⇧↩ for new lines, the field grows
@@ -36,6 +36,9 @@ test('generate: a custom territory waits for its description; controls lock, pro
     await page.keyboard.type(line);
   }
   const open = await page.locator('#directionInput').boundingBox();
+  const tall = await edit(), first = tall.ty + 9;                                    // the middle of the brief's first line
+  assert.ok(Math.abs(tall.label - first) <= 1 && Math.abs(tall.tag - first) <= 1, `Describe and Required stay on the first line (${tall.label}, ${tall.tag} vs ${first})`);
+  assert.ok(Math.abs(tall.label - resting.label) <= 1, 'and where they were');
   assert.ok(open.height > oneLine * 3, `the field grows with the brief (${oneLine} → ${open.height})`);
   await shot('04b-describe-brief');
   await page.keyboard.press('Enter');                                              // ↩ alone: done
