@@ -402,3 +402,32 @@ def test_an_imported_curation_keeps_only_sound_mark_records(pdir, tmp_path):
     f.write_text(json.dumps({"marks_used": {"a.jpg": "bird", "../b.jpg": "bird", "c.jpg": "../x", "d.jpg": 3}}))
     projects._clean_state(f)
     assert json.loads(f.read_text())["marks_used"] == {"a.jpg": "bird"}
+
+
+def test_the_settings_form_saves_every_mark_at_once_each_with_its_own_place(pdir):
+    projects.create({"name": "Kestrel", "mark_name": "Badge"}, star_png())
+    assert projects.load("Kestrel")["mark_name"] == "Badge"
+    p = projects.save_marks("Kestrel", [{"name": "Bird", "size": 14, "x": 30, "y": 70, "noun": "bird"}, {"name": "Word"}], {0: ring_png(), 1: ring_png()})
+    assert [(m["id"], m["mark_size"], m["mark_x"], m["mark_y"]) for m in p["marks"]] == [("bird", 14.0, 30.0, 70.0), ("word", 18.0, 50.0, 50.0)]
+    q = projects.with_mark(p, "bird")
+    assert (q["mark_x"], q["mark_y"]) == (30.0, 70.0), "each mark its own place"
+    p = projects.save_marks("Kestrel", [{"id": "word", "name": "Wordmark", "x": 5}], {})
+    assert [(m["id"], m["name"], m["mark_x"]) for m in p["marks"]] == [("word", "Wordmark", 10.0)], "changed, kept inside the frame; the one not listed is gone"
+    assert not (pdir / "Kestrel" / "mark-bird.png").exists()
+    assert projects.save_marks("Kestrel", [{"name": "No image"}], {})["marks"] == [], "a new one without its image is not added"
+
+
+def test_make_default_swaps_the_mark_into_the_main_slot_and_every_image_keeps_its_mark(pdir):
+    import json
+    projects.create({"name": "Kestrel", "mark_name": "Badge", "mark_noun": "badge", "mark_size": 22}, star_png())
+    projects.save_marks("Kestrel", [{"name": "Bird", "size": 14, "x": 30, "noun": "bird"}], {0: ring_png()})
+    main_before = (pdir / "Kestrel" / "mark.png").read_bytes()
+    mid = projects.make_default("Kestrel", "bird")
+    p = projects.load("Kestrel")
+    assert (p["mark_name"], p["mark_noun"], p["mark_size"], p["mark_x"]) == ("Bird", "bird", 14, 30), "the bird is the default now"
+    assert [(m["id"], m["name"], m["mark_noun"], m["mark_size"]) for m in p["marks"]] == [("bird", "Badge", "badge", 22.0)], "the badge in the list, under the id"
+    assert (pdir / "Kestrel" / f"mark-{mid}.png").read_bytes() == main_before
+    st = projects.swap_marks_used({"marks_used": {"b.jpg": "bird"}}, mid, ["a.jpg", "b.jpg"])
+    assert st["marks_used"] == {"a.jpg": "bird"}, "a.jpg was the badge's (now under 'bird'); b.jpg was the bird's (now the default)"
+    with pytest.raises(ValueError):
+        projects.add_mark("demo", {"name": "Other"}, ring_png()) and projects.make_default("demo", "other")

@@ -691,40 +691,15 @@
   </div>
 
   <div class="confirm-bg" id="projectModal" role="dialog" aria-labelledby="projectTitle">
-    <form class="confirm project-form" id="projectForm" onsubmit="event.preventDefault(); saveProject()">
-      <h3 id="projectTitle">New project</h3>
-      <p class="pf-note">A project is one brand mark: its images, groups and snapshots are its own. The mark sits at the same place in every shot, and every image is checked for it.</p>
-      <div class="pf-body">
-        <div class="pf-fields">
-          <label class="pf-row"><span>Mark</span><input type="file" id="pfMark" accept="image/png,image/svg+xml,image/jpeg,image/webp" onchange="readProjectMark(this.files[0])" /></label>
-          <p class="pf-hint" id="pfMarkHint">A PNG or SVG with a transparent background works best (a mark on a plain background works too).</p>
-          <p class="pf-reading" id="pfKimi" hidden role="status"></p>
-          <label class="pf-row"><span>Name</span><input type="text" id="pfName" maxlength="60" required autocomplete="off" placeholder="Night Owl" /></label>
-          <label class="pf-row"><span>Width</span><input type="range" id="pfSize" min="4" max="60" step="0.5" value="18" oninput="drawProjectPreview()" title="How wide the mark is, as a share of the frame's width" /><b id="pfSizeVal">18%</b></label>
-          <p class="pf-hint">The mark's width, as a % of the frame's width (its height follows its shape).</p>
-          <label class="pf-row" title="Where the mark's centre sits, from the left edge"><span>Across</span><input type="range" id="pfX" min="10" max="90" step="0.5" value="50" oninput="drawProjectPreview()" /><b id="pfXVal">50%</b></label>
-          <label class="pf-row" title="Where the mark's centre sits, from the top edge"><span>Down</span><input type="range" id="pfY" min="10" max="90" step="0.5" value="50" oninput="drawProjectPreview()" /><b id="pfYVal">50%</b></label>
-          <label class="pf-row"><span>Its shape</span><input type="text" id="pfShape" maxlength="80" placeholder="circular orbital logo" autocomplete="off" title="How the prompts describe the mark's shape" /></label>
-          <label class="pf-row"><span>Called</span><input type="text" id="pfNoun" maxlength="40" placeholder="mark" autocomplete="off" title="What the prompts call the mark itself" /></label>
-          <label class="pf-row"><span>Brand</span><input type="text" id="pfBrief" maxlength="200" placeholder="Night Owl, a late-night bar in Lisbon" autocomplete="off" title="Who the films are for, in one line: the image prompts start from it" /></label>
-          <label class="pf-row"><span>Colours</span><input type="text" id="pfPalette" maxlength="80" placeholder="#EC540C #1A1A1A #FEFFE7" autocomplete="off" oninput="drawProjectPreview()" title="The brand colours, in order of importance" /></label>
-          <div class="pf-swatches" id="pfSwatches"></div>
-          <div class="pf-marks" id="pfMarks" hidden>
-            <div class="pf-marks-head"><span>Other marks</span></div>
-            <p class="pf-hint">More marks of the brand (a symbol, a wordmark, a badge…), at the main mark's place. Each batch uses the main one, one of these, or a mix.</p>
-            <div id="pfMarkList"></div>
-            <p class="pf-reading" id="pfMarkReading" hidden role="status"></p>
-            <label class="pf-add-mark" id="pfAddMarkBtn">+ Add a mark<input type="file" id="pfAddMark" accept="image/png,image/svg+xml,image/jpeg,image/webp" onchange="addProjectMark(this.files[0])" /></label>
-          </div>
-        </div>
-        <div class="pf-preview" id="pfPreview" title="Where the mark sits in every shot"><img id="pfPreviewMark" alt="" /></div>
+    <form class="ps" id="projectForm" onsubmit="event.preventDefault(); saveProject()" onkeydown="psKey(event)">
+      <header class="ps-head"><h3 id="projectTitle">New project</h3><span class="ps-sub" id="psSub"></span></header>
+      <div class="ps-body">
+        <nav class="ps-rail" id="psRail" aria-label="Project and marks"></nav>
+        <section class="ps-detail" id="psDetail"></section>
+        <aside class="ps-prev" aria-label="Preview"><div class="ps-frame" id="psFrame" role="img" aria-label="Where the marks sit in a 9:16 frame"></div><span class="ps-cap" id="psCap"></span></aside>
       </div>
-      <p class="pf-locked" id="pfLocked" hidden>Demo keeps its main mark, its size and place and the words its prompts use for it (every image is checked against them). For another mark or place, make a new project.</p>
-      <p class="pf-error" id="pfError" role="alert"></p>
-      <div class="confirm-foot">
-        <button type="button" onclick="closeProjectForm()">Cancel</button>
-        <button type="submit" class="solid" id="pfSave">Create project</button>
-      </div>
+      <footer class="ps-foot"><p class="pf-error" id="pfError" role="alert"></p><button type="button" onclick="closeProjectForm()">Cancel</button><button type="submit" class="solid" id="pfSave">Create project</button></footer>
+      <input type="file" id="psFile" accept="image/png,image/svg+xml,image/jpeg,image/webp" hidden onchange="psFileChosen(this.files[0])" />
     </form>
   </div>
 

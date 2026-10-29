@@ -87,7 +87,8 @@ function start(state = makeState()) {
           if (!String(body.name || '').trim()) return send({ ok: false, error: 'A project needs a name.' }, 400);
           if (!/^data:image\/png;base64,/.test(body.mark || '')) return send({ ok: false, error: 'The mark must be a PNG or JPEG image.' }, 400);
           const slug = body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-          state.projects.push({ slug, name: body.name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y, mark_shape: body.mark_shape, mark_noun: body.mark_noun, brief: body.brief, palette: body.palette, mark_ratio: 0.5, round: false, fixed: false, mark_url: `/api/project-mark?p=${slug}` });
+          state.projects.push({ slug, name: body.name, mark_name: body.mark_name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y, mark_shape: body.mark_shape, mark_noun: body.mark_noun, brief: body.brief, palette: body.palette, mark_ratio: 0.5, round: false, fixed: false, mark_url: `/api/project-mark?p=${slug}`,
+            marks: (body.marks || []).map((m, i) => ({ id: `m${i + 1}`, name: m.name, size: m.size, x: m.x, y: m.y, shape: m.shape, noun: m.noun, ratio: 1, url: `/api/project-mark?p=${slug}&m=m${i + 1}` })) });
           state.project = slug; state.markSent = body.mark;
           state.plates = []; state.sequences[0].order = [];                    // a new project starts empty
         } else if (body.action === 'delete') {
@@ -98,7 +99,11 @@ function start(state = makeState()) {
           if (body.action === 'add_mark') { const id = String(body.name || 'mark').toLowerCase().replace(/[^a-z0-9]+/g, '-'); marks.push({ id, name: body.name, size: p.mark_size || 18, shape: body.shape, noun: body.noun, ratio: 1, url: `/api/project-mark?p=${p.slug}&m=${id}` }); state.markAdded = body; }
           else if (body.action === 'edit_mark') Object.assign(marks.find(m => m.id === body.mark_id), body.name !== undefined ? { name: body.name } : {}, body.size !== undefined ? { size: body.size } : {});
           else p.marks = marks.filter(m => m.id !== body.mark_id);
-        } else if (body.action === 'update') Object.assign(projectOf(state), { name: body.name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y, brief: body.brief, palette: body.palette });
+        } else if (body.action === 'update') {
+          const p = projectOf(state);
+          Object.assign(p, { name: body.name, brief: body.brief, palette: body.palette }, p.fixed ? {} : { mark_name: body.mark_name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y });
+          if (Array.isArray(body.marks)) p.marks = body.marks.map((m, i) => ({ id: m.id || `n${i + 1}`, name: m.name, size: m.size, x: m.x, y: m.y, shape: m.shape, noun: m.noun, ratio: 1, url: m.image || `/api/project-mark?p=${p.slug}&m=${m.id}` }));
+        }
         return send({ ok: true, active: state.project, project: projectOf(state), projects: state.projects });
       }
       case '/api/describe-mark': return void setTimeout(() => send({ ok: true, colours: ['#F0A020'], name: 'Owl Bar', brand: 'Owl Bar, a bar', shape: 'horizontal bar mark', noun: 'bar', suggested: ['#1A1A1A'] }), state.delays.describe || 0);

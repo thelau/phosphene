@@ -423,7 +423,13 @@
       const r = await projectsCall({ action: 'switch', slug });
       if (r.ok) reopen(r.project && r.project.name); else { cover(null); setStatus(r.error || 'Could not switch project.'); }
     }
-    // the form: a new project, or this one's settings; the mark is drawn into a PNG here (an SVG too), at most 1600 px
+    // ---- the project form (New project…, Project settings…): the project (name, brand, colours) and its marks, every mark with the
+    // same settings; a list on the left, one item's details in the middle, a 9:16 preview on the right. Nothing is saved until Save
+    // (Cancel or Esc drops every change). A new project starts from its first mark: Kimi reads it and fills in the rest ----
+    const PS_MAX = 9;
+    let psTimer = 0, psSeq = 0;
+    const psMark = key => projectForm && projectForm.marks.find(m => m.key === key);
+    const psDefault = () => projectForm && (projectForm.marks.find(m => m.key === projectForm.def) || projectForm.marks[0]);
     function openProjectForm(kind) {
       closeProjectMenu();
       const edit = kind === 'edit' && project;
@@ -433,44 +439,185 @@
         setStatus('Add your Kimi API key to create a project: Kimi reads your mark and fills in the project for you.');
         return;
       }
-      projectForm = { kind: edit ? 'edit' : 'new', mark: null, markUrl: edit ? project.mark_url : null, typed: new Set(), extra: [] };   // extra: a new project's other marks, made with it
-      const set = (id, v) => { document.getElementById(id).value = v; };
-      set('pfName', edit ? project.name : ''); set('pfSize', edit ? project.mark_size : 18); set('pfX', edit ? project.mark_x : 50); set('pfY', edit ? project.mark_y : 50);
-      set('pfShape', edit ? project.mark_shape : ''); set('pfNoun', edit ? project.mark_noun : ''); set('pfBrief', edit ? project.brief : ''); set('pfPalette', edit ? (project.palette || []).join(' ') : '');
-      document.getElementById('pfMark').value = '';
-      const locked = !!(edit && project.fixed);                                  // DEMO: name, brand and colours change; its mark, place and words stay
-      document.getElementById('pfLocked').hidden = !locked;
-      document.getElementById('pfMarks').hidden = false;                     // other marks (Demo too: its main mark stays as it is); a new project's are made with it
-      renderMarkList();
-      formStage(edit ? 'ready' : 'pick');
-      document.getElementById('projectTitle').textContent = edit ? `${project.name}: settings` : 'New project';
+      const main = edit ? { key: 'main', id: 'main', name: project.mark_name || 'Main mark', size: project.mark_size, x: project.mark_x, y: project.mark_y,
+        shape: project.mark_shape, noun: project.mark_noun, url: project.mark_url, ar: project.mark_ratio || 1, locked: !!project.fixed } : null;
+      const extras = edit ? (project.marks || []).map(m => ({ key: m.id, id: m.id, name: m.name, size: m.size, x: m.x ?? project.mark_x, y: m.y ?? project.mark_y,
+        shape: m.shape, noun: m.noun, url: m.url, ar: m.ratio || 1 })) : [];
+      projectForm = { kind: edit ? 'edit' : 'new', name: edit ? project.name : '', brief: edit ? project.brief : '', palette: edit ? [...(project.palette || [])] : [],
+        marks: main ? [main, ...extras] : [], def: 'main', sel: edit ? 'project' : null, fromKimi: false, typed: new Set() };
+      document.getElementById('projectTitle').textContent = edit ? `${project.name} · Settings` : 'New project';
       document.getElementById('pfSave').textContent = edit ? 'Save' : 'Create project';
       document.getElementById('pfError').textContent = '';
       document.getElementById('projectModal').classList.add('open');
-      drawProjectPreview();
-      document.getElementById(edit ? 'pfName' : 'pfMark').focus();
+      renderPS();
     }
-    // a new project: the mark first; while Kimi reads it nothing else can be used; then everything it filled in can be changed
-    const PF_FIELDS = ['pfName', 'pfSize', 'pfX', 'pfY', 'pfShape', 'pfNoun', 'pfBrief', 'pfPalette'];
-    let readingTimer = 0;
-    function formStage(stage) {
-      clearInterval(readingTimer);
-      const locked = !!(projectForm && projectForm.kind === 'edit' && project && project.fixed);
-      for (const id of PF_FIELDS) document.getElementById(id).disabled = stage !== 'ready' || (locked && ['pfSize', 'pfX', 'pfY', 'pfShape', 'pfNoun'].includes(id));
-      document.getElementById('pfMark').disabled = stage === 'reading' || locked;
-      document.getElementById('pfSave').disabled = stage !== 'ready';
-      document.getElementById('pfAddMark').disabled = stage !== 'ready';     // the main mark first
-      document.getElementById('pfAddMarkBtn').classList.toggle('off', stage !== 'ready');
-      const note = document.getElementById('pfKimi');
-      if (stage === 'pick') { note.hidden = false; note.textContent = 'Choose the mark: Kimi reads it and fills in the rest.'; }
-      else if (stage === 'reading') {
-        const t0 = Date.now();
-        note.hidden = false;
-        note.innerHTML = '<span class="spin"></span><span>Kimi is reading the mark…</span><span class="t" id="pfReadT">0 s · usually 10 to 40 s</span>';
-        readingTimer = setInterval(() => { const t = document.getElementById('pfReadT'); if (t) t.textContent = `${Math.round((Date.now() - t0) / 1000)} s · usually 10 to 40 s`; }, 1000);
-      } else if (projectForm && projectForm.kind === 'edit') note.hidden = true;
+    function closeProjectForm() { clearInterval(psTimer); document.getElementById('projectModal').classList.remove('open'); projectForm = null; }   // also while Kimi reads: its answer is dropped
+    function psReading() { return !!(projectForm && projectForm.marks.some(m => m.reading)); }
+    function psFirstPending() { return projectForm.kind === 'new' && (!projectForm.marks.length || projectForm.marks[0].reading); }
+    function renderPS() {
+      if (!projectForm) return;
+      const f = projectForm;
+      document.getElementById('psSub').textContent = f.kind === 'new' && psFirstPending() ? 'Start with the brand\'s main mark' : '';
+      renderPSRail(); renderPSDetail(); renderPSPreview();
+      document.getElementById('pfSave').disabled = psFirstPending() || psReading();
     }
-    function closeProjectForm() { clearInterval(readingTimer); document.getElementById('projectModal').classList.remove('open'); projectForm = null; }   // also while Kimi reads: its answer is dropped
+    function psSecs(m) { return Math.round((Date.now() - m.readFrom) / 1000); }
+    function renderPSRail() {
+      const f = projectForm, pending = psFirstPending(), lock = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-label="Locked"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>';
+      const swatches = f.palette.length ? `<span class="ps-swatches">${f.palette.map(c => `<i style="background:${escapeHtml(c)}"></i>`).join('')}</span>` : '';
+      const projRow = `<button type="button" class="ps-row ps-proj${f.sel === 'project' ? ' on' : ''}" onclick="psSelect('project')"${pending ? ' disabled' : ''}>
+          <b>${escapeHtml(f.name || (pending ? 'New project' : 'Untitled'))}</b>${pending ? '<span class="ps-wait">Filled in from the main mark</span>' : swatches}</button>`;
+      const rows = f.marks.map(m => {
+        const def = m.key === f.def, sub = m.reading ? `Kimi · ${psSecs(m)} s` : def ? `Default · ${+m.size}%` : `${+m.size}% · ${+m.x === 50 && +m.y === 50 ? 'centre' : `${+m.x} / ${+m.y}`}`;
+        return `<button type="button" class="ps-row ps-mark${f.sel === m.key ? ' on' : ''}${m.reading ? ' reading' : ''}" onclick="psSelect(this.dataset.key)" data-key="${escapeHtml(m.key)}">
+          <span class="ps-thumb"><img src="${escapeHtml(m.url)}" alt="" />${m.reading ? '<span class="spin"></span>' : ''}</span>
+          <span class="ps-row-text"><b>${escapeHtml(m.reading ? 'Reading…' : m.name)}</b><small${m.reading ? ' class="kimi"' : ''}>${escapeHtml(sub)}</small></span>${m.locked ? lock : ''}</button>`;
+      }).join('');
+      document.getElementById('psRail').innerHTML = `<span class="ps-rail-head">Project</span>${projRow}<span class="ps-rail-head"><span>Marks</span><span>${f.marks.length || ''}</span></span>${rows}`
+        + (!pending && f.marks.length < PS_MAX ? '<button type="button" class="ps-add" onclick="psPick(\'add\')">+ Add a mark</button>' : '');
+    }
+    function renderPSDetail() {
+      const f = projectForm, d = document.getElementById('psDetail'), m = psMark(f.sel);
+      if (f.kind === 'new' && !f.marks.length) {                               // the first mark comes first
+        d.innerHTML = `<div class="ps-drop" id="psDrop"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"></rect><circle cx="12" cy="12" r="3"></circle></svg>
+          <b>Drop the brand's main mark</b><span>PNG or SVG, ideally on a transparent background</span><button type="button" class="solid" onclick="psPick('new')">Choose file…</button></div>`;
+        const drop = document.getElementById('psDrop');
+        if (drop && drop.addEventListener) {
+          drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+          drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+          drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); const file = e.dataTransfer && e.dataTransfer.files[0]; if (file) psFileChosen(file, 'new'); });
+        }
+        return;
+      }
+      if (f.sel === 'project') {
+        const tag = t => f.fromKimi ? ` <span class="ps-tag">${t}</span>` : '';
+        d.innerHTML = `<label class="ps-field"><span>Name</span><input type="text" id="psName" maxlength="60" value="${escapeHtml(f.name)}" oninput="psSetProject('name', this.value)" autocomplete="off" /></label>
+          <label class="ps-field"><span>Brand${tag('From Kimi')}</span><input type="text" id="psBrief" maxlength="200" value="${escapeHtml(f.brief)}" oninput="psSetProject('brief', this.value)" placeholder="Who the films are for, e.g. Kestrel Air, the Hong Kong airline" autocomplete="off" /></label>
+          <div class="ps-field"><span>Colours${tag('Suggested')}</span><div class="ps-colours">${f.palette.map((c, i) => `<span class="ps-chip"><i style="background:${escapeHtml(c)}"></i>${escapeHtml(c)}<button type="button" aria-label="Remove ${escapeHtml(c)}" onclick="psColour(${i})">×</button></span>`).join('')}
+            <input type="text" id="psColourNew" class="ps-chip-add" maxlength="7" placeholder="+ #hex" aria-label="Add a colour" onkeydown="psColourKey(event, this)" onblur="psColourAdd(this)" autocomplete="off" /></div>
+            <small>Kimi colours the scenes with these. Every mark shares them.</small></div>`;
+        return;
+      }
+      if (!m) { d.innerHTML = ''; return; }
+      if (m.reading) {
+        const skel = (f.kind === 'new' && m === f.marks[0] ? ['Name', 'Brand', 'Its shape', 'Called'] : ['Name', 'Its shape', 'Called']);
+        d.innerHTML = `<div class="ps-reading"><span class="ps-big-thumb"><img src="${escapeHtml(m.url)}" alt="The mark being read" /></span>
+            <div><b><span class="spin"></span>Kimi is reading the mark <span class="ps-secs">${psSecs(m)} s</span></b>
+            <span>${f.kind === 'new' && m === f.marks[0] ? 'It fills in the name, the brand, the shape, the words and suggests colours.' : 'It fills in the name, the shape and the words. All stay editable.'}</span>
+            <button type="button" class="link-btn" onclick="psCancelRead(this.dataset.key)" data-key="${escapeHtml(m.key)}">Cancel</button></div></div>`
+          + skel.map(l => `<div class="ps-field"><span>${l}</span><i class="ps-skel"></i></div>`).join('');
+        return;
+      }
+      const def = m.key === f.def, lockedAny = f.marks.some(x => x.locked), dis = m.locked ? ' disabled' : '';
+      const slider = (label, key, min, max) => `<label class="ps-slider"><span>${label}</span><input type="range" min="${min}" max="${max}" step="0.5" value="${+m[key]}" oninput="psSetMark('${key}', +this.value)"${dis} /><b id="psv-${key}">${+m[key]}%</b></label>`;
+      d.innerHTML = (m.locked ? `<div class="ps-locked"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>${escapeHtml(project ? project.name : '')}'s main mark is fixed: its image, size, place and words.</div>` : '')
+        + `<div class="ps-mark-head"><div class="ps-big"><span class="ps-big-thumb"><img src="${escapeHtml(m.url)}" alt="${escapeHtml(m.name)}" /></span>${m.locked ? '' : `<button type="button" class="link-btn" onclick="psPick('replace')">Replace…</button>`}</div>
+          <div class="ps-mark-name"><label class="ps-field"><span>Name</span><input type="text" id="psMarkName" maxlength="30" value="${escapeHtml(m.name)}" oninput="psSetMark('name', this.value)" autocomplete="off"${dis} /></label>
+          ${def ? '<span class="ps-default">★ Default mark</span>' : `<button type="button" class="ps-make-default" onclick="psMakeDefault()"${lockedAny ? ' disabled title="The main mark stays the default"' : ''}>Make default</button>`}</div></div>
+        <div class="ps-group"><span class="ps-group-head">Place in the frame</span>${slider('Width', 'size', 4, 60)}${slider('Across', 'x', 10, 90)}${slider('Down', 'y', 10, 90)}</div>
+        <div class="ps-group"><span class="ps-group-head">In the prompts <small>the words Kimi uses for this mark</small></span>
+          <div class="ps-two"><label class="ps-field"><span>Its shape</span><input type="text" maxlength="80" value="${escapeHtml(m.shape || '')}" oninput="psSetMark('shape', this.value)" autocomplete="off"${dis} /></label>
+          <label class="ps-field"><span>Called</span><input type="text" maxlength="40" value="${escapeHtml(m.noun || '')}" oninput="psSetMark('noun', this.value)" autocomplete="off"${dis} /></label></div></div>`
+        + (!m.locked && !def ? '<div class="ps-remove"><button type="button" class="danger-outline" onclick="psRemove()">Remove mark</button><span>Its images stay in the project.</span></div>' : '');
+    }
+    // the preview: the selected mark (the default with the project selected) at its place and size with the logo target's dashed box;
+    // the other marks as dashed boxes only (drawn over one another their images would pile up: most share one place)
+    function renderPSPreview() {
+      const f = projectForm, frame = document.getElementById('psFrame'), cap = document.getElementById('psCap');
+      const focus = f.sel === 'project' ? psDefault() : psMark(f.sel);
+      frame.innerHTML = f.marks.filter(m => !m.reading || m === focus).map(m => {
+        const on = m === focus, style = `left:${+m.x}%;top:${+m.y}%;width:${+m.size}%;aspect-ratio:1 / ${m.ar || 1}`;
+        return on ? `<span class="ps-pv on" style="${style}"><img src="${escapeHtml(m.url)}" alt="" />${m.reading ? '' : '<i></i>'}</span>` : `<span class="ps-pv other" style="${style}"></span>`;
+      }).join('') || '<span class="ps-pv empty" style="left:50%;top:50%;width:18%;aspect-ratio:1"></span>';
+      cap.textContent = !f.marks.length ? 'The mark appears here once it\'s read' : focus && focus.reading ? 'Placing it once Kimi has read it'
+        : f.sel === 'project' ? 'The default mark, as every image will place it' : f.marks.length > 1 ? 'The selected mark; the others as boxes' : 'As every image will place it';
+    }
+    function psKey(e) { if (e.key === 'Escape') { e.preventDefault(); closeProjectForm(); } }   // Esc: as Cancel
+    function psSelect(key) { if (!projectForm) return; projectForm.sel = key; renderPS(); }
+    function psSetProject(field, v) { projectForm[field] = v; projectForm.typed.add(field); renderPSRail(); }
+    function psSetMark(field, v) {
+      const m = psMark(projectForm.sel);
+      if (!m || m.locked) return;
+      m[field] = v;
+      if (['size', 'x', 'y'].includes(field)) { const b = document.getElementById(`psv-${field}`); if (b) b.textContent = `${v}%`; renderPSPreview(); }
+      else m.typed = (m.typed || new Set()).add(field);
+      renderPSRail();
+    }
+    function psColour(i) { projectForm.palette.splice(i, 1); renderPS(); }
+    function psColourAdd(input) {
+      const add = (input.value.match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g) || []).map(c => c.toUpperCase());
+      if (!add.length) { input.value = ''; return; }
+      projectForm.palette = [...new Set([...projectForm.palette, ...add])].slice(0, 8);
+      renderPS();
+      const next = document.getElementById('psColourNew'); if (next) next.focus();
+    }
+    function psColourKey(e, input) { if (e.key === 'Enter') { e.preventDefault(); psColourAdd(input); } }
+    function psMakeDefault() { const m = psMark(projectForm.sel); if (m && !projectForm.marks.some(x => x.locked)) { projectForm.def = m.key; renderPS(); } }
+    function psRemove() {
+      const f = projectForm, m = psMark(f.sel);
+      if (!m || m.locked || m.key === f.def) return;
+      f.marks = f.marks.filter(x => x !== m);
+      f.sel = 'project';
+      renderPS();
+    }
+    // a file for the form: the first mark of a new project, another mark, or a new image for one
+    let psFileFor = null;
+    function psPick(forWhat) { psFileFor = forWhat; const i = document.getElementById('psFile'); i.value = ''; i.click(); }
+    async function psFileChosen(file, forWhat = psFileFor) {
+      if (!file || !projectForm) return;
+      let png;
+      try { png = await markToPng(file); }
+      catch (err) { document.getElementById('pfError').textContent = err.message === 'empty' ? 'That image is empty: the mark needs to show on a transparent or plain background.' : 'That file could not be read as an image.'; return; }
+      document.getElementById('pfError').textContent = '';
+      const f = projectForm, ar = await new Promise(res => { const im = new Image(); im.onload = () => res(im.naturalHeight / im.naturalWidth || 1); im.onerror = () => res(1); im.src = png; });
+      let m = forWhat === 'replace' ? psMark(f.sel) : null;
+      if (m) { m.image = png; m.url = png; m.ar = ar; }                       // a new image for a mark: read again, never over what was typed
+      else {
+        const base = f.marks.length ? psDefault() : null;
+        m = { key: `new-${++psSeq}`, id: null, name: '', size: base ? base.size : 18, x: base ? base.x : 50, y: base ? base.y : 50, shape: '', noun: '', url: png, image: png, ar, typed: new Set() };
+        f.marks.push(m);
+        if (f.marks.length === 1) f.def = m.key;
+      }
+      f.sel = m.key;
+      psRead(m);
+    }
+    async function psRead(m) {
+      const f = projectForm, first = f.kind === 'new' && m === f.marks[0];
+      m.reading = true; m.readFrom = Date.now();
+      clearInterval(psTimer);
+      psTimer = setInterval(() => { if (!psReading()) { clearInterval(psTimer); return; } renderPSRail(); const s = document.querySelector('#psDetail .ps-secs'); const cur = psMark(projectForm.sel); if (s && cur && cur.reading) s.textContent = `${psSecs(cur)} s`; }, 1000);
+      renderPS();
+      let r = null;
+      try { r = await (await fetch('/api/describe-mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mark: m.image }) })).json(); } catch (e) {}
+      if (projectForm !== f || !f.marks.includes(m) || !m.reading) return;    // closed, removed or cancelled meanwhile: the answer is dropped
+      m.reading = false;
+      const typed = m.typed || new Set(), cap = s => s ? s.replace(/^./, c => c.toUpperCase()) : '';
+      if (r && r.ok) {
+        if (!typed.has('shape') && r.shape) m.shape = r.shape;
+        if (!typed.has('noun') && r.noun) m.noun = r.noun;
+        if (!typed.has('name') && !m.name) m.name = cap(r.noun) || 'Mark';
+        if (first) {                                                          // the first mark of a new project: the project too
+          if (!f.typed.has('name') && r.name) f.name = r.name;
+          if (!f.typed.has('brief') && r.brand) f.brief = r.brand;
+          if (!f.palette.length) f.palette = [...new Set([...(r.colours || []), ...(r.suggested || [])])].slice(0, 8);
+          f.fromKimi = true;
+          f.sel = 'project';
+        }
+      } else {
+        if (!m.name) m.name = 'Mark';
+        document.getElementById('pfError').textContent = (r && (r.error || r.note)) || 'Kimi could not read the mark: fill in its words yourself.';
+      }
+      renderPS();
+    }
+    function psCancelRead(key) {
+      const f = projectForm, m = psMark(key);
+      if (!m) return;
+      if (m.id) { m.reading = false; renderPS(); return; }                    // a replaced image: kept, its words as they were
+      f.marks = f.marks.filter(x => x !== m);                                 // a new mark: dropped
+      if (f.def === m.key) f.def = f.marks[0] ? f.marks[0].key : 'main';
+      f.sel = f.marks.length ? 'project' : null;
+      renderPS();
+    }
     // an image file as the mark: drawn into a PNG (an SVG too), at most 1600 px, trimmed to the mark as the server does
     async function markToPng(file) {
       const url = URL.createObjectURL(file);
@@ -492,112 +639,35 @@
         return c.toDataURL('image/png');
       } finally { URL.revokeObjectURL(url); }
     }
-    // the project's other marks, in its settings: each saved as soon as it is added, renamed, resized or removed
-    const newMarks = () => projectForm && projectForm.kind === 'new';
-    function renderMarkList() {
-      const list = document.getElementById('pfMarkList'), marks = newMarks() ? projectForm.extra : (project && project.marks) || [];
-      list.innerHTML = marks.map(m => `<div class="pf-mark-row" data-id="${escapeHtml(m.id)}">
-        <img src="${escapeHtml(m.url)}" alt="" />
-        <input type="text" maxlength="30" value="${escapeHtml(m.name)}" aria-label="Name of this mark" onchange="editProjectMark(this.closest('.pf-mark-row').dataset.id, { name: this.value })" />
-        <input type="number" min="4" max="60" step="0.5" value="${m.size}" aria-label="Its width, % of the frame" title="Its width, as a % of the frame's width" onchange="editProjectMark(this.closest('.pf-mark-row').dataset.id, { size: +this.value })" />
-        <span class="pf-unit">%</span>
-        <button type="button" class="icon-btn pf-x" title="Remove this mark (its images stay)" aria-label="Remove ${escapeHtml(m.name)}" onclick="removeProjectMark(this.closest('.pf-mark-row').dataset.id)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
-      </div>`).join('');
-      document.getElementById('pfAddMarkBtn').hidden = marks.length >= 8;
-    }
-    async function markCall(body) {
+    async function saveProject() {
+      const f = projectForm;
+      if (!f) return;
       const err = document.getElementById('pfError');
-      if (newMarks()) {                                                       // a project not made yet: its other marks wait in the form
-        const list = projectForm.extra;
-        if (body.action === 'add_mark') list.push({ id: `new-${list.length}-${Date.now()}`, name: body.name, size: +document.getElementById('pfSize').value || 18, shape: body.shape, noun: body.noun, mark: body.mark, url: body.mark });
-        else if (body.action === 'edit_mark') Object.assign(list.find(m => m.id === body.mark_id) || {}, 'name' in body ? { name: body.name } : {}, 'size' in body ? { size: body.size } : {});
-        else projectForm.extra = list.filter(m => m.id !== body.mark_id);
-        renderMarkList();
-        return true;
+      if (isBusy()) { err.textContent = 'Wait until the running job ends (images, an AI order or an export), then save.'; return; }
+      if (psFirstPending() || psReading()) return;
+      const def = psDefault(), others = f.marks.filter(m => m !== def);
+      const fields = m => ({ name: m.name, size: +m.size, x: +m.x, y: +m.y, shape: m.shape || '', noun: m.noun || '' });
+      const body = { action: f.kind === 'new' ? 'create' : 'update', slug: project && f.kind === 'edit' ? project.slug : undefined, name: f.name, brief: f.brief, palette: f.palette,
+        mark_name: def.name, mark_size: +def.size, mark_x: +def.x, mark_y: +def.y, mark_shape: def.shape || '', mark_noun: def.noun || '',
+        ...(def.image ? { mark: def.image } : {}),
+        marks: others.map(m => ({ ...(m.id && m.id !== 'main' ? { id: m.id } : {}), ...fields(m), ...(m.image ? { image: m.image } : {}) })) };
+      if (f.kind === 'edit' && def.key !== 'main') {                          // another mark made default: its changes go with the list, then it swaps in
+        const main = f.marks.find(m => m.key === 'main');
+        const rest = f.marks.filter(m => m !== main);
+        Object.assign(body, { mark_name: main.name, mark_size: +main.size, mark_x: +main.x, mark_y: +main.y, mark_shape: main.shape || '', mark_noun: main.noun || '', default_index: rest.indexOf(def) });
+        delete body.mark; if (main.image) body.mark = main.image;
+        body.marks = rest.map(m => ({ ...(m.id ? { id: m.id } : {}), ...fields(m), ...(m.image ? { image: m.image } : {}) }));
       }
-      if (isBusy()) { err.textContent = 'Wait until the running job ends, then change the marks.'; return false; }
-      const r = await projectsCall({ slug: project.slug, ...body });
-      if (!r.ok) { err.textContent = r.error || 'Could not change the marks.'; return false; }
-      err.textContent = '';
-      showProject(r.project);
-      renderMarkList();
-      return true;
-    }
-    async function addProjectMark(file) {
-      if (!file || !project) return;
-      const note = document.getElementById('pfMarkReading'), input = document.getElementById('pfAddMark');
+      document.getElementById('pfSave').disabled = true;
+      if (body.action === 'create') cover(`Making ${body.name}…`);
       try {
-        const mark = await markToPng(file);
-        note.hidden = false; note.innerHTML = '<span class="spin"></span><span>Kimi is reading the mark…</span>';
-        let d = {};
-        try { d = await (await fetch('/api/describe-mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mark }) })).json(); } catch (e) {}
-        const name = (d && d.noun ? d.noun.replace(/^./, c => c.toUpperCase()) : '') || file.name.replace(/\.[a-z]+$/i, '').slice(0, 30);
-        await markCall({ action: 'add_mark', mark, name, shape: (d && d.shape) || '', noun: (d && d.noun) || '' });
-      } catch (e) {
-        document.getElementById('pfError').textContent = e.message === 'empty' ? 'That image is empty: the mark needs to show on a transparent or plain background.' : 'That file could not be read as an image.';
-      } finally { note.hidden = true; input.value = ''; }
+        const r = await projectsCall(body);
+        if (r.ok) { reopen(r.project && r.project.name); return; }
+        cover(null);
+        err.textContent = r.error || 'Could not save the project.';
+      } catch (e) { cover(null); err.textContent = `Could not save the project: ${e.message}`; }
+      finally { document.getElementById('pfSave').disabled = psFirstPending() || psReading(); }
     }
-    function editProjectMark(id, fields) { return markCall({ action: 'edit_mark', mark_id: id, ...fields }); }
-    async function removeProjectMark(id) {
-      const m = (newMarks() ? projectForm.extra : (project && project.marks) || []).find(x => x.id === id);
-      if (m && newMarks()) return markCall({ action: 'remove_mark', mark_id: id });   // not made yet: nothing to lose, no question
-      if (!m || !(await askConfirm(`Remove ${m.name}?`, 'Its images stay in the project; from now on they read as made with the main mark.', 'Remove'))) return;
-      await markCall({ action: 'remove_mark', mark_id: id });
-    }
-    async function readProjectMark(file) {
-      if (!file || !projectForm) return;
-      const url = URL.createObjectURL(file);
-      try {
-        const im = new Image(); im.src = url; await im.decode();
-        let w = im.naturalWidth || 1024, h = im.naturalHeight || 1024;
-        const k = file.type === 'image/svg+xml' ? 1600 / Math.max(w, h) : Math.min(1, 1600 / Math.max(w, h));
-        w = Math.max(1, Math.round(w * k)); h = Math.max(1, Math.round(h * k));
-        let c = document.createElement('canvas'); c.width = w; c.height = h;
-        c.getContext('2d').drawImage(im, 0, 0, w, h);
-        const px = c.getContext('2d').getImageData(0, 0, w, h).data;           // trimmed to the mark, as the server does: its size is the mark's
-        let x0 = w, y0 = h, x1 = -1, y1 = -1;
-        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (px[(y * w + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-        if (x1 < 0) throw new Error('empty');
-        if (x1 - x0 + 1 < w || y1 - y0 + 1 < h) {
-          const t = document.createElement('canvas'); t.width = x1 - x0 + 1; t.height = y1 - y0 + 1;
-          t.getContext('2d').drawImage(c, -x0, -y0); c = t;
-        }
-        projectForm.mark = c.toDataURL('image/png'); projectForm.markUrl = projectForm.mark;
-        document.getElementById('pfError').textContent = '';
-        describeMark(projectForm.mark);
-      } catch (err) {
-        document.getElementById('pfError').textContent = err.message === 'empty' ? 'That image is empty: the mark needs to show on a transparent or plain background.' : 'That file could not be read as an image.';
-      } finally { URL.revokeObjectURL(url); }
-      drawProjectPreview();
-    }
-    function drawProjectPreview() {
-      const v = id => parseFloat(document.getElementById(id).value);
-      const size = v('pfSize'), x = v('pfX'), y = v('pfY');
-      document.getElementById('pfSizeVal').textContent = `${size}%`; document.getElementById('pfXVal').textContent = `${x}%`; document.getElementById('pfYVal').textContent = `${y}%`;
-      const box = document.getElementById('pfPreview'), img = document.getElementById('pfPreviewMark');
-      box.style.setProperty('--pf-x', `${x}%`); box.style.setProperty('--pf-y', `${y}%`);
-      if (projectForm && projectForm.markUrl) { if (img.getAttribute('src') !== projectForm.markUrl) img.src = projectForm.markUrl; } else img.removeAttribute('src');
-      img.style.left = `${x}%`; img.style.top = `${y}%`; img.style.width = `${size}%`;
-      const cols = document.getElementById('pfPalette').value.match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g) || [];
-      document.getElementById('pfSwatches').innerHTML = cols.slice(0, 8).map(c => `<i style="background:${c}"></i>`).join('');
-    }
-    // a mark just chosen: its own colours, and Kimi's words for it with colours to go with them; never over what was typed by hand
-    async function describeMark(mark) {
-      const note = document.getElementById('pfKimi');
-      formStage('reading');
-      let r = null;
-      try { r = await (await fetch('/api/describe-mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mark }) })).json(); } catch (e) {}
-      if (!projectForm || projectForm.mark !== mark) return;                    // closed, or another mark chosen meanwhile
-      formStage('ready');
-      if (!r || !r.ok) { note.textContent = (r && r.error) || 'The mark could not be read: fill in the fields yourself.'; return; }
-      const fill = (id, v) => { if (v && !projectForm.typed.has(id)) document.getElementById(id).value = v; };
-      fill('pfName', r.name); fill('pfBrief', r.brand); fill('pfShape', r.shape); fill('pfNoun', r.noun);
-      fill('pfPalette', [...(r.colours || []), ...(r.suggested || [])].join(' '));
-      note.textContent = r.shape ? 'Kimi filled this in from the mark: check it and change anything.' : (r.note || 'The mark\'s own colours are filled in.');
-      drawProjectPreview();
-      document.getElementById('pfName').focus();
-    }
-    for (const id of ['pfName', 'pfBrief', 'pfShape', 'pfNoun', 'pfPalette']) { const el = document.getElementById(id); if (el && el.addEventListener) el.addEventListener('input', () => projectForm && projectForm.typed.add(id)); }
     // a project as one file (mark, settings, images, groups, snapshots), and back
     async function exportProject() {
       closeProjectMenu();
@@ -651,31 +721,6 @@
         reopen(r.project && r.project.name);
       } catch (e) { cover(null); setStatus(`Could not import: ${plainError(e)}`); }
       finally { document.getElementById('pfImport').value = ''; }
-    }
-    async function saveProject() {
-      if (!projectForm) return;
-      if (isBusy()) { document.getElementById('pfError').textContent = 'Wait until the running job ends (images, an AI order or an export), then save.'; return; }
-      const val = id => document.getElementById(id).value;
-      const err = document.getElementById('pfError');
-      if (projectForm.kind === 'new' && !projectForm.mark) { err.textContent = 'Choose the mark: a PNG or SVG with a transparent background works best.'; return; }
-      const body = projectForm.kind === 'edit' && project.fixed ? { action: 'update', slug: project.slug, name: val('pfName'), brief: val('pfBrief'), palette: val('pfPalette').match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g) || [] } : { action: projectForm.kind === 'new' ? 'create' : 'update', slug: project && project.slug, name: val('pfName'),
-        mark_size: +val('pfSize'), mark_x: +val('pfX'), mark_y: +val('pfY'), mark_shape: val('pfShape'), mark_noun: val('pfNoun'), brief: val('pfBrief'),
-        palette: val('pfPalette').match(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g) || [], ...(projectForm.mark ? { mark: projectForm.mark } : {}) };
-      document.getElementById('pfSave').disabled = true;
-      if (body.action === 'create') cover(`Making ${body.name}…`);
-      try {
-        const r = await projectsCall(body);
-        if (r.ok && body.action === 'create') {                                 // its other marks, made with it
-          for (const m of projectForm.extra) {
-            const a = await projectsCall({ action: 'add_mark', slug: r.project.slug, mark: m.mark, name: m.name, size: m.size, shape: m.shape, noun: m.noun });
-            if (!a.ok) setStatus(`${m.name} was not added: ${a.error || 'try again in Project settings'}`);
-          }
-        }
-        if (r.ok) { reopen(r.project && r.project.name); return; }
-        cover(null);
-        err.textContent = r.error || 'Could not save the project.';
-      } catch (e) { err.textContent = `Could not save the project: ${e.message}`; }
-      finally { document.getElementById('pfSave').disabled = false; }
     }
 
     function openEditMenu(e, form) {
@@ -3768,7 +3813,7 @@ Object.assign(window, {
   isBusy, setStatus,
   exportProject, importProject, importProjectPath, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
   downloadShown, setThumbSizeAt, openViewer, closeViewer, viewerStep, toggleTerrMenu, editRefine, clearRefine, closeGroupMenu, showNewGroupForm,
-  openProjectMenu, switchProject, openProjectForm, closeProjectForm, readProjectMark, drawProjectPreview, saveProject,
+  openProjectMenu, switchProject, openProjectForm, closeProjectForm, saveProject, psKey, psSelect, psSetProject, psSetMark, psColour, psColourAdd, psColourKey, psMakeDefault, psRemove, psPick, psFileChosen, psCancelRead,
   removeChange,
   includeAll,
   startAiOrder,
@@ -3826,9 +3871,6 @@ Object.assign(window, {
   deleteGroup,
   clearPicks,
   togglePlaceMenu,
-  addProjectMark,
-  editProjectMark,
-  removeProjectMark,
   trashPicked,
   pickClick,
   toggleFullscreen,

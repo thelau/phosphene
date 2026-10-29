@@ -540,54 +540,64 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   await page.waitForSelector('#projectMenu:not([hidden])');
   assert.deepEqual(await page.locator('#projectMenu .gm-item').allTextContents(), ['Demo', 'New project…', 'Project settings…', 'Export project…', 'Import project…', 'Delete project…']);
   assert.equal(await page.locator('#projectMenu .gm-item.on').textContent(), 'Demo');
-  await page.locator('#projectMenu .gm-item', { hasText: 'Project settings' }).click();       // DEMO: name, brand and colours; its mark, place and words locked
+  await page.locator('#projectMenu .gm-item', { hasText: 'Project settings' }).click();       // DEMO: name, brand and colours; its main mark locked
   assert.equal(await page.locator('#projectModal').isVisible(), true);
-  for (const id of ['#pfMark', '#pfSize', '#pfX', '#pfY', '#pfShape', '#pfNoun']) assert.equal(await page.locator(id).isDisabled(), true, id);
-  assert.equal(await page.locator('#pfName').isDisabled(), false);
-  assert.equal(await page.locator('#pfLocked').isVisible(), true);
-  await page.fill('#pfBrief', 'Demo, a toolkit');
+  assert.equal(await text('#projectTitle'), 'Demo · Settings');
+  assert.deepEqual(await page.locator('.ps-rail-head').allTextContents(), ['Project', 'Marks1']);
+  assert.equal(await page.locator('.ps-proj.on').count(), 1, 'the project first');
+  await page.click('.ps-mark[data-key="main"]');
+  assert.match(await text('.ps-locked'), /main mark is fixed/);
+  for (const sel of ['#psMarkName', '.ps-slider input', '.ps-two input']) assert.equal(await page.locator(sel).first().isDisabled(), true, sel);
+  assert.equal(await page.locator('.ps-remove').count(), 0, 'the default mark is never removed');
+  await page.click('.ps-proj');
+  await page.fill('#psBrief', 'Demo, a toolkit');
   await page.click('#pfSave');
   for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/projects' && c.body && c.body.action === 'update'); i++) await page.waitForTimeout(100);
   await page.waitForSelector('#loader', { state: 'detached' });
-  assert.deepEqual(Object.keys(api.state.calls.filter(c => c.path === '/api/projects' && c.body && c.body.action).pop().body).sort(), ['action', 'brief', 'name', 'palette', 'slug'], 'only what DEMO lets change');
+  const upd = api.state.calls.filter(c => c.path === '/api/projects' && c.body && c.body.action === 'update').pop().body;
+  assert.deepEqual([upd.brief, upd.marks, upd.default_index], ['Demo, a toolkit', [], undefined], 'the server keeps DEMO\'s main mark as it is');
   await page.click('#projectBtn');
   await page.locator('#projectMenu .gm-item', { hasText: 'New project' }).click();
   assert.equal(await page.locator('#projectModal').isVisible(), true);
-  assert.equal(await page.locator('#pfMark').isDisabled(), false, 'the mark first');
-  for (const id of ['#pfName', '#pfSize', '#pfShape', '#pfBrief', '#pfPalette', '#pfSave']) assert.equal(await page.locator(id).isDisabled(), true, `${id} waits for the mark`);
-  assert.match(await text('#pfKimi'), /Choose the mark: Kimi reads it/);
+  assert.equal(await page.locator('.ps-drop').isVisible(), true, 'the main mark first');
+  assert.equal(await page.locator('.ps-proj').isDisabled(), true);
+  assert.equal(await page.locator('#pfSave').isDisabled(), true, 'nothing to create yet');
+  assert.equal(await page.locator('.ps-add').count(), 0, 'no other marks before the first');
   const png = await page.evaluate(async () => {                               // a wide mark on a transparent background
     const c = document.createElement('canvas'); c.width = 200; c.height = 100; const x = c.getContext('2d');
     x.fillStyle = '#f0a020'; x.fillRect(10, 20, 120, 60); return c.toDataURL('image/png').split(',')[1];
   });
-  await page.setInputFiles('#pfMark', { name: 'owl.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
-  await page.waitForFunction(() => document.getElementById('pfPreviewMark').getAttribute('src'));
-  await page.waitForSelector('#pfKimi .spin');                                        // Kimi at work: a spinner and the seconds, everything else waits
-  for (const id of ['#pfMark', '#pfName', '#pfSave']) assert.equal(await page.locator(id).isDisabled(), true, `${id} while reading`);
-  assert.equal(await page.locator('.project-form button', { hasText: 'Cancel' }).isDisabled(), false, 'Cancel always works');
-  await page.waitForFunction(() => /1 s/.test(document.getElementById('pfKimi').textContent));
-  await page.waitForFunction(() => document.getElementById('pfShape').value === 'horizontal bar mark');
-  assert.equal(await page.locator('#pfName').inputValue(), 'Owl Bar', 'Kimi names it');
-  assert.equal(await page.locator('#pfBrief').inputValue(), 'Owl Bar, a bar');
-  for (const id of ['#pfMark', '#pfName', '#pfSize', '#pfSave']) assert.equal(await page.locator(id).isDisabled(), false, `${id} once read`);
-  await page.fill('#pfName', 'Night Owl');
-  assert.equal(await page.locator('#pfPalette').inputValue(), '#F0A020 #1A1A1A', 'the mark\'s own colours, then Kimi\'s');
-  assert.match(await text('#pfKimi'), /check it and change anything/);
-  await page.fill('#pfSize', '30'); await page.locator('#pfSize').dispatchEvent('input');
-  await page.fill('#pfY', '40'); await page.locator('#pfY').dispatchEvent('input');
-  assert.equal(await text('#pfSizeVal'), '30%');
-  const prev = await page.locator('#pfPreview').boundingBox(), mark = await page.locator('#pfPreviewMark').boundingBox();
+  await page.setInputFiles('#psFile', { name: 'owl.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await page.waitForSelector('.ps-mark.reading .spin');                              // Kimi at work: a spinner in its row, the seconds, the fields to come
+  assert.match(await text('#psDetail'), /Kimi is reading the mark/);
+  assert.equal(await page.locator('.ps-skel').count(), 4, 'name, brand, shape, called on their way');
+  assert.equal(await page.locator('#pfSave').isDisabled(), true, 'Save waits for it');
+  await page.waitForFunction(() => /1 s/.test(document.querySelector('.ps-mark small').textContent));
+  await page.waitForSelector('.ps-proj.on', { timeout: 5000 });                       // read: the project, filled in
+  assert.equal(await page.locator('#psName').inputValue(), 'Owl Bar', 'Kimi names it');
+  assert.equal(await page.locator('#psBrief').inputValue(), 'Owl Bar, a bar');
+  assert.deepEqual(await page.locator('.ps-tag').allTextContents(), ['From Kimi', 'Suggested']);
+  assert.deepEqual(await page.locator('.ps-chip').allTextContents(), ['#F0A020×', '#1A1A1A×'], 'the mark\'s own colours, then Kimi\'s');
+  await page.fill('#psName', 'Night Owl');
+  await page.fill('#psColourNew', '#223344'); await page.keyboard.press('Enter');
+  await page.click('.ps-chip button');                                                // one removed
+  assert.deepEqual(await page.locator('.ps-chip').allTextContents(), ['#1A1A1A×', '#223344×']);
+  await page.click('.ps-mark');
+  assert.equal(await page.locator('#psMarkName').inputValue(), 'Bar', 'the mark named from what Kimi calls it');
+  assert.equal(await text('.ps-default'), '★ Default mark');
+  const slide = async (i, v) => page.locator('.ps-slider input').nth(i).evaluate((el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+  await slide(0, 30); await slide(2, 40);
+  assert.equal(await text('#psv-size'), '30%');
+  const prev = await page.locator('#psFrame').boundingBox(), mark = await page.locator('.ps-pv.on img').boundingBox();
   assert.ok(Math.abs(mark.width - prev.width * 0.3) < 2 && Math.abs(mark.y + mark.height / 2 - (prev.y + prev.height * 0.4)) < 2, 'the preview places it at its size and height');
-  assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('pfPreviewMark')).outlineStyle), 'dashed', 'the logo target already shows here: the mark\'s dashed box');
-  await page.fill('#pfShape', 'owl wordmark'); await page.fill('#pfNoun', 'owl'); await page.fill('#pfBrief', 'Night Owl, a late bar');   // typed by hand: Kimi never writes over it
-  await page.fill('#pfPalette', '#223344 #ff8800 nope'); await page.locator('#pfPalette').dispatchEvent('input');
-  assert.equal(await page.locator('#pfSwatches i').count(), 2);
+  assert.equal(await page.locator('.ps-pv.on i').evaluate(e => getComputedStyle(e).borderTopStyle), 'dashed', 'with the logo target\'s dashed box');
+  await page.locator('.ps-two input').nth(0).fill('owl wordmark'); await page.locator('.ps-two input').nth(1).fill('owl');
   await shot('32-new-project');
   await page.click('#pfSave');
   await page.waitForFunction(() => document.getElementById('projectName').textContent === 'Night Owl', null, { timeout: 10000 });
   await page.waitForSelector('#loader', { state: 'detached' });
   const sent = api.state.calls.filter(c => c.path === '/api/projects').pop().body;
-  assert.deepEqual([sent.action, sent.name, sent.mark_size, sent.mark_y, sent.mark_shape, sent.mark_noun, sent.palette], ['create', 'Night Owl', 30, 40, 'owl wordmark', 'owl', ['#223344', '#ff8800']]);
+  assert.deepEqual([sent.action, sent.name, sent.mark_size, sent.mark_y, sent.mark_shape, sent.mark_noun, sent.mark_name, sent.palette], ['create', 'Night Owl', 30, 40, 'owl wordmark', 'owl', 'Bar', ['#1A1A1A', '#223344']]);
   assert.match(api.state.markSent, /^data:image\/png;base64,/, 'the mark goes as a PNG');
   assert.deepEqual(await page.evaluate(async u => { const i = new Image(); i.src = u; await i.decode(); return [i.width, i.height]; }, api.state.markSent), [120, 60], 'trimmed to the mark itself');
   assert.equal(await page.locator('.card').count(), 0, 'a new project starts empty');
@@ -1215,14 +1225,21 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.deepEqual(await page.locator('#placeMenu .tm-head').allTextContents(), ['Position'], 'no Mark section with one mark');
   await page.mouse.click(10, 600);
   await page.evaluate(() => openProjectForm('edit'));
-  assert.equal(await page.locator('#pfMarks').isVisible(), true);
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAHklEQVR4nGNgYGD4z0AEYBxVSF2Fo6EwGgqjoTA4AAD2dQf5kV0x5AAAAABJRU5ErkJggg==', 'base64');
-  await page.setInputFiles('#pfAddMark', { name: 'bird.png', mimeType: 'image/png', buffer: png });
-  await page.waitForSelector('.pf-mark-row');
-  assert.equal(await page.locator('.pf-mark-row input[type="text"]').inputValue(), 'Bar', 'named from Kimi\'s reading');
-  assert.match(api.state.markAdded.mark, /^data:image\/png;base64,/);
+  await page.click('.ps-add');
+  await page.setInputFiles('#psFile', { name: 'bird.png', mimeType: 'image/png', buffer: png });
+  await page.waitForFunction(() => document.querySelectorAll('.ps-mark').length === 2 && !document.querySelector('.ps-mark.reading'));
+  assert.equal(await page.locator('#psMarkName').inputValue(), 'Bar', 'named from Kimi\'s reading');
+  const slide = async (i, v) => page.locator('.ps-slider input').nth(i).evaluate((el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+  await slide(2, 70);                                                                  // its own place
+  assert.equal(await page.locator('.ps-pv.other').count(), 1, 'the other mark as a box, not a second image');
   await shot('26-other-marks');
-  await page.click('#projectModal button >> text=Cancel');
+  await page.click('#pfSave');
+  for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/projects' && c.body.action === 'update'); i++) await page.waitForTimeout(100);
+  const upd = api.state.calls.filter(c => c.path === '/api/projects' && c.body.action === 'update').pop().body;
+  assert.deepEqual([upd.marks.length, upd.marks[0].name, upd.marks[0].y], [1, 'Bar', 70]);
+  assert.match(upd.marks[0].image, /^data:image\/png;base64,/, 'a new mark brings its image');
+  await page.waitForSelector('#loader', { state: 'detached' });
   assert.equal(await text('#placeName'), 'Main · On target', 'two marks: the menu names the mark too');
   await page.click('#placeBtn');
   assert.deepEqual(await page.locator('#placeMenu .tm-head').allTextContents(), ['Mark', 'Position']);
@@ -1243,24 +1260,24 @@ test('several marks: added in Project settings, then the generation row offers w
   await ctx.close();
 });
 
-test('a new project can bring its other marks: added in the form after the main one, made with it', { skip }, async () => {
+test('a new project can bring its other marks: added in the form after the main one, made with it; Make default picks which one leads', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(() => { kimiConfigured = true; openProjectForm('new'); });
-  assert.equal(await page.locator('#pfMarks').isVisible(), true);
-  assert.equal(await page.locator('#pfAddMark').isDisabled(), true, 'the main mark first');
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAHklEQVR4nGNgYGD4z0AEYBxVSF2Fo6EwGgqjoTA4AAD2dQf5kV0x5AAAAABJRU5ErkJggg==', 'base64');
-  await page.setInputFiles('#pfMark', { name: 'main.png', mimeType: 'image/png', buffer: png });
-  await page.waitForFunction(() => !document.getElementById('pfAddMark').disabled);
-  await page.setInputFiles('#pfAddMark', { name: 'bird.png', mimeType: 'image/png', buffer: png });
-  await page.waitForSelector('.pf-mark-row');
-  const added = () => api.state.calls.filter(c => c.path === '/api/projects' && c.body.action === 'add_mark');
-  assert.equal(added().length, 0, 'nothing sent yet: the project is not made');
+  await page.setInputFiles('#psFile', { name: 'main.png', mimeType: 'image/png', buffer: png });
+  await page.waitForSelector('.ps-add');
+  await page.click('.ps-add');
+  await page.setInputFiles('#psFile', { name: 'bird.png', mimeType: 'image/png', buffer: png });
+  await page.waitForFunction(() => document.querySelectorAll('.ps-mark').length === 2 && !document.querySelector('.ps-mark.reading'));
+  await page.fill('#psMarkName', 'Bird');
+  await page.click('.ps-make-default');
+  assert.equal(await text('.ps-default'), '★ Default mark');
+  assert.equal(await page.locator('.ps-remove').count(), 0, 'the default is never removed');
   await page.click('#pfSave');
-  for (let t = 0; t < 50 && !added().length; t++) await page.waitForTimeout(100);
-  assert.equal(added().length, 1, 'added once the project is made');
-  const made = api.state.calls.findIndex(c => c.path === '/api/projects' && c.body.action === 'create');
-  assert.ok(made >= 0 && api.state.calls.indexOf(added()[0]) > made && added()[0].body.slug === 'owl-bar', 'to the new project');
-  assert.match(added()[0].body.mark, /^data:image\/png;base64,/);
+  for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/projects' && c.body.action === 'create'); i++) await page.waitForTimeout(100);
+  const made = api.state.calls.find(c => c.path === '/api/projects' && c.body.action === 'create').body;
+  assert.equal(made.mark_name, 'Bird', 'the default leads: the main slot');
+  assert.deepEqual(made.marks.map(m => m.name), ['Bar'], 'the other one with it');
   await ctx.close();
 });
 
@@ -1570,10 +1587,10 @@ test('the project menu in a real browser: Import project… opens the file choos
   assert.equal(await page.locator('#projectMenu').isVisible(), false, 'and the menu closes');
   await page.click('#projectBtn');
   await page.locator('#projectMenu .gm-item', { hasText: 'New project…' }).click();
-  await page.locator('.project-form button', { hasText: 'Cancel' }).click();
+  await page.locator('.ps-foot button', { hasText: 'Cancel' }).click();
   await page.click('#projectBtn');
   await page.locator('#projectMenu .gm-item', { hasText: 'Project settings…' }).click();
-  await page.locator('.project-form button', { hasText: 'Cancel' }).click();
+  await page.locator('.ps-foot button', { hasText: 'Cancel' }).click();
   await film();
   await page.locator('label:has(#bpmLock)').click().catch(() => page.locator('#bpmLock').check({ force: true }));
   await page.waitForTimeout(100);

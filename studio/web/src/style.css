@@ -115,19 +115,6 @@
     .pm-keep[aria-checked="true"] .pm-box { background: var(--orange); border-color: var(--orange); }
     .pm-keep[aria-checked="true"] .pm-box::after { content: "✓"; color: #1A1A1A; font-size: 11px; font-weight: 800; }
     .pm-keep .tm-check { display: none; }
-    .pf-marks { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-2); display: flex; flex-direction: column; gap: 6px; }
-    .pf-marks[hidden] { display: none; }
-    .pf-marks-head { font-size: 12px; font-weight: 600; color: var(--text-2); }
-    .pf-marks .pf-hint { margin-left: 0; }
-    .pf-marks .pf-reading { margin-left: 0; }
-    .pf-mark-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) 64px 14px 28px; align-items: center; gap: 8px; }
-    .pf-mark-row img { width: 40px; height: 32px; object-fit: contain; background: #808080; border-radius: 4px; }   /* mid grey: a black mark and a white one both show */
-    .pf-mark-row input { min-width: 0; }
-    .pf-mark-row .pf-x { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; }
-    .pf-add-mark { align-self: flex-start; padding: 6px 12px; border-radius: 7px; border: 1px dashed var(--line-3); font-size: 13px; color: var(--text-2); cursor: pointer; }
-    .pf-add-mark:hover { color: var(--text); border-color: var(--muted); }
-    .pf-add-mark input { display: none; }
-    .pf-add-mark.off { opacity: .4; pointer-events: none; }
     .card-model-badge.designed { color: #F5C2A8; background: rgba(236, 84, 12, .14); }   /* kept exactly as designed */
     .card-model-badge.mark { color: #E6D3A8; background: rgba(230, 200, 140, .13); }   /* made with another of the project's marks */
     .gen .csel-face { height: 44px; padding: 0 40px 0 18px; border: 0; border-radius: 0; background-color: transparent; background-position: right 16px center; font-weight: 600; font-size: 14px; }   /* room on either side of "20 images" */
@@ -790,38 +777,10 @@
     .project-menu hr { border: 0; border-top: 1px solid var(--line-2); margin: 4px 2px; }
     .project-menu .gm-note { margin: 2px 8px 6px; font-size: 11px; color: var(--muted); max-width: 230px; }   /* why the other projects wait */
     .project-menu .gm-item:disabled { color: var(--off); background: transparent; }
-    .project-form { width: min(720px, 94vw); }
-    .pf-note { margin-bottom: 14px; }
-    .pf-body { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 20px; align-items: start; }
-    .pf-fields { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-    .pf-row { display: grid; grid-template-columns: 74px minmax(0, 1fr) 44px; align-items: center; gap: 10px; min-height: 30px; font-size: 13px; color: var(--text-2); }
-    .pf-row:has(> input[type="text"]:last-child), .pf-row:has(> input[type="file"]:last-child) { grid-template-columns: 74px minmax(0, 1fr); }
-    .pf-row input[type="text"] { height: 30px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--line-3); background: var(--field); color: var(--text); font-size: 13px; min-width: 0; }
-    .pf-row input[type="text"]:focus { border-color: var(--orange); outline: none; }
-    .pf-row input[type="file"] { font-size: 12px; color: var(--muted); min-width: 0; }
-    .pf-row b { font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--muted); text-align: right; }
-    .pf-hint { margin: -2px 0 4px 84px; font-size: 11px !important; color: var(--faint) !important; }
-    .pf-swatches { display: flex; gap: 6px; padding-left: 84px; min-height: 16px; }
-    .pf-swatches i { width: 16px; height: 16px; border-radius: 4px; box-shadow: 0 0 0 1px var(--line-3); }
-    .pf-reading { display: flex; align-items: center; gap: 10px; margin: 2px 0 6px 84px; font-size: 12px; color: var(--text-2); }   /* Kimi reading the mark: a spinner and the seconds, so it is plainly at work */
-    .pf-reading[hidden] { display: none; }
-    .pf-reading .spin { width: 14px; height: 14px; border-width: 2px; flex: none; }
-    .pf-reading .t { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-    .project-form input:disabled + *, .pf-row:has(> input:disabled) > span { color: var(--off); }
     input.secret { -webkit-text-security: disc; }                       /* masked like a password, but not a password field: macOS offered saved passwords there */
-    .pf-preview { position: relative; width: 150px; aspect-ratio: 9 / 16; border-radius: 8px; background: #6F6E6A; /* mid grey: a black mark and a white one both show */ box-shadow: 0 0 0 1px var(--line-2); overflow: hidden; }
-    .pf-preview img { position: absolute; transform: translate(-50%, -50%); object-fit: contain; z-index: 1; border-radius: 2px; outline: 1.5px dashed var(--orange); outline-offset: 0; }   /* the logo target as on every image: the mark's dashed box */
-    .pf-preview img:not([src]) { display: none; }
-    .pf-preview::before, .pf-preview::after { content: ''; position: absolute; background: rgba(236, 84, 12, .35); }
-    .pf-preview::before { left: var(--pf-x, 50%); top: 0; bottom: 0; width: 1px; }
-    .pf-preview::after { top: var(--pf-y, 50%); left: 0; right: 0; height: 1px; }
     .pf-error { min-height: 18px; margin-top: 10px; color: var(--orange-soft) !important; font-size: 12px !important; }
-    .project-form .confirm-foot button.solid { background: var(--text); color: #1A1A1A; border-color: var(--text); }
 
     /* ---------- first run: what is missing before images can be made ---------- */
-    .pf-locked { margin-top: 10px; font-size: 12px !important; color: var(--muted) !important; }
-    .pf-locked[hidden] { display: none; }
-    .project-form input:disabled { opacity: .45; cursor: not-allowed; }
     #downloadBtn[hidden] { display: none; }
     #cover { position: fixed; inset: 0; background: rgba(18, 17, 16, .92); z-index: 190; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }   /* opening a project: until the page comes back */
     #cover[hidden] { display: none; }
@@ -836,3 +795,92 @@
     .update-bar .small-btn { background: var(--text); color: #1A1A1A; border-color: var(--text); }
 
     body:not(.app) .app-only { display: none; }                          /* what only the Mac app has (its menu's shortcuts) */
+
+/* ---- the project form: the project and its marks (after Claude Design's "Project settings with several marks", 2026-10-29) ---- */
+#projectModal .ps { width: min(1140px, calc(100vw - 48px)); height: min(660px, calc(100vh - 48px)); display: flex; flex-direction: column; border-radius: 14px; background: #1C1B19; border: 1px solid #3A3732; box-shadow: 0 40px 100px rgba(0,0,0,.65); overflow: hidden; color: var(--text); }
+.ps-head { flex: none; height: 54px; display: flex; align-items: center; gap: 10px; padding: 0 20px; border-bottom: 1px solid #2A2824; }
+.ps-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
+.ps-sub { font-size: 13px; color: #8F8A7A; }
+.ps-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 232px minmax(0, 1fr) 240px; }
+.ps-rail { min-height: 0; overflow-y: auto; padding: 12px 10px; border-right: 1px solid #2A2824; background: #191816; display: flex; flex-direction: column; gap: 2px; }
+.ps-rail-head { display: flex; justify-content: space-between; padding: 14px 10px 6px; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #8F8A7A; }
+.ps-rail-head:first-child { padding-top: 4px; }
+.ps-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; text-align: left; color: var(--text); width: 100%; }
+.ps-row:hover:not(:disabled) { background: #262522; }
+.ps-row.on { background: #2A2825; box-shadow: inset 0 0 0 1px #4A4740; }
+.ps-row:disabled { opacity: .55; cursor: default; }
+.ps-proj { flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px; }
+.ps-proj b { font-size: 14px; font-weight: 700; }
+.ps-wait { font-size: 12px; color: #8F8A7A; }
+.ps-swatches { display: flex; gap: 4px; }
+.ps-swatches i { width: 12px; height: 12px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(254,255,231,.15); }
+.ps-thumb { position: relative; flex: none; width: 38px; height: 38px; padding: 5px; box-sizing: border-box; border-radius: 7px; background: #7A7873; display: flex; align-items: center; justify-content: center; }
+.ps-thumb img { max-width: 100%; max-height: 100%; }
+.ps-mark.reading .ps-thumb img { opacity: .45; }
+.ps-thumb .spin { position: absolute; width: 20px; height: 20px; border-width: 2.5px; }
+.ps-reading .spin { width: 16px; height: 16px; border-width: 2px; flex: none; }
+.ps-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ps-row-text b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ps-row-text small { font-family: var(--mono); font-size: 10px; color: #8F8A7A; white-space: nowrap; }
+.ps-row-text small.kimi { color: #F29466; }
+.ps-row > svg { flex: none; color: #8F8A7A; }
+.ps-add { margin-top: 6px; height: 36px; border-radius: 9px; border: 1px dashed #4A4740; background: transparent; color: #C9C4B0; font-size: 13px; font-weight: 600; }
+.ps-add:hover { color: var(--text); border-color: var(--muted); }
+.ps-detail { min-height: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; }
+.ps-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #A8A390; }
+.ps-field > span { display: flex; align-items: center; gap: 8px; }
+.ps-field input[type="text"] { height: 34px; box-sizing: border-box; width: 100%; border-radius: 7px; border: 1px solid #34312C; background: #161514; color: var(--text); font: inherit; font-size: 14px; padding: 0 10px; outline: none; }
+.ps-field input[type="text"]:focus { border-color: var(--orange); }
+.ps-field input:disabled { color: #A8A390; background: #1A1918; border-color: #2A2824; }
+.ps-field small { font-size: 12px; color: #8F8A7A; }
+.ps-tag { font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; padding: 1px 5px; border-radius: 4px; background: #3A2418; color: #F29466; }
+.ps-colours { display: flex; flex-wrap: wrap; gap: 6px; }
+.ps-chip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 4px 0 6px; border-radius: 7px; border: 1px solid #34312C; background: #161514; font-family: var(--mono); font-size: 12px; color: var(--text); }
+.ps-chip i { width: 18px; height: 18px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(254,255,231,.15); }
+.ps-chip button { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #8F8A7A; }
+.ps-field input.ps-chip-add { width: 96px; height: 30px; border-style: dashed; font-family: var(--mono); font-size: 12px; }
+.ps-locked { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; background: #221F1B; border: 1px solid #34312C; font-size: 13px; color: #C9C4B0; }
+.ps-locked svg { color: var(--orange); flex: none; }
+.ps-mark-head { display: flex; gap: 16px; align-items: flex-start; }
+.ps-big { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.ps-big-thumb { width: 92px; height: 92px; box-sizing: border-box; padding: 12px; border-radius: 10px; background: #7A7873; display: flex; align-items: center; justify-content: center; }
+.ps-big-thumb img { max-width: 100%; max-height: 100%; }
+.ps-mark-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.ps-mark-name #psMarkName { font-size: 16px; font-weight: 600; }
+.ps-default { align-self: flex-start; display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: #2A2825; font-size: 12px; font-weight: 600; }
+.ps-make-default { align-self: flex-start; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid #34312C; background: transparent; font-size: 12px; font-weight: 600; }
+.ps-make-default:disabled { color: #6F6B5F; }
+.ps-group { display: flex; flex-direction: column; gap: 8px; }
+.ps-group-head { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #8F8A7A; }
+.ps-group-head small { font-family: inherit; font-size: 12px; letter-spacing: 0; text-transform: none; color: #7E796C; margin-left: 8px; font-family: 'Schibsted Grotesk', sans-serif; }
+.ps-slider { display: grid; grid-template-columns: 64px minmax(0, 1fr) 52px; align-items: center; gap: 12px; min-height: 30px; font-size: 13px; color: #C9C4B0; }
+.ps-slider b { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--text); text-align: right; }
+.ps-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ps-remove { margin-top: auto; padding-top: 14px; border-top: 1px solid #2A2824; display: flex; align-items: center; gap: 12px; font-size: 12px; color: #8F8A7A; }
+.danger-outline { height: 30px; padding: 0 12px; border-radius: 7px; border: 1px solid #6B2B37; background: transparent; color: #F7A3B6; font-size: 13px; font-weight: 600; }
+.ps-reading { display: flex; gap: 16px; align-items: center; }
+.ps-reading img { opacity: .85; }
+.ps-reading > div { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #A8A390; }
+.ps-reading b { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--text); }
+.ps-secs { font-family: var(--mono); font-size: 13px; font-weight: 500; color: #F29466; }
+.ps-reading .link-btn { align-self: flex-start; }
+@keyframes ps-sh { 0%, 100% { opacity: .45; } 50% { opacity: .9; } }
+.ps-skel { display: block; height: 34px; border-radius: 7px; background: #24221F; border: 1px solid #2A2824; animation: ps-sh 1.4s ease-in-out infinite; }
+.ps-drop { flex: 1; min-height: 300px; border-radius: 14px; border: 1.5px dashed #5E5A50; background: #181715; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; color: #A8A390; font-size: 13px; }
+.ps-drop.over { border-color: var(--orange); background: #221A15; }
+.ps-drop svg { color: #C9C4B0; }
+.ps-drop b { font-size: 18px; color: var(--text); }
+.ps-drop button { margin-top: 6px; }
+.ps-prev { min-height: 0; padding: 18px 18px 14px; border-left: 1px solid #2A2824; background: #191816; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.ps-frame { position: relative; width: 200px; aspect-ratio: 9 / 16; border-radius: 8px; overflow: hidden; background: #7A7873; box-shadow: 0 0 0 1px #34312C; }
+.ps-pv { position: absolute; transform: translate(-50%, -50%); box-sizing: border-box; }
+.ps-pv img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.ps-pv.on i { position: absolute; inset: -5px; border: 1.5px dashed var(--orange); border-radius: 3px; }
+.ps-pv.other { border: 1px dashed rgba(26, 26, 26, .55); border-radius: 2px; }
+.ps-pv.empty { border: 1.5px dashed rgba(26, 26, 26, .45); border-radius: 3px; }
+.ps-cap { font-size: 12px; color: #8F8A7A; text-align: center; }
+.ps-foot { flex: none; height: 62px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 20px; border-top: 1px solid #2A2824; }
+.ps-foot .pf-error { flex: 1; margin: 0; }
+.ps-foot button, .ps-drop button { height: 34px; padding: 0 16px; border-radius: 8px; border: 1px solid #3A3732; background: transparent; font-size: 13px; font-weight: 600; }
+.ps-foot button.solid, .ps-drop button.solid { background: var(--text); color: #1A1A1A; border-color: var(--text); font-weight: 700; }
+.ps-foot button.solid:disabled { background: #2E2C28; color: #7E796C; border-color: #2E2C28; }

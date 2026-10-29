@@ -255,6 +255,19 @@ def check_new_image(path: Path, pl: dict | None = None, mark_id: str | None = No
     return evaluate_plate_qa(path, current_mark(pl, mark_id))
 
 
+def mark_images(marks: list) -> dict:
+    """The images the settings form sends with its marks (a new one, or a replaced one), by their place in the list."""
+    import base64
+    out = {}
+    for i, m in enumerate(marks):
+        if isinstance(m, dict) and m.get("image"):
+            try:
+                out[i] = base64.b64decode(str(m["image"]).split(",", 1)[-1], validate=False)
+            except Exception:
+                raise ValueError("A mark did not arrive as an image.")
+    return out
+
+
 def pick_mark(choice: str | None) -> str | None:
     """Which of the project's marks a shot uses: the main one (None), the one chosen, or for Mix the main one about half the time and
     the others in turn the rest. A project with one mark: always the main one."""
@@ -1399,7 +1412,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "placement": pl,                                 # its own place and size (a Loose batch), else the project's
                     "mark": mk, "mark_name": mark_ids[mk]["name"] if mk else None,   # made with another of the project's marks
                     "as_designed": p.name in designed,                                # Keep it as designed: its colours and details
-                    "box": ({"x": (pl or {}).get("x", PROJECT["mark_x"]), "y": (pl or {}).get("y", PROJECT["mark_y"]),
+                    "box": ({"x": (pl or {}).get("x", (mark_ids[mk] if mk else PROJECT)["mark_x"]), "y": (pl or {}).get("y", (mark_ids[mk] if mk else PROJECT)["mark_y"]),
                              "size": (pl or {}).get("size", mark_ids[mk]["mark_size"] if mk else PROJECT["mark_size"]),
                              "ar": projects.mark_ratio(projects.with_mark(PROJECT, mk))} if pl or mk else None),   # where its logo target is drawn
                 })
@@ -1595,9 +1608,25 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     apply_project(projects.set_active(str(body.get("slug") or "")))
                 elif action == "create":
                     p = projects.create(body, mark or b"")
+                    if isinstance(body.get("marks"), list):                # its other marks, made with it
+                        p = projects.save_marks(p["slug"], body["marks"], mark_images(body["marks"]))
                     apply_project(projects.set_active(p["slug"]))
                 elif action == "update":
-                    p = projects.update(str(body.get("slug") or ""), body, mark)
+                    slug = str(body.get("slug") or "")
+                    p = projects.update(slug, body, mark)
+                    if isinstance(body.get("marks"), list):                # the settings form: the other marks as it holds them
+                        p = projects.save_marks(slug, body["marks"], mark_images(body["marks"]))
+                    want = body.get("default_mark")                         # another mark made default: by id, or its place in the list just saved
+                    if isinstance(body.get("default_index"), int) and 0 <= body["default_index"] < len(p["marks"]):
+                        want = p["marks"][body["default_index"]]["id"]
+                    if want and want != "main":
+                        if not (PROJECT and slug == PROJECT["slug"]):
+                            raise ValueError("Open the project to change its default mark.")
+                        with STATE_LOCK:                                    # every image keeps the mark it was made with
+                            mid = projects.make_default(slug, str(want))
+                            st = load_state()
+                            save_state(projects.swap_marks_used(st, mid, [f.name for f in PLATES_DIR.glob("*.jpg")]))
+                        p = projects.load(slug)
                     if PROJECT and p["slug"] == PROJECT["slug"]:
                         apply_project(p)
                 elif action in ("add_mark", "edit_mark", "remove_mark"):   # the project's other marks
