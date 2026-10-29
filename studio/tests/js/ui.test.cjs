@@ -1677,7 +1677,7 @@ test('Export says how long it will take once it has seen one: the median of the 
 test('menu labels in the page are what they should be (a bulk edit once renamed the batch sizes)', () => {
   const html = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'web', 'index.html'), 'utf8');
   const opts = id => { const m = html.match(new RegExp(`<select id="${id}"[\\s\\S]*?</select>`)); return [...m[0].matchAll(/<option value="([^"]*)"[^>]*>([^<]*)</g)].map(x => `${x[1]}=${x[2]}`); };
-  assert.deepEqual(opts('batchCountSelect'), ['2=2 images', '4=4 images', '6=6 images', '8=8 images', '12=12 images', '16=16 images', '20=20 images']);
+  assert.match(html, /id="countField" role="spinbutton"[^>]*aria-valuemin="1" aria-valuemax="20"/, 'the count: a number, 1 to 20');
   assert.deepEqual(opts('multSelect'), ['0.25=×¼', '0.5=×½', '1=×1', '1.3333333=×1⅓', '2=×2', '3=×3', '4=×4', '6=×6', '8=×8', '9=×9']);
   assert.deepEqual(opts('rhythmSelect'), ['flat=One speed', 'variable=A change']);
 });

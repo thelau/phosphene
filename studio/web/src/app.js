@@ -2516,6 +2516,16 @@
         set: v => { setv('repeatSelect', String(v)); updateTempo(); },
         parse: t => { const n = parseInt(t.replace(/[×x\s]/g, ''), 10); return Number.isFinite(n) ? n : null; },
       },
+      countField: {                                                           // how many images a batch makes: any number, 1 to 20
+        label: 'Images',
+        get: () => Math.min(20, Math.max(1, parseInt(document.getElementById('batchCountSelect').value, 10) || 4)),
+        drag: (v0, dy, fine) => v0 - dy / (fine ? 24 : 12),
+        step: (v, d, big) => v + d * (big ? 4 : 1),
+        text: v => String(Math.round(v)),
+        parse: t => { const n = parseInt(String(t).replace(/[×x\s]/g, ''), 10); return Number.isFinite(n) ? n : null; },
+        set: v => { setv('batchCountSelect', String(Math.min(20, Math.max(1, Math.round(v))))); showCount(); },
+        commit: () => { saveSettings(); renderTerrMenu(); },              // a generation setting: no undo step (as the territory)
+      },
       multField: {
         label: 'Multiple',
         values: () => [...document.getElementById('multSelect').options].map(o => o.value),
@@ -2543,7 +2553,7 @@
         if (done) return; done = true;
         const n = ok ? f.parse(input.value) : null;
         input.remove(); val.hidden = false; el.classList.remove('typing');
-        if (n !== null) { f.set(f.values ? vfNearest(f, n) : n); commitSettings(f.label === 'Tempo' ? 'the tempo' : 'the Multiple'); }
+        if (n !== null) { f.set(f.values ? vfNearest(f, n) : n); if (f.commit) f.commit(); else commitSettings(f.label === 'Tempo' ? 'the tempo' : 'the Multiple'); }
         el.focus();
       };
       input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); });
@@ -2569,12 +2579,12 @@
           if (f.values) { const vals = f.values(); f.set(vals[Math.max(0, Math.min(vals.length - 1, drag.v0 + Math.round(-dy / (e.shiftKey ? 28 : 14))))]); }
           else f.set(f.drag(drag.v0, dy, e.shiftKey));
         });
-        const up = () => { if (!drag) return; const moved = drag.moved; drag = null; el.classList.remove('dragging'); if (moved) commitSettings(f.label === 'Tempo' ? 'the tempo' : 'the Multiple'); };
+        const up = () => { if (!drag) return; const moved = drag.moved; drag = null; el.classList.remove('dragging'); if (moved) { if (f.commit) f.commit(); else commitSettings(f.label === 'Tempo' ? 'the tempo' : 'the Multiple'); } };
         el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
         el.addEventListener('dblclick', () => vfType(el));
         el.addEventListener('keydown', e => {
-          if (el.classList.contains('typing')) return;
-          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); vfStep(id, e.key === 'ArrowUp' ? 1 : -1, e.shiftKey); }
+          if (el.classList.contains('typing') || el.getAttribute('aria-disabled') === 'true') return;
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); vfStep(id, e.key === 'ArrowUp' ? 1 : -1, e.shiftKey); if (f.commit) f.commit(); }
           else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); vfType(el); }
         });
       }
@@ -3013,7 +3023,13 @@
     const ICON_SPARK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>';
     let refineEditing = false;
     function namedWorlds() { return [...document.getElementById('worldSelect').options].filter(o => o.value && !o.value.startsWith('__')); }
+    function showCount() {
+      const n = VFIELDS.countField.get(), el = document.getElementById('countField');
+      document.getElementById('countVal').textContent = `×${n}`;
+      el.setAttribute('aria-valuenow', String(n)); el.setAttribute('aria-valuetext', `${n} image${n === 1 ? '' : 's'}`);
+    }
     function renderGen() {
+      showCount();
       const v = document.getElementById('worldSelect').value, custom = v === '__custom__';
       const opt = document.getElementById('worldSelect').selectedOptions[0];
       const [icon, name] = v === '' ? ['', 'Choose a territory'] : custom ? [ICON_PLUS, 'Describe your own'] : v === '__wildcard__' ? [ICON_SPARK, 'Surprise me'] : v === '__sampler__' ? [ICON_SAMPLER, 'Sampler'] : [ICON_WORLD, v];   // just the name (the counts are in the list)
@@ -3237,6 +3253,7 @@
       if (T && T.event && isBusy() !== toldBusy) { toldBusy = isBusy(); T.event.emit('page-busy', toldBusy).catch(() => {}); }   // the Mac app asks before quitting mid-job
       const lockGen = generating || aiRunning;
       ['worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'batchCountSelect', 'modelSelect', 'generateBtn', 'terrBtn', 'refineOpen', 'refineSet', 'refineClear'].forEach(id => { document.getElementById(id).disabled = lockGen; });
+      document.getElementById('countField').setAttribute('aria-disabled', String(!!lockGen));
       genRunningLabel();
       syncAiBtn();
       document.getElementById('exportBtn').disabled = aiRunning || !activePlates().length;

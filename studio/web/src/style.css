@@ -94,7 +94,10 @@
     .csel-group { padding: 9px 12px 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
     /* where each dropdown sits */
     .row > .csel { width: 100%; }
-    .csel[data-for="batchCountSelect"] { width: 148px; }
+    .gen .vfield.gen-count { width: 96px; height: 44px; align-self: center; justify-content: space-between; padding: 0 16px 0 18px; border: 0; border-radius: 0; background: transparent; }   /* the count: a number, as the Film's Tempo */
+    .gen .vfield.gen-count .vf-val { min-width: 0; text-align: left; font-family: inherit; font-size: 14px; }
+    .gen .vfield.gen-count:hover:not([aria-disabled="true"]), .gen .vfield.gen-count:focus-visible { background: #2A2825; }
+    .vfield[aria-disabled="true"] { opacity: .5; pointer-events: none; }
     .csel[data-for="targetSelect"] { width: 150px; }
     .csel[data-for="markSelect"] { width: 160px; }
     body:not(.multi-mark) .csel[data-for="markSelect"], body:not(.multi-mark) .gen-sep.mark-only { display: none; }   /* only for a project with several marks */

@@ -1,5 +1,13 @@
 const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, skip, api, page, consoleErrors, addAi } = require('./harness.cjs');
 register();
+// the count: a number field (1 to 20), as the Film's Tempo; double-click, type, Enter
+async function setCount(n) {
+  await page.dblclick('#countField');
+  await page.keyboard.press('Meta+a');
+  await page.keyboard.type(String(n));
+  await page.keyboard.press('Enter');
+  if (n >= 1 && n <= 20) assert.equal(await page.inputValue('#batchCountSelect'), String(n));
+}
 
 test('generate: a custom territory waits for its description; controls lock, progress shows per image and on the button; the refinement stays', { skip }, async () => {
   const ctx = await fresh({ delays: { invent: 300, generate: 500 } });
@@ -20,7 +28,7 @@ test('generate: a custom territory waits for its description; controls lock, pro
   assert.equal(await page.locator('#refineReq').isVisible(), true, 'Required');
   assert.equal(await page.locator('#directionInput').evaluate(e => getComputedStyle(e).backgroundColor), 'rgba(0, 0, 0, 0)', 'the field takes the tinted area\'s colour, no box of its own');
   assert.equal(await page.locator('#generateBtn').isDisabled(), true, 'Generate waits for the description');
-  await page.selectOption('#batchCountSelect', '4');
+  await setCount(4);
   const oneLine = (await page.locator('#directionInput').boundingBox()).height;
   const edit = () => page.locator('.refine-edit').evaluate(e => { const r = e.getBoundingClientRect(), t = e.querySelector('textarea').getBoundingClientRect(); const mid = q => { const b = e.querySelector(q).getBoundingClientRect(); return Math.round((b.y + b.height / 2) * 2) / 2; }; return { label: mid('.refine-label'), tag: mid('.refine-req'), x: r.x, y: r.y, w: r.width, tx: t.x, ty: t.y, radius: getComputedStyle(e).borderTopLeftRadius, shadow: getComputedStyle(e).boxShadow }; });
   await page.locator('#directionInput').blur();
@@ -80,7 +88,7 @@ test('generate: a custom territory waits for its description; controls lock, pro
 
 test('generate: failed images are explained (hover) and counted, the rest still arrive', { skip }, async () => {
   const ctx = await fresh({ delays: { invent: 100, generate: 200 }, failGen: n => n % 4 !== 1 });          // only every 4th request succeeds: 1 of 4
-  await page.selectOption('#batchCountSelect', '4');
+  await setCount(4);
   await page.click('#generateBtn');
   await page.waitForFunction(() => /Done · 1 added · 3 failed/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   const text_ = await text('#statusText');
@@ -95,7 +103,7 @@ test('generate: failed images are explained (hover) and counted, the rest still 
 
 test('a server restart during a batch does not reload the page underneath it', { skip }, async () => {
   const ctx = await fresh({ delays: { invent: 100, generate: 5000 } });                // long enough for two version checks while it runs
-  await page.selectOption('#batchCountSelect', '2');
+  await setCount(2);
   await page.evaluate(() => { window.__marker = 'still here'; });
   await page.click('#generateBtn');
   await page.waitForSelector('#statusText .slot.run');
@@ -112,7 +120,7 @@ test('closing or reloading the page during a batch asks first (and not when idle
   const ctx = await fresh({ delays: { invent: 100, generate: 1500 } });
   const asks = () => page.evaluate(() => { const ev = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(ev); return ev.defaultPrevented; });
   assert.equal(await asks(), false);                                                  // idle: leave freely
-  await page.selectOption('#batchCountSelect', '2');
+  await setCount(2);
   await page.click('#generateBtn');
   await page.waitForSelector('#statusText .slot.run');
   assert.equal(await asks(), true);                                                   // generating: the browser will ask first
@@ -123,12 +131,18 @@ test('closing or reloading the page during a batch asks first (and not when idle
 });
 
 
-test('the batch size list offers up to 20 images and sends the chosen number', { skip }, async () => {
+test('the count: any number from 1 to 20, as a value field (×N); it sends the number chosen and is remembered', { skip }, async () => {
   const ctx = await fresh({ delays: { invent: 50, generate: 20 } });
-  const options = await page.locator('#batchCountSelect option').evaluateAll(els => els.map(e => e.value));
-  assert.deepEqual(options, ['2', '4', '6', '8', '12', '16', '20']);
-  assert.equal(await page.locator('#batchCountSelect option[value="20"]').innerText(), '20 images');
-  await page.selectOption('#batchCountSelect', '12');
+  await page.focus('#countField');
+  await page.keyboard.press('ArrowUp');
+  assert.equal(await text('#countVal'), '×5', 'arrows step by one: no set list');
+  for (let i = 0; i < 30; i++) await page.keyboard.press('ArrowUp');
+  assert.equal(await text('#countVal'), '×20', 'never past 20');
+  await setCount(0);
+  assert.equal(await text('#countVal'), '×1', 'nor under 1');
+  await setCount(13);
+  assert.equal(await text('#countVal'), '×13');
+  await setCount(12);
   await page.click('#generateBtn');
   await page.waitForFunction(() => /Done · 12 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
   assert.equal(api.state.calls.find(c => c.path === '/api/invent-prompts').body.count, 12);

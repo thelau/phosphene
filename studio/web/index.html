@@ -179,15 +179,8 @@
             <option value="main" selected>Main mark</option>
           </select>
           <span class="gen-sep"></span>
-          <select id="batchCountSelect" title="Number of images per batch">
-          <option value="2">2 images</option>
-          <option value="4" selected>4 images</option>
-          <option value="6">6 images</option>
-          <option value="8">8 images</option>
-          <option value="12">12 images</option>
-          <option value="16">16 images</option>
-          <option value="20">20 images</option>
-        </select>
+          <div class="vfield gen-count" id="countField" role="spinbutton" tabindex="0" aria-valuemin="1" aria-valuemax="20" aria-valuenow="4" aria-label="Images in this batch" title="How many images: 1 to 20. Drag up or down, double-click to type, arrows to step."><span class="vf-val" id="countVal">×4</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div>
+          <input type="hidden" id="batchCountSelect" value="4" />
           <button class="primary" id="generateBtn" onclick="generateImages()"><span class="gen-spin" aria-hidden="true"></span><span id="genLabel">Generate</span></button>
           <div class="terr-menu" id="terrMenu" role="listbox" aria-label="Territories" hidden></div>
         </div>

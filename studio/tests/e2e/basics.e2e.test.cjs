@@ -7,7 +7,7 @@ test('page loads without errors: Curate first, generation in one tidy row, no st
   assert.equal(await page.evaluate(() => document.body.dataset.mode), 'curate');
   assert.equal(await page.locator('#statusText').isVisible(), false, 'the status bar only shows while something runs');
   const box = async sel => page.locator(sel).first().boundingBox();
-  const [world, dir, count, gen, settings] = await Promise.all(['#terrBtn', '#refineOpen', '.csel[data-for="batchCountSelect"]', '#generateBtn', '#settingsBtn'].map(box));
+  const [world, dir, count, gen, settings] = await Promise.all(['#terrBtn', '#refineOpen', '#countField', '#generateBtn', '#settingsBtn'].map(box));
   const header = await box('header');
   assert.ok(header.height <= 57, `header is ${header.height}px tall`);
   assert.ok(world.x + world.width <= dir.x + 1 && dir.x + dir.width <= count.x + 1 && count.x + count.width <= gen.x + 1, 'territory, Refine, count, Generate: left to right');
@@ -18,7 +18,7 @@ test('page loads without errors: Curate first, generation in one tidy row, no st
   assert.equal(await text('#terrName'), 'Editorial Print', 'no Mix it up: the first territory');
   const clip = await page.locator('#terrName').evaluate(b => b.scrollHeight - b.clientHeight);
   assert.ok(clip <= 0, `the name is not clipped (descenders: g, p, y): ${clip}`);
-  const mids = await page.evaluate(() => ['#terrIcon svg', '#terrName', '#terrBtn > svg', '#refineOpen', '.csel[data-for="batchCountSelect"] .csel-face', '#generateBtn'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return Math.round((r.top + r.height / 2) * 10) / 10; }));
+  const mids = await page.evaluate(() => ['#terrIcon svg', '#terrName', '#terrBtn > svg', '#refineOpen', '#countVal', '#generateBtn'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return Math.round((r.top + r.height / 2) * 10) / 10; }));
   assert.ok(Math.max(...mids) - Math.min(...mids) <= 1.5, `everything in the bar on one centre line: ${mids}`);
   const [bar, tools] = [await box('#genGroup'), await box('.size-ctl')];
   assert.ok(Math.abs(bar.x + bar.width - (tools.x + tools.width)) <= 1, 'the bar runs the full width: its right edge lines up with the tools below');
