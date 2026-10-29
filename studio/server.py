@@ -175,12 +175,26 @@ def mark_words(p: dict | None = None) -> dict:
     p = p or PROJECT
     size, x, y = p["mark_size"], p["mark_x"], p["mark_y"]
     centred = abs(x - 50) < 0.01 and abs(y - 50) < 0.01
+    area = frame_area(x, y)
     return {
-        "shape": p["mark_shape"], "noun": p["mark_noun"], "size": f"{size:g}",
+        "shape": p["mark_shape"], "noun": p["mark_noun"], "size": f"{size:g}", "centred": centred, "area": area,
         "where": "EXACT DEAD-CENTER (50% horizontal, 50% vertical)" if centred else f"EXACT POINT {x:g}% from the left and {y:g}% from the top",
-        "at": "exact dead-center (50%, 50%)" if centred else f"exact point ({x:g}% across, {y:g}% down)",
+        "at": "exact dead-center (50%, 50%)" if centred else f"the {area}, exact point ({x:g}% across, {y:g}% down)",
         "short": "dead-center" if centred else f"the point {x:g}% across and {y:g}% down",
     }
+
+
+def frame_area(x: float, y: float) -> str:
+    """Where a point is, in words an image model follows better than numbers: "upper-left area", "lower middle", "just off the centre"."""
+    h = "left" if x < 40 else "right" if x > 60 else ""
+    v = "upper" if y < 40 else "lower" if y > 60 else ""
+    if not h and not v:
+        return "area just off the centre"
+    if not h:
+        return f"{v} middle of the frame"
+    if not v:
+        return f"{h} side of the frame, at mid height"
+    return f"{v}-{h} area of the frame"
 
 
 def _plate_key(path: Path, pl: dict | None = None) -> str:
@@ -278,8 +292,13 @@ def world_examples(w: dict, n: int = 2) -> list[str]:
 
 def build_full_prompt(raw_prompt: str, project: dict | None = None) -> str:
     m = mark_words(project)
+    # a mark away from the centre: said first and in words (image models pull a lone subject to the middle; a spot given in numbers
+    # at the end of the prompt was ignored), so the scene is composed around it
+    lead = "" if m["centred"] else (
+        f"9:16 vertical frame. COMPOSITION: the {m['noun']} sits in the {m['area']}{'' if 'off the centre' in m['area'] else ', NOT at the centre'} "
+        f"({m['where'].split('EXACT POINT ')[-1]}, ~{m['size']}% of the width), exactly where the reference guide image shows it; compose the scene around that spot. ")
     return (
-        f"{raw_prompt}. 9:16 vertical frame. "
+        f"{lead}{raw_prompt}. 9:16 vertical frame. "
         f"At the {m['where']} of the 9:16 frame at ~{m['size']}% frame width "
         f"(matching the exact {m['shape']} SHAPE and position of the reference guide image) is the SINGLE {m['noun']}, "
         f"physically integrated into the scene's exact perspective, lighting, and medium (whether 3D extruded sculpture, CAD wireframe, isometric object, nature formation, UI, or apparel — never a flat 2D sticker pasted over an unrelated angle, and no extra outer rings)."

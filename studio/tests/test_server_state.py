@@ -72,6 +72,15 @@ def test_build_full_prompt_keeps_exact_position_wording(srv):
         assert needle in p
 
 
+def test_a_mark_away_from_the_centre_is_said_first_and_in_words(srv):
+    import placement
+    p = srv.build_full_prompt("A glass cube", placement.as_project(srv.PROJECT, {"kind": "scattered", "x": 37.5, "y": 17.8, "size": 19.7}))
+    assert p.startswith("9:16 vertical frame. COMPOSITION: the circular mark sits in the upper-left area of the frame, NOT at the centre (37.5% from the left and 17.8% from the top, ~19.7% of the width)")
+    assert "A glass cube" in p and "EXACT POINT 37.5% from the left" in p and "DEAD-CENTER" not in p
+    assert [srv.frame_area(*xy) for xy in ((20, 80), (50, 20), (75, 50), (48, 53))] == [
+        "lower-left area of the frame", "upper middle of the frame", "right side of the frame, at mid height", "area just off the centre"]
+
+
 # ---------- ordering ----------
 
 def test_ordered_plate_files_respects_order_then_appends_new(srv, make_plate):
