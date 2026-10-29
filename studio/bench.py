@@ -60,7 +60,6 @@ def run_one(job):
             st.setdefault("trashed_at", {})[filename] = __import__("time").time()
         server.sequences.append_everywhere(st, filename)
         server.save_state(st)
-    server.apply_critic(filename)
     print(f"[BENCH] {filename} {model} qa={'PASS' if qa['qa_passed'] else 'FAIL'} score={qa['qa_score']}", flush=True)
 
 

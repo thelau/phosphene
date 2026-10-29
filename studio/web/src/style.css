@@ -552,12 +552,12 @@
     .prompt-overlay-text { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; word-break: break-word; -webkit-user-select: text; user-select: text; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
     .po-world { color: var(--text); font-weight: 700; }
     .po-idea { color: var(--muted); }
-    .po-critic { color: var(--faint); font-size: 11px; }
+    .po-check { color: var(--faint); font-size: 11px; }
     .po-qa { color: #F2A0A0; }                                         /* why the logo check flagged it */
     .prompt-overlay-meta { flex: none; display: flex; justify-content: flex-end; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, .1); }
     .po-copy { height: 26px; padding: 0 10px; font-size: 11px; border-radius: 6px; }
     .card.info-open .card-num, .card.info-open .card-actions, .card.info-open .card-new, .card.info-open .card-pick { display: none; }
-    .grid-col[data-size="S"] .po-world, .grid-col[data-size="S"] .po-idea, .grid-col[data-size="S"] .po-critic, .grid-col[data-size="M"] .po-idea, .grid-col[data-size="M"] .po-critic { display: none; }
+    .grid-col[data-size="S"] .po-world, .grid-col[data-size="S"] .po-idea, .grid-col[data-size="S"] .po-check, .grid-col[data-size="M"] .po-idea, .grid-col[data-size="M"] .po-check { display: none; }
     .grid-col[data-size="S"] .prompt-overlay { padding: 8px 8px 6px; font-size: 10.5px; line-height: 1.4; }
     .grid-col[data-size="S"] .po-copy { width: 100%; padding: 0; }
     .grid-col[data-size="S"] .card-actions .drag-handle, .grid-col[data-size="S"] .card-actions .grow { display: none; }

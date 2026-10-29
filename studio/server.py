@@ -28,7 +28,6 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 from PIL import Image
 
 import chapters
-import critic
 import editor
 import gen_log
 import groups
@@ -275,33 +274,6 @@ def pick_mark(choice: str | None) -> str | None:
     if choice == "mix" and ids:
         return None if random.random() < 0.5 else random.choice(ids)
     return choice if choice in ids else None
-
-
-def apply_critic(filename: str) -> None:
-    """Score a plate with the Kimi critic. Advisory unless critic_autotrash is on (then low scores go to Trash with the reason)."""
-    started_in = PROJECT["slug"] if PROJECT else None
-    st = load_state()
-    if not st.get("critic_enabled", True) or not st.get("kimi_api_key"):
-        return
-    pl = st.get("placements", {}).get(filename)
-    proj = projects.with_mark(PROJECT, st.get("marks_used", {}).get(filename))
-    try:
-        r = critic.review_plate(PLATES_DIR / filename, call_kimi_llm, st["kimi_api_key"], st.get("kimi_model", "kimi-k3"),
-                                mark=None if is_demo() and not pl and proj is PROJECT else f"small {proj['mark_noun']} sits at {mark_words(placement.as_project(proj, pl))['short']}")
-    except Exception as e:
-        print(f"[CRITIC] {filename}: {str(e)[:120]}", flush=True)
-        return
-    with STATE_LOCK:                                   # the review took seconds: the state as it is now, and only in the project it was made for
-        if not PROJECT or PROJECT["slug"] != started_in:
-            return
-        st = load_state()
-        st.setdefault("critic", {})[filename] = {"mean": r["mean"], "reason": r["reason"], "scores": r["scores"]}
-        if st.get("critic_autotrash") and r["verdict"] == "trash" and filename not in st.get("trashed", []):
-            st["trashed"] = sorted(set(st.get("trashed", [])) | {filename})
-            st.setdefault("trashed_at", {})[filename] = time.time()
-            st["critic_failed"] = sorted(set(st.get("critic_failed", [])) | {filename})
-        save_state(st)
-    print(f"[CRITIC] {filename} {r['mean']} {r['verdict']} - {r['reason']}", flush=True)
 
 
 def world_examples(w: dict, n: int = 2) -> list[str]:
@@ -1410,11 +1382,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "model": None if up else models.get(p.name, "google/nano-banana-pro"),   # an upload: made by no model
                     "trashed": p.name in trashed_set,
                     "trashed_at": st.get("trashed_at", {}).get(p.name),
-                    "trash_reason": (
-                        "Mark check" if p.name in st.get("qa_failed", []) and p.name in trashed_set
-                        else ("AI critic: " + st.get("critic", {}).get(p.name, {}).get("reason", "") if p.name in st.get("critic_failed", []) and p.name in trashed_set else None)
-                    ),
-                    "critic": st.get("critic", {}).get(p.name),
+                    "trash_reason": "Mark check" if p.name in st.get("qa_failed", []) and p.name in trashed_set else None,
                     "world": st.get("worlds", {}).get(p.name),
                     "look": features.look(features.peek(p)),
                     "idea": st.get("ideas", {}).get(p.name),
@@ -1441,8 +1409,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 "making": making_titles(),                                  # images being made now: Resume skips them
                 "kimi_key_masked": (kimi_key[:6] + "••••••••" + kimi_key[-4:]) if len(kimi_key) > 10 else "",
                 "kimi_model": st.get("kimi_model", "kimi-k3"),
-                "critic_enabled": st.get("critic_enabled", True),
-                "critic_autotrash": st.get("critic_autotrash", False),
                 "sequences": sequences.public(st, {p["filename"] for p in plates if not p["trashed"]}),
                 "groups": groups.public(st, {p["filename"] for p in plates}),
                 "edits": edits.public(st),
@@ -1824,9 +1790,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     st["kimi_api_key"] = body["kimi_api_key"].strip()
                 if "kimi_model" in body and body["kimi_model"].strip():
                     st["kimi_model"] = body["kimi_model"].strip()
-                for flag in ("critic_enabled", "critic_autotrash"):
-                    if flag in body:
-                        st[flag] = bool(body[flag])
                 save_state(st)
             self.send_json({"ok": True, "kimi_configured": bool(st.get("kimi_api_key")), "kimi_key_status": status})
             return
@@ -2034,7 +1997,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         flush=True,
                     )
 
-                    with STATE_LOCK:                           # read, change, write as one (parallel images, trash clicks, the critic)
+                    with STATE_LOCK:                           # read, change, write as one (parallel images, trash clicks)
                         st = load_state()
                         st.setdefault("titles", {})[filename] = title
                         st.setdefault("prompts", {})[filename] = raw_prompt
@@ -2062,7 +2025,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
                         sequences.append_everywhere(st, filename)
                         save_state(st)
-                threading.Thread(target=apply_critic, args=(filename,), daemon=True).start()
                 took = round(time.time() - t_start, 1)
                 gen_log.record("image", id=job_id, ok=True, title=title, filename=filename, model=model, guide=guide_type, world=body.get("world"), seconds=took,
                                attempts=trace, qa_passed=qa["qa_passed"], qa_score=qa["qa_score"], qa_issues=qa.get("issues", []), softened=bool(softened), placement=pl, mark=mark_id, keep=keep)

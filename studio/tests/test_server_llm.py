@@ -1,4 +1,4 @@
-"""Kimi-facing logic with a fake LLM: JSON parsing, world invention/matching, batch writing, critic hook."""
+"""Kimi-facing logic with a fake LLM: JSON parsing, world invention/matching, batch writing."""
 
 import json
 import time
@@ -292,62 +292,6 @@ def test_ask_kimi_records_recent_axes_for_diversity(srv, fake_llm):
     srv.ask_kimi_for_prompts(st, "k", "kimi-k3", count=2, world="Editorial Print")
     assert st["recent_axes"]["camera"]
 
-
-# ---------- apply_critic ----------
-
-def verdict(v="trash"):
-    return {"mean": 3.0, "reason": "weak mark", "scores": {"mark": 2}, "verdict": v}
-
-
-def test_apply_critic_scores_but_does_not_trash_by_default(srv, monkeypatch, make_plate):
-    make_plate(srv.PLATES_DIR / "a.jpg")
-    srv.save_state({**srv.load_state(), "kimi_api_key": "k"})
-    monkeypatch.setattr(srv.critic, "review_plate", lambda *a, **k: verdict())
-    srv.apply_critic("a.jpg")
-    st = srv.load_state()
-    assert st["critic"]["a.jpg"]["reason"] == "weak mark"
-    assert "a.jpg" not in st["trashed"]
-
-
-def test_apply_critic_autotrash_marks_critic_failed(srv, monkeypatch, make_plate):
-    make_plate(srv.PLATES_DIR / "a.jpg")
-    srv.save_state({**srv.load_state(), "kimi_api_key": "k", "critic_autotrash": True})
-    monkeypatch.setattr(srv.critic, "review_plate", lambda *a, **k: verdict())
-    srv.apply_critic("a.jpg")
-    st = srv.load_state()
-    assert "a.jpg" in st["trashed"] and "a.jpg" in st["critic_failed"] and "a.jpg" in st["trashed_at"]
-
-
-def test_apply_critic_autotrash_keeps_good_plates(srv, monkeypatch, make_plate):
-    make_plate(srv.PLATES_DIR / "a.jpg")
-    srv.save_state({**srv.load_state(), "kimi_api_key": "k", "critic_autotrash": True})
-    monkeypatch.setattr(srv.critic, "review_plate", lambda *a, **k: verdict("keep"))
-    srv.apply_critic("a.jpg")
-    assert "a.jpg" not in srv.load_state()["trashed"]
-
-
-def test_apply_critic_disabled_or_keyless_does_nothing(srv, monkeypatch, make_plate):
-    make_plate(srv.PLATES_DIR / "a.jpg")
-    called = []
-    monkeypatch.setattr(srv.critic, "review_plate", lambda *a, **k: called.append(1) or verdict())
-    srv.apply_critic("a.jpg")                                    # no key
-    srv.save_state({**srv.load_state(), "kimi_api_key": "k", "critic_enabled": False})
-    srv.apply_critic("a.jpg")                                    # disabled
-    assert not called
-
-
-def test_apply_critic_swallows_llm_errors(srv, monkeypatch, make_plate):
-    make_plate(srv.PLATES_DIR / "a.jpg")
-    srv.save_state({**srv.load_state(), "kimi_api_key": "k"})
-
-    def boom(*a, **k):
-        raise RuntimeError("timeout")
-    monkeypatch.setattr(srv.critic, "review_plate", boom)
-    srv.apply_critic("a.jpg")                                    # must not raise
-    assert "a.jpg" not in srv.load_state().get("critic", {})
-
-
-# ---------- call_kimi_llm key handling ----------
 
 def test_call_kimi_llm_requires_key(srv):
     with pytest.raises(RuntimeError, match="NEEDS_KIMI_KEY"):

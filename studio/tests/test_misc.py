@@ -128,8 +128,6 @@ def png(color):
 @pytest.fixture
 def bench_env(srv, monkeypatch):
     monkeypatch.setattr(bench, "PLATES_DIR", srv.PLATES_DIR)
-    monkeypatch.setattr(srv, "apply_critic", lambda f: None)
-    monkeypatch.setattr(bench.server, "apply_critic", lambda f: None)
     return srv
 
 

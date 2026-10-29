@@ -1959,13 +1959,12 @@ test('Generate without Krea or Kimi opens Settings on what is missing; without a
   assert.match(h.$('toast').textContent, /Make a project or import one first/);
 });
 
-test('the AI critic boxes show what the server does from the start (scoring on unless turned off, auto-trash off)', async () => {
-  const r = baseRoutes();
-  r['/api/state'] = { ...r['/api/state'], critic_enabled: true, critic_autotrash: false };
-  const h = load({ routes: r });
+test('no AI critic: no score on a card or in Info, no boxes in Settings (removed: its scores did not tell kept from trashed)', async () => {
+  const h = load({ routes: baseRoutes() });
   await settle(); await settle();
-  assert.equal(h.$('criticOn').checked, true, 'they showed unticked until a save, while the critic was scoring');
-  assert.equal(h.$('criticTrash').checked, false);
+  assert.doesNotMatch(require('fs').readFileSync(require('path').join(__dirname, '../../web/index.html'), 'utf8'), /critic/i, 'nothing about it in Settings');
+  const html = h.run(`cardHtml(${JSON.stringify({ ...mkPlate('x.jpg'), qa_passed: true, critic: { mean: 6.8, reason: 'calm' } })})`);   // an older image still carries its score
+  assert.doesNotMatch(html, /AI critic|AI 6\.8/);
 });
 
 test('AI re-order is off under two images and says why', async () => {
@@ -2013,12 +2012,11 @@ test('a Kimi key that Kimi refuses: not kept, the field empties, Settings says K
   assert.match(h.$('toast').textContent, /starts with sk-/);
 });
 
-test('Info on a card says why the logo check flagged it, as it says the AI critic\'s score', async () => {
+test('Info on a card says why the mark check flagged it', async () => {
   const h = load({ routes: baseRoutes() });
   await settle(); await settle();
-  const html = h.run(`cardHtml(${JSON.stringify({ ...mkPlate('x.jpg', true), qa_passed: false, qa_issues: ['The mark looks too big (it fits about as well at 1.5x)'], critic: { mean: 6.8, reason: 'calm' } })})`);
+  const html = h.run(`cardHtml(${JSON.stringify({ ...mkPlate('x.jpg', true), qa_passed: false, qa_issues: ['The mark looks too big (it fits about as well at 1.5x)']})})`);
   assert.match(html, /Mark check: The mark looks too big \(it fits about as well at 1\.5x\)/);
-  assert.match(html, /AI critic 6\.8: calm/);
   assert.doesNotMatch(h.run(`cardHtml(${JSON.stringify({ ...mkPlate('y.jpg'), qa_passed: true })})`), /Mark check:/);
 });
 

@@ -25,7 +25,6 @@ def live(srv, monkeypatch):
     monkeypatch.setattr(srv, "get_krea_oauth_token", lambda: {"connected": True, "expired": False, "token": "t"})
     monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", lambda **kw: calls["krea"].append(kw) or png.getvalue())
     monkeypatch.setattr(srv, "check_new_image", lambda p, pl=None, mark_id=None: {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2})
-    monkeypatch.setattr(srv, "apply_critic", lambda f: None)
     real_popen = srv.subprocess.Popen                                  # only the browser-login helper is faked, ffmpeg etc. stay real
     monkeypatch.setattr(srv.subprocess, "Popen", lambda cmd, *a, **k: None if "opencode" in str(cmd) else real_popen(cmd, *a, **k))
     monkeypatch.setattr(srv, "TARGET_W", 54)

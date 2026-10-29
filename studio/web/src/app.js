@@ -92,8 +92,6 @@
         setStatus(data.error || 'Kimi refused that key.');
         return;
       }
-      document.getElementById('criticOn').checked = data.critic_enabled !== false;
-      document.getElementById('criticTrash').checked = Boolean(data.critic_autotrash);
       kimiConfigured = Boolean(data.kimi_configured);
       updateKimiIndicator();
       if (kimiConfigured) setStatus('Kimi API key saved.');
@@ -159,8 +157,6 @@
       if (data.kimi_model) {
         document.getElementById('kimiModelSelect').value = data.kimi_model;
       }
-      document.getElementById('criticOn').checked = data.critic_enabled !== false;      // as the server has them (they showed unticked until a save)
-      document.getElementById('criticTrash').checked = Boolean(data.critic_autotrash);
 
       const trashedCount = plates.filter(p => p.trashed).length;
       document.getElementById('trashCount').textContent = trashedCount;
@@ -1375,7 +1371,7 @@
               }
             </div>
             <div class="prompt-overlay" id="overlay-${CSS.escape(p.filename)}" onclick="togglePromptOverlay(event, '${p.filename}')">
-              <div class="prompt-overlay-text">${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${p.critic ? `<span class="po-critic">AI critic ${p.critic.mean}: ${escapeHtml(p.critic.reason)}</span>` : ''}${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-critic po-qa">Mark check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : p.qa_doubt ? `<span class="po-critic po-doubt">Mark check: ${escapeHtml(p.qa_doubt)}</span>` : ''}</div>
+              <div class="prompt-overlay-text">${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-check po-qa">Mark check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : p.qa_doubt ? `<span class="po-check po-doubt">Mark check: ${escapeHtml(p.qa_doubt)}</span>` : ''}</div>
               <div class="prompt-overlay-meta"><button class="po-copy" onclick="copyPromptText(event, '${p.filename}')">Copy prompt</button></div>
             </div>
           </div>
@@ -1385,7 +1381,6 @@
             ${p.as_designed ? '<span class="card-model-badge designed" title="Kept exactly as designed: its colours, lettering and details">As designed</span>' : ''}
             ${p.mark_name ? `<span class="card-model-badge mark" title="Made with ${escapeHtml(p.mark_name)}, one of the project's marks">${escapeHtml(p.mark_name)}</span>` : ''}
             ${p.placement && p.placement.kind !== 'exact' ? `<span class="card-model-badge target" title="${escapeHtml(targetTip(p.placement))}">${p.placement.kind === 'scattered' ? 'Scattered' : 'Loose'}</span>` : ''}
-            ${p.critic ? `<span class="card-model-badge" title="${escapeHtml(p.critic.reason)}">AI ${p.critic.mean}</span>` : ''}
             ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(!p.qa_passed && (p.qa_issues || []).length && p.trash_reason === 'Mark check' ? p.qa_issues.join(', ') : p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
             ${!p.qa_passed ? (p.trash_reason === 'Mark check' ? '' : `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>`) : p.qa_doubt ? `<span class="card-model-badge doubt" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : ''}
           </div>
@@ -3665,13 +3660,6 @@
       }
     }
 
-    async function saveCritic() {
-      await fetch('/api/save-settings', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ critic_enabled: document.getElementById('criticOn').checked, critic_autotrash: document.getElementById('criticTrash').checked })
-      });
-    }
-
     // Krea: sign in from here (MCP OAuth). The sign-in page opens in a new tab; Krea sends it back to the app, and the page
     // learns it is connected from the state it polls
     async function reconnectKrea() {
@@ -3932,7 +3920,6 @@ Object.assign(window, {
   previewPlate,
   reconnectKrea,
   signOutKrea,
-  saveCritic,
   saveKimiSettings,
   saveKimiSettingsDebounced,
   setTrash,
