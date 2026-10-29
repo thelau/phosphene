@@ -190,7 +190,7 @@
         if (added && !prog.timer) setStatus(`+${added} new image${added === 1 ? '' : 's'}`);
         else if (manual) setStatus('Up to date.');
       } catch (e) {
-        if (manual) setStatus('Could not reach the server. Is it running?');
+        if (manual) setStatus(window.__TAURI__ ? 'Phosphene is restarting its engine. Try again in a moment.' : 'Could not reach the server. Is it running?');
       } finally {
         refreshing = false;
         ['refreshBtn', 'refreshFilmBtn'].forEach(id => document.getElementById(id).classList.remove('spinning'));
@@ -203,16 +203,8 @@
       refreshLibrary(false);
     }
 
-    // the images in the edit: the shown ones, cut at the active order's cut_off when the AI picked "best N"
-    function activeCutOff() {
-      const cur = sequences.find(s => s.id === activeSeq);
-      return cur && cur.cut_off ? cur.cut_off : null;
-    }
-    function activePlates() {
-      const shown = inGroup(plates.filter(p => !p.trashed));
-      const n = currentGroup === 'all' ? activeCutOff() : null;             // a best-N cut belongs to the whole selection
-      return n ? shown.slice(0, n) : shown;
-    }
+    // the images in the edit: the shown ones (AI order's "best N" cut was removed on request: every image plays)
+    function activePlates() { return inGroup(plates.filter(p => !p.trashed)); }
 
     // ---- groups: All, yours (stored), and automatic ones from each image's look and territory. The grid and the film show the group chosen. ----
     let groups = [];
@@ -926,9 +918,6 @@
       fg.value = currentGroup;
       syncSelects();
       document.getElementById('miniTitle').textContent = currentGroup === 'all' ? 'Film' : (chips.concat(auto).find(c => c.key === currentGroup) || { name: 'Film' }).name;
-      const len = document.getElementById('aiLength');
-      len.disabled = currentGroup !== 'all';                                 // best N is for the whole selection
-      if (len.disabled) len.value = '';
     }
     function setGroup(key) {
       if (!groupMembers(key)) key = 'all';
@@ -1127,9 +1116,8 @@
       const shown = plates.filter(p => !p.trashed).length;
       if (shown < 2) { setStatus('Keep at least two images before ordering.'); return; }
       const own = ownGroup();                                                 // one of your groups: its own order, nothing else moves
-      const before = own ? { group: own.id, files: [...own.files] } : { order: plates.filter(p => !p.trashed).map(p => p.filename), cut_off: activeCutOff() };   // for Undo
+      const before = own ? { group: own.id, files: [...own.files] } : { order: plates.filter(p => !p.trashed).map(p => p.filename) };   // for Undo
       const body = {
-        length: currentGroup === 'all' ? parseInt(document.getElementById('aiLength').value, 10) || null : null,
         direction: document.getElementById('aiDirection').value.trim(),
         ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // an automatic group: its images change places among themselves in All
         ...(own ? { group: own.id } : {}),
@@ -1156,7 +1144,7 @@
             progStop(`Done — AI re-order: ${job.sequence.summary}`);
             await loadState();
             const g = before.group && groups.find(x => x.id === before.group);
-            const after = before.group ? { group: before.group, files: g ? [...g.files] : before.files } : { order: plates.filter(p => !p.trashed).map(p => p.filename), cut_off: activeCutOff() };
+            const after = before.group ? { group: before.group, files: g ? [...g.files] : before.files } : { order: plates.filter(p => !p.trashed).map(p => p.filename) };
             const put = o => (o.group ? groupsCall({ action: 'reorder', id: o.group, files: o.files }) : restoreOrder(o));
             const step = pushStep({ label: 'AI re-order', undo: () => put(before), redo: () => put(after) });
             setStatus('The AI re-ordered your images.', { label: 'Undo', run: () => undoStep(step) });
@@ -1217,8 +1205,7 @@
       return true;
     }
     // Undo / Redo of an AI re-order: the order and its best-N cut as they were
-    function restoreOrder(o) { return seqCall({ action: 'restore', order: o.order, cut_off: o.cut_off }); }
-    function includeAll() { return blockedByAi() ? undefined : seqCall({ action: 'include_all' }); }
+    function restoreOrder(o) { return seqCall({ action: 'restore', order: o.order }); }
 
     let trashSel = new Set();
     let lastSel = null;
@@ -1322,10 +1309,8 @@
       const grid = document.getElementById('grid');
       const visible = visiblePlates();
       if (seenAtLoad === null && plates.length) seenAtLoad = new Set(plates.map(p => p.filename));
-      const cutOff = showTrash ? null : activeCutOff();
       const items = [];
-      visible.forEach((p, i) => {
-        if (cutOff && i === cutOff && i < visible.length) items.push(['divider', `<div class="edit-divider">left out of this edit (${visible.length - cutOff}) <button onclick="includeAll()">Include them all</button></div>`]);
+      visible.forEach(p => {
         items.push([`card:${p.filename}`, cardHtml(p)]);
       });
       if (!showTrash) pendingCards().forEach((html, i) => items.push([`pending:${i}`, html]));
@@ -1342,7 +1327,6 @@
       if (grid.querySelectorAll) grid.querySelectorAll('.card[data-filename]').forEach((el, i) => {   // the place in the order lives outside the markup, so a reorder only moves cards
         const num = el.querySelector('.card-num'), txt = String(i + 1).padStart(2, '0');
         if (num && num.textContent !== txt) num.textContent = txt;
-        el.classList.toggle('out', !!(cutOff && i >= cutOff));
       });
       document.getElementById('gridHint').textContent = gridHintText();
       syncSelection();
@@ -1859,7 +1843,6 @@
       const active = activePlates();
       strip.innerHTML = active.map((p, i) => `<button type="button" data-i="${i}" title="${i + 1} · ${escapeHtml(p.title)}" aria-label="Jump to image ${i + 1}"><img src="${escapeHtml(p.thumb || p.url || '')}" loading="lazy" decoding="async" alt=""></button>`).join('');   // lazy: 400 thumbnails must not compete with the stage's images
       shownIdx = -1;
-      const n = active.length, cut = activeCutOff();
     }
     function filmstripClick(e) {
       const b = e.target && e.target.closest ? e.target.closest('button[data-i]') : null;
@@ -3882,7 +3865,7 @@
         await loadState();
         if (!history.length) { clearTimeout(settleTimer); settled = settingsSnap(); }   // the library fitted the sliders to it: not a change of yours
       } catch (e) {
-        document.getElementById('loaderMsg').textContent = 'Could not reach the server. Is it running? Retrying…';
+        document.getElementById('loaderMsg').textContent = window.__TAURI__ ? 'Starting Phosphene…' : 'Could not reach the server. Is it running? Retrying…';   // in the app the server is its own engine, not a place to reach
         setTimeout(() => location.reload(), 3000);
         return;
       } finally {
@@ -3928,7 +3911,6 @@ Object.assign(window, {
   downloadShown, setThumbSizeAt, openViewer, closeViewer, viewerStep, toggleTerrMenu, editRefine, clearRefine, closeGroupMenu, showNewGroupForm,
   openProjectMenu, switchProject, openProjectForm, closeProjectForm, saveProject, psKey, psSelect, psSetProject, psSetMark, psColour, psColourAdd, psColourKey, psMakeDefault, psRemove, psPick, psFileChosen, psCancelRead,
   removeChange,
-  includeAll,
   startAiOrder,
   toggleAiPanel,
   cardClick,

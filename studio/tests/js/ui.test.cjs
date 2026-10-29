@@ -1900,7 +1900,6 @@ test('groups: the grid, the film, AI re-order and export follow the group chosen
   assert.equal(h.store.studioGroup, 'look:warm', 'remembered');
   h.run("setGroup('g:g1')");
   assert.deepEqual(h.run('activePlates().map(p => p.filename)'), ['b', 'd']);
-  assert.equal(h.$('aiLength').disabled, true, 'best N belongs to the whole selection');
   await h.run('exportVideo()');
   assert.deepEqual(h.calls.find(c => c.url === '/api/export-video').body.files, ['b', 'd']);
   h.ctx.setTimeout = () => 0;                                                     // the AI job is not followed here: only what it is asked

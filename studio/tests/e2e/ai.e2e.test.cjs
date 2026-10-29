@@ -25,7 +25,7 @@ test('AI re-order: panel, live progress, the new order, and Undo puts the old on
   assert.equal(await page.locator('#statusText .slot.ok').count(), 4);
   assert.equal(await page.locator('#aiLock').isVisible(), false);
   const body = api.state.jobs[0].body;
-  assert.deepEqual([body.direction, body.length, 'first' in body, 'last' in body], ['end on the blue one', null, false, false]);
+  assert.deepEqual([body.direction, 'length' in body, 'first' in body, 'last' in body], ['end on the blue one', false, false, false], 'no best N any more: every image');
   assert.deepEqual(await names(), ['k3', 'k2', 'k1']);
   assert.match(await text('#statusText'), /Opens on k3, lands on k1/, 'what the AI did, in the status bar');
   await shot('17-ai-done');
@@ -85,50 +85,18 @@ test('AI order: it cannot start while images are being generated', { skip }, asy
   await ctx.close();
 });
 
-test('AI order: "best N" cuts the edit and shows what was left out; playback uses only the edit', { skip }, async () => {
-  const ctx = await fresh({ delays: { ai: 400 } });
-  api.state.plates.push(...['k4', 'k5', 'k6'].map(f => ({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` })));
-  api.state.sequences[0].order.push('k4', 'k5', 'k6');
-  await page.reload();
-  await page.waitForSelector('.card');
-  await page.click('#aiBtn');
-  await page.evaluate(() => { const o = document.createElement('option'); o.value = '2'; o.textContent = 'Best 2'; document.getElementById('aiLength').appendChild(o); });
-  await page.selectOption('#aiLength', '2');
-  await page.click('#aiGo');
-  await page.waitForFunction(() => /Done — AI/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
-  await page.waitForSelector('.edit-divider');
-  assert.match(await text('.edit-divider'), /left out of this edit \(4\)/);
-  const cards = await names();
-  assert.equal(cards.length, 6);
-  assert.equal(await page.evaluate(() => [...document.getElementById('grid').children].findIndex(e => e.classList.contains('edit-divider'))), 2);
-  await shot('18-best-n');
-  await film();
-  assert.equal(await page.locator('#filmstrip button').count(), 2, 'the film strip holds only the edit');
-  await tempo(220);
-  await mult('9');
-  await page.click('#playBtn');
-  const seen = new Set();
-  const t0 = Date.now();
-  while (Date.now() - t0 < 1500) { seen.add(await page.locator('#stageImg').getAttribute('src')); await page.waitForTimeout(20); }
-  await page.click('#playBtn');
-  assert.deepEqual([...seen].filter(Boolean).map(u => u.split('/').pop().replace('.svg', '')).sort(), cards.slice(0, 2).sort());
-  await ctx.close();
-});
-
-test('AI re-order: no confirmation (it can be undone); two re-orders undo one at a time, with their best-N cut', { skip }, async () => {
+test('AI order: no confirmation (it can be undone); two orders undo one at a time; no "Use" / best N (removed: every image plays)', { skip }, async () => {
   const ctx = await fresh({ delays: { ai: 200 } });
-  const run = async len => { await page.click('#aiBtn'); if (len) await page.evaluate(n => { const o = document.createElement('option'); o.value = n; o.textContent = `Best ${n}`; document.getElementById('aiLength').appendChild(o); document.getElementById('aiLength').value = n; }, String(len)); await page.click('#aiGo'); await page.waitForSelector('#aiBtn:disabled'); await page.waitForFunction(() => /Done — AI re-order/.test(document.getElementById('statusText').textContent) && !document.getElementById('aiBtn').disabled, null, { timeout: 15000 }); };
-  await run(2);
+  const run = async () => { await page.click('#aiBtn'); assert.equal(await page.locator('#aiLength').count(), 0, 'no Use menu'); await page.click('#aiGo'); await page.waitForSelector('#aiBtn:disabled'); await page.waitForFunction(() => /Done — AI re-order/.test(document.getElementById('statusText').textContent) && !document.getElementById('aiBtn').disabled, null, { timeout: 15000 }); };
+  await run();
   assert.equal(await page.locator('#confirmModal.open').count(), 0, 'no question asked');
   assert.deepEqual(await names(), ['k3', 'k2', 'k1']);
-  assert.equal(await page.locator('.edit-divider').count(), 1, 'best 2: the divider');
-  await run(null);
+  await run();
   assert.deepEqual(await names(), ['k1', 'k2', 'k3'], 'the second re-order reverses the first');
   await page.keyboard.press('Meta+z');
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
-  assert.equal(await page.locator('.edit-divider').count(), 1, 'undo brings back the cut too');
   await page.keyboard.press('Meta+z');
-  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k1' && !document.querySelector('.edit-divider'));
+  await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k1');
   await page.keyboard.press('Meta+Shift+z');
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
   assert.deepEqual(consoleErrors, []);

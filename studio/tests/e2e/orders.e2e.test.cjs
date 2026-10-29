@@ -65,15 +65,6 @@ test('a restored image lands at the end of the order, and the re-order tool hide
   await ctx.close();
 });
 
-test('best N: the left-out divider has an "Include them all" button', { skip }, async () => {
-  const ctx = await fresh({ setup: st => { addAi(st, ['k1', 'k2', 'k3', 't1', 't2', 't3', 't4'], { summary: 'x', cut_off: 2 }); } });
-  assert.match(await text('.edit-divider'), /left out of this edit \(1\)/);
-  await page.click('.edit-divider button');
-  await page.waitForFunction(() => !document.querySelector('.edit-divider'));
-  assert.equal(await page.locator('.card').count(), 3);
-  await ctx.close();
-});
-
 test('one of your groups keeps its own order: a drag there moves only the group, All stays as it was', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945 });
   await page.evaluate(() => fetch('/api/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', name: 'Night', files: ['k3', 'k1'] }) }));

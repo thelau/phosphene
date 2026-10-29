@@ -519,7 +519,6 @@
     .viewer-bar span:first-child { color: var(--text); }
     .card { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; cursor: grab; -webkit-user-select: none; user-select: none; transition: opacity .15s; }
     .card:active { cursor: grabbing; }
-    .card.out { opacity: .5; }
     .card.dragging { opacity: .35; }
     .card.drag-over .card-thumb { box-shadow: 0 0 0 2px var(--orange); }
     .card-thumb { position: relative; aspect-ratio: 9 / 16; border-radius: 6px; overflow: hidden; background: #000; transition: box-shadow .12s; }
@@ -610,7 +609,7 @@
     .tool-sep { width: 1px; height: 22px; background: var(--line-2); margin: 0 4px; }
     #aiBtn { display: flex; align-items: center; gap: 7px; }
     /* groups: one row of chips (All, yours, then the automatic ones); the picks' actions on the right */
-    .group-row { flex: none; display: flex; align-items: center; gap: 8px; padding: 2px 24px 12px; min-height: 34px; position: relative; }
+    .group-row { flex: none; display: flex; align-items: center; gap: 8px; padding: 2px 24px 12px; min-height: 44px; position: relative; }   /* its height before the chips arrive: the grid jumped 10 px on load (Lighthouse: layout shift 0.23) */
     .group-row[hidden] { display: none; }
     .group-bar { flex: 1; display: flex; gap: 6px; min-width: 0; overflow: hidden; }
     .group-bar .out { display: none; }                                   /* behind "+N more" */
@@ -707,9 +706,6 @@
     .ai-panel label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-2); }
     .ai-panel input, .ai-panel select { width: 100%; }
     .ai-foot { display: flex; justify-content: flex-end; gap: 8px; }
-    .edit-divider { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 6px 0; }
-    .edit-divider::before, .edit-divider::after { content: ''; flex: 1; height: 1px; background: var(--line-3); }
-    .edit-divider button { font-size: 11px; padding: 3px 9px; }
     .ai-running .card-actions { pointer-events: none; opacity: .3; }
     .ai-running .card { cursor: progress; }
 

@@ -203,15 +203,6 @@
             <div class="ai-panel" id="aiPanel" hidden onclick="event.stopPropagation()">
               <h4>AI order</h4>
               <p class="ai-panel-note">The AI rearranges your order. ⌘Z or Undo puts it back.</p>
-              <label>Use
-                <select id="aiLength">
-                  <option value="">All images</option>
-                  <option value="12">Best 12</option>
-                  <option value="24">Best 24</option>
-                  <option value="36">Best 36</option>
-                  <option value="48">Best 48</option>
-                </select>
-              </label>
               <label>Note (optional)
                 <input id="aiDirection" type="text" maxlength="300" placeholder="e.g. open on the cap, end on the container" />
               </label>
@@ -244,7 +235,7 @@
           <input type="hidden" id="thumbSizeVal" value="M" />
         </div>
         <!-- All | Auto [Look] [Territory] | Custom [your groups…] (those that do not fit behind "+N more") -->
-        <div class="group-row" id="groupRow" role="tablist" aria-label="Groups">
+        <div class="group-row" id="groupRow" role="toolbar" aria-label="Groups">
           <span class="group-all" id="groupAll"></span>
           <i class="group-sep" id="autoSep"></i>
           <div class="auto-menus" id="autoMenus"></div>
