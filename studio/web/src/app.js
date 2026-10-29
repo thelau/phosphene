@@ -3694,8 +3694,25 @@
       setExportState('busy');
       setMusicState('busy', 'Exporting…');
       let ok = false;
+      // the film as it is now: everything the export sends is read here, once. Changes made while it renders (the sound switched off,
+      // the tempo, the group) go into the next export, never half into this one (the end used to read them again: a silent film, or
+      // the sound of the export before)
+      const film = {
+        bpm: bpmValue(),
+        multiple: parseFloat(document.getElementById('multSelect').value),
+        invert_mode: document.getElementById('invertSelect').value,
+        rhythm: rhythmMode(),
+        ...(changeParams() ? { end_ms: changeParams().end_ms } : {}),   // the change's end speed, for the file's name
+        music: musicOn() ? 'synth' : 'off',
+        zoom_mode: document.getElementById('zoomSelect').value,
+        zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
+        trail: (parseFloat(document.getElementById('trailRange').value) || 0) / 100,
+        ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // a group: just its images
+        ...(editOf(currentEdit) ? { edit: editOf(currentEdit).name } : {}),   // the file is named after the edit
+      };
+      const filmSec = rhythmFor(activePlates().length).end / 30;
       try {
-        if (musicOn()) {                                   // the same WebAudio drone as the preview, rendered offline and sent along
+        if (film.music === 'synth') {                      // the same WebAudio drone as the preview, rendered offline and sent along
           setMusicState('busy', 'Preparing the sound…');
           const wav = window.Drone.toWav(await window.Drone.renderExport(synthParams(), synthStartsSec()));
           const up = await fetch('/api/export-audio', { method: 'POST', headers: forProject({ 'Content-Type': 'application/octet-stream' }), body: wav });
@@ -3707,20 +3724,7 @@
         const res = await fetch('/api/export-video', {
           method: 'POST',
           headers: forProject({'Content-Type': 'application/json'}),
-          body: JSON.stringify({
-            bpm: bpmValue(),
-            multiple: parseFloat(document.getElementById('multSelect').value),
-            invert_mode: document.getElementById('invertSelect').value,
-            rhythm: rhythmMode(),
-            ...(changeParams() ? { end_ms: changeParams().end_ms } : {}),   // the change's end speed, for the file's name
-            music: musicOn() ? 'synth' : 'off',
-            zoom_mode: document.getElementById('zoomSelect').value,
-            zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
-            trail: (parseFloat(document.getElementById('trailRange').value) || 0) / 100,
-            frames,                                                          // drawn here: the server only encodes them
-            ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // a group: just its images
-            ...(editOf(currentEdit) ? { edit: editOf(currentEdit).name } : {}),   // the file is named after the edit
-          })
+          body: JSON.stringify({ ...film, frames })                         // drawn here: the server only encodes them
         });
         const data = await res.json();
         if (data.ok) {
@@ -3730,7 +3734,7 @@
           document.getElementById('exportFile').textContent = data.filename || 'MP4';
           link.click();                                                  // the file saves itself (to Downloads)
           ok = true;
-          noteExportRate(rhythmFor(activePlates().length).end / 30, (performance.now() - t0) / 1000);
+          noteExportRate(filmSec, (performance.now() - t0) / 1000);
           drawInfo();
           setStatus(`Export ready, downloading: ${data.images} images, ${data.seconds}s.`);
         } else {

@@ -588,6 +588,23 @@ test('the dark/light twin feature is gone from the page', () => {
   }
 });
 
+test('an export is the film as it was when Export was pressed: changes made while it renders go into the next one', async () => {
+  const r = baseRoutes();
+  r['/api/export-video'] = { ok: true, images: 3, seconds: 2, video_url: '/outputs/x.mp4', filename: 'x.mp4' };
+  let h;
+  r['/api/export-frame'] = () => {                                      // while the frames render, the user changes things
+    h.$('bpmInput').value = '300'; h.$('musicSelect').value = 'on'; h.$('invertSelect').value = 'mono'; h.$('zoomSelect').value = 'in';
+    return { ok: true };
+  };
+  h = load({ routes: r });
+  await settle(); await settle();
+  h.$('bpmInput').value = '136'; h.$('musicSelect').value = 'off'; h.$('invertSelect').value = 'off'; h.$('zoomSelect').value = 'off';
+  await h.run('exportVideo()');
+  const body = h.calls.find(c => c.url === '/api/export-video').body;
+  assert.deepEqual([body.bpm, body.music, body.invert_mode, body.zoom_mode], [136, 'off', 'off', 'off'], 'as when Export was pressed');
+  assert.equal(h.calls.filter(c => c.url === '/api/export-audio').length, 0, 'silent then: no sound sent, none taken from an earlier export');
+});
+
 test('export leaves the preview alone and downloads the file by itself (no Download again link shown)', async () => {
   const r = baseRoutes();
   r['/api/export-video'] = { ok: true, images: 12, seconds: 6.0, video_url: '/outputs/Demo-136bpm-x4-20261025-093005.mp4', filename: 'Demo-136bpm-x4-20261025-093005.mp4' };
