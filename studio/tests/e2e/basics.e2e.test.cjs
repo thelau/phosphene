@@ -1192,6 +1192,8 @@ test('the logo target: each image with its own placement (Loose) has its box the
   const [own, other] = [await box(api.state.plates[1].filename), await box(api.state.plates[0].filename)];
   assert.ok(Math.abs(own.x - 0.30) < 0.01 && Math.abs(own.y - 0.70) < 0.01 && Math.abs(own.w - 0.25) < 0.01, `its own box: ${JSON.stringify(own)}`);
   assert.ok(Math.abs(other.x - 0.5) < 0.01 && Math.abs(other.w - 0.18) < 0.01, `the project's: ${JSON.stringify(other)}`);
+  assert.equal(await page.locator(`.card[data-filename="${api.state.plates[1].filename}"] .card-model-badge.target`).textContent(), 'Loose', 'labelled, so nobody wonders');
+  assert.equal(await page.locator(`.card[data-filename="${api.state.plates[0].filename}"] .card-model-badge.target`).count(), 0);
   await shot('23-loose-target');
   assert.deepEqual(await page.locator('.csel[data-for="targetSelect"] .csel-face').textContent(), 'On target');
   await ctx.close();

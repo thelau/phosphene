@@ -1099,6 +1099,8 @@
     }
     // an image with its own placement (a Loose batch): the logo target draws its box there (the project's otherwise)
     function placeVars(pl) { return pl ? `--mark-x:${pl.x}%;--mark-y:${pl.y}%;--mark-w:${pl.size}%` : ''; }
+    // why this image's mark is not on target: its batch asked for it (Loose / Scattered), and where
+    function targetTip(pl) { return `${pl.kind === 'scattered' ? 'Scattered' : 'Loose'}: made with the mark at ${pl.x}% across, ${pl.y}% down, ${pl.size}% wide (on purpose: its batch asked for it)`; }
     function cardHtml(p) {
       return `
         <div class="card"
@@ -1133,6 +1135,7 @@
           <div class="card-title" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</div>
           <div class="card-meta">
             <span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>
+            ${p.placement ? `<span class="card-model-badge target" title="${escapeHtml(targetTip(p.placement))}">${p.placement.kind === 'scattered' ? 'Scattered' : 'Loose'}</span>` : ''}
             ${p.critic ? `<span class="card-model-badge" title="${escapeHtml(p.critic.reason)}">AI ${p.critic.mean}</span>` : ''}
             ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(!p.qa_passed && (p.qa_issues || []).length && p.trash_reason === 'Logo check' ? p.qa_issues.join(', ') : p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
             ${!p.qa_passed ? (p.trash_reason === 'Logo check' ? '' : `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>`) : p.qa_doubt ? `<span class="card-model-badge doubt" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : ''}

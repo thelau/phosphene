@@ -540,6 +540,7 @@
     .card-meta { display: flex; gap: 4px; flex-wrap: wrap; margin-top: -2px; }
     .grid-col[data-size="S"] .card-meta { display: none; }
     .card-model-badge { display: inline-block; font-family: var(--mono); font-size: 9.5px; color: var(--faint); background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+    .card-model-badge.target { color: #A9C2F8; background: rgba(93, 143, 244, .16); }   /* Loose / Scattered: off target on purpose */
     .card-model-badge.warn { color: #F7A3B6; background: rgba(244, 63, 94, .16); }
     .card-model-badge.doubt { color: #F5C77A; background: rgba(245, 170, 60, .16); }   /* the logo check is unsure: kept, for the user to judge */
     .po-doubt { color: #F5C77A; }
