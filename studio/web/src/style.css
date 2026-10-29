@@ -887,3 +887,10 @@
 .ps-foot button, .ps-drop button { height: 34px; padding: 0 16px; border-radius: 8px; border: 1px solid #3A3732; background: transparent; font-size: 13px; font-weight: 600; }
 .ps-foot button.solid, .ps-drop button.solid { background: var(--text); color: #1A1A1A; border-color: var(--text); font-weight: 700; }
 .ps-foot button.solid:disabled { background: #2E2C28; color: #7E796C; border-color: #2E2C28; }
+
+/* your own images: added with Add images or dropped on the grid */
+.card-model-badge.uploaded { color: #BFE3C8; background: rgba(110, 200, 140, .14); }
+.gallery-col { position: relative; }
+.drop-veil { position: absolute; inset: 8px; z-index: 40; display: flex; align-items: center; justify-content: center; border-radius: 14px; border: 2px dashed var(--orange); background: rgba(18, 17, 16, .82); pointer-events: none; }
+.drop-veil[hidden] { display: none; }
+.drop-veil span { font-size: 18px; font-weight: 700; color: var(--text); }

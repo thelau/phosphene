@@ -679,6 +679,8 @@ def _clean_state(f: Path) -> None:
     for g in st.get("groups") or []:
         if isinstance(g, dict) and isinstance(g.get("files"), list):
             g["files"] = [n for n in g["files"] if isinstance(n, str) and _bare(n)]
+    if isinstance(st.get("uploads"), list):           # the user's own images (no mark check)
+        st["uploads"] = [n for n in st["uploads"] if isinstance(n, str) and _bare(n)]
     if isinstance(st.get("as_designed"), list):        # images made with Keep it as designed
         st["as_designed"] = [n for n in st["as_designed"] if isinstance(n, str) and _bare(n)]
     if isinstance(st.get("marks_used"), dict):        # which images were made with another of the project's marks

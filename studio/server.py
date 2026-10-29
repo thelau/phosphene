@@ -149,7 +149,7 @@ def open_first_project() -> None:
     apply_no_project()
 
 
-NEEDS_PROJECT = {"/api/generate-image", "/api/invent-prompts", "/api/order-ai", "/api/export-video", "/api/download-zip", "/api/reorder", "/api/trash", "/api/purge", "/api/groups", "/api/edits", "/api/sequence"}
+NEEDS_PROJECT = {"/api/upload-image", "/api/generate-image", "/api/invent-prompts", "/api/order-ai", "/api/export-video", "/api/download-zip", "/api/reorder", "/api/trash", "/api/purge", "/api/groups", "/api/edits", "/api/sequence"}
 
 
 def is_demo() -> bool:
@@ -989,7 +989,7 @@ def ai_busy() -> bool:
 
 
 # While the AI is ordering, nothing that changes the selection may run (the order is computed from a snapshot of it).
-LOCKED_DURING_AI = {"/api/trash", "/api/reorder", "/api/purge", "/api/sequence", "/api/generate-image", "/api/invent-prompts", "/api/export-video"}
+LOCKED_DURING_AI = {"/api/upload-image", "/api/trash", "/api/reorder", "/api/purge", "/api/sequence", "/api/generate-image", "/api/invent-prompts", "/api/export-video"}
 
 
 def add_ai_sequence(st: dict, built: dict) -> dict:
@@ -1038,6 +1038,9 @@ def run_ai_order_job(job_id: str, length, direction: str, only: set | None = Non
         print(f"[EDIT] failed: {e!r}", flush=True)
         job.update(done=True, error=str(e))
         gen_log.record("ai_order", ok=False, length=length, direction=direction, error=str(e)[:300], seconds=round(time.time() - t_job, 1))
+
+
+UPLOAD_MAX_BYTES = 40 << 20                         # one uploaded image (the page sends a 1080 x 1920 JPEG: a few MB at most)
 
 
 def next_plate_number(st: dict) -> int:
@@ -1384,9 +1387,11 @@ class StudioHandler(SimpleHTTPRequestHandler):
             mark_ids = {m["id"]: m for m in (PROJECT or {}).get("marks") or []}
             used = {k: v for k, v in st.get("marks_used", {}).items() if v in mark_ids}   # a mark since removed: read as the main one
             designed = set(st.get("as_designed", []))
+            uploads = set(st.get("uploads", []))
             for p in ordered_plate_files(st):
                 pl, mk = placed.get(p.name), used.get(p.name)
-                qa = get_cached_qa(p, pl, mk)
+                up = p.name in uploads                                       # the user's own image: no mark check
+                qa = {"qa_passed": True, "qa_score": None, "issues": []} if up else get_cached_qa(p, pl, mk)
                 plates.append({
                     "filename": p.name,
                     "url": f"/api/plate?f={quote(p.name)}&t={int(p.stat().st_mtime)}",   # the project's own folder
@@ -1394,7 +1399,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "preview": f"/api/thumb?f={quote(p.name)}&w=540",     # the player: the stage is ~250 px wide
                     "title": titles.get(p.name, p.stem.split("_", 1)[-1].replace("_", " ").title()),
                     "prompt": prompts.get(p.name, titles.get(p.name, "")),
-                    "model": models.get(p.name, "google/nano-banana-pro"),
+                    "model": None if up else models.get(p.name, "google/nano-banana-pro"),   # an upload: made by no model
                     "trashed": p.name in trashed_set,
                     "trashed_at": st.get("trashed_at", {}).get(p.name),
                     "trash_reason": (
@@ -1412,6 +1417,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "placement": pl,                                 # its own place and size (a Loose batch), else the project's
                     "mark": mk, "mark_name": mark_ids[mk]["name"] if mk else None,   # made with another of the project's marks
                     "as_designed": p.name in designed,                                # Keep it as designed: its colours and details
+                    "uploaded": up,
                     "box": ({"x": (pl or {}).get("x", (mark_ids[mk] if mk else PROJECT)["mark_x"]), "y": (pl or {}).get("y", (mark_ids[mk] if mk else PROJECT)["mark_y"]),
                              "size": (pl or {}).get("size", mark_ids[mk]["mark_size"] if mk else PROJECT["mark_size"]),
                              "ar": projects.mark_ratio(projects.with_mark(PROJECT, mk))} if pl or mk else None),   # where its logo target is drawn
@@ -1480,6 +1486,49 @@ class StudioHandler(SimpleHTTPRequestHandler):
             while left > 0:
                 left -= len(self.rfile.read(min(left, 1 << 20)) or b"x" * left)
             self.send_json({"ok": False, "project_changed": True, "error": "Another project was opened meanwhile: this was for the one before. Reload the page."}, 409)
+            return
+        if parsed.path == "/api/upload-image":
+            # an image of the user's own, added to the project: the page has already drawn it into the film's frame (1080 x 1920,
+            # centred: it reads every format the browser does, HEIC in the Mac app); here it is checked, saved as a plate and marked
+            # as uploaded (no mark check: where a mark would be in it is not known)
+            if PROJECT is None:
+                self.rfile.read(max(0, min(length, UPLOAD_MAX_BYTES)))
+                self.send_json({"ok": False, "no_project": True, "error": "Make or open a project first."}, 409)
+                return
+            if length <= 0 or length > UPLOAD_MAX_BYTES:
+                self.rfile.read(max(0, min(length, UPLOAD_MAX_BYTES)))
+                self.send_json({"ok": False, "error": "That image is empty or too large."}, 413)
+                return
+            raw = self.rfile.read(length)
+            try:
+                im = Image.open(io.BytesIO(raw)); im.load()
+                im = im.convert("RGB")
+            except Exception:
+                self.send_json({"ok": False, "error": "That file could not be read as an image."}, 400)
+                return
+            if im.size != (TARGET_W, TARGET_H):                                # (the page sends it framed; anything else is framed here)
+                k = max(TARGET_W / im.width, TARGET_H / im.height)
+                im = im.resize((max(TARGET_W, round(im.width * k)), max(TARGET_H, round(im.height * k))), Image.Resampling.LANCZOS)
+                left, top = (im.width - TARGET_W) // 2, (im.height - TARGET_H) // 2
+                im = im.crop((left, top, left + TARGET_W, top + TARGET_H))
+            title = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", unquote(parse_qs(parsed.query).get("name", ["Uploaded image"])[0])).strip()[:80] or "Uploaded image"
+            started_in = PROJECT["slug"]
+            with STATE_LOCK:
+                if PROJECT["slug"] != started_in:
+                    self.send_json({"ok": False, "project_changed": True, "error": "Another project was opened meanwhile."}, 409)
+                    return
+                st = load_state()
+                slug = re.sub(r"_+", "_", "".join(c if c.isalnum() else "_" for c in title.lower())).strip("_")[:26] or "upload"
+                filename = f"{next_plate_number(st):02d}_{slug}.jpg"
+                tmp = PLATES_DIR / f".up-{uuid.uuid4().hex}.jpg.part"
+                im.save(tmp, "JPEG", quality=95)
+                os.replace(tmp, PLATES_DIR / filename)                         # whole before it appears
+                st.setdefault("titles", {})[filename] = title
+                st["uploads"] = sorted(set(st.get("uploads", [])) | {filename})
+                sequences.append_everywhere(st, filename)
+                save_state(st)
+            gen_log.record("upload", filename=filename, title=title, bytes=length)
+            self.send_json({"ok": True, "filename": filename, "title": title})
             return
         if parsed.path == "/api/export-audio":
             # the synthesized sound, rendered in the page (the same WebAudio graph as the preview), kept until the export uses it

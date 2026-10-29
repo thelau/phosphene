@@ -1132,3 +1132,22 @@ def test_the_settings_form_over_http_saves_marks_and_make_default_measures_nothi
     after = {p["filename"]: (p["qa_passed"], p["mark"]) for p in live("GET", "/api/state")[1]["plates"]}
     assert measured == [], "the results carried over, nothing measured again"
     assert after[img["filename"]] == (before[img["filename"]][0], "swoosh"), "its check result, and it says it was made with the old default"
+
+
+def test_an_uploaded_image_joins_the_project_framed_and_marked_as_uploaded_with_no_mark_check(live, srv):
+    import io
+    from PIL import Image
+    buf = io.BytesIO(); Image.new("RGB", (3000, 2000), (200, 40, 40)).save(buf, "JPEG")   # a landscape photo: framed here if the page did not
+    called = []
+    srv.get_cached_qa, real = (lambda *a, **k: called.append(a) or {"qa_passed": False, "qa_score": 0, "issues": ["x"]}), srv.get_cached_qa
+    try:
+        status, r = live("POST", "/api/upload-image?name=IMG_0042.HEIC", raw=buf.getvalue())
+        assert status == 200 and r["ok"] and r["title"] == "IMG_0042", r
+        assert Image.open(srv.PLATES_DIR / r["filename"]).size == (srv.TARGET_W, srv.TARGET_H), "the film's frame"
+        plate = next(p for p in live("GET", "/api/state")[1]["plates"] if p["filename"] == r["filename"])
+        assert plate["uploaded"] is True and plate["qa_passed"] is True and plate["model"] is None and not plate["trashed"]
+        assert not any(a and getattr(a[0], "name", "") == r["filename"] for a in called), "never measured for a mark"
+        assert srv.load_state()["uploads"] == [r["filename"]]
+        assert live("POST", "/api/upload-image?name=x.png", raw=b"not an image")[0] == 400
+    finally:
+        srv.get_cached_qa = real

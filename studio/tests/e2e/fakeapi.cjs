@@ -65,7 +65,7 @@ function start(state = makeState()) {
       try { body = JSON.parse(req.raw.toString() || '{}'); } catch { body = {}; }
     }
     const send = (obj, status = 200) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
-    if (url.pathname.startsWith('/api/')) state.calls.push({ path: url.pathname, body });
+    if (url.pathname.startsWith('/api/')) state.calls.push({ path: url.pathname, body, query: url.search });
     const LOCKED = ['/api/trash', '/api/reorder', '/api/purge', '/api/sequence', '/api/generate-image', '/api/invent-prompts', '/api/export-video'];
     if (LOCKED.includes(url.pathname) && state.jobs.some(j => !j.done)) return send({ ok: false, busy: true, error: 'The AI is ordering your selection. Wait until it finishes.' }, 409);
 
@@ -181,6 +181,13 @@ function start(state = makeState()) {
         if (body.world === '__custom__' && !(state.moreWorlds || []).some(w => w.name === 'Fog & Vapor'))   // Describe your own: a territory of yours, your words kept
           (state.moreWorlds || (state.moreWorlds = [])).push({ name: 'Fog & Vapor', brief: 'Weather.', n: 4, kept: 4, wildcard: true, origin: 'custom', prompt: body.direction });
         return send({ ok: true, world: body.world && !body.world.startsWith('__') ? body.world : 'Fog & Vapor', ideas: Array.from({ length: n }, (_, i) => ({ title: `Fog ${i + 1}`, prompt: `fog scene ${i}`, guide: i % 2 ? 'light' : 'dark', world: body.world && !body.world.startsWith('__') ? body.world : 'Fog & Vapor', idea: 'idea', subject: `fog ${i}` })) });
+      }
+      case '/api/upload-image': {               // your own image: the page sends it framed (a JPEG); it joins the end, uploaded
+        const name = `u${(state.uploads = (state.uploads || 0) + 1)}`;
+        state.uploadedBytes = (state.uploadedBytes || []).concat(req.raw.length);
+        for (const q of state.sequences) q.order.push(name);
+        state.plates.push({ filename: name, url: `/assets/ai-plates/${name}.svg`, title: decodeURIComponent(new URL(req.url, 'http://x').searchParams.get('name') || '').replace(/\.[a-z]+$/i, ''), prompt: '', model: null, trashed: false, qa_passed: true, qa_issues: [], uploaded: true });
+        return send({ ok: true, filename: name });
       }
       case '/api/generate-image': {
         await sleep(state.delays.generate);

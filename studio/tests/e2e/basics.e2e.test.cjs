@@ -1281,6 +1281,40 @@ test('a new project can bring its other marks: added in the form after the main 
   await ctx.close();
 });
 
+test('your own images: Add images or a drop on the grid; each framed to 9:16 here, joins the end with an Uploaded badge', { skip }, async () => {
+  const ctx = await fresh();
+  const png = await page.evaluate(async () => {                               // a landscape photo
+    const c = document.createElement('canvas'); c.width = 400; c.height = 200; const x = c.getContext('2d');
+    x.fillStyle = '#3366cc'; x.fillRect(0, 0, 400, 200); return c.toDataURL('image/png').split(',')[1];
+  });
+  await page.setInputFiles('#uploadInput', [{ name: 'IMG_1.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') }, { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('x') }]);
+  await page.waitForFunction(() => /1 image added/.test(document.getElementById('toast').textContent));
+  const card = page.locator('.card').last();
+  assert.equal(await card.locator('.card-model-badge.uploaded').textContent(), 'Uploaded', 'labelled, so nobody wonders');
+  assert.equal(await card.locator('.card-title').textContent(), 'IMG_1');
+  const sent = api.state.calls.find(c => c.path === '/api/upload-image');
+  assert.match(sent.query || '', /name=IMG_1\.png/);
+  const dims = await page.evaluate(async () => {                              // what the page sends: the film's frame
+    const c = document.createElement('canvas'); c.width = 400; c.height = 200;
+    const blob = await new Promise(r => c.toBlob(r, 'image/png')); const f = new File([blob], 'x.png', { type: 'image/png' });
+    const b = await frameImage(f); const i = new Image(); i.src = URL.createObjectURL(b); await i.decode(); return [i.naturalWidth, i.naturalHeight];
+  });
+  assert.deepEqual(dims, [1080, 1920]);
+  const dt = await page.evaluateHandle(async () => {                          // two files dropped on the grid
+    const d = new DataTransfer();
+    for (const n of ['a.png', 'b.png']) { const c = document.createElement('canvas'); c.width = 50; c.height = 90; const blob = await new Promise(r => c.toBlob(r, 'image/png')); d.items.add(new File([blob], n, { type: 'image/png' })); }
+    return d;
+  });
+  await page.dispatchEvent('.gallery-col', 'dragenter', { dataTransfer: dt });
+  assert.equal(await page.locator('#dropVeil').isVisible(), true, 'says it will add them');
+  await page.dispatchEvent('.gallery-col', 'drop', { dataTransfer: dt });
+  await page.waitForFunction(() => /2 images added/.test(document.getElementById('toast').textContent));
+  assert.equal(await page.locator('#dropVeil').isVisible(), false);
+  assert.equal(await page.locator('.card-model-badge.uploaded').count(), 3);
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('Look: each slider under its own setting (the zoom\'s Amount under Zoom, Trail on the left)', { skip }, async () => {
   const ctx = await fresh();
   await film();

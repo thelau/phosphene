@@ -1345,7 +1345,7 @@
           </div>
           <div class="card-title" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</div>
           <div class="card-meta">
-            <span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>
+            ${p.uploaded ? '<span class="card-model-badge uploaded" title="One of your own images: it is not checked for the mark">Uploaded</span>' : `<span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>`}
             ${p.as_designed ? '<span class="card-model-badge designed" title="Kept exactly as designed: its colours, lettering and details">As designed</span>' : ''}
             ${p.mark_name ? `<span class="card-model-badge mark" title="Made with ${escapeHtml(p.mark_name)}, one of the project's marks">${escapeHtml(p.mark_name)}</span>` : ''}
             ${p.placement && p.placement.kind !== 'exact' ? `<span class="card-model-badge target" title="${escapeHtml(targetTip(p.placement))}">${p.placement.kind === 'scattered' ? 'Scattered' : 'Loose'}</span>` : ''}
@@ -3364,7 +3364,58 @@
     function setGenerating(on) { generating = on; applyLocks(); }
     let exporting = false;
     let purging = false;
-    const isBusy = () => generating || aiRunning || exporting || purging;
+    // ---- your own images: chosen (Add images) or dropped on the grid; each drawn here into the film's frame (1080 x 1920, centred: the
+    // page reads every format the browser does, HEIC in the Mac app) and added to the project, uploaded, never checked for the mark ----
+    let uploading = false;
+    const UPLOADABLE = /\.(jpe?g|png|webp|gif|heic|heif|tiff?|bmp|avif)$/i;
+    async function frameImage(file) {
+      const url = URL.createObjectURL(file);
+      try {
+        const im = new Image(); im.src = url; await im.decode();
+        const W = 1080, H = 1920, k = Math.max(W / im.naturalWidth, H / im.naturalHeight), w = im.naturalWidth * k, h = im.naturalHeight * k;
+        const c = document.createElement('canvas'); c.width = W; c.height = H;
+        c.getContext('2d').drawImage(im, (W - w) / 2, (H - h) / 2, w, h);   // covers the frame, centred
+        return await new Promise((res, rej) => c.toBlob(b => (b ? res(b) : rej(new Error('not drawn'))), 'image/jpeg', 0.92));
+      } catch (e) { throw new Error('could not be read as an image'); }
+      finally { URL.revokeObjectURL(url); }
+    }
+    async function uploadImages(fileList) {
+      const files = [...(fileList || [])].filter(f => /^image\//.test(f.type) || UPLOADABLE.test(f.name));
+      if (!files.length) return;
+      if (!project) { setStatus('Make or open a project first, then add images to it.'); return; }
+      if (aiRunning || uploading) { setStatus(aiRunning ? 'Wait until the AI order ends.' : 'Images are being added: wait a moment.'); return; }
+      uploading = true; applyLocks();
+      let added = 0;
+      const failed = [];
+      try {
+        for (const [i, f] of files.entries()) {
+          setStatus(`Adding ${i + 1} of ${files.length}: ${f.name}…`);
+          try {
+            const blob = await frameImage(f);
+            const r = await (await fetch(`/api/upload-image?name=${encodeURIComponent(f.name)}`, { method: 'POST', headers: forProject({ 'Content-Type': 'image/jpeg' }), body: blob })).json();
+            if (!r.ok) throw new Error(r.error || 'it was not added');
+            added++;
+          } catch (e) { failed.push(`${f.name}: ${e.message}`); }
+        }
+      } finally { uploading = false; applyLocks(); }
+      await loadState();
+      setStatus(`${added} image${added === 1 ? '' : 's'} added${failed.length ? ` · ${failed.length} could not be added (${failed.slice(0, 2).join('; ')})` : ''}`);
+    }
+    (() => {                                                                 // files dropped on the grid (a card dragged inside the grid carries none)
+      const col = document.querySelector('.gallery-col'), veil = document.getElementById('dropVeil');
+      if (!col || !col.addEventListener) return;
+      const hasFiles = e => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
+      let depth = 0;
+      col.addEventListener('dragenter', e => { if (!hasFiles(e) || showTrash) return; depth++; veil.hidden = false; }, true);
+      col.addEventListener('dragleave', e => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) veil.hidden = true; }, true);
+      col.addEventListener('dragover', e => { if (hasFiles(e) && !showTrash) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }, true);
+      col.addEventListener('drop', e => {
+        if (!hasFiles(e)) return;
+        e.preventDefault(); e.stopPropagation(); depth = 0; veil.hidden = true;
+        if (!showTrash) uploadImages(e.dataTransfer.files);
+      }, true);
+    })();
+    const isBusy = () => generating || aiRunning || exporting || purging || uploading;
     // a manual or automatic reload in the middle of a batch would lose the images still waiting to be generated
     window.addEventListener('beforeunload', e => { if (isBusy()) { e.preventDefault(); e.returnValue = ''; } });
     function blockedByAi(e) {
@@ -3876,6 +3927,8 @@ Object.assign(window, {
   renameGroup,
   deleteGroup,
   clearPicks,
+  uploadImages,
+  frameImage,
   togglePlaceMenu,
   trashPicked,
   pickClick,
