@@ -3191,7 +3191,7 @@
             const genRes = await fetch('/api/generate-image', {
               method: 'POST',
               headers: forProject({'Content-Type': 'application/json'}),
-              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, target: item.target || 'exact', model })
+              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, target: item.target || 'exact', placement: item.placement || null, model })
             });
             genData = await genRes.json();
           } catch (e) {
@@ -3307,7 +3307,7 @@
         const invRes = await fetch('/api/invent-prompts', {
           method: 'POST',
           headers: forProject({'Content-Type': 'application/json'}),
-          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction })
+          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact' })
         });
         const invData = await invRes.json();
         if (invData.needs_kimi_key) {
@@ -3321,7 +3321,7 @@
         }
 
         ran = true;
-        const target = document.getElementById('targetSelect').value;              // each image keeps the batch's target (a Resume too)
+        const target = document.getElementById('targetSelect').value || 'exact';  // each image keeps the batch's target and the place its scene was written for (a Resume too)
         await runBatch(invData.ideas.map(i => ({ ...i, target })), model);
         if (worldChoice === '__custom__' && invData.world) {                     // your territory exists now: the next batch carries on in it
           await loadWorlds();

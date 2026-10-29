@@ -572,7 +572,7 @@ def match_world(st: dict, api_key: str, kimi_model: str, direction: str) -> dict
     return None
 
 
-def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list) -> tuple[list, dict]:
+def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list, target: str = "exact") -> tuple[list, dict]:
     """One Kimi request for up to `count` scenes in territory `w`; `batch` = scenes already collected for this batch (never repeated)."""
     titles = st.get("titles", {})
     prompts = st.get("prompts", {})
@@ -581,6 +581,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
 
     n_ask = count + 2  # a little spare: some scenes come back as near-copies of past images and are dropped
     shots = diversity.sample_shots(n_ask, st.get("recent_axes"))
+    places = [placement.choose(target, PROJECT) for _ in range(n_ask)]   # Loose: each shot's own place and size, known before it is written
     seen_subjects = st.get("recent_subjects", {}).get(w["name"], [])[-60:]
     avoid_block = ""
     if direction:
@@ -601,12 +602,17 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
             + (f"Subjects already used here recently (never repeat these or close variants): {'; '.join(seen_subjects)}.\n" if seen_subjects else "")
             + "Reach for subjects a design studio would actually photograph, not the first obvious thing for the territory.\n\n"
         )
+    if any(places):                                                     # Loose: where each shot's mark goes, so the scene is built around it
+        shot_lines = "\n".join(f"{line} | the mark: {mark_words(placement.as_project(PROJECT, pl))['at']}, ~{pl['size']:g}% frame width"
+                               for line, pl in zip(shot_lines.split("\n"), places))
     liked = "\n".join(f"- {t}: {p[:200]}" for t, p in brief["liked"]) or "(none yet)"
     disliked = ", ".join(brief["disliked"]) or "(none yet)"
     mw = mark_words()
+    where = (f"one small {mw['noun']} sits in every shot, each shot at its own place and size (given per shot below; often NOT at the centre: compose the scene around where it is)"
+             if any(places) else f"one small {mw['noun']} sits at the {mw['at']} at {mw['size']}% frame width")
     llm_prompt = (
         f"Return ONLY a raw JSON array (no markdown fences) of {n_ask} objects with keys \"title\", \"subject\" (the shot's main subject in 2-6 words), \"idea\", \"guide\" ('dark' or 'light' = whether the frame is mostly dark or mostly light) and \"prompt\". "
-        f"They are shots for a 9:16 vertical match-cut film where one small {mw['noun']} sits at the {mw['at']} at {mw['size']}% frame width.\n\n"
+        f"They are shots for a 9:16 vertical match-cut film where {where}.\n\n"
         f"WORLD: {w['name']}. {w['brief']}\n"
         + (f"THE DIRECTOR'S BRIEF FOR THIS WORLD (their own words; follow it closely: where it and the world above differ, the brief wins):\n\"\"\"\n{w['prompt']}\n\"\"\"\n"
            if w.get("prompt") and w["prompt"] != direction else "")
@@ -621,7 +627,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
         f"TASTE (learned from what the director kept):\nLiked:\n{liked}\nSteer away from the feel of: {disliked}\n\n"
         f"RULES:\n"
         f"1. The mark is physically part of the scene (same perspective, light, material). Never a flat sticker, no outer rings, exactly one mark.\n"
-        f"2. Each prompt: 2-4 sentences, concrete visual language, name lens/light/material, end by stating the mark's treatment and dead-center position.\n"
+        f"2. Each prompt: 2-4 sentences, concrete visual language, name lens/light/material, end by stating the mark's treatment and {'its position as given for that shot' if any(places) else 'dead-center position'}.\n"
         f"3. All shots must look clearly different from each other and from these past scenes: [{ban_str}]."
     )
     print(f"[KIMI] world='{w['name']}': asking Kimi for {n_ask} scenes ({count} wanted + {n_ask - count} spare in case some are near-duplicates), model {kimi_model}...", flush=True)
@@ -631,6 +637,9 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     if s_idx == -1 or e_idx == -1:
         raise RuntimeError("Kimi did not return a valid JSON array of prompts")
     ideas = parse_llm_json(out, "[")
+    for i, idea in enumerate(ideas):
+        if isinstance(idea, dict):
+            idea["_place"] = places[i] if i < len(places) else placement.choose(target, PROJECT)   # the shot it was written for
 
     past = list(prompts.values()) + [b["prompt"] for b in batch]
     kept, dropped = [], []
@@ -652,7 +661,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     kept = kept[:count]
     info = {"asked_kimi": n_ask, "from_kimi": len(ideas), "dropped_duplicates": len(dropped), "topped_up": max(0, len(kept) - fresh)}
 
-    flat = [{"title": i.get("title", "Untitled"), "guide": i.get("guide", "dark"), "prompt": i["prompt"], "idea": i.get("idea", ""), "world": w["name"], "subject": str(i.get("subject", "")).strip()} for i in kept]
+    flat = [{"title": i.get("title", "Untitled"), "guide": i.get("guide", "dark"), "prompt": i["prompt"], "idea": i.get("idea", ""), "world": w["name"], "subject": str(i.get("subject", "")).strip(), "placement": i.get("_place")} for i in kept]
 
     used = st.setdefault("recent_subjects", {}).setdefault(w["name"], [])
     used.extend(x["subject"] for x in flat if x["subject"])
@@ -668,14 +677,15 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     return flat, info
 
 
-def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, world: str | None = None, direction: str = "", stats: dict | None = None) -> list[dict]:
+def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, world: str | None = None, direction: str = "", stats: dict | None = None,
+                         target: str = "exact") -> list[dict]:
     """
     One authored territory per batch (shots cohere), idea-first, steered by taste, near-duplicates dropped.
     Returns exactly `count` scenes whenever Kimi can supply them: large batches are asked in chunks of up to 10,
     and a short answer is followed up with a request for just the missing ones.
     """
     if world == "__sampler__":
-        return ask_kimi_sampler(st, api_key, kimi_model, count, direction, stats)
+        return ask_kimi_sampler(st, api_key, kimi_model, count, direction, stats, target)
     w = chapters.choose_world(st, world or "")
     if direction and not world:
         w = match_world(st, api_key, kimi_model, direction) or invent_world(st, api_key, kimi_model, direction)
@@ -691,7 +701,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
         if need <= 0:
             break
         try:
-            got, info = _ask_chunk(st, api_key, kimi_model, w, min(need, 10), direction, out)
+            got, info = _ask_chunk(st, api_key, kimi_model, w, min(need, 10), direction, out, target)
         except Exception:
             if not out:
                 raise                                      # nothing at all: let the caller report it
@@ -710,7 +720,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     return out[:count]
 
 
-def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direction: str = "", stats: dict | None = None) -> list[dict]:
+def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direction: str = "", stats: dict | None = None, target: str = "exact") -> list[dict]:
     """The Sampler: one scene from each of `count` territories, the ones tried least first (to explore at large). Each territory's
     scene is written by its own Kimi request, 6 at a time, each on a copy of the state; their memory (subjects, territories, axes
     used) is merged back into `st` after, so later batches still avoid repeating them."""
@@ -721,7 +731,7 @@ def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direct
     def one(w):
         mine = json.loads(json.dumps(st))
         try:
-            got, info = _ask_chunk(mine, api_key, kimi_model, w, 1, direction, [])
+            got, info = _ask_chunk(mine, api_key, kimi_model, w, 1, direction, [], target)
             return w, mine, got[:1], info
         except Exception as e:
             print(f"[KIMI] sampler: {w['name']} failed ({str(e)[:120]})", flush=True)
@@ -1723,6 +1733,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     world=body.get("world") or None,
                     direction=direction,
                     stats=stats,
+                    target=body.get("target") or "exact",
                 )
                 with STATE_LOCK:                               # Kimi took seconds: what changed meanwhile stays; only its titles are added,
                     if PROJECT and PROJECT["slug"] == started_in:   # and never into another project opened meanwhile
@@ -1762,7 +1773,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             title = body.get("title", "Outdoor Plate").strip()
             raw_prompt = body.get("prompt", "").strip()
             guide_type = body.get("guide", "dark")
-            pl = placement.choose(body.get("target") or "exact", PROJECT)       # Loose: this image's own place and size
+            pl = placement.clean(body.get("placement")) or placement.choose(body.get("target") or "exact", PROJECT)   # Loose: the place its scene was written for
             guide_kw = {"guide": placement.guide(PROJECT, pl)} if pl else {"guide": current_guide()} if current_guide() else {}   # another project: its own guide image
             model = body.get("model", "google/nano-banana-pro")
             if model == "auto":

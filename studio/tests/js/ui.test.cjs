@@ -428,13 +428,17 @@ test('custom territory requires a description before anything is generated', asy
 
 test('the target: On target by default; Loose goes with every image of the batch, and is locked while it runs', async () => {
   let locked = null;
-  const h = load({ routes: genRoutes({ n: 2, gen: async () => { locked = locked ?? h.$('targetSelect').disabled; return { ok: true, qa_passed: true, filename: 'f.jpg' }; } }) });
+  const r = genRoutes({ n: 2, gen: async () => { locked = locked ?? h.$('targetSelect').disabled; return { ok: true, qa_passed: true, filename: 'f.jpg' }; } });
+  r['/api/invent-prompts'] = body => ({ ok: true, ideas: ideas(2).map((x, i) => ({ ...x, placement: body.target === 'loose' ? { kind: 'loose', x: 30 + i, y: 60, size: 20 } : null })) });
+  const h = load({ routes: r });
   await settle(); await settle();
   await runGenerate(h);                                                             // nothing chosen: on target
   assert.deepEqual(h.calls.filter(c => c.url === '/api/generate-image').map(c => c.body.target), ['exact', 'exact']);
   h.$('targetSelect').value = 'loose';
   h.calls.length = 0;
   await runGenerate(h);
+  assert.equal(h.calls.find(c => c.url === '/api/invent-prompts').body.target, 'loose', 'Kimi writes each scene knowing its place');
+  assert.deepEqual(h.calls.filter(c => c.url === '/api/generate-image').map(c => c.body.placement.x), [30, 31], 'each image at the place its scene was written for');
   assert.deepEqual(h.calls.filter(c => c.url === '/api/generate-image').map(c => c.body.target), ['loose', 'loose']);
   assert.equal(locked, true, 'locked while the batch runs');
 });

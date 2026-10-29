@@ -1042,3 +1042,14 @@ def test_a_loose_batch_gives_each_image_its_own_place_kept_with_it(live, srv, mo
     assert srv.load_state()["placements"] == {res["filename"]: pl}
     plates = {p["filename"]: p for p in live("GET", "/api/state")[1]["plates"]}
     assert plates[res["filename"]]["placement"] == pl and plates[on["filename"]]["placement"] is None, "the page draws each image's own box"
+
+
+def test_an_image_is_made_at_the_place_its_scene_was_written_for(live, srv, monkeypatch, tmp_path):
+    monkeypatch.setattr(srv.placement, "GUIDE_DIR", tmp_path / "guides")
+    _, ideas = live("POST", "/api/invent-prompts", {"count": 2, "world": "Editorial Print", "target": "loose"})
+    pl = ideas["ideas"][0]["placement"]
+    assert pl["kind"] == "loose"
+    _, res = live("POST", "/api/generate-image", {"title": "Placed", "prompt": "p", "model": "m", "target": "loose", "placement": pl})
+    assert res["placement"] == pl and f"EXACT POINT {pl['x']:g}%" in live.calls["krea"][-1]["prompt"]
+    _, bad = live("POST", "/api/generate-image", {"title": "Odd", "prompt": "p", "model": "m", "target": "loose", "placement": {"kind": "loose", "x": 500}})
+    assert bad["placement"]["kind"] == "loose" and bad["placement"]["x"] < 100, "an odd one from outside: a fresh place instead"

@@ -174,6 +174,18 @@ def test_describe_your_own_keeps_your_words_and_every_batch_follows_them(srv, mo
     assert "THE DIRECTOR'S BRIEF" not in seen[0]                              # a built-in territory has none
 
 
+def test_a_loose_batch_tells_kimi_where_each_shots_mark_goes(srv, fake_llm):
+    out = srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=4, world="Editorial Print", target="loose")
+    p = fake_llm[-1]
+    assert "each shot at its own place and size" in p and "dead-center position" not in p
+    assert all(o["placement"] and o["placement"]["kind"] == "loose" for o in out)
+    for o in out:                                                            # the place each scene was written for travels with it
+        pl = o["placement"]
+        assert f"the mark: exact point ({pl['x']:g}% across, {pl['y']:g}% down), ~{pl['size']:g}% frame width" in p
+    exact = srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=2, world="Editorial Print")
+    assert all(o["placement"] is None for o in exact) and "the mark: exact point" not in fake_llm[-1] and "dead-center position" in fake_llm[-1]
+
+
 def test_ask_kimi_without_direction_makes_kimi_invent_the_subjects(srv, fake_llm):
     w = next(w for w in chapters.WORLDS if w["name"] == "Packaging & Product")
     srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=8, world="Packaging & Product")
