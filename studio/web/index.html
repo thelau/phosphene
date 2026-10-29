@@ -46,7 +46,7 @@
         <dl>
           <dt><kbd>Space</kbd></dt><dd>Play / pause (in Curate, opens the preview)</dd>
           <dt><kbd>Tab</kbd></dt><dd>Curate / Film</dd>
-          <dt><kbd>T</kbd></dt><dd>Logo target</dd>
+          <dt><kbd>T</kbd></dt><dd>Mark target</dd>
           <dt><kbd>⌘</kbd><kbd>Z</kbd></dt><dd>Undo</dd>
           <dt><kbd>⇧</kbd><kbd>⌘</kbd><kbd>Z</kbd></dt><dd>Redo</dd>
           <dt><kbd>Esc</kbd></dt><dd>Close, clear the picks</dd>
@@ -107,7 +107,7 @@
         </div>
         <select id="modelSelect">
           <option value="google/nano-banana-2.1">Nano Banana 2.1 · 2K (best keep rate)</option>
-          <option value="google/nano-banana-pro">Nano Banana Pro · 2K (best logo lock)</option>
+          <option value="google/nano-banana-pro">Nano Banana Pro · 2K (best mark lock)</option>
           <option value="auto">Auto (2.1 / Pro, learns from kept / trashed)</option>
           <optgroup label="Experimental (low keep rate)">
             <option value="openai/gpt-image-2.5-flare">GPT Image 2.5 Flare · 2K</option>
@@ -232,7 +232,7 @@
             <button onclick="downloadShown()" id="downloadBtn" title="Download the images shown, full size, in their order (a zip)" aria-label="Download the images shown">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"></path><path d="M7 10l5 5 5-5"></path><path d="M5 20h14"></path></svg>
             </button>
-            <button onclick="toggleReticle()" id="gridTargetBtn" title="Show where the logo must sit on every image: dead-center, 18% of the width (T)" aria-label="Show logo target" aria-pressed="false">
+            <button onclick="toggleReticle()" id="gridTargetBtn" title="Show where the mark sits on every image (T)" aria-label="Show the mark target" aria-pressed="false">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 1v4M12 19v4M1 12h4M19 12h4"></path></svg>
             </button>
             <button class="refresh-btn" id="refreshBtn" onclick="refreshLibrary(true)" title="Check for new images now (the page also checks by itself every so often). Film refreshes with it." aria-label="Refresh the library"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
@@ -318,7 +318,7 @@
             <div class="reticle" id="reticle">
               <i class="ret-v"></i><i class="ret-h"></i>
               <div class="reticle-circle"></div>
-              <span class="ret-label" id="retLabel">logo · centre · 18%</span>
+              <span class="ret-label" id="retLabel">mark · centre · 18%</span>
             </div>
             <div class="fs-bar" id="fsBar">
               <button onclick="togglePlay()" id="fsPlayBtn" class="play-btn" aria-label="Play">Play</button>
@@ -336,7 +336,7 @@
             <button onclick="restartPlay()" id="restartBtn" class="icon-btn" title="Back to the start (0)" aria-label="Back to the start">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6"></path><path d="M4 4v4h4"></path></svg>
             </button>
-            <button onclick="toggleReticle()" id="targetBtn" class="icon-btn" title="Show where the logo must sit: dead-center, 18% of the width (T)" aria-label="Show logo target" aria-pressed="false">
+            <button onclick="toggleReticle()" id="targetBtn" class="icon-btn" title="Show where the mark sits (T)" aria-label="Show the mark target" aria-pressed="false">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 1v4M12 19v4M1 12h4M19 12h4"></path></svg>
             </button>
             <span class="timecode" id="timecode">0:00.0 <span>/ 0:00.0 · cut 1 / 0</span></span>

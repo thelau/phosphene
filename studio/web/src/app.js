@@ -277,7 +277,7 @@
       document.getElementById('projectName').textContent = 'No project';
       document.getElementById('projectMark').removeAttribute('src');
       document.body.classList.add('no-project');                             // no mark yet: no logo target to show
-      for (const id of ['targetBtn', 'gridTargetBtn']) { const b = document.getElementById(id); if (!b.dataset.title) b.dataset.title = b.title; b.disabled = true; b.title = 'The logo target: make or import a project first'; }
+      for (const id of ['targetBtn', 'gridTargetBtn']) { const b = document.getElementById(id); if (!b.dataset.title) b.dataset.title = b.title; b.disabled = true; b.title = 'The mark target: make or import a project first'; }
     }
     // a dark mark (Nike's black swoosh) is lost on the dark top bar and menu: there it shows as a light silhouette, as on the dark guide;
     // a light or colourful mark stays as it is. Measured once per image from its opaque pixels
@@ -315,7 +315,7 @@
       }
       syncMarkSelect(p);
       const centred = p.mark_x === 50 && p.mark_y === 50;
-      document.getElementById('retLabel').textContent = `logo · ${centred ? 'centre' : `${p.mark_x}%, ${p.mark_y}%`} · ${p.mark_size}%`;
+      document.getElementById('retLabel').textContent = `mark · ${centred ? 'centre' : `${p.mark_x}%, ${p.mark_y}%`} · ${p.mark_size}%`;
     }
     // a project with several marks: the generation row offers which one a batch uses (main, another, or a mix); a project with one: nothing
     function syncMarkSelect(p) {
@@ -1337,7 +1337,7 @@
               }
             </div>
             <div class="prompt-overlay" id="overlay-${CSS.escape(p.filename)}" onclick="togglePromptOverlay(event, '${p.filename}')">
-              <div class="prompt-overlay-text">${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${p.critic ? `<span class="po-critic">AI critic ${p.critic.mean}: ${escapeHtml(p.critic.reason)}</span>` : ''}${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-critic po-qa">Logo check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : p.qa_doubt ? `<span class="po-critic po-doubt">Logo check: ${escapeHtml(p.qa_doubt)}</span>` : ''}</div>
+              <div class="prompt-overlay-text">${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${p.critic ? `<span class="po-critic">AI critic ${p.critic.mean}: ${escapeHtml(p.critic.reason)}</span>` : ''}${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-critic po-qa">Mark check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : p.qa_doubt ? `<span class="po-critic po-doubt">Mark check: ${escapeHtml(p.qa_doubt)}</span>` : ''}</div>
               <div class="prompt-overlay-meta"><button class="po-copy" onclick="copyPromptText(event, '${p.filename}')">Copy prompt</button></div>
             </div>
           </div>
@@ -1348,8 +1348,8 @@
             ${p.mark_name ? `<span class="card-model-badge mark" title="Made with ${escapeHtml(p.mark_name)}, one of the project's marks">${escapeHtml(p.mark_name)}</span>` : ''}
             ${p.placement && p.placement.kind !== 'exact' ? `<span class="card-model-badge target" title="${escapeHtml(targetTip(p.placement))}">${p.placement.kind === 'scattered' ? 'Scattered' : 'Loose'}</span>` : ''}
             ${p.critic ? `<span class="card-model-badge" title="${escapeHtml(p.critic.reason)}">AI ${p.critic.mean}</span>` : ''}
-            ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(!p.qa_passed && (p.qa_issues || []).length && p.trash_reason === 'Logo check' ? p.qa_issues.join(', ') : p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
-            ${!p.qa_passed ? (p.trash_reason === 'Logo check' ? '' : `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>`) : p.qa_doubt ? `<span class="card-model-badge doubt" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : ''}
+            ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(!p.qa_passed && (p.qa_issues || []).length && p.trash_reason === 'Mark check' ? p.qa_issues.join(', ') : p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
+            ${!p.qa_passed ? (p.trash_reason === 'Mark check' ? '' : `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>`) : p.qa_doubt ? `<span class="card-model-badge doubt" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : ''}
           </div>
         </div>`;
     }
@@ -3458,8 +3458,8 @@
         } else {
           trashedByQa++;
           prog.slots[idx] = 'trash';
-          if (genData.qa_issues && genData.qa_issues.length) prog.why[idx] = `Logo check: ${genData.qa_issues[0]}`;
-          prog.note = `“${item.title}” failed the logo check → Trash`;
+          if (genData.qa_issues && genData.qa_issues.length) prog.why[idx] = `Mark check: ${genData.qa_issues[0]}`;
+          prog.note = `“${item.title}” failed the mark check → Trash`;
         }
         progRender();
         await loadState();
@@ -3476,7 +3476,7 @@
       // the summary's own hover the reasons together
       const failed = prog.slots.filter(x => x === 'err').length, blocked = prog.slots.filter(x => x === 'blocked').length, notMade = left.size;
       const parts = [`${added} added`];
-      if (trashedByQa) parts.push(`${trashedByQa} to Trash by the logo check`);
+      if (trashedByQa) parts.push(`${trashedByQa} to Trash by the mark check`);
       if (blocked) parts.push(`${blocked} refused by Krea's moderation`);
       if (failed) parts.push(`${failed} failed`);
       if (authFailed) parts.push('sign in to Krea: Settings › Connect Krea');

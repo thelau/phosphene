@@ -235,8 +235,8 @@ test('generateImages: logo-check failures show as trash slots and in the summary
   await settle(); await settle();
   await runGenerate(h);
   assert.deepEqual(h.run('prog.slots').slice().sort(), ['ok', 'ok', 'trash', 'trash']);
-  assert.match(h.$('statusText').innerHTML, /Done · 2 added · 2 to Trash by the logo check/);
-  assert.match(h.$('statusText').innerHTML, /title="[^"]*Logo check: Low center logo fidelity/);
+  assert.match(h.$('statusText').innerHTML, /Done · 2 added · 2 to Trash by the mark check/);
+  assert.match(h.$('statusText').innerHTML, /title="[^"]*Mark check: Low center logo fidelity/);
 });
 
 test('generateImages: server errors on an image become err slots, batch continues', async () => {
@@ -2000,9 +2000,9 @@ test('Info on a card says why the logo check flagged it, as it says the AI criti
   const h = load({ routes: baseRoutes() });
   await settle(); await settle();
   const html = h.run(`cardHtml(${JSON.stringify({ ...mkPlate('x.jpg', true), qa_passed: false, qa_issues: ['The mark looks too big (it fits about as well at 1.5x)'], critic: { mean: 6.8, reason: 'calm' } })})`);
-  assert.match(html, /Logo check: The mark looks too big \(it fits about as well at 1\.5x\)/);
+  assert.match(html, /Mark check: The mark looks too big \(it fits about as well at 1\.5x\)/);
   assert.match(html, /AI critic 6\.8: calm/);
-  assert.doesNotMatch(h.run(`cardHtml(${JSON.stringify({ ...mkPlate('y.jpg'), qa_passed: true })})`), /Logo check:/);
+  assert.doesNotMatch(h.run(`cardHtml(${JSON.stringify({ ...mkPlate('y.jpg'), qa_passed: true })})`), /Mark check:/);
 });
 
 test('the film strip and ← →: every image can be reached, at any tempo (a cut start read back a hair early showed the image before)', async () => {
@@ -2057,11 +2057,11 @@ test('settings saved before films were per project become the first project\'s, 
   assert.equal(JSON.parse(h.store.studioSettings).thumbSizeVal, 'L', 'the shared ones stay shared');
 });
 
-test('an image the logo check trashed has one badge, Logo check, with the reason on hover (not also QA flagged)', async () => {
+test('an image the mark check trashed has one badge, Mark check, with the reason on hover (not also QA flagged)', async () => {
   const h = load({ routes: baseRoutes() });
   await settle(); await settle();
-  const html = h.run(`cardHtml(${JSON.stringify({ ...mkPlate('x.jpg'), trashed: true, trash_reason: 'Logo check', qa_passed: false, qa_issues: ['The mark is not at its place and size (fit 0.30)'] })})`);
-  assert.match(html, /class="card-model-badge warn" title="The mark is not at its place and size \(fit 0\.30\)">Logo check</);
+  const html = h.run(`cardHtml(${JSON.stringify({ ...mkPlate('x.jpg'), trashed: true, trash_reason: 'Mark check', qa_passed: false, qa_issues: ['The mark is not at its place and size (fit 0.30)'] })})`);
+  assert.match(html, /class="card-model-badge warn" title="The mark is not at its place and size \(fit 0\.30\)">Mark check</);
   assert.doesNotMatch(html, /QA flagged/);
 });
 
@@ -2070,7 +2070,7 @@ test('a doubtful logo check stays in the selection with a "Check the mark" badge
   await settle(); await settle();
   const html = h.run(`cardHtml(${JSON.stringify({ ...mkPlate('x.jpg'), qa_passed: true, qa_doubt: "Check the mark's size: it fits a little better at about 1.16x" })})`);
   assert.match(html, /class="card-model-badge doubt"[^>]*>Check the mark</);
-  assert.match(html, /Logo check: Check the mark's size: it fits a little better at about 1\.16x/);
+  assert.match(html, /Mark check: Check the mark's size: it fits a little better at about 1\.16x/);
   assert.doesNotMatch(html, /QA flagged/);
 });
 

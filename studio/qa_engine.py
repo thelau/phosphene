@@ -218,9 +218,9 @@ def evaluate_plate_qa(image_path: Path, mark: MarkSpec | None = None) -> dict:
     # Allow slightly angled 3D perspective logos, CAD wireframes, and nature reliefs
     if best_corr < 0.14:
         if outer_max_corr > 0.38:
-            issues.append(f"Wrong logo scale (~{int(outer_best_diam / TARGET_W * 100)}% width instead of {mark.size_pct:g}%)")
+            issues.append(f"Wrong mark size (~{int(outer_best_diam / TARGET_W * 100)}% width instead of {mark.size_pct:g}%)")
         else:
-            issues.append(f"Low center logo fidelity (corr={best_corr:.2f})")
+            issues.append(f"The mark at the centre is unclear (corr={best_corr:.2f})")
 
     if outer_max_corr > 0.40 and best_corr < 0.22:
         issues.append(f"Oversized outer ring (d={outer_best_diam}px, corr={outer_max_corr:.2f})")

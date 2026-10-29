@@ -1398,7 +1398,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "trashed": p.name in trashed_set,
                     "trashed_at": st.get("trashed_at", {}).get(p.name),
                     "trash_reason": (
-                        "Logo check" if p.name in st.get("qa_failed", []) and p.name in trashed_set
+                        "Mark check" if p.name in st.get("qa_failed", []) and p.name in trashed_set
                         else ("AI critic: " + st.get("critic", {}).get(p.name, {}).get("reason", "") if p.name in st.get("critic_failed", []) and p.name in trashed_set else None)
                     ),
                     "critic": st.get("critic", {}).get(p.name),
