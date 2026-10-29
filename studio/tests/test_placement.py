@@ -38,9 +38,9 @@ def test_loose_is_near_the_target_but_never_on_it(srv):
     got = draws(srv, "loose")
     inside_the_frame(srv, got)
     for pl in got:
-        assert pl["kind"] == "loose" and 1.5 - 0.1 <= away(pl) <= 4 + 0.1, pl
+        assert pl["kind"] == "loose" and 0.5 - 0.1 <= away(pl) <= 2 + 0.1, pl
         f = pl["size"] / 18
-        assert 0.85 - 0.01 <= f <= 0.93 + 0.01 or 1.08 - 0.01 <= f <= 1.18 + 0.01, f"a touch smaller or bigger: {pl}"
+        assert 0.9 - 0.01 <= f <= 0.96 + 0.01 or 1.04 - 0.01 <= f <= 1.1 + 0.01, f"a touch smaller or bigger: {pl}"
     assert len({pl["x"] < 50 for pl in got}) == 2 and len({pl["y"] < 50 for pl in got}) == 2, "on every side"
     assert placement.clean(got[0]) == got[0]
 
@@ -62,7 +62,7 @@ def test_loose_follows_a_project_whose_mark_is_off_centre(srv):
     rng = random.Random(3)
     for _ in range(100):
         pl = placement.choose("loose", p, rng)
-        assert 1.5 - 0.1 <= away(pl, 25, 80) <= 4 + 0.1, pl
+        assert 0.5 - 0.1 <= away(pl, 25, 80) <= 2 + 0.1, pl
 
 
 def test_a_placement_from_outside_is_checked(srv):

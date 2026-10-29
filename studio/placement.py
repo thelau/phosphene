@@ -17,7 +17,7 @@ KINDS = ("exact", "loose", "scattered")
 LEVELS = {                    # per level, bands that never overlap, so each reads as itself (never as On target):
     # how far from the project's place (% of the frame, the larger of across and down; None: as far as the frame goes),
     # and its size, times the project's (one of two bands: smaller or bigger, never about the same)
-    "loose": {"away": (1.5, 4.0), "size": ((0.85, 0.93), (1.08, 1.18))},   # as the reference films: a breath off, felt across cuts more than seen
+    "loose": {"away": (0.5, 2.0), "size": ((0.9, 0.96), (1.04, 1.1))},   # as the reference films: a breath off, felt across cuts more than seen
     "scattered": {"away": (18.0, None), "size": ((0.5, 0.8), (1.25, 1.8))},
 }
 SIZE_PCT = (6.0, 45.0)        # never smaller or bigger than this share of the width
