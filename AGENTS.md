@@ -24,7 +24,7 @@ framed is framed there too), saves it as the next plate (`NN_<name>.jpg`, writte
 `st['uploads']` (cleaned on import) and adds it at the end of every order. An upload is **never checked for the mark** (the user's
 call, 2026-10-29: where a mark would be in it is not known; checking uploads that show a mark may come later): `/api/state` gives it
 `qa_passed` true, `uploaded` true, `model` null, and the card a green **Uploaded** badge instead of the model's. No critic, and the
-taste loop never reads it (it has no prompt). Groups, the order, AI order, Film, export and .phos files take it as any image.
+taste loop never reads it (it has no prompt). Groups, the order, AI order, Film, export and .phos files take it as any image. **A project with no mark** (your own images only): New project's drop zone has "No mark, just my own images" (`psNoMark`: name, About and colours by hand, Create once named; `create` with `no_mark`, no mark file, no guides). `has_mark` is whether the main mark's file exists (`projects.load`, given in `public`); without one the page hides the top bar's mark, the Mark menu and the mark target (`body.no-mark`), Generate reads "Add a mark" and opens Project settings (where + Add a mark is), and the server refuses invent-prompts / generate-image with `no_mark` (409). Adding a mark there makes it the default (its guides made then); export and import work with or without one.
 
 ## Layout
 - `studio/server.py` — the API server (port 8765, `PORT` env to change): JSON API, plates and exported video. It also serves the built page from `studio/web/dist` if `npm run build` was run.

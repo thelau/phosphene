@@ -1151,3 +1151,27 @@ def test_an_uploaded_image_joins_the_project_framed_and_marked_as_uploaded_with_
         assert live("POST", "/api/upload-image?name=x.png", raw=b"not an image")[0] == 400
     finally:
         srv.get_cached_qa = real
+
+
+def test_a_project_of_your_own_images_starts_with_no_mark_and_generates_once_one_is_added(live, srv, tmp_path):
+    import base64, io
+    from PIL import Image
+    from test_projects import star_png
+    status, r = live("POST", "/api/projects", {"action": "create", "name": "Moodboard", "no_mark": True, "brief": "Spring lookbook"})
+    assert status == 200 and r["project"]["has_mark"] is False and r["project"]["marks"] == [], r
+    buf = io.BytesIO(); Image.new("RGB", (1080, 1920), (30, 30, 30)).save(buf, "JPEG")
+    assert live("POST", "/api/upload-image?name=look.jpg", raw=buf.getvalue())[1]["ok"]
+    state = live("GET", "/api/state")[1]
+    assert [p["uploaded"] for p in state["plates"]] == [True]
+    status, gen = live("POST", "/api/invent-prompts", {"count": 2, "world": "Editorial Print"})
+    assert status == 409 and gen["no_mark"], "nothing to generate around yet"
+    assert live("POST", "/api/generate-image", {"title": "x", "prompt": "p", "model": "m"})[1]["no_mark"]
+    out = tmp_path / "m.phos"
+    srv.projects.export_zip("moodboard", out)                                     # travels without a mark, and comes back so
+    back = srv.projects.import_zip(out)
+    assert back["has_mark"] is False and len(list(back["plates_dir"].glob("*.jpg"))) == 1
+    _, r = live("POST", "/api/projects", {"action": "update", "slug": "moodboard", "name": "Moodboard", "brief": "Spring lookbook", "palette": [],
+                                          "mark": "data:image/png;base64," + base64.b64encode(star_png()).decode(), "mark_name": "Star", "mark_size": 20, "mark_x": 50, "mark_y": 50, "marks": []})
+    assert r["project"]["has_mark"] is True and r["project"]["mark_name"] == "Star"
+    assert srv.projects.load("moodboard")["guides"]["dark"].is_file(), "its guides, made with it"
+    assert live("POST", "/api/invent-prompts", {"count": 1, "world": "Editorial Print"})[0] == 200, "now it generates"

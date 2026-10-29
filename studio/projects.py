@@ -79,12 +79,14 @@ def load(slug: str) -> dict:
         "guide_cache_file": at("guide_cache", ".krea_guides.json"),
         "guides": {k: at(f"guide_{k}", f"guide_{k}.png") for k in ("dark", "light")},
         "created": raw.get("created"),
-        "own": {k: raw.get(k) or "" for k in ("brief", "mark_shape", "mark_noun")},   # as set (empty when not): the form shows these, never the fallbacks
+        "own": {k: raw.get(k) or "" for k in ("brief", "mark_shape", "mark_noun")},
+        "has_mark": False,                                     # set below: a project of your own images may have none yet   # as set (empty when not): the form shows these, never the fallbacks
     }
     # other marks besides the main one (a brand's symbol, wordmark, badge...): each its own image, name, size and words, at the main
     # mark's place. A project from before (no "marks") has none, and an older Phosphene reading this file sees only the main mark
+    p["has_mark"] = Path(p["mark_file"]).is_file()
     p["marks"] = []
-    for m in raw.get("marks") or []:
+    for m in raw.get("marks") or [] if p["has_mark"] else []:     # (other marks come after a main one)
         if not isinstance(m, dict) or not MARK_ID.match(str(m.get("id") or "")) or m["id"] == "main" or len(p["marks"]) >= MAX_MARKS:
             continue
         try:
@@ -130,7 +132,7 @@ def public(p: dict) -> dict:
     mtime = int(p["mark_file"].stat().st_mtime) if p["mark_file"].exists() else 0
     marks = [{"id": m["id"], "name": m["name"], "size": m["mark_size"], "x": m["mark_x"], "y": m["mark_y"], "shape": m["mark_shape"], "noun": m["mark_noun"], "ratio": mark_ratio(with_mark(p, m["id"])),
               "url": f"/api/project-mark?p={p['slug']}&m={m['id']}&t={int(m['mark_file'].stat().st_mtime) if m['mark_file'].exists() else 0}"} for m in p.get("marks") or []]
-    return {"slug": p["slug"], "marks": marks, "mark_name": p["mark_name"], "name": p["name"], "mark_size": p["mark_size"], "mark_x": p["mark_x"], "mark_y": p["mark_y"],
+    return {"slug": p["slug"], "marks": marks, "mark_name": p["mark_name"], "has_mark": p.get("has_mark", True), "name": p["name"], "mark_size": p["mark_size"], "mark_x": p["mark_x"], "mark_y": p["mark_y"],
             "mark_shape": p["own"]["mark_shape"], "mark_noun": p["own"]["mark_noun"], "brief": p["own"]["brief"], "palette": p["palette"],
             "mark_ratio": mark_ratio(p), "round": p.get("qa") == "demo-tuned", "fixed": p.get("qa") == "demo-tuned",
             "mark_url": f"/api/project-mark?p={p['slug']}&t={mtime}"}
@@ -298,24 +300,28 @@ def create(body: dict, mark_png: bytes) -> dict:
     slug, n = base, 2
     while (PROJECTS_DIR / slug).exists():
         slug, n = f"{base[:36]}-{n}", n + 1
-    try:
-        img = Image.open(io.BytesIO(mark_png))
-        img.load()
-        mark_alpha(img)
-    except ValueError:
-        raise
-    except Exception:
-        raise ValueError("The mark must be a PNG or JPEG image.")
+    img = None
+    if mark_png or not body.get("no_mark"):           # a project of your own images can start with no mark (one comes later)
+        try:
+            img = Image.open(io.BytesIO(mark_png))
+            img.load()
+            mark_alpha(img)
+        except ValueError:
+            raise
+        except Exception:
+            raise ValueError("The mark must be a PNG or JPEG image.")
     raw = _fields({**body, "name": name}, {"v": 1, "created": time.strftime("%Y-%m-%dT%H:%M:%S")})   # v: the project file's format, for later changes
     raw.setdefault("mark_size", 18.0); raw.setdefault("mark_x", 50.0); raw.setdefault("mark_y", 50.0)
     folder = PROJECTS_DIR / slug
     folder.mkdir(parents=True)                        # raises if another request just took the name: then nothing of theirs is removed
     try:
-        img.convert("RGBA").save(folder / "mark.png", "PNG")
+        if img is not None:
+            img.convert("RGBA").save(folder / "mark.png", "PNG")
         _write(slug, raw)
         (folder / "plates").mkdir(exist_ok=True)
         p = load(slug)
-        make_guides(p)
+        if img is not None:
+            make_guides(p)
     except Exception:
         shutil.rmtree(folder, ignore_errors=True)
         raise
@@ -337,7 +343,7 @@ def update(slug: str, body: dict, mark_png: bytes | None = None) -> dict:
         img.convert("RGBA").save(p["mark_file"], "PNG")
     _write(slug, raw)
     p = load(slug)
-    if mark_png is not None or any(raw.get(k) != v for k, v in before.items()):
+    if p["has_mark"] and (mark_png is not None or any(raw.get(k) != v for k, v in before.items())):
         if raw.get("qa") != "demo-tuned":           # DEMO's guides are its originals
             make_guides(p)
         p["guide_cache_file"].unlink(missing_ok=True)
@@ -537,7 +543,8 @@ def export_zip(slug: str, out: Path) -> str:
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_STORED) as z:
         z.writestr(f"{top}/project.json", json.dumps(raw, indent=2) + "\n")
         z.writestr(f"{top}/state.json", json.dumps(state, indent=1))
-        z.write(p["mark_file"], f"{top}/mark.png")
+        if p["has_mark"]:
+            z.write(p["mark_file"], f"{top}/mark.png")
         for m in p.get("marks") or []:                      # the other marks
             if m["mark_file"].is_file():
                 z.write(m["mark_file"], f"{top}/mark-{m['id']}.png")
@@ -616,8 +623,7 @@ def import_zip(path: Path) -> dict:
                 if ok:
                     with z.open(n_) as src, open(folder / rel, "wb") as dst:
                         shutil.copyfileobj(src, dst, 1 << 20)
-            if not (folder / "mark.png").is_file():
-                raise ValueError("That project file has no mark.")
+
             _clean_state(folder / "state.json")
             _write(slug, raw)
             q = load(slug)
@@ -633,7 +639,7 @@ def import_zip(path: Path) -> dict:
             raw["imported"] = time.strftime("%Y-%m-%dT%H:%M:%S")
             _write(slug, raw)
             p = load(slug)
-            if not all(f.is_file() for f in p["guides"].values()):
+            if p["has_mark"] and not all(f.is_file() for f in p["guides"].values()):
                 make_guides(p)
         except ValueError:
             shutil.rmtree(folder, ignore_errors=True)

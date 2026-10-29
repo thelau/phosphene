@@ -894,3 +894,7 @@
 .drop-veil { position: absolute; inset: 8px; z-index: 40; display: flex; align-items: center; justify-content: center; border-radius: 14px; border: 2px dashed var(--orange); background: rgba(18, 17, 16, .82); pointer-events: none; }
 .drop-veil[hidden] { display: none; }
 .drop-veil span { font-size: 18px; font-weight: 700; color: var(--text); }
+
+/* a project of your own images, no mark yet: nothing to place, nothing to target */
+body.no-mark .place, body.no-mark .place-sep { display: none; }
+.ps-drop .ps-nomark { margin-top: 2px; font-size: 13px; }

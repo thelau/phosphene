@@ -1315,6 +1315,30 @@ test('your own images: Add images or a drop on the grid; each framed to 9:16 her
   await ctx.close();
 });
 
+test('a project of your own images: New project › No mark; no mark target, no Mark menu, Generate says Add a mark and opens the settings', { skip }, async () => {
+  const ctx = await fresh();
+  await page.evaluate(() => { kimiConfigured = true; openProjectForm('new'); });
+  await page.click('.ps-nomark');
+  assert.equal(await page.locator('#pfSave').isDisabled(), true, 'a name first');
+  await page.fill('#psName', 'Moodboard');
+  await page.fill('#psBrief', 'Spring lookbook');
+  assert.equal(await page.locator('#pfSave').isDisabled(), false);
+  await page.click('#pfSave');
+  await page.waitForFunction(() => document.getElementById('projectName').textContent === 'Moodboard', null, { timeout: 10000 });
+  await page.waitForSelector('#loader', { state: 'detached' });
+  const made = api.state.calls.filter(c => c.path === '/api/projects' && c.body.action === 'create').pop().body;
+  assert.deepEqual([made.no_mark, made.name, made.brief, made.mark], [true, 'Moodboard', 'Spring lookbook', undefined]);
+  assert.equal(await page.locator('#projectMark').isVisible(), false, 'no mark in the top bar');
+  assert.equal(await page.locator('#gridTargetBtn').isDisabled(), true, 'no mark target');
+  assert.equal(await page.locator('#placeBtn').isVisible(), false, 'no Mark menu');
+  assert.equal(await text('#genLabel'), 'Add a mark');
+  await page.click('#generateBtn');
+  await page.waitForSelector('#projectModal.open');
+  assert.equal(await page.locator('.ps-add').isVisible(), true, 'where a mark is added');
+  assert.equal(api.state.calls.filter(c => c.path === '/api/invent-prompts').length, 0, 'nothing generated');
+  await ctx.close();
+});
+
 test('Look: each slider under its own setting (the zoom\'s Amount under Zoom, Trail on the left)', { skip }, async () => {
   const ctx = await fresh();
   await film();

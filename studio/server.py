@@ -1391,7 +1391,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             for p in ordered_plate_files(st):
                 pl, mk = placed.get(p.name), used.get(p.name)
                 up = p.name in uploads                                       # the user's own image: no mark check
-                qa = {"qa_passed": True, "qa_score": None, "issues": []} if up else get_cached_qa(p, pl, mk)
+                qa = {"qa_passed": True, "qa_score": None, "issues": []} if up or not PROJECT.get("has_mark", True) else get_cached_qa(p, pl, mk)
                 plates.append({
                     "filename": p.name,
                     "url": f"/api/plate?f={quote(p.name)}&t={int(p.stat().st_mtime)}",   # the project's own folder
@@ -1888,6 +1888,9 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": ok} if ok else {"ok": False, "error": "Could not do that."}, 200 if ok else 400)
             return
 
+        if parsed.path in ("/api/invent-prompts", "/api/generate-image") and PROJECT and not PROJECT.get("has_mark", True):
+            self.send_json({"ok": False, "no_mark": True, "error": "This project has no mark yet: add one in Project settings to generate."}, 409)
+            return
         if parsed.path == "/api/invent-prompts":
             started_in = PROJECT["slug"] if PROJECT else None
             st = load_state()

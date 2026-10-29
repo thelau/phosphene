@@ -85,9 +85,9 @@ function start(state = makeState()) {
         if (body.action === 'switch') { if (!state.projects.some(p => p.slug === body.slug)) return send({ ok: false, error: 'There is no such project.' }, 404); state.project = body.slug; }
         else if (body.action === 'create') {
           if (!String(body.name || '').trim()) return send({ ok: false, error: 'A project needs a name.' }, 400);
-          if (!/^data:image\/png;base64,/.test(body.mark || '')) return send({ ok: false, error: 'The mark must be a PNG or JPEG image.' }, 400);
+          if (!body.no_mark && !/^data:image\/png;base64,/.test(body.mark || '')) return send({ ok: false, error: 'The mark must be a PNG or JPEG image.' }, 400);
           const slug = body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-          state.projects.push({ slug, name: body.name, mark_name: body.mark_name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y, mark_shape: body.mark_shape, mark_noun: body.mark_noun, brief: body.brief, palette: body.palette, mark_ratio: 0.5, round: false, fixed: false, mark_url: `/api/project-mark?p=${slug}`,
+          state.projects.push({ slug, name: body.name, mark_name: body.mark_name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y, mark_shape: body.mark_shape, mark_noun: body.mark_noun, brief: body.brief, palette: body.palette, mark_ratio: 0.5, round: false, fixed: false, mark_url: `/api/project-mark?p=${slug}`, has_mark: !body.no_mark,
             marks: (body.marks || []).map((m, i) => ({ id: `m${i + 1}`, name: m.name, size: m.size, x: m.x, y: m.y, shape: m.shape, noun: m.noun, ratio: 1, url: `/api/project-mark?p=${slug}&m=m${i + 1}` })) });
           state.project = slug; state.markSent = body.mark;
           state.plates = []; state.sequences[0].order = [];                    // a new project starts empty

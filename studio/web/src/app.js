@@ -314,6 +314,10 @@
         r.setProperty('--mark-ar', String(p.mark_ratio || 1)); r.setProperty('--mark-r', '2px');   // always the mark's box (a round mark fits its square): the user's call
       }
       syncMarkSelect(p);
+      const noMark = p.has_mark === false;                                    // a project of your own images, no mark yet
+      document.body.classList.toggle('no-mark', noMark);
+      img.hidden = noMark;
+      for (const id of ['targetBtn', 'gridTargetBtn']) { const b = document.getElementById(id); if (!b.dataset.title) b.dataset.title = b.title; b.disabled = noMark; b.title = noMark ? 'This project has no mark yet' : b.dataset.title; }
       const centred = p.mark_x === 50 && p.mark_y === 50;
       document.getElementById('retLabel').textContent = `mark · ${centred ? 'centre' : `${p.mark_x}%, ${p.mark_y}%`} · ${p.mark_size}%`;
     }
@@ -440,12 +444,12 @@
         setStatus('Add your Kimi API key to create a project: Kimi reads your mark and fills in the project for you.');
         return;
       }
-      const main = edit ? { key: 'main', id: 'main', name: project.mark_name || 'Main mark', size: project.mark_size, x: project.mark_x, y: project.mark_y,
+      const main = edit && project.has_mark !== false ? { key: 'main', id: 'main', name: project.mark_name || 'Main mark', size: project.mark_size, x: project.mark_x, y: project.mark_y,
         shape: project.mark_shape, noun: project.mark_noun, url: project.mark_url, ar: project.mark_ratio || 1, locked: !!project.fixed } : null;
       const extras = edit ? (project.marks || []).map(m => ({ key: m.id, id: m.id, name: m.name, size: m.size, x: m.x ?? project.mark_x, y: m.y ?? project.mark_y,
         shape: m.shape, noun: m.noun, url: m.url, ar: m.ratio || 1 })) : [];
       projectForm = { kind: edit ? 'edit' : 'new', name: edit ? project.name : '', brief: edit ? project.brief : '', palette: edit ? [...(project.palette || [])] : [],
-        marks: main ? [main, ...extras] : [], def: 'main', sel: edit ? 'project' : null, fromKimi: false, typed: new Set() };
+        marks: main ? [main, ...extras] : [], def: main ? 'main' : null, sel: edit ? 'project' : null, fromKimi: false, typed: new Set(), noMark: !!(edit && !main) };
       document.getElementById('projectTitle').textContent = edit ? `${project.name} · Settings` : 'New project';
       document.getElementById('pfSave').textContent = edit ? 'Save' : 'Create project';
       document.getElementById('pfError').textContent = '';
@@ -454,13 +458,17 @@
     }
     function closeProjectForm() { clearInterval(psTimer); document.getElementById('projectModal').classList.remove('open'); projectForm = null; }   // also while Kimi reads: its answer is dropped
     function psReading() { return !!(projectForm && projectForm.marks.some(m => m.reading)); }
-    function psFirstPending() { return projectForm.kind === 'new' && (!projectForm.marks.length || projectForm.marks[0].reading); }
+    function psFirstPending() { return projectForm.kind === 'new' && !projectForm.noMark && (!projectForm.marks.length || projectForm.marks[0].reading); }
     function renderPS() {
       if (!projectForm) return;
       const f = projectForm;
       document.getElementById('psSub').textContent = f.kind === 'new' && psFirstPending() ? 'Start with the main mark' : '';
       renderPSRail(); renderPSDetail(); renderPSPreview();
-      document.getElementById('pfSave').disabled = psFirstPending() || psReading();
+      psSyncSave();
+    }
+    function psSyncSave() {                                                   // Save / Create: once there is something to save
+      const f = projectForm;
+      if (f) document.getElementById('pfSave').disabled = psFirstPending() || psReading() || (f.kind === 'new' && f.noMark && !f.marks.length && !f.name.trim());
     }
     function psSecs(m) { return Math.round((Date.now() - m.readFrom) / 1000); }
     function renderPSRail() {
@@ -479,9 +487,10 @@
     }
     function renderPSDetail() {
       const f = projectForm, d = document.getElementById('psDetail'), m = psMark(f.sel);
-      if (f.kind === 'new' && !f.marks.length) {                               // the first mark comes first
+      if (f.kind === 'new' && !f.marks.length && !f.noMark) {                 // the first mark comes first (or none: your own images)
         d.innerHTML = `<div class="ps-drop" id="psDrop"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"></rect><circle cx="12" cy="12" r="3"></circle></svg>
-          <b>Drop the main mark</b><span>PNG or SVG, ideally on a transparent background</span><button type="button" class="solid" onclick="psPick('new')">Choose file…</button></div>`;
+          <b>Drop the main mark</b><span>PNG or SVG, ideally on a transparent background</span><button type="button" class="solid" onclick="psPick('new')">Choose file…</button>
+          <button type="button" class="link-btn ps-nomark" onclick="psNoMark()">No mark, just my own images</button></div>`;
         const drop = document.getElementById('psDrop');
         if (drop && drop.addEventListener) {
           drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
@@ -535,8 +544,9 @@
         : f.sel === 'project' ? 'The default mark, as every image will place it' : f.marks.length > 1 ? 'The selected mark; the others as boxes' : 'As every image will place it';
     }
     function psKey(e) { if (e.key === 'Escape') { e.preventDefault(); closeProjectForm(); } }   // Esc: as Cancel
+    function psNoMark() { projectForm.noMark = true; projectForm.sel = 'project'; renderPS(); const n = document.getElementById('psName'); if (n) n.focus(); }   // a project of your own images: named by hand
     function psSelect(key) { if (!projectForm) return; projectForm.sel = key; renderPS(); }
-    function psSetProject(field, v) { projectForm[field] = v; projectForm.typed.add(field); renderPSRail(); }
+    function psSetProject(field, v) { projectForm[field] = v; projectForm.typed.add(field); renderPSRail(); psSyncSave(); }
     function psSetMark(field, v) {
       const m = psMark(projectForm.sel);
       if (!m || m.locked) return;
@@ -578,7 +588,7 @@
         const base = f.marks.length ? psDefault() : null;
         m = { key: `new-${++psSeq}`, id: null, name: '', size: base ? base.size : 18, x: base ? base.x : 50, y: base ? base.y : 50, shape: '', noun: '', url: png, image: png, ar, typed: new Set() };
         f.marks.push(m);
-        if (f.marks.length === 1) f.def = m.key;
+        if (f.marks.length === 1) { f.def = m.key; }
       }
       f.sel = m.key;
       psRead(m);
@@ -647,13 +657,21 @@
       const err = document.getElementById('pfError');
       if (isBusy()) { err.textContent = 'Wait until the running job ends (images, an AI order or an export), then save.'; return; }
       if (psFirstPending() || psReading()) return;
+      if (!f.marks.length) {                                                  // no mark (yet): the project and its own images
+        if (!f.name.trim()) { err.textContent = 'Give the project a name.'; return; }
+        const body = f.kind === 'new' ? { action: 'create', no_mark: true, name: f.name, brief: f.brief, palette: f.palette } : { action: 'update', slug: project.slug, name: f.name, brief: f.brief, palette: f.palette, marks: [] };
+        if (body.action === 'create') cover(`Making ${body.name}…`);
+        const r = await projectsCall(body);
+        if (r.ok) { reopen(r.project && r.project.name); return; }
+        cover(null); err.textContent = r.error || 'Could not save the project.'; return;
+      }
       const def = psDefault(), others = f.marks.filter(m => m !== def);
       const fields = m => ({ name: m.name, size: +m.size, x: +m.x, y: +m.y, shape: m.shape || '', noun: m.noun || '' });
       const body = { action: f.kind === 'new' ? 'create' : 'update', slug: project && f.kind === 'edit' ? project.slug : undefined, name: f.name, brief: f.brief, palette: f.palette,
         mark_name: def.name, mark_size: +def.size, mark_x: +def.x, mark_y: +def.y, mark_shape: def.shape || '', mark_noun: def.noun || '',
         ...(def.image ? { mark: def.image } : {}),
         marks: others.map(m => ({ ...(m.id && m.id !== 'main' ? { id: m.id } : {}), ...fields(m), ...(m.image ? { image: m.image } : {}) })) };
-      if (f.kind === 'edit' && def.key !== 'main') {                          // another mark made default: its changes go with the list, then it swaps in
+      if (f.kind === 'edit' && def.key !== 'main' && f.marks.some(m => m.key === 'main')) {   // another mark made default: its changes go with the list, then it swaps in
         const main = f.marks.find(m => m.key === 'main');
         const rest = f.marks.filter(m => m !== main);
         Object.assign(body, { mark_name: main.name, mark_size: +main.size, mark_x: +main.x, mark_y: +main.y, mark_shape: main.shape || '', mark_noun: main.noun || '', default_index: rest.indexOf(def) });
@@ -3146,9 +3164,10 @@
       const g = document.getElementById('generateBtn');
       if (!generating) {
         g.classList.remove('running');
-        document.getElementById('genLabel').textContent = 'Generate';
-        g.disabled = aiRunning || (custom && !text);
-        g.title = custom && !text ? 'Describe your territory first' : '';      // a tooltip only to say why it is off
+        const noMark = !!(project && project.has_mark === false);
+        document.getElementById('genLabel').textContent = noMark ? 'Add a mark' : 'Generate';   // images are made around a mark: a project of your own images first needs one
+        g.disabled = aiRunning || (custom && !text && !noMark);
+        g.title = noMark ? 'This project has no mark yet: add one to generate images around it' : custom && !text ? 'Describe your territory first' : '';   // a tooltip only to say why it is off
       }
       document.getElementById('genHint').hidden = !(project && !plates.length && !generating);   // a new project, until its first batch
     }
@@ -3571,6 +3590,7 @@
     async function generateImages() {
       if (blockedByAi()) return;
       if (!project) { setStatus('Make a project or import one first: the project menu, at the top.'); openProjectMenu(); return; }
+      if (project.has_mark === false) { openProjectForm('edit'); return; }   // no mark yet: Project settings, where + Add a mark is
       if (!ensureKimiReady() || !ensureKreaReady()) return;
 
       const model = document.getElementById('modelSelect').value;
@@ -3927,6 +3947,7 @@ Object.assign(window, {
   renameGroup,
   deleteGroup,
   clearPicks,
+  psNoMark,
   uploadImages,
   frameImage,
   togglePlaceMenu,
