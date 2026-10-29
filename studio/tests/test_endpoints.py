@@ -1106,3 +1106,29 @@ def test_keep_it_as_designed_shows_krea_the_marks_own_colours_and_asks_for_it_un
     assert plates[kept["filename"]]["as_designed"] is True and plates[plain["filename"]]["as_designed"] is False
     live("POST", "/api/invent-prompts", {"count": 1, "world": "Editorial Print", "keep": True})
     assert "THE MARK IS KEPT EXACTLY AS DESIGNED" in live.calls["kimi"][-1]
+
+
+def test_the_settings_form_over_http_saves_marks_and_make_default_measures_nothing_again(live, srv, monkeypatch, tmp_path):
+    """What the form sends on Save: the project, the default mark, the others (a new one with its image), then Make default by its
+    place in the list. Every image keeps its check result and the mark it was made with; nothing is measured again (on a big mark it
+    took over 10 minutes)."""
+    import base64
+    from test_projects import ring_png, star_png
+    monkeypatch.setattr(srv.placement, "GUIDE_DIR", tmp_path / "guides")
+    url = lambda b: "data:image/png;base64," + base64.b64encode(b).decode()
+    live("POST", "/api/projects", {"action": "create", "name": "Halo", "mark": url(star_png()), "mark_noun": "ring"})
+    _, img = live("POST", "/api/generate-image", {"title": "One", "prompt": "a wall", "model": "m"})
+    pr = live("GET", "/api/state")[1]["project"]
+    assert pr["brief"] == "" and pr["mark_shape"] == "", "the form shows what was set, not the fallbacks"
+    base = {"action": "update", "slug": "halo", "name": "Halo", "brief": "", "palette": [], "mark_name": "Ring", "mark_size": 18, "mark_x": 50, "mark_y": 50, "mark_shape": "", "mark_noun": "ring"}
+    _, r = live("POST", "/api/projects", {**base, "marks": [{"name": "Swoosh", "size": 22, "x": 50, "y": 70, "noun": "swoosh", "image": url(ring_png())}]})
+    assert [(m["id"], m["y"]) for m in r["project"]["marks"]] == [("swoosh", 70.0)]
+    assert srv.projects.load("halo")["own"]["brief"] == "", "an unset brand line stays unset"
+    before = {p["filename"]: (p["qa_passed"], p["mark"]) for p in live("GET", "/api/state")[1]["plates"]}
+    measured = []
+    monkeypatch.setattr(srv, "evaluate_plate_qa", lambda *a, **k: measured.append(a) or {"qa_passed": False, "qa_score": 0, "issues": ["x"]})
+    _, r = live("POST", "/api/projects", {**base, "marks": [{"id": "swoosh", "name": "Swoosh", "size": 22, "x": 50, "y": 70, "noun": "swoosh"}], "default_index": 0})
+    assert r["project"]["mark_name"] == "Swoosh" and r["project"]["mark_y"] == 70
+    after = {p["filename"]: (p["qa_passed"], p["mark"]) for p in live("GET", "/api/state")[1]["plates"]}
+    assert measured == [], "the results carried over, nothing measured again"
+    assert after[img["filename"]] == (before[img["filename"]][0], "swoosh"), "its check result, and it says it was made with the old default"

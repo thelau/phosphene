@@ -878,6 +878,9 @@
 .ps-pv.on i { position: absolute; inset: -5px; border: 1.5px dashed var(--orange); border-radius: 3px; }
 .ps-pv.other { border: 1px dashed rgba(26, 26, 26, .55); border-radius: 2px; }
 .ps-pv.empty { border: 1.5px dashed rgba(26, 26, 26, .45); border-radius: 3px; }
+.ps-cross-v, .ps-cross-h { position: absolute; background: rgba(236, 84, 12, .55); }
+.ps-cross-v { top: 0; bottom: 0; width: 1px; }
+.ps-cross-h { left: 0; right: 0; height: 1px; }
 .ps-cap { font-size: 12px; color: #8F8A7A; text-align: center; }
 .ps-foot { flex: none; height: 62px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 20px; border-top: 1px solid #2A2824; }
 .ps-foot .pf-error { flex: 1; margin: 0; }

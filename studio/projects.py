@@ -79,6 +79,7 @@ def load(slug: str) -> dict:
         "guide_cache_file": at("guide_cache", ".krea_guides.json"),
         "guides": {k: at(f"guide_{k}", f"guide_{k}.png") for k in ("dark", "light")},
         "created": raw.get("created"),
+        "own": {k: raw.get(k) or "" for k in ("brief", "mark_shape", "mark_noun")},   # as set (empty when not): the form shows these, never the fallbacks
     }
     # other marks besides the main one (a brand's symbol, wordmark, badge...): each its own image, name, size and words, at the main
     # mark's place. A project from before (no "marks") has none, and an older Phosphene reading this file sees only the main mark
@@ -130,7 +131,7 @@ def public(p: dict) -> dict:
     marks = [{"id": m["id"], "name": m["name"], "size": m["mark_size"], "x": m["mark_x"], "y": m["mark_y"], "shape": m["mark_shape"], "noun": m["mark_noun"], "ratio": mark_ratio(with_mark(p, m["id"])),
               "url": f"/api/project-mark?p={p['slug']}&m={m['id']}&t={int(m['mark_file'].stat().st_mtime) if m['mark_file'].exists() else 0}"} for m in p.get("marks") or []]
     return {"slug": p["slug"], "marks": marks, "mark_name": p["mark_name"], "name": p["name"], "mark_size": p["mark_size"], "mark_x": p["mark_x"], "mark_y": p["mark_y"],
-            "mark_shape": p["mark_shape"], "mark_noun": p["mark_noun"], "brief": p["brief"], "palette": p["palette"],
+            "mark_shape": p["own"]["mark_shape"], "mark_noun": p["own"]["mark_noun"], "brief": p["own"]["brief"], "palette": p["palette"],
             "mark_ratio": mark_ratio(p), "round": p.get("qa") == "demo-tuned", "fixed": p.get("qa") == "demo-tuned",
             "mark_url": f"/api/project-mark?p={p['slug']}&t={mtime}"}
 
@@ -423,8 +424,8 @@ def save_marks(slug: str, marks: list, images: dict) -> dict:
             (PROJECTS_DIR / slug / f"mark-{gone}.png").unlink(missing_ok=True)
     if out:
         raw["marks"] = out
-    else:
-        raw.pop("marks", None)
+    elif raw.get("marks"):                             # none left (an empty list from before stays as it is: nothing to write)
+        raw.pop("marks")
     _write(slug, raw)
     return load(slug)
 

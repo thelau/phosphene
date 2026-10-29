@@ -457,7 +457,7 @@
     function renderPS() {
       if (!projectForm) return;
       const f = projectForm;
-      document.getElementById('psSub').textContent = f.kind === 'new' && psFirstPending() ? 'Start with the brand\'s main mark' : '';
+      document.getElementById('psSub').textContent = f.kind === 'new' && psFirstPending() ? 'Start with the main mark' : '';
       renderPSRail(); renderPSDetail(); renderPSPreview();
       document.getElementById('pfSave').disabled = psFirstPending() || psReading();
     }
@@ -480,7 +480,7 @@
       const f = projectForm, d = document.getElementById('psDetail'), m = psMark(f.sel);
       if (f.kind === 'new' && !f.marks.length) {                               // the first mark comes first
         d.innerHTML = `<div class="ps-drop" id="psDrop"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"></rect><circle cx="12" cy="12" r="3"></circle></svg>
-          <b>Drop the brand's main mark</b><span>PNG or SVG, ideally on a transparent background</span><button type="button" class="solid" onclick="psPick('new')">Choose file…</button></div>`;
+          <b>Drop the main mark</b><span>PNG or SVG, ideally on a transparent background</span><button type="button" class="solid" onclick="psPick('new')">Choose file…</button></div>`;
         const drop = document.getElementById('psDrop');
         if (drop && drop.addEventListener) {
           drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
@@ -525,10 +525,11 @@
     function renderPSPreview() {
       const f = projectForm, frame = document.getElementById('psFrame'), cap = document.getElementById('psCap');
       const focus = f.sel === 'project' ? psDefault() : psMark(f.sel);
-      frame.innerHTML = f.marks.filter(m => !m.reading || m === focus).map(m => {
+      const cross = focus ? `<i class="ps-cross-v" style="left:${+focus.x}%"></i><i class="ps-cross-h" style="top:${+focus.y}%"></i>` : '<i class="ps-cross-v" style="left:50%"></i><i class="ps-cross-h" style="top:50%"></i>';   // the crosshair, as the mark target draws it
+      frame.innerHTML = cross + f.marks.filter(m => !m.reading || m === focus).map(m => {
         const on = m === focus, style = `left:${+m.x}%;top:${+m.y}%;width:${+m.size}%;aspect-ratio:1 / ${m.ar || 1}`;
         return on ? `<span class="ps-pv on" style="${style}"><img src="${escapeHtml(m.url)}" alt="" />${m.reading ? '' : '<i></i>'}</span>` : `<span class="ps-pv other" style="${style}"></span>`;
-      }).join('') || '<span class="ps-pv empty" style="left:50%;top:50%;width:18%;aspect-ratio:1"></span>';
+      }).join('') + (f.marks.length ? '' : '<span class="ps-pv empty" style="left:50%;top:50%;width:18%;aspect-ratio:1"></span>');
       cap.textContent = !f.marks.length ? 'The mark appears here once it\'s read' : focus && focus.reading ? 'Placing it once Kimi has read it'
         : f.sel === 'project' ? 'The default mark, as every image will place it' : f.marks.length > 1 ? 'The selected mark; the others as boxes' : 'As every image will place it';
     }

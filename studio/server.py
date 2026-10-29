@@ -1623,9 +1623,24 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         if not (PROJECT and slug == PROJECT["slug"]):
                             raise ValueError("Open the project to change its default mark.")
                         with STATE_LOCK:                                    # every image keeps the mark it was made with
-                            mid = projects.make_default(slug, str(want))
+                            files = sorted(PLATES_DIR.glob("*.jpg"))
                             st = load_state()
-                            save_state(projects.swap_marks_used(st, mid, [f.name for f in PLATES_DIR.glob("*.jpg")]))
+                            placed, used = st.get("placements", {}), st.get("marks_used", {})
+                            with QA_LOCK:                                   # its check results, as measured (the mark is the same file, size and place)
+                                kept = {f.name: QA_CACHE.get(_plate_key(f, placed.get(f.name), used.get(f.name))) for f in files}
+                            mid = projects.make_default(slug, str(want))
+                            st = projects.swap_marks_used(st, mid, [f.name for f in files])
+                            save_state(st)
+                            apply_project(projects.load(slug))
+                            used = st.get("marks_used", {})
+                            with QA_LOCK:                                   # carried over under the keys they have now: nothing measured again
+                                for f in files:
+                                    if kept.get(f.name):
+                                        QA_CACHE[_plate_key(f, placed.get(f.name), used.get(f.name))] = kept[f.name]
+                                try:
+                                    _flush_qa_cache()
+                                except Exception:
+                                    pass
                         p = projects.load(slug)
                     if PROJECT and p["slug"] == PROJECT["slug"]:
                         apply_project(p)
