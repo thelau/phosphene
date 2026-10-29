@@ -1241,6 +1241,8 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.match(upd.marks[0].image, /^data:image\/png;base64,/, 'a new mark brings its image');
   await page.waitForSelector('#loader', { state: 'detached' });
   assert.equal(await text('#placeName'), 'Main · On target', 'two marks: the menu names the mark too');
+  const btnW = async () => Math.round((await page.locator('#placeBtn').boundingBox()).width);
+  const w0 = await btnW();
   await page.click('#placeBtn');
   assert.deepEqual(await page.locator('#placeMenu .tm-head').allTextContents(), ['Mark', 'Position']);
   assert.deepEqual(await page.locator('#placeMenu .tm-item[data-list="mark"]').allTextContents(), ['Main mark', 'Bar', 'Mix switches between your marks']);
@@ -1251,6 +1253,10 @@ test('several marks: added in Project settings, then the generation row offers w
   await page.click('#placeMenu .tm-item[data-v="mix"]');
   await page.click('#placeMenu .pm-keep');
   assert.equal(await text('#placeName'), 'Mix · On target · As designed');
+  assert.equal(await btnW(), w0, 'the button keeps the width of its widest choice whatever is chosen');
+  assert.equal(await page.locator('#placeMix').isVisible(), true, 'Mix shows two of the marks in the button, as in its menu');
+  await page.click('#placeMenu .tm-item[data-v="scattered"]');
+  assert.equal(await btnW(), w0);
   await page.mouse.click(10, 600);
   await page.click('#generateBtn');
   await page.waitForFunction(() => /Done/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });

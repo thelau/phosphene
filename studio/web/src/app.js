@@ -342,10 +342,20 @@
       const t = document.getElementById('targetSelect').value || 'exact', mk = document.getElementById('markSelect').value || 'main';
       const keep = document.getElementById('keepCheck').checked, choices = markChoices(), mine = choices.find(c => c[0] === mk) || choices[0];
       const pos = (POSITIONS.find(p => p[0] === t) || POSITIONS[0])[1];
-      document.getElementById('placeName').textContent = [mine ? (mk === 'main' ? 'Main' : mine[1]) : '', pos, keep ? 'As designed' : ''].filter(Boolean).join(' · ');
-      const thumb = document.getElementById('placeThumb');
+      const label = (c, p, k) => [c ? (c[0] === 'main' ? 'Main' : c[1]) : '', p, k ? 'As designed' : ''].filter(Boolean).join(' · ');
+      const name = document.getElementById('placeName');
+      name.textContent = label(mine, pos, keep);
+      const thumb = document.getElementById('placeThumb'), mixIcon = document.getElementById('placeMix');
       thumb.hidden = !(mine && mine[2]);
       if (mine && mine[2] && thumb.getAttribute('src') !== mine[2]) { thumb.src = mine[2]; fitMarkTone(thumb); }   // as the top bar shows it: a dark mark as a light silhouette
+      const pair = choices.filter(c => c[2]).slice(0, 2).map(c => c[2]);   // Mix shows two of your marks, as in its menu, so the button keeps its icon
+      mixIcon.hidden = !(mine && !mine[2] && pair.length);
+      if (!mixIcon.hidden && mixIcon.dataset.urls !== pair.join(' ')) {
+        mixIcon.dataset.urls = pair.join(' ');
+        mixIcon.innerHTML = pair.map(u => `<img class="pm-thumb" src="${escapeHtml(u)}" alt="" />`).join('');
+        mixIcon.querySelectorAll('img').forEach(fitMarkTone);
+      }
+      name.style.minWidth = placeLabelWidth(name, (choices.length ? choices : [null]).flatMap(c => POSITIONS.flatMap(([, p]) => [label(c, p, false), label(c, p, true)]))) + 'px';   // as wide as its widest choice: the row never moves
       const m = document.getElementById('placeMenu');
       if (m.hidden) return;
       const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
@@ -358,6 +368,14 @@
         + '<div class="tm-sep"></div>'
         + `<div class="tm-item pm-keep" role="menuitemcheckbox" data-list="keep" data-v="keep" aria-checked="${keep}"><span class="pm-box"></span><span>Keep it as designed <span class="tm-sub">same colours and lettering as your file</span></span></div>`;
       m.querySelectorAll('img.pm-thumb').forEach(fitMarkTone);
+    }
+    let placeCanvas = null;
+    function placeLabelWidth(el, labels) {
+      const cx = (placeCanvas || (placeCanvas = document.createElement('canvas'))).getContext && placeCanvas.getContext('2d');
+      if (!cx) return 0;
+      if (!placeCanvas.fontsAsked && document.fonts && document.fonts.ready) { placeCanvas.fontsAsked = true; document.fonts.ready.then(() => renderPlace()); }   // measured again in the bundled font once it has loaded
+      cx.font = getComputedStyle(el).font || '600 14px sans-serif';
+      return Math.min(300, Math.ceil(Math.max(0, ...labels.map(t => cx.measureText(t).width))));   // past 300 px (long mark names) it ends in …
     }
     function togglePlaceMenu(e, open) {
       if (e && e.stopPropagation) e.stopPropagation();

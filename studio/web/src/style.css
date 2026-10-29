@@ -100,12 +100,13 @@
     .vfield[aria-disabled="true"] { opacity: .5; pointer-events: none; }
     /* the Mark menu: which mark (with several), where it goes, and Keep it as designed: one button, sections inside */
     .place { position: relative; display: flex; }
-    .place-btn { min-width: 170px; max-width: 300px; display: flex; align-items: center; gap: 8px; padding: 0 16px 0 18px; border: 0; border-radius: 0; background: transparent; color: var(--text); font-size: 14px; font-weight: 600; white-space: nowrap; }
+    .place-btn { min-width: 170px; display: flex; align-items: center; gap: 8px; padding: 0 16px 0 18px; border: 0; border-radius: 0; background: transparent; color: var(--text); font-size: 14px; font-weight: 600; white-space: nowrap; }
     .place-btn > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
     .place-btn[aria-expanded="true"], .place-btn:hover:not(:disabled) { background: #2A2825; }
     .place-btn > svg { color: var(--muted); flex: none; }
+    .place-btn > .pm-mix { flex: none; }
     .place-thumb, .pm-thumb { width: 22px; height: 22px; flex: none; object-fit: contain; }   /* as the top bar shows the mark: a dark one as a light silhouette (fitMarkTone) */
-    .place-thumb[hidden] { display: none; }
+    .place-thumb[hidden], .pm-mix[hidden] { display: none; }
     .pm-mix { position: relative; width: 22px; height: 22px; flex: none; }
     .pm-mix .pm-thumb { position: absolute; width: 16px; height: 16px; }
     .pm-mix .pm-thumb + .pm-thumb { right: 0; bottom: 0; }
