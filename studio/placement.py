@@ -14,9 +14,11 @@ from PIL import Image
 import projects
 
 KINDS = ("exact", "loose", "scattered")
-LEVELS = {                    # per level: how far from the project's place (% of the frame, either way; None: anywhere), and its size (times the project's)
-    "loose": {"reach": 20.0, "size": (0.75, 1.35)},
-    "scattered": {"reach": None, "size": (0.6, 1.6)},
+LEVELS = {                    # per level, bands that never overlap, so each reads as itself (never as On target):
+    # how far from the project's place (% of the frame, the larger of across and down; None: as far as the frame goes),
+    # and its size, times the project's (one of two bands: smaller or bigger, never about the same)
+    "loose": {"away": (5.0, 12.0), "size": ((0.75, 0.9), (1.12, 1.3))},
+    "scattered": {"away": (18.0, None), "size": ((0.5, 0.8), (1.25, 1.8))},
 }
 SIZE_PCT = (6.0, 45.0)        # never smaller or bigger than this share of the width
 MARGIN = 6.0                  # % of the frame kept clear between the mark's box and the frame's edge
@@ -35,14 +37,16 @@ def choose(kind: str, project: dict, rng: random.Random | None = None) -> dict |
     if not level:
         return None
     rng = rng or random.Random()
-    size = min(SIZE_PCT[1], max(SIZE_PCT[0], project["mark_size"] * rng.uniform(*level["size"])))
-    h_pct = size * _ratio(project) * projects.FRAME_W / projects.FRAME_H        # its height, in % of the frame's height
-    def along(home, half):                                                      # one axis: within reach of home, never past the margin
-        lo, hi = half + MARGIN, 100 - half - MARGIN
-        if level["reach"] is not None:
-            lo, hi = max(lo, home - level["reach"]), min(hi, home + level["reach"])
-        return rng.uniform(lo, hi) if lo < hi else min(max(home, half + MARGIN), 100 - half - MARGIN)
-    x, y = along(project["mark_x"], size / 2), along(project["mark_y"], h_pct / 2)
+    hx, hy = project["mark_x"], project["mark_y"]
+    near, far = level["away"]
+    for _ in range(400):                                                        # drawn until it falls in its band (a few tries)
+        size = min(SIZE_PCT[1], max(SIZE_PCT[0], project["mark_size"] * rng.uniform(*rng.choice(level["size"]))))
+        hw, hh = size / 2, size * _ratio(project) * projects.FRAME_W / projects.FRAME_H / 2   # half its box, in % of the width / height
+        reach = far if far is not None else 100.0
+        x = rng.uniform(max(hw + MARGIN, hx - reach), min(100 - hw - MARGIN, hx + reach))
+        y = rng.uniform(max(hh + MARGIN, hy - reach), min(100 - hh - MARGIN, hy + reach))
+        if near <= max(abs(x - hx), abs(y - hy)) <= reach:
+            break
     return {"kind": kind, "x": round(x, 1), "y": round(y, 1), "size": round(size, 1)}
 
 

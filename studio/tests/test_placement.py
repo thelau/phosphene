@@ -30,21 +30,28 @@ def inside_the_frame(srv, got):
         assert pl["y"] - h / 2 >= placement.MARGIN - 0.1 and pl["y"] + h / 2 <= 100 - placement.MARGIN + 0.1
 
 
-def test_loose_drifts_around_the_projects_place(srv):
+def away(pl, hx=50, hy=50):
+    return max(abs(pl["x"] - hx), abs(pl["y"] - hy))
+
+
+def test_loose_is_near_the_target_but_never_on_it(srv):
     got = draws(srv, "loose")
     inside_the_frame(srv, got)
     for pl in got:
-        assert pl["kind"] == "loose" and 30 - 0.1 <= pl["x"] <= 70 + 0.1 and 30 - 0.1 <= pl["y"] <= 70 + 0.1, pl
-        assert 18 * 0.75 - 0.1 <= pl["size"] <= 18 * 1.35 + 0.1
-    xs, ys = [pl["x"] for pl in got], [pl["y"] for pl in got]
-    assert max(xs) - min(xs) > 30 and max(ys) - min(ys) > 30, "it does move"
+        assert pl["kind"] == "loose" and 5 - 0.1 <= away(pl) <= 12 + 0.1, pl
+        f = pl["size"] / 18
+        assert 0.75 - 0.01 <= f <= 0.9 + 0.01 or 1.12 - 0.01 <= f <= 1.3 + 0.01, f"visibly smaller or bigger: {pl}"
+    assert len({pl["x"] < 50 for pl in got}) == 2 and len({pl["y"] < 50 for pl in got}) == 2, "on every side"
     assert placement.clean(got[0]) == got[0]
 
 
-def test_scattered_goes_anywhere_in_the_frame(srv):
+def test_scattered_is_away_from_the_target_and_all_over(srv):
     got = draws(srv, "scattered")
     inside_the_frame(srv, got)
-    assert all(pl["kind"] == "scattered" and 18 * 0.6 - 0.1 <= pl["size"] <= 18 * 1.6 + 0.1 for pl in got)
+    for pl in got:
+        assert pl["kind"] == "scattered" and away(pl) >= 18 - 0.1, pl
+        f = pl["size"] / 18
+        assert 0.5 - 0.01 <= f <= 0.8 + 0.01 or 1.25 - 0.01 <= f <= 1.8 + 0.01, pl
     xs, ys = [pl["x"] for pl in got], [pl["y"] for pl in got]
     assert min(xs) < 20 and max(xs) > 80 and min(ys) < 20 and max(ys) > 80, "to the corners"
     assert placement.clean(got[0]) == got[0]
@@ -55,7 +62,7 @@ def test_loose_follows_a_project_whose_mark_is_off_centre(srv):
     rng = random.Random(3)
     for _ in range(100):
         pl = placement.choose("loose", p, rng)
-        assert 5 - 0.1 <= pl["x"] <= 45 + 0.1 and pl["y"] >= 60 - 0.1, pl
+        assert 5 - 0.1 <= away(pl, 25, 80) <= 12 + 0.1, pl
 
 
 def test_a_placement_from_outside_is_checked(srv):
