@@ -186,6 +186,15 @@ def test_a_loose_batch_tells_kimi_where_each_shots_mark_goes(srv, fake_llm):
     assert all(o["placement"] is None for o in exact) and "the mark: exact point" not in fake_llm[-1] and "dead-center position" in fake_llm[-1]
 
 
+def test_a_big_mark_asks_kimi_for_subjects_that_can_carry_it(srv, fake_llm, monkeypatch):
+    srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=2, world="Editorial Print")
+    assert "one small" in fake_llm[-1] and "the mark is big" not in fake_llm[-1]       # Demo at 18%: its words as they were
+    monkeypatch.setitem(srv.PROJECT, "mark_size", 50.0)                                # Halo's ring: half the frame's width
+    srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=2, world="Editorial Print")
+    assert "one large" in fake_llm[-1] and "one small" not in fake_llm[-1]
+    assert "never a small object" in fake_llm[-1]
+
+
 def test_ask_kimi_without_direction_makes_kimi_invent_the_subjects(srv, fake_llm):
     w = next(w for w in chapters.WORLDS if w["name"] == "Packaging & Product")
     srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=8, world="Packaging & Product")

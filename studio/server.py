@@ -635,6 +635,9 @@ def match_world(st: dict, api_key: str, kimi_model: str, direction: str) -> dict
     return None
 
 
+BIG_MARK = 30   # % of the width from which Kimi is told the mark is large and needs a subject that big (DEMO, 18%, keeps its words)
+
+
 def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list, target: str = "exact", mark: str | None = None, keep: bool = False) -> tuple[list, dict]:
     """One Kimi request for up to `count` scenes in territory `w`; `batch` = scenes already collected for this batch (never repeated)."""
     titles = st.get("titles", {})
@@ -675,8 +678,13 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     liked = "\n".join(f"- {t}: {p[:200]}" for t, p in brief["liked"]) or "(none yet)"
     disliked = ", ".join(brief["disliked"]) or "(none yet)"
     mw = mark_words()
-    where = (f"one small {mw['noun']} sits in every shot, each shot at its own place and size (given per shot below; often NOT at the centre: compose the scene around where it is)"
-             if any(places) else f"one small {mw['noun']} sits at the {mw['at']} at {mw['size']}% frame width")
+    big = max([(pl or {}).get("size") or pj["mark_size"] for pl, pj in zip(places, projs)] or [PROJECT["mark_size"]]) >= BIG_MARK
+    one = "one large" if big else "one small"                           # Halo's 50% ring was "one small", and Kimi chose urchins, tampers and zip pulls it had to shrink onto
+    where = (f"{one} {mw['noun']} sits in every shot, each shot at its own place and size (given per shot below; often NOT at the centre: compose the scene around where it is)"
+             if any(places) else f"{one} {mw['noun']} sits at the {mw['at']} at {mw['size']}% frame width")
+    if big:
+        where += ("; the mark is big, so every subject must carry it at that size: a surface or object at least that wide in the frame "
+                  "(a wall, a panel, a sheet, a screen, a sign, a floor, a body), never a small object (a button, a coin, a zip pull, a matchbox, a shell) it would have to shrink onto")
     if any(mids):
         where += "; the project has several marks and each shot uses the one named in its line (draw that mark, never another, never two)"
     if keep:
