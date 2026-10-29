@@ -416,8 +416,9 @@
     .refine-edit textarea { flex: 1; min-width: 0; height: 18px; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13px; line-height: 18px; padding: 0; resize: none; overflow: hidden; white-space: nowrap; }
     .refine-edit textarea::placeholder { color: #7E796C; }
     /* while typing, the field opens over the row and grows with what is written: a line stays a line, a pasted brief gets room */
-    .refine.open .refine-edit { position: absolute; top: -1px; left: 0; right: -1px; z-index: 30; align-items: flex-start; padding: 13px 12px; background: #1F1D1B; border: 1px solid var(--line-3); border-radius: 10px; box-shadow: 0 18px 44px rgba(0,0,0,.5); }
+    .refine.open .refine-edit { position: absolute; top: 0; left: 0; right: 0; z-index: 30; align-items: flex-start; padding: 13px 4px 13px 12px; background: #1A1918; }   /* one line: exactly as in the row, nothing moves */
     .refine.open.required .refine-edit { background: #221A15; }
+    .refine.open.tall .refine-edit { border-radius: 0 0 10px 10px; box-shadow: 0 0 0 1px var(--line-3), 0 18px 44px rgba(0,0,0,.5); }   /* a brief: it drops below the row, edged like it */
     .refine.open .refine-edit textarea { white-space: pre-wrap; overflow-y: auto; max-height: 280px; }
     .refine-set { flex: 1; min-width: 0; align-items: baseline; align-self: center; gap: 6px; padding: 0 4px 0 12px; border: 0; background: transparent; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-align: left; }
     .refine-k { color: var(--orange-soft); flex: none; }

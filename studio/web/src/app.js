@@ -2929,10 +2929,13 @@
       const input = document.getElementById('directionInput');
       if (!input.addEventListener) return;
       const r = document.getElementById('refine');
-      const fit = () => { input.style.height = 'auto'; input.style.height = `${Math.min(280, input.scrollHeight)}px`; };   // grows with the text, then scrolls
+      const fit = () => {                                                       // grows with the text, then scrolls
+        input.style.height = 'auto'; input.style.height = `${Math.min(280, input.scrollHeight)}px`;
+        r.classList.toggle('tall', input.scrollHeight > 26);                     // past one line it drops below the row
+      };
       input.addEventListener('input', () => { renderGen(); if (r.classList.contains('open')) fit(); });
       input.addEventListener('focus', () => { refineEditing = true; renderGen(); r.classList.add('open'); fit(); });
-      input.addEventListener('blur', () => { refineEditing = false; r.classList.remove('open'); input.style.height = ''; input.scrollTop = 0; renderGen(); });
+      input.addEventListener('blur', () => { refineEditing = false; r.classList.remove('open', 'tall'); input.style.height = ''; input.scrollTop = 0; renderGen(); });
       input.addEventListener('keydown', e => {
         if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Escape') { e.preventDefault(); input.blur(); }   // ⇧↩ for a new line in a brief
       });

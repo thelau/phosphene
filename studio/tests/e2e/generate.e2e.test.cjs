@@ -22,6 +22,13 @@ test('generate: a custom territory waits for its description; controls lock, pro
   assert.equal(await page.locator('#generateBtn').isDisabled(), true, 'Generate waits for the description');
   await page.selectOption('#batchCountSelect', '4');
   const oneLine = (await page.locator('#directionInput').boundingBox()).height;
+  const edit = () => page.locator('.refine-edit').evaluate(e => { const r = e.getBoundingClientRect(), t = e.querySelector('textarea').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, tx: t.x, ty: t.y, radius: getComputedStyle(e).borderTopLeftRadius, shadow: getComputedStyle(e).boxShadow }; });
+  await page.locator('#directionInput').blur();
+  const resting = await edit();
+  await page.locator('#directionInput').focus();
+  const typing = await edit();
+  assert.deepEqual([typing.x, typing.y, typing.w, typing.tx, typing.ty], [resting.x, resting.y, resting.w, resting.tx, resting.ty], 'a click in it changes nothing: no box, no shift');
+  assert.equal(typing.shadow, 'none', 'no edge while it is one line');
   await page.fill('#directionInput', 'fog, clouds, rain');
   await page.keyboard.press('Shift+Enter');                                        // a whole brief: ⇧↩ for new lines, the field grows
   for (const [k, line] of ['Low cloud over wet stone.', 'Never a sunny sky.', 'No people.'].entries()) {
