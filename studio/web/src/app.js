@@ -1375,9 +1375,11 @@
     }
     function gridHintText() { return aiRunning && !showTrash ? 'Locked while the AI orders' : ''; }   // (which order a group shows needs no words: as Photos' albums)   // dragging needs no hint
     // the images still being made, at the end of the selection while a batch runs
+    // (in a group, only those that will belong to it: a territory's own; your groups and the looks get images only once they are made)
     function pendingCards() {
       if (!generating || prog.stage !== 'render') return [];
-      return prog.slots.map((st, i) => (st === 'wait' || st === 'run'
+      const belongs = i => currentGroup === 'all' || (currentGroup.startsWith('world:') && (prog.worlds || [])[i] === currentGroup.slice(6));
+      return prog.slots.map((st, i) => ((st === 'wait' || st === 'run') && belongs(i)
         ? `<div class="card pending-card" aria-hidden="true"><div class="card-thumb"><div class="pending-ring"></div><span class="pending-label">${st === 'run' ? 'Rendering' : 'Queued'}</span><div class="pending-bar ${st}"><i></i></div></div><div class="card-title">${escapeHtml(prog.titles[i] || '')}</div><div class="card-meta"><span class="card-model-badge">generating…</span></div></div>`
         : '')).filter(Boolean);
     }
@@ -3337,7 +3339,7 @@
       </div>`;
     }
     function progStart(count) {
-      prog.t0 = Date.now(); prog.slots = []; prog.titles = []; prog.why = []; prog.world = ''; prog.stage = 'invent';
+      prog.t0 = Date.now(); prog.slots = []; prog.titles = []; prog.worlds = []; prog.why = []; prog.world = ''; prog.stage = 'invent';
       prog.total = count; prog.summary = ''; prog.detail = ''; prog.note = `Choosing a territory and writing ${count} scenes…`;
       document.getElementById('statusText').dataset.idle = '';
       clearInterval(prog.timer); prog.timer = setInterval(progRender, 1000); progRender();
@@ -3479,6 +3481,7 @@
       prog.world = new Set(ideas.map(i => i.world)).size > 1 ? 'Sampler' : (ideas[0] && ideas[0].world) || '';   // the Sampler: many territories
       prog.slots = ideas.map(() => 'wait');
       prog.titles = ideas.map(i => i.title);
+      prog.worlds = ideas.map(i => i.world || prog.world);
       prog.why = ideas.map(() => '');
       prog.note = `${formatModelShort(model)} · 3 at a time`;
       const keep = () => savePending([...failedItems, ...left.values()], model);
@@ -3580,7 +3583,7 @@
       const items = p.items.filter(it => !made.has(it.title));
       if (!items.length) { savePending([], p.model); return; }
       document.getElementById('statusText').dataset.idle = '';
-      prog.stage = 'render'; prog.world = items[0].world || 'Unfinished batch'; prog.slots = items.map(() => 'wait'); prog.titles = items.map(i => i.title); prog.why = items.map(() => '');
+      prog.stage = 'render'; prog.world = items[0].world || 'Unfinished batch'; prog.slots = items.map(() => 'wait'); prog.titles = items.map(i => i.title); prog.worlds = items.map(i => i.world || prog.world); prog.why = items.map(() => '');
       prog.total = items.length; prog.summary = `${items.length} image${items.length === 1 ? '' : 's'} of the last batch ${items.length === 1 ? 'wasn\'t' : 'weren\'t'} made`;
       batchActions([
         { label: 'Resume', run: () => retryBatch(items, p.model) },

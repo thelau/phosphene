@@ -68,6 +68,15 @@ test('generate: a custom territory waits for its description; controls lock, pro
   await page.waitForSelector('.pending-card');                                    // the images still coming hold their place at the end of the grid
   assert.ok(await page.locator('.pending-card').count() >= 1);
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.pending-ring')).borderRadius), '2px', 'the mark\'s box, as the logo target, not a circle');
+  const inGroups = await page.evaluate(() => {                                     // a group shows only the placeholders that will belong to it
+    const n = () => document.querySelectorAll('.pending-card').length, out = {};
+    setGroup('world:Editorial Print'); out.other = n();                            // another territory: none of these
+    setGroup('world:Fog & Vapor'); out.own = n();                                  // the batch's own territory: all of them
+    setGroup('all'); out.all = n();
+    return out;
+  });
+  assert.equal(inGroups.other, 0, 'no placeholder in a group the new images will not be in');
+  assert.ok(inGroups.own >= 1 && inGroups.own === inGroups.all, `the batch's territory shows them (${JSON.stringify(inGroups)})`);
   await page.waitForFunction(() => /Done · 4 added/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   for (const id of ['#worldSelect', '#directionInput', '#batchCountSelect', '#generateBtn']) await enabled(id);
   await page.waitForFunction(() => document.getElementById('worldSelect').value === 'Fog & Vapor');
