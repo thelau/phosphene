@@ -359,8 +359,8 @@ def test_a_project_holds_other_marks_besides_its_main_one(pdir):
     assert [m["id"] for m in pub["marks"]] == ["bird", "bird-2"] and "m=bird" in pub["marks"][0]["url"]
     p = projects.remove_mark("Kestrel", "bird-2")
     assert [m["id"] for m in p["marks"]] == ["bird"] and not (pdir / "Kestrel" / "mark-bird-2.png").exists()
-    with pytest.raises(ValueError):
-        projects.add_mark("demo", {"name": "Other"}, ring_png())               # Demo keeps its one mark
+    demo = projects.add_mark("demo", {"name": "Other"}, ring_png())               # Demo too: its main mark stays as it is
+    assert [m["id"] for m in demo["marks"]] == ["other"] and demo["qa"] == "demo-tuned" and demo["mark_size"] == 18
 
 
 def test_a_project_from_before_marks_still_opens_as_it_was(pdir):

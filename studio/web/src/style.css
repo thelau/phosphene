@@ -110,6 +110,7 @@
     .pf-add-mark { align-self: flex-start; padding: 6px 12px; border-radius: 7px; border: 1px dashed var(--line-3); font-size: 13px; color: var(--text-2); cursor: pointer; }
     .pf-add-mark:hover { color: var(--text); border-color: var(--muted); }
     .pf-add-mark input { display: none; }
+    .pf-add-mark.off { opacity: .4; pointer-events: none; }
     .card-model-badge.mark { color: #E6D3A8; background: rgba(230, 200, 140, .13); }   /* made with another of the project's marks */
     .gen .csel-face { height: 44px; padding: 0 40px 0 18px; border: 0; border-radius: 0; background-color: transparent; background-position: right 16px center; font-weight: 600; font-size: 14px; }   /* room on either side of "20 images" */
     .settings-popover .csel, .ai-panel .csel { display: flex; width: 100%; }

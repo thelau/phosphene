@@ -385,14 +385,14 @@
         setStatus('Add your Kimi API key to create a project: Kimi reads your mark and fills in the project for you.');
         return;
       }
-      projectForm = { kind: edit ? 'edit' : 'new', mark: null, markUrl: edit ? project.mark_url : null, typed: new Set() };
+      projectForm = { kind: edit ? 'edit' : 'new', mark: null, markUrl: edit ? project.mark_url : null, typed: new Set(), extra: [] };   // extra: a new project's other marks, made with it
       const set = (id, v) => { document.getElementById(id).value = v; };
       set('pfName', edit ? project.name : ''); set('pfSize', edit ? project.mark_size : 18); set('pfX', edit ? project.mark_x : 50); set('pfY', edit ? project.mark_y : 50);
       set('pfShape', edit ? project.mark_shape : ''); set('pfNoun', edit ? project.mark_noun : ''); set('pfBrief', edit ? project.brief : ''); set('pfPalette', edit ? (project.palette || []).join(' ') : '');
       document.getElementById('pfMark').value = '';
       const locked = !!(edit && project.fixed);                                  // DEMO: name, brand and colours change; its mark, place and words stay
       document.getElementById('pfLocked').hidden = !locked;
-      document.getElementById('pfMarks').hidden = !edit || locked;           // other marks: once the project exists (Demo keeps its one)
+      document.getElementById('pfMarks').hidden = false;                     // other marks (Demo too: its main mark stays as it is); a new project's are made with it
       renderMarkList();
       formStage(edit ? 'ready' : 'pick');
       document.getElementById('projectTitle').textContent = edit ? `${project.name}: settings` : 'New project';
@@ -411,6 +411,8 @@
       for (const id of PF_FIELDS) document.getElementById(id).disabled = stage !== 'ready' || (locked && ['pfSize', 'pfX', 'pfY', 'pfShape', 'pfNoun'].includes(id));
       document.getElementById('pfMark').disabled = stage === 'reading' || locked;
       document.getElementById('pfSave').disabled = stage !== 'ready';
+      document.getElementById('pfAddMark').disabled = stage !== 'ready';     // the main mark first
+      document.getElementById('pfAddMarkBtn').classList.toggle('off', stage !== 'ready');
       const note = document.getElementById('pfKimi');
       if (stage === 'pick') { note.hidden = false; note.textContent = 'Choose the mark: Kimi reads it and fills in the rest.'; }
       else if (stage === 'reading') {
@@ -443,8 +445,9 @@
       } finally { URL.revokeObjectURL(url); }
     }
     // the project's other marks, in its settings: each saved as soon as it is added, renamed, resized or removed
+    const newMarks = () => projectForm && projectForm.kind === 'new';
     function renderMarkList() {
-      const list = document.getElementById('pfMarkList'), marks = (project && project.marks) || [];
+      const list = document.getElementById('pfMarkList'), marks = newMarks() ? projectForm.extra : (project && project.marks) || [];
       list.innerHTML = marks.map(m => `<div class="pf-mark-row" data-id="${escapeHtml(m.id)}">
         <img src="${escapeHtml(m.url)}" alt="" />
         <input type="text" maxlength="30" value="${escapeHtml(m.name)}" aria-label="Name of this mark" onchange="editProjectMark(this.closest('.pf-mark-row').dataset.id, { name: this.value })" />
@@ -456,6 +459,14 @@
     }
     async function markCall(body) {
       const err = document.getElementById('pfError');
+      if (newMarks()) {                                                       // a project not made yet: its other marks wait in the form
+        const list = projectForm.extra;
+        if (body.action === 'add_mark') list.push({ id: `new-${list.length}-${Date.now()}`, name: body.name, size: +document.getElementById('pfSize').value || 18, shape: body.shape, noun: body.noun, mark: body.mark, url: body.mark });
+        else if (body.action === 'edit_mark') Object.assign(list.find(m => m.id === body.mark_id) || {}, 'name' in body ? { name: body.name } : {}, 'size' in body ? { size: body.size } : {});
+        else projectForm.extra = list.filter(m => m.id !== body.mark_id);
+        renderMarkList();
+        return true;
+      }
       if (isBusy()) { err.textContent = 'Wait until the running job ends, then change the marks.'; return false; }
       const r = await projectsCall({ slug: project.slug, ...body });
       if (!r.ok) { err.textContent = r.error || 'Could not change the marks.'; return false; }
@@ -480,7 +491,8 @@
     }
     function editProjectMark(id, fields) { return markCall({ action: 'edit_mark', mark_id: id, ...fields }); }
     async function removeProjectMark(id) {
-      const m = ((project && project.marks) || []).find(x => x.id === id);
+      const m = (newMarks() ? projectForm.extra : (project && project.marks) || []).find(x => x.id === id);
+      if (m && newMarks()) return markCall({ action: 'remove_mark', mark_id: id });   // not made yet: nothing to lose, no question
       if (!m || !(await askConfirm(`Remove ${m.name}?`, 'Its images stay in the project; from now on they read as made with the main mark.', 'Remove'))) return;
       await markCall({ action: 'remove_mark', mark_id: id });
     }
@@ -605,6 +617,12 @@
       if (body.action === 'create') cover(`Making ${body.name}…`);
       try {
         const r = await projectsCall(body);
+        if (r.ok && body.action === 'create') {                                 // its other marks, made with it
+          for (const m of projectForm.extra) {
+            const a = await projectsCall({ action: 'add_mark', slug: r.project.slug, mark: m.mark, name: m.name, size: m.size, shape: m.shape, noun: m.noun });
+            if (!a.ok) setStatus(`${m.name} was not added: ${a.error || 'try again in Project settings'}`);
+          }
+        }
         if (r.ok) { reopen(r.project && r.project.name); return; }
         cover(null);
         err.textContent = r.error || 'Could not save the project.';

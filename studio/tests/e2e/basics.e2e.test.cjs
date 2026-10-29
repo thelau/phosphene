@@ -1229,6 +1229,27 @@ test('several marks: added in Project settings, then the generation row offers w
   await ctx.close();
 });
 
+test('a new project can bring its other marks: added in the form after the main one, made with it', { skip }, async () => {
+  const ctx = await fresh();
+  await page.evaluate(() => { kimiConfigured = true; openProjectForm('new'); });
+  assert.equal(await page.locator('#pfMarks').isVisible(), true);
+  assert.equal(await page.locator('#pfAddMark').isDisabled(), true, 'the main mark first');
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAHklEQVR4nGNgYGD4z0AEYBxVSF2Fo6EwGgqjoTA4AAD2dQf5kV0x5AAAAABJRU5ErkJggg==', 'base64');
+  await page.setInputFiles('#pfMark', { name: 'main.png', mimeType: 'image/png', buffer: png });
+  await page.waitForFunction(() => !document.getElementById('pfAddMark').disabled);
+  await page.setInputFiles('#pfAddMark', { name: 'bird.png', mimeType: 'image/png', buffer: png });
+  await page.waitForSelector('.pf-mark-row');
+  const added = () => api.state.calls.filter(c => c.path === '/api/projects' && c.body.action === 'add_mark');
+  assert.equal(added().length, 0, 'nothing sent yet: the project is not made');
+  await page.click('#pfSave');
+  for (let t = 0; t < 50 && !added().length; t++) await page.waitForTimeout(100);
+  assert.equal(added().length, 1, 'added once the project is made');
+  const made = api.state.calls.findIndex(c => c.path === '/api/projects' && c.body.action === 'create');
+  assert.ok(made >= 0 && api.state.calls.indexOf(added()[0]) > made && added()[0].body.slug === 'owl-bar', 'to the new project');
+  assert.match(added()[0].body.mark, /^data:image\/png;base64,/);
+  await ctx.close();
+});
+
 test('Look: each slider under its own setting (the zoom\'s Amount under Zoom, Trail on the left)', { skip }, async () => {
   const ctx = await fresh();
   await film();

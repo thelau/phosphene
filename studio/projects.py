@@ -331,9 +331,7 @@ def _mark_image(mark_png: bytes) -> Image.Image:
 
 def add_mark(slug: str, body: dict, mark_png: bytes) -> dict:
     """Another mark for this project (at the main mark's place, its own size and words). Returns the project."""
-    raw = json.loads(_project_file(slug).read_text())
-    if raw.get("qa") == "demo-tuned":
-        raise ValueError("Demo keeps its one mark: make a new project to use others.")
+    raw = json.loads(_project_file(slug).read_text())               # (Demo too: its main mark, words and check stay as they are)
     marks = [m for m in raw.get("marks") or [] if isinstance(m, dict)]
     if len(marks) >= MAX_MARKS:
         raise ValueError(f"A project holds up to {MAX_MARKS + 1} marks.")
