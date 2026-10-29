@@ -341,7 +341,7 @@
       document.getElementById('placeName').textContent = [mine ? (mk === 'main' ? 'Main' : mine[1]) : '', pos, keep ? 'As designed' : ''].filter(Boolean).join(' · ');
       const thumb = document.getElementById('placeThumb');
       thumb.hidden = !(mine && mine[2]);
-      if (mine && mine[2] && thumb.getAttribute('src') !== mine[2]) thumb.src = mine[2];
+      if (mine && mine[2] && thumb.getAttribute('src') !== mine[2]) { thumb.src = mine[2]; fitMarkTone(thumb); }   // as the top bar shows it: a dark mark as a light silhouette
       const m = document.getElementById('placeMenu');
       if (m.hidden) return;
       const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
@@ -353,6 +353,7 @@
         + '<div class="tm-head"><span>Position</span></div>' + POSITIONS.map(([v, name, sub]) => item('position', v, `<span>${name} <span class="tm-sub">${sub}</span></span>`, v === t)).join('')
         + '<div class="tm-sep"></div>'
         + `<div class="tm-item pm-keep" role="menuitemcheckbox" data-list="keep" data-v="keep" aria-checked="${keep}"><span class="pm-box"></span><span>Keep it as designed <span class="tm-sub">its colours, lettering and details</span></span></div>`;
+      m.querySelectorAll('img.pm-thumb').forEach(fitMarkTone);
     }
     function togglePlaceMenu(e, open) {
       if (e && e.stopPropagation) e.stopPropagation();
@@ -492,7 +493,7 @@
       if (f.sel === 'project') {
         const tag = t => f.fromKimi ? ` <span class="ps-tag">${t}</span>` : '';
         d.innerHTML = `<label class="ps-field"><span>Name</span><input type="text" id="psName" maxlength="60" value="${escapeHtml(f.name)}" oninput="psSetProject('name', this.value)" autocomplete="off" /></label>
-          <label class="ps-field"><span>Brand${tag('From Kimi')}</span><input type="text" id="psBrief" maxlength="200" value="${escapeHtml(f.brief)}" oninput="psSetProject('brief', this.value)" placeholder="Who the films are for, e.g. Kestrel Air, the Hong Kong airline" autocomplete="off" /></label>
+          <label class="ps-field"><span>About${tag('From Kimi')}</span><input type="text" id="psBrief" maxlength="200" value="${escapeHtml(f.brief)}" oninput="psSetProject('brief', this.value)" placeholder="Who or what these films are for: a brand, a project, an event… e.g. Kestrel Air, the Hong Kong airline" autocomplete="off" /></label>
           <div class="ps-field"><span>Colours${tag('Suggested')}</span><div class="ps-colours">${f.palette.map((c, i) => `<span class="ps-chip"><i style="background:${escapeHtml(c)}"></i>${escapeHtml(c)}<button type="button" aria-label="Remove ${escapeHtml(c)}" onclick="psColour(${i})">×</button></span>`).join('')}
             <input type="text" id="psColourNew" class="ps-chip-add" maxlength="7" placeholder="+ #hex" aria-label="Add a colour" onkeydown="psColourKey(event, this)" onblur="psColourAdd(this)" autocomplete="off" /></div>
             <small>Kimi colours the scenes with these. Every mark shares them.</small></div>`;
@@ -500,10 +501,10 @@
       }
       if (!m) { d.innerHTML = ''; return; }
       if (m.reading) {
-        const skel = (f.kind === 'new' && m === f.marks[0] ? ['Name', 'Brand', 'Its shape', 'Called'] : ['Name', 'Its shape', 'Called']);
+        const skel = (f.kind === 'new' && m === f.marks[0] ? ['Name', 'About', 'Its shape', 'Called'] : ['Name', 'Its shape', 'Called']);
         d.innerHTML = `<div class="ps-reading"><span class="ps-big-thumb"><img src="${escapeHtml(m.url)}" alt="The mark being read" /></span>
             <div><b><span class="spin"></span>Kimi is reading the mark <span class="ps-secs">${psSecs(m)} s</span></b>
-            <span>${f.kind === 'new' && m === f.marks[0] ? 'It fills in the name, the brand, the shape, the words and suggests colours.' : 'It fills in the name, the shape and the words. All stay editable.'}</span>
+            <span>${f.kind === 'new' && m === f.marks[0] ? 'It fills in the name, what it is about, the shape, the words and suggests colours.' : 'It fills in the name, the shape and the words. All stay editable.'}</span>
             <button type="button" class="link-btn" onclick="psCancelRead(this.dataset.key)" data-key="${escapeHtml(m.key)}">Cancel</button></div></div>`
           + skel.map(l => `<div class="ps-field"><span>${l}</span><i class="ps-skel"></i></div>`).join('');
         return;

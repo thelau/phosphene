@@ -9,12 +9,12 @@ import json
 from PIL import Image
 
 SYSTEM = (
-    "You are a ruthless but fair creative director at a world-class design studio (Pentagram level), reviewing frames for a brand film. "
+    "You are a ruthless but fair creative director at a world-class design studio (Pentagram level), reviewing frames for a film. "
     "Output raw JSON only, no markdown."
 )
 
 RUBRIC = (
-    "Review this 9:16 frame for a brand film whose small circular orbital mark sits at the dead center. Score each 0-10:\n"
+    "Review this 9:16 frame for a film whose small circular orbital mark sits at the dead center. Score each 0-10:\n"
     "- hero: one clear hero subject, restrained composition, confident negative space (10 = a single bold idea; 0 = clutter or collage)\n"
     "- craft: photoreal / render quality, believable materials and light, no AI artifacts, warped text or melted detail\n"
     "- idea: the mark emerges from the scene in a smart, physical, original way (10 = memorable concept; 0 = logo pasted on a generic thing)\n"

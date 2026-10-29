@@ -522,7 +522,7 @@ def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", i
                 "messages": [
                     {
                         "role": "system",
-                        "content": system or "You are a senior film director for a high-fashion match-cut brand film. Output raw valid JSON only, with no markdown code fences.",
+                        "content": system or "You are a senior film director for a high-fashion match-cut film. Output raw valid JSON only, with no markdown code fences.",
                     },
                     {"role": "user", "content": user_content},
                 ],
@@ -678,7 +678,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     where = (f"one small {mw['noun']} sits in every shot, each shot at its own place and size (given per shot below; often NOT at the centre: compose the scene around where it is)"
              if any(places) else f"one small {mw['noun']} sits at the {mw['at']} at {mw['size']}% frame width")
     if any(mids):
-        where += "; the brand has several marks and each shot uses the one named in its line (draw that mark, never another, never two)"
+        where += "; the project has several marks and each shot uses the one named in its line (draw that mark, never another, never two)"
     if keep:
         where += (". THE MARK IS KEPT EXACTLY AS DESIGNED: its colours, lettering and every detail never change; write scenes where it appears as a "
                   "real applied element (printed, painted, a label, a sticker, a sign, an enamel badge, an emblem), never rebuilt in the scene's material")
@@ -1086,11 +1086,11 @@ EXPORT_FRAMES_MAX = 200000                 # about 1 h 50 at 30 fps
 
 
 DESCRIBE_MARK = (
-    "This is a brand's mark (logo), shown on grey. It will sit at the same place in every shot of a film of AI images, physically part of each "
-    "scene. Describe it for an image model. Return ONLY raw JSON: {\"name\": \"the brand's name if you recognise the mark or can read it, else a short "
-    "fitting project name\", \"brand\": \"one line on who the brand is, e.g. Nike, a global sportswear brand (empty if unknown)\", \"shape\": \"2-6 words naming its shape and kind, e.g. circular orbital logo, "
+    "This is a mark (a logo, a symbol or a shape), shown on grey. It will sit at the same place in every shot of a film of AI images, physically part of each "
+    "scene. Describe it for an image model. Return ONLY raw JSON: {\"name\": \"the name of the brand or project if you recognise the mark or can read it, else a short "
+    "fitting project name\", \"brand\": \"one line on who or what it is for, e.g. Nike, a global sportswear brand (empty if unknown)\", \"shape\": \"2-6 words naming its shape and kind, e.g. circular orbital logo, "
     "angular monogram, horizontal wordmark\", \"noun\": \"1-3 words to call it in a sentence, e.g. circular mark, monogram, wordmark\", "
-    "\"palette\": [\"2 or 3 hex colours that would suit a brand with this mark, besides its own\"]}"
+    "\"palette\": [\"2 or 3 hex colours that would suit films around this mark, besides its own\"]}"
 )
 
 
