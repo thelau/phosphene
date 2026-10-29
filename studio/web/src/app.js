@@ -3749,7 +3749,7 @@
         const u = await TAURI.updater.check();
         if (!u) return;
         pendingUpdate = u;
-        document.getElementById('updateMsg').textContent = `Phosphene ${u.version} is ready.`;
+        document.getElementById('updateMsg').textContent = `Phosphene ${u.version} is ready`;
         document.getElementById('updateBar').hidden = false;
       } catch (e) { /* offline, or GitHub unreachable: try again next time */ }
     }
@@ -3762,6 +3762,7 @@
       catch (e) { btn.disabled = false; btn.textContent = 'Restart to update'; setStatus(`The update did not install: ${e.message || e}`); }
     }
     setTimeout(checkForUpdate, 4000);
+    setInterval(() => { if (!pendingUpdate) checkForUpdate(); }, 30 * 60 * 1000);   // an app left open still hears of a new version (it asked only at launch)
     async function signOutKrea() {
       await fetch('/api/krea-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) });
       await loadState();

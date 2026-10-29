@@ -9,7 +9,6 @@
 </head>
 <body data-mode="curate">
   <div id="loader"><div class="spin"></div><div class="msg" id="loaderMsg">Loading library…</div></div>
-  <div class="update-bar" id="updateBar" hidden role="status"><span id="updateMsg"></span><button type="button" class="small-btn" id="updateBtn" onclick="installUpdate()">Restart to update</button><button type="button" class="icon-btn" onclick="document.getElementById('updateBar').hidden = true" aria-label="Later">×</button></div>
   <input type="file" id="pfImport" accept=".phos,.phosphene,.zip" hidden onchange="importProject(this.files[0])" />
   <div id="cover" hidden role="status"><div class="spin"></div><div class="msg" id="coverMsg"></div></div>
 
@@ -38,6 +37,8 @@
       </div>
     </nav>
     <div class="grow"></div>
+    <!-- a new version: in the top bar beside ? and Settings, on both tabs, never over the generation row -->
+    <div class="update-bar" id="updateBar" hidden role="status"><span id="updateMsg"></span><button type="button" class="small-btn" id="updateBtn" onclick="installUpdate()">Restart to update</button><button type="button" class="icon-btn" onclick="document.getElementById('updateBar').hidden = true" aria-label="Later">×</button></div>
     <div class="keys">
       <button class="icon-btn keys-btn" id="keysBtn" onclick="toggleKeys(event)" title="Keys (?)" aria-label="Keys">?</button>
       <div class="keys-panel" id="keysPanel" hidden onclick="event.stopPropagation()" role="dialog" aria-label="Keys">
@@ -74,7 +75,7 @@
         <p>Keys do nothing while you type in a field.</p>
       </div>
     </div>
-    <button class="icon-btn" onclick="toggleSettings()" id="settingsBtn" title="Settings: models, Kimi key, scorecard" aria-label="Settings">
+    <button class="icon-btn" onclick="toggleSettings()" id="settingsBtn" title="Settings: models, Krea, Kimi key" aria-label="Settings">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
     </button>
 

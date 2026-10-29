@@ -1815,3 +1815,23 @@ test('guards: another window opens another project → this page shows it; New p
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('a new version: "Restart to update" in the top bar, just left of ?, on both tabs, never over the generation row', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945, init: () => {
+    window.__TAURI__ = { updater: { check: async () => ({ version: '9.9.9', downloadAndInstall: async () => {} }) }, process: { relaunch: async () => {} }, event: { emit: async () => {} } };
+  } });
+  await page.waitForSelector('#updateBar:not([hidden])', { timeout: 8000 });     // asked 4 s after opening
+  assert.equal(await text('#updateMsg'), 'Phosphene 9.9.9 is ready');
+  const r = await page.evaluate(() => {
+    const box = id => document.getElementById(id).getBoundingClientRect();
+    const bar = box('updateBar'), help = document.querySelector('.keys').getBoundingClientRect(), gen = box('genGroup'), top = document.querySelector('.topbar').getBoundingClientRect();
+    return { inTopBar: bar.top >= top.top && bar.bottom <= top.bottom, leftOfHelp: bar.right <= help.left, gap: Math.round(help.left - bar.right), overGen: bar.bottom > gen.top };
+  });
+  assert.equal(r.inTopBar, true); assert.equal(r.leftOfHelp, true); assert.equal(r.overGen, false);
+  assert.ok(r.gap <= 20, `right beside ? (${r.gap} px: the top bar's own gap)`);
+  await shot('32-update-in-top-bar');
+  await film();
+  assert.equal(await page.locator('#updateBar').isVisible(), true, 'in Film too');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

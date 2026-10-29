@@ -79,6 +79,7 @@ async function fresh(opts = {}) {
   api.state.calls.length = 0;
   const ctx = await env.browser.newContext({ viewport: { width: opts.width || 1500, height: opts.height || 900 } });
   if (!opts.firstVisit) await ctx.addInitScript(() => { try { if (!localStorage.getItem('studioProject')) localStorage.setItem('studioProject', 'demo'); } catch (e) {} });   // back on the project they had open (films are per project; a project never opened gets a Random)
+  if (opts.init) await ctx.addInitScript(opts.init);                           // e.g. the Mac app's shell, stubbed
   env.page = await ctx.newPage();
   consoleErrors.length = 0;
   env.page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text() + ' ' + (m.location().url || '')); });
