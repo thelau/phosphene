@@ -679,3 +679,31 @@ test('Euclid: notes on a Euclidean rhythm (k hits spread evenly over n steps), r
   assert.ok(r.rms > 0.1 && r.rms < 0.3 && r.peak <= 0.97, `level: ${r.rms.toFixed(3)}, peak ${r.peak.toFixed(2)}`);
   await ctx.close();
 });
+
+test('rooms: Room, Booth, Hall, Bloom; each keeps the drone level, sub-heavy and dark; the booth is short, the hall long, the bloom swells in', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(async BASE => {
+    const D = window.Drone, sr = 44100, shape = [];
+    for (const kind of D.ROOMS) {                                                    // the impulse itself: how long until it has spent 90% of its energy, and how it starts
+      const ir = D.roomData(sr, (() => { let a = 7; return () => ((a = (a * 16807) % 2147483647) / 2147483647); })(), 3, kind);
+      let tot = 0; for (const v of ir) tot += v * v;
+      let acc = 0, t90 = 0; for (let i = 0; i < ir.length; i++) { acc += ir[i] * ir[i]; if (acc >= 0.9 * tot) { t90 = i / sr; break; } }
+      const e = (a, b) => { let s = 0; for (let i = Math.round(a * sr); i < Math.round(b * sr); i++) s += ir[i] * ir[i]; return s; };
+      shape.push({ name: kind.name, t90, early: e(0, 0.1) / (e(0.3, 0.4) + 1e-12) });
+    }
+    const starts = Array.from({ length: 25 }, (_, i) => i * 0.3), res = [];
+    for (let room = 0; room < D.ROOMS.length; room++) {
+      const x = await D.renderExport({ ...BASE, pitch: 0.5, space: 0.8, room }, starts);
+      let s = 0, peak = 0; for (let i = 0; i < x.left.length; i++) { s += x.left[i] * x.left[i]; peak = Math.max(peak, Math.abs(x.left[i])); }
+      res.push({ rms: Math.sqrt(s / x.left.length), peak });
+    }
+    return { shape, res, lengths: D.ROOMS.map(k => k.seconds(0.8)) };
+  }, BASE);
+  const by = n => r.shape.find(s => s.name === n);
+  assert.ok(r.lengths[1] < 1.5 && r.lengths[2] > r.lengths[0], `booth short, hall longest: ${r.lengths}`);
+  assert.ok(by('Bloom').early < 0.5 * by('Room').early, `the bloom starts quiet and swells: ${by('Bloom').early.toFixed(2)} vs ${by('Room').early.toFixed(2)}`);
+  for (const [i, m] of r.res.entries()) assert.ok(m.rms > 0.1 && m.rms < 0.3 && m.peak <= 0.97, `room ${i}: level ${m.rms.toFixed(3)}, peak ${m.peak.toFixed(2)}`);
+  const rows = await spectra([0, 1, 2, 3].map(room => ({ space: 0.8, room })));
+  for (const [i, m] of rows.entries()) assert.ok(m.sub > 0.4 && m.high < 0.01, `room ${i}: still sub-heavy and dark (${m.sub.toFixed(2)} below 80 Hz, ${m.high.toFixed(4)} above 2 kHz)`);
+  await ctx.close();
+});

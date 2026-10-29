@@ -496,7 +496,15 @@
                 <label class="row"><span class="lbl">Pulse</span><input type="range" id="pulseRange" min="0" max="100" value="50" oninput="updateMusic()" title="How much the music breathes with every cut" /><span class="val" id="pulseVal">50</span></label>
                 <label class="row"><span class="lbl">Low end</span><input type="range" id="lowRange" min="0" max="100" value="70" oninput="updateMusic()" title="How much sub-bass" /><span class="val" id="lowVal">70</span></label>
                 <label class="row"><span class="lbl">Power</span><input type="range" id="powerRange" min="0" max="100" value="60" oninput="updateMusic()" title="Thicker and heavier: a stack of detuned voices and saturation" /><span class="val" id="powerVal">60</span></label>
-                <label class="row"><span class="lbl">Space</span><input type="range" id="spaceRange" min="0" max="100" value="60" oninput="updateMusic()" title="The size of the room: reverb length and amount" /><span class="val" id="spaceVal">60</span></label>
+                <label class="row"><span class="lbl">Space</span><input type="range" id="spaceRange" min="0" max="100" value="60" oninput="updateMusic()" title="How much room: the reverb's length and amount" /><span class="val" id="spaceVal">60</span></label>
+                <label class="row"><span class="lbl">Room</span>
+                  <select id="roomSelect" onchange="updateMusic()" title="What kind of room the sound is in">
+                    <option value="0">Room · as measured</option>
+                    <option value="1">Booth · small and dry</option>
+                    <option value="2">Hall · huge and dark</option>
+                    <option value="3">Bloom · swells in</option>
+                  </select>
+                </label>
                 <label class="row"><span class="lbl">Bright</span><input type="range" id="brightRange" min="0" max="100" value="30" oninput="updateMusic()" title="How far the tone opens up above the bass" /><span class="val" id="brightVal">30</span></label>
                 <label class="row"><span class="lbl">Width</span><input type="range" id="widthRange" min="0" max="100" value="60" oninput="updateMusic()" title="Stereo spread" /><span class="val" id="widthVal">60</span></label>
               </div>

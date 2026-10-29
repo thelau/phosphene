@@ -56,9 +56,20 @@
   // what happened to the live sound, in the console (Safari / the app: right-click › Inspect Element › Console), to see why it stopped
   function soundLog(...a) { try { console.info(`[sound ${new Date().toTimeString().slice(0, 8)}]`, ...a.filter(Boolean)); } catch (e) {} }
 
-  function makeRoom(ctx, seedN, i, roomSeconds) {
+  // The kind of room (more variety in the same style, 2026-10-30): Space says how much, Room says what kind. Room is the measured one (as
+  // before); Booth small and dry, a short dark slap; Hall huge and darker, a long tail after a gap; Bloom swells in instead of striking,
+  // the reverb arriving after the note. All band-limited as before (no boom under 150 Hz, nothing bright), so the sub stays the sound.
+  const ROOMS = [
+    { name: 'Room', seconds: sp => 2.4 + 3.6 * sp, lo: 150, hi: 900, pre: 0.025, wet: 1 },
+    { name: 'Booth', seconds: sp => 0.5 + 0.7 * sp, lo: 180, hi: 650, pre: 0.004, wet: 0.75 },
+    { name: 'Hall', seconds: sp => 5 + 3 * sp, lo: 130, hi: 600, pre: 0.07, wet: 1.15 },
+    { name: 'Bloom', seconds: sp => 3 + 3 * sp, lo: 150, hi: 800, pre: 0.02, wet: 1, swell: 0.45 },
+  ];
+  const roomKind = p => ROOMS[Math.max(0, Math.min(ROOMS.length - 1, Math.round(+p.room || 0)))];
+  const roomLength = (kind, space) => Math.max(0.5, Math.round(kind.seconds(space) * 2) / 2);   // in half-second steps, so it is reused while a slider moves
+  function makeRoom(ctx, seedN, i, roomSeconds, kind = ROOMS[0]) {
     const conv = ctx.createConvolver(); conv.normalize = false;
-    const data = cachedData(ctx.sampleRate, `room|${seedN}|${i}|${roomSeconds}`, () => roomData(ctx.sampleRate, mulberry32(seedN + 7919 * (i + 1)), roomSeconds));
+    const data = cachedData(ctx.sampleRate, `room|${kind.name}|${seedN}|${i}|${roomSeconds}`, () => roomData(ctx.sampleRate, mulberry32(seedN + 7919 * (i + 1)), roomSeconds, kind));
     const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0); conv.buffer = b;
     return conv;
   }
@@ -95,12 +106,12 @@
 
   // a dark room: decaying noise, band-limited to 150-900 Hz, after a short pre-delay. Without the cut at the bottom, low-passed noise
   // drifts: for some seeds its sum is far from zero and the room becomes a strong boost around 100 Hz that swamps the sub
-  function roomData(rate, rand, seconds) {
-    const n = Math.floor(seconds * rate), pre = Math.floor(0.025 * rate);
+  function roomData(rate, rand, seconds, kind = ROOMS[0]) {
+    const n = Math.floor(seconds * rate), pre = Math.floor(kind.pre * rate);
     const ir = new Float32Array(n);
-    for (let i = 0; i < n; i++) ir[i] = gauss(rand) * Math.exp(-(i / rate) * (6.9 / seconds));
-    onePole(ir, 900, rate, 2);
-    const low = ir.slice(); onePole(low, 150, rate, 2);
+    for (let i = 0; i < n; i++) ir[i] = gauss(rand) * Math.exp(-(i / rate) * (6.9 / seconds)) * (kind.swell ? 1 - Math.exp(-(i / rate) / kind.swell) : 1);   // Bloom: rises first
+    onePole(ir, kind.hi, rate, 2);
+    const low = ir.slice(); onePole(low, kind.lo, rate, 2);
     for (let i = 0; i < n; i++) ir[i] -= low[i];
     let e = 0; for (let i = 0; i < n; i++) e += ir[i] * ir[i];
     for (let i = 0; i < n; i++) ir[i] /= Math.sqrt(e) + 1e-9;                  // unit energy
@@ -487,13 +498,13 @@
     }
 
     // ---- the room: the send skips the sub ----
-    const roomSeconds = Math.round(2.4 + 3.6 * space), wet = 0.05 + 0.5 * space;    // the room's length in whole-second steps, so it can be reused while a slider moves
+    const kind = roomKind(p), roomSeconds = roomLength(kind, space), wet = (0.05 + 0.5 * space) * kind.wet;
     const mix = [gain(1), gain(1)];
     sides.forEach((br, i) => {
       br.connect(mix[i]);
       const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 140; hp.Q.value = 0.707;
       // the room is a convolver, and loading its impulse response is the costliest step of a rebuild: the live preview passes in a shared one
-      const conv = opts.room ? opts.room(i, seedN, roomSeconds) : makeRoom(ctx, seedN, i, roomSeconds);
+      const conv = opts.room ? opts.room(i, seedN, roomSeconds, kind) : makeRoom(ctx, seedN, i, roomSeconds, kind);
       const wetG = gain(wet, mix[i]);
       const send = gain(opts.live ? 0 : 1);                                // this sound's feed into the room: it fades with the crossfade, or the room would hear old and new at full level
       sends.push(send);
@@ -726,7 +737,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   const cutSignature = starts => { const head = []; for (const t of starts) { head.push(Math.round(t * 1000)); if (t > 4) break; } return head.join(','); };   // the cuts of the window the level is measured on: faster cuts pump differently
-  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.mode, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.tape]);
+  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.room, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.mode, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.tape]);
   async function level(p, starts) {
     starts = cleanStarts(starts);
     const key = levelKey(p, starts);
@@ -863,9 +874,9 @@
       glue.curve = c;
       const pre = ctx.createGain(); pre.gain.value = 0.5;                  // the shaper sees -2..2
       level.connect(pre); pre.connect(glue); glue.connect(out); out.connect(this.master);
-      const room = (i, seedN, seconds) => {                                 // one room per setting, kept between swaps: its tail carries on through them
-        const key = `${seedN}|${i}|${seconds}`;
-        if (!this.rooms.has(key)) { this.rooms.set(key, makeRoom(ctx, seedN, i, seconds)); if (this.rooms.size > 8) this.rooms.delete(this.rooms.keys().next().value); }
+      const room = (i, seedN, seconds, kind) => {                           // one room per setting, kept between swaps: its tail carries on through them
+        const key = `${kind.name}|${seedN}|${i}|${seconds}`;
+        if (!this.rooms.has(key)) { this.rooms.set(key, makeRoom(ctx, seedN, i, seconds, kind)); if (this.rooms.size > 8) this.rooms.delete(this.rooms.keys().next().value); }
         return this.rooms.get(key);
       };
       const t = performance.now();
@@ -954,10 +965,10 @@
       const p = params || {};
       const seedN = (Number.isFinite(+p.seed) ? +p.seed : 7) >>> 0;
       const space = Math.min(1, Math.max(0, Number.isFinite(+p.space) ? +p.space : 0.5));
-      const seconds = Math.round(2.4 + 3.6 * space);
+      const kind = roomKind(p), seconds = roomLength(kind, space);
       for (const i of [0, 1]) {
-        const key = `${seedN}|${i}|${seconds}`;
-        if (!this.rooms.has(key)) this.rooms.set(key, makeRoom(ctx, seedN, i, seconds));
+        const key = `${kind.name}|${seedN}|${i}|${seconds}`;
+        if (!this.rooms.has(key)) this.rooms.set(key, makeRoom(ctx, seedN, i, seconds, kind));
       }
       for (const [name, sec] of [['rumble', 4], ['air', 4]]) noiseLoop(ctx, seedN, name, sec, name === 'rumble' ? (x, r) => onePole(x, 110, r, 2) : (x, r) => { onePole(x, 1400, r, 2); const lp = x.slice(); onePole(lp, 250, r, 2); for (let i = 0; i < x.length; i++) x[i] -= lp[i]; });
     }
@@ -1009,5 +1020,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, inMode, MODES, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz, EUCLID, euclid, euclidHit };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, inMode, MODES, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz, EUCLID, euclid, euclidHit, ROOMS, roomData };
 })();
