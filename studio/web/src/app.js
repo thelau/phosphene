@@ -1007,8 +1007,8 @@
       document.getElementById('trashSelCount').textContent = 'Pick images to restore or delete';   // what to do with them: the floating bar
       document.getElementById('trashDelSel').disabled = aiRunning || exporting || !n;
       document.getElementById('trashRestoreSel').disabled = aiRunning || !n;
-      document.getElementById('trashRestoreSel').textContent = n ? `Restore ${n}` : 'Restore';
-      document.getElementById('trashDelSel').textContent = `Delete ${n}…`;
+      document.getElementById('trashRestoreSel').textContent = 'Restore';     // the count is beside it, in the bar
+      document.getElementById('trashDelSel').textContent = 'Delete…';
       document.getElementById('trashSelAll').textContent = n && n === trashed.length ? 'Clear selection' : 'Select all';
       document.getElementById('trashEmpty').textContent = 'Empty trash…';
       document.getElementById('trashEmpty').title = `Delete all ${trashed.length} images in the Trash for good`;

@@ -666,8 +666,8 @@ test('the Trash: Empty trash at the top; what is picked gets Restore and Delete 
   assert.equal(h.$('pickBar').hidden, false);
   assert.ok(h.$('pickBar').classList.contains('in-trash'), 'the Trash\'s actions in it');
   assert.equal(h.$('pickCount').textContent, '1 picked');
-  assert.equal(h.$('trashDelSel').textContent, 'Delete 1…');
-  assert.equal(h.$('trashRestoreSel').textContent, 'Restore 1');
+  assert.equal(h.$('trashDelSel').textContent, 'Delete…', 'the count is beside them, once');
+  assert.equal(h.$('trashRestoreSel').textContent, 'Restore');
   h.run(`cardClick(${JSON.stringify(ev())}, '2_b')`);                  // click again deselects
   assert.equal(h.$('pickBar').hidden, true);
   h.run(`cardClick(${JSON.stringify(ev())}, '2_b')`);

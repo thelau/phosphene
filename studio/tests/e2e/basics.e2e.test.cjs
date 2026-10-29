@@ -70,8 +70,8 @@ test('trash: select, shift-select, cancel, delete with a loader, empty trash', {
   await cards.nth(2).click({ position: { x: 100, y: 120 }, modifiers: ['Shift'] });
   assert.equal(await page.locator('.card.sel').count(), 3);
   assert.equal(await text('#pickCount'), '3 picked', 'in the floating bar, as in the Selection');
-  assert.equal(await text('#trashDelSel'), 'Delete 3…');
-  assert.equal(await text('#trashRestoreSel'), 'Restore 3');
+  assert.equal(await text('#trashDelSel'), 'Delete…', 'the count once, beside them');
+  assert.equal(await text('#trashRestoreSel'), 'Restore');
   assert.equal(await page.locator('#addToGroupBtn').isVisible(), false, 'no groups in the Trash');
   const bar = await page.locator('#pickBar').boundingBox(), vw = page.viewportSize().width;
   assert.ok(Math.abs(bar.x + bar.width / 2 - vw / 2) < 2, 'centred at the bottom');
