@@ -454,7 +454,7 @@ test('the page stays responsive while playing a big sequence with every sound la
   await choose('musicSelect', 'on');
   await page.evaluate(() => {
     const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); e.dispatchEvent(new Event('change')); };
-    for (const [id, v] of [['hitTypeSelect', '3'], ['hitRange', '70'], ['arpRange', '60'], ['arpRateSelect', '3'], ['arpStepsSelect', '3'], ['washRange', '50'], ['ringRange', '40'], ['shimmerRange', '40'], ['echoRange', '50'], ['dynSelect', '3'], ['spaceRange', '80'], ['powerRange', '90'], ['subWaveSelect', '2'], ['padWaveSelect', '3']]) set(id, v);
+    for (const [id, v] of [['hitTypeSelect', '3'], ['hitRange', '70'], ['arpRange', '60'], ['arpRateSelect', '3'], ['arpStepsSelect', '3'], ['washRange', '50'], ['ringRange', '40'], ['shimmerRange', '40'], ['echoRange', '50'], ['dynSelect', '3'], ['spaceRange', '80'], ['powerRange', '90'], ['subWaveSelect', '3'], ['padWaveSelect', '3'], ['padRange', '60'], ['padToneSelect', '1'], ['roomSelect', '2'], ['modeSelect', '3'], ['progSelect', '4'], ['arpMoodSelect', '7'], ['bassRange', '50'], ['tapeRange', '40'], ['choirRange', '40']]) set(id, v);   // every layer, the heaviest kinds (the moving pulse, Glass, the hall)
   });
   await change({ start: 50, end: 300, from: 0.7, to: 1 });
   await mult('4');
@@ -489,14 +489,24 @@ test('the page stays responsive while playing a big sequence with every sound la
   for (let i = 0; i < 30; i++) { await page.mouse.move(tf.x + 40, tf.y + 15 - 40 * Math.sin(i / 5)); await page.waitForTimeout(50); }
   await page.mouse.up();
   const timeline = await page.evaluate(() => ({ long: [...window.__perf.long], frames: [...window.__perf.frames] }));
+  await page.evaluate(() => { window.__perf.long.length = 0; window.__perf.frames.length = 0; });
+  for (let i = 0; i < 5; i++) { await page.keyboard.press('s'); await page.waitForTimeout(600); }   // Random sound while it plays: a new seed each time
+  for (let i = 0; i < 4; i++) { await page.keyboard.press('r'); await page.waitForTimeout(700); }   // Random: rhythm, look and sound
+  const randoms = await page.evaluate(() => ({ long: [...window.__perf.long], frames: [...window.__perf.frames] }));
+  console.log(`randoms: ${randoms.long.length} long tasks (max ${Math.round(Math.max(0, ...randoms.long))} ms)`);
+  // each Random used to stall 65-115 ms (a new reverb room per seed, thousands of curve points, an 8 s room to measure the level): now at most
+  // one, the first time a new kind of room is prepared
+  assert.ok(randoms.long.length <= 1 && Math.max(0, ...randoms.long) < 120, `Random while playing stays smooth: ${JSON.stringify(randoms.long)}`);
   const stats = f => { const s = [...f].sort((a, b) => a - b); return { p95: s[Math.floor(s.length * 0.95)], max: s[s.length - 1], n: s.length }; };
   const report = (name, m) => `${name}: ${m.long.length} long tasks (max ${Math.round(Math.max(0, ...m.long))} ms), frames p95 ${Math.round(stats(m.frames).p95)} ms max ${Math.round(stats(m.frames).max)} ms of ${m.frames.length}`;
   console.log(report('steady', steady)); console.log(report('dragging', dragging)); console.log(report('timeline', timeline));
   for (const [name, m] of [['steady', steady], ['dragging', dragging], ['timeline', timeline]]) {
     assert.ok(m.frames.length > 40, `${name}: frames were drawn`);
-    assert.ok(Math.max(0, ...m.long) < 250, `${name}: no main-thread block over 250 ms (${report(name, m)})`);
-    assert.ok(stats(m.frames).p95 < 60, `${name}: frames keep up (${report(name, m)})`);
-    assert.ok(m.long.length <= (name === 'steady' ? 3 : 12), `${name}: few long tasks (${report(name, m)})`);
+    // smooth, not just usable (the user felt fatigue in the UI, 2026-10-30): 60 fps held, no stall a person sees (with the Hall's long room
+    // made on the main thread, dragging Space stalled 65-80 ms three times; the rooms are made in a worker now)
+    assert.ok(Math.max(0, ...m.long) < 60, `${name}: no main-thread block over 60 ms (${report(name, m)})`);
+    assert.ok(stats(m.frames).p95 < 22, `${name}: 60 fps held (${report(name, m)})`);
+    assert.ok(m.long.length <= (name === 'steady' ? 1 : 3), `${name}: hardly a long task (${report(name, m)})`);
   }
   assert.deepEqual(consoleErrors.splice(0), []);
   await ctx.close();
@@ -705,5 +715,20 @@ test('rooms: Room, Booth, Hall, Bloom; each keeps the drone level, sub-heavy and
   for (const [i, m] of r.res.entries()) assert.ok(m.rms > 0.1 && m.rms < 0.3 && m.peak <= 0.97, `room ${i}: level ${m.rms.toFixed(3)}, peak ${m.peak.toFixed(2)}`);
   const rows = await spectra([0, 1, 2, 3].map(room => ({ space: 0.8, room })));
   for (const [i, m] of rows.entries()) assert.ok(m.sub > 0.4 && m.high < 0.01, `room ${i}: still sub-heavy and dark (${m.sub.toFixed(2)} below 80 Hz, ${m.high.toFixed(4)} above 2 kHz)`);
+  await ctx.close();
+});
+
+test('timbre: the moving pulse sub and the pad tones (Warm, Glass, Hollow) keep the drone level, sub-heavy and dark; each sounds its own', { skip }, async () => {
+  const ctx = await fresh();
+  const rows = await spectra([{ subWave: 2 }, { subWave: 3 }, { pad: 0.9, padTone: 0 }, { pad: 0.9, padTone: 1 }, { pad: 0.9, padTone: 2 }]);
+  console.log('timbre: ' + JSON.stringify(rows.map(r => ({ rms: +r.rms.toFixed(3), sub: +r.sub.toFixed(3), mid: +r.mid.toFixed(4), upper: +r.upper.toFixed(4), high: +r.high.toFixed(5), cent: Math.round(r.cent) }))));
+  for (const [i, m] of rows.entries()) {
+    assert.ok(!m.bad && Math.abs(m.rms - 0.17) < 0.012 && m.peak <= 0.97, `variant ${i}: level ${m.rms.toFixed(3)}, peak ${m.peak.toFixed(2)}`);
+    assert.ok(m.sub > 0.35 && m.high < 0.01, `variant ${i}: still sub-heavy and dark (${m.sub.toFixed(2)} below 80 Hz, ${m.high.toFixed(4)} above 2 kHz)`);
+  }
+  const [square, pulse, warm, glass, hollow] = rows;
+  assert.ok(Math.abs(pulse.mid - square.mid) > 0.0005 || Math.abs(pulse.sub - square.sub) > 0.01, 'the moving pulse is not the square');
+  assert.ok(glass.high > warm.high * 4, `Glass brings a glassy top (above 2 kHz, still under 1%): ${glass.high.toFixed(5)} vs ${warm.high.toFixed(5)}`);
+  assert.ok(Math.abs(hollow.mid - warm.mid) / warm.mid > 0.05, `Hollow changes the pad's middle: ${hollow.mid.toFixed(4)} vs ${warm.mid.toFixed(4)}`);
   await ctx.close();
 });

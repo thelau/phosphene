@@ -545,11 +545,19 @@
                   </select>
                 </label>
                 <label class="row"><span class="lbl">Pad</span><input type="range" id="padRange" min="0" max="100" value="0" oninput="updateMusic()" title="A warm analog pad: detuned saws, chorus, a slow filter, playing the chords in the key (each chord of the changes voiced as it should be)" /><span class="val" id="padVal">0</span></label>
+                <label class="row"><span class="lbl">Pad tone</span>
+                  <select id="padToneSelect" onchange="updateMusic()" title="The pad's colour: warm as before, glassy (folded), or hollow (a moving band)">
+                    <option value="0">Warm · as before</option>
+                    <option value="1">Glass · folded, glassier</option>
+                    <option value="2">Hollow · a moving band</option>
+                  </select>
+                </label>
                 <label class="row"><span class="lbl">Sub wave</span>
                   <select id="subWaveSelect" onchange="updateMusic()" title="The wave of the deep bass">
                     <option value="0">Sine · clean</option>
                     <option value="1">Triangle · rounder</option>
                     <option value="2">Square · hollow, heavy</option>
+                    <option value="3">Pulse · its width breathes</option>
                   </select>
                 </label>
                 <label class="row"><span class="lbl">Pad wave</span>

@@ -2033,7 +2033,7 @@
       const paired = ['mono', 'colour'].includes(document.getElementById('invertSelect').value);
       return {
         pulse: unit('pulseRange'), low: unit('lowRange'), bright: unit('brightRange'), width: unit('widthRange'), space: unit('spaceRange'), room: parseInt(document.getElementById('roomSelect').value, 10) || 0, power: unit('powerRange'),
-        pitch: unit('pitchRange'), chord: parseInt(document.getElementById('chordSelect').value, 10) || 0, prog: parseInt(document.getElementById('progSelect').value, 10) || 0, mode: parseInt(document.getElementById('modeSelect').value, 10) || 0, pad: unit('padRange'), tape: unit('tapeRange'), bass: unit('bassRange'), bassPattern: parseInt(document.getElementById('bassPatternSelect').value, 10) || 0, bassRate: parseInt(document.getElementById('bassRateSelect').value, 10) || 0, arrange: parseInt(document.getElementById('arrangeSelect').value, 10) || 0, progEvery: parseInt(document.getElementById('progEverySelect').value, 10) || 0, movement: unit('movementRange'), echo: unit('echoRange'),
+        pitch: unit('pitchRange'), chord: parseInt(document.getElementById('chordSelect').value, 10) || 0, prog: parseInt(document.getElementById('progSelect').value, 10) || 0, mode: parseInt(document.getElementById('modeSelect').value, 10) || 0, pad: unit('padRange'), padTone: parseInt(document.getElementById('padToneSelect').value, 10) || 0, tape: unit('tapeRange'), bass: unit('bassRange'), bassPattern: parseInt(document.getElementById('bassPatternSelect').value, 10) || 0, bassRate: parseInt(document.getElementById('bassRateSelect').value, 10) || 0, arrange: parseInt(document.getElementById('arrangeSelect').value, 10) || 0, progEvery: parseInt(document.getElementById('progEverySelect').value, 10) || 0, movement: unit('movementRange'), echo: unit('echoRange'),
         wash: unit('washRange'), ring: unit('ringRange'), shimmer: unit('shimmerRange'), choir: unit('choirRange'), industrial: unit('industrialRange'),
         hitType: parseInt(document.getElementById('hitTypeSelect').value, 10) || 0, hit: unit('hitRange'), hitOn: parseInt(document.getElementById('hitOnSelect').value, 10) || 0,
         arp: unit('arpRange'), arpMood: parseInt(document.getElementById('arpMoodSelect').value, 10) || 0, arpSteps: parseInt(document.getElementById('arpStepsSelect').value, 10) || 0, arpRate: parseInt(document.getElementById('arpRateSelect').value, 10) || 0,
@@ -2068,8 +2068,8 @@
     }
     // the sound engine's costly parts are made while the page is idle, so the first Play does not freeze it
     let warmed = false;
-    function warmSound() {
-      if (warmed || !musicOn() || !droneLive.warm) return;
+    function warmSound() {                                                    // even with the sound off: the first Random turns it on, and making the audio context then froze the page ~115 ms
+      if (warmed || !droneLive.warm) return;
       warmed = true;
       const idle = window.requestIdleCallback || (f => setTimeout(f, 300));
       idle(() => { try { droneLive.warm(synthParams()); } catch (e) {} }, { timeout: 2000 });
@@ -2091,14 +2091,15 @@
     // ---- Random ----
     // a random sound within what works: every setting is drawn from a range that stays a dark, heavy drone (the ranges are the taste)
     const LAYERS = ['choir', 'industrial'];                                // layers over the drone: rare, one at a time, with room around them
-    const RANDOM_RANGES = { pulse: [30, 90], low: [65, 100], power: [30, 90], space: [5, 85], bright: [0, 55], width: [30, 100], pitch: [0, 100], movement: [15, 85], echo: [0, 55], wash: [0, 55], ring: [0, 45], shimmer: [0, 45], choir: [25, 55], industrial: [20, 50], hit: [30, 70], arp: [20, 45] };
+    // Wash supports the drone, it never carries it (the user: too much, too often, 2026-10-30): at most 30 in Random and in every Type
+    const RANDOM_RANGES = { pulse: [30, 90], low: [65, 100], power: [30, 90], space: [5, 85], bright: [0, 55], width: [30, 100], pitch: [0, 100], movement: [15, 85], echo: [0, 55], wash: [0, 30], ring: [0, 45], shimmer: [0, 45], choir: [25, 55], industrial: [20, 50], hit: [30, 70], arp: [20, 45] };
     // Characters: kinds of film, modelled on the references, each a set of tighter ranges for the rhythm, the look and the sound (all inside RANDOM_RANGES).
     // Random rolls inside the chosen one ("Any": a different one each time); the rules below then make the parts agree.
     const CHARACTERS = {
       landing: { name: 'Landing',                                          // Ecwora / Soiltone: fast hold, then a slow landing, grey inverted copies
         rhythm: { mode: 'variable', start: [60, 120], end: [450, 900], ramp: [8, 16], at: 'end', mult: ['1', '1', '2'] },
         look: { invert: ['mono', 'mono', 'off'], zoom: ['out', 'out', 'in', 'off'], amount: [0.4, 2] },
-        sound: { pulse: [40, 75], low: [75, 100], power: [40, 80], space: [50, 85], bright: [0, 35], width: [50, 100], pitch: [0, 45], movement: [20, 60], echo: [0, 35], wash: [15, 55], ring: [0, 25], shimmer: [0, 25], hit: [30, 60], arp: [0, 35],
+        sound: { pulse: [40, 75], low: [75, 100], power: [40, 80], space: [50, 85], bright: [0, 35], width: [50, 100], pitch: [0, 45], movement: [20, 60], echo: [0, 35], wash: [8, 30], ring: [0, 25], shimmer: [0, 25], hit: [30, 60], arp: [0, 35],
           chord: ['0', '0', '2'], subWave: ['0', '1'], padWave: ['0', '2'], hitType: ['0', '0', '1'], hitOn: ['3', '2'], dyn: ['2', '3'], mood: ['2', '1', '0', '3'], layer: { choir: [25, 50], odds: 0.3 }, shape: { pad: 0.5, tape: 0.25, bass: 0.4, arrange: ['3', '3', '1'] } } },
       pulse: { name: 'Pulse',                                              // Helione / Moverunion: a steady tempo, cut 2 or 4 to the beat
         rhythm: { mode: 'flat', bpm: [118, 150], mult: ['1', '2', '2', '4'] },
@@ -2113,27 +2114,27 @@
       float: { name: 'Float',                                              // slow and wide: a big room, wash, no hits
         rhythm: { mode: 'flat', bpm: [50, 80], mult: ['1', '2'] },
         look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.5, 2.5], trail: [10, 30] },
-        sound: { pulse: [30, 45], low: [65, 90], power: [30, 55], space: [65, 85], bright: [0, 30], width: [70, 100], pitch: [0, 60], movement: [15, 45], echo: [15, 50], wash: [25, 55], ring: [0, 20], shimmer: [0, 30], hit: [30, 50], arp: [20, 35],
+        sound: { pulse: [30, 45], low: [65, 90], power: [30, 55], space: [65, 85], bright: [0, 30], width: [70, 100], pitch: [0, 60], movement: [15, 45], echo: [15, 50], wash: [8, 30], ring: [0, 20], shimmer: [0, 30], hit: [30, 50], arp: [20, 35],
           chord: ['1', '3', '0'], subWave: ['0'], padWave: ['2', '2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'], mood: ['2', '3'], layer: { choir: [30, 55], odds: 0.5 }, shape: { pad: 0.6, tape: 0.4, bass: 0.2, arrange: ['1', '0'] } } },
       machine: { name: 'Machine',                                          // very fast cuts, metal and a square sub
         rhythm: { mode: 'flat', bpm: [150, 200], mult: ['2', '3', '4', '4'] },
         look: { invert: ['colour', 'mono'], zoom: ['off', 'in', 'out'], amount: [0.3, 1.2] },
         sound: { pulse: [70, 90], low: [75, 100], power: [60, 90], space: [5, 30], bright: [25, 55], width: [30, 70], pitch: [30, 90], movement: [50, 85], echo: [0, 15], wash: [0, 15], ring: [20, 45], shimmer: [0, 20], hit: [45, 70], arp: [0, 30],
-          chord: ['0', '1'], subWave: ['2', '2', '1'], padWave: ['1', '3'], hitType: ['3', '3', '4'], hitOn: ['3', '1'], dyn: ['0', '3'], mood: ['0', '1', '6', '7'], layer: { industrial: [25, 50], odds: 0.4 }, shape: { pad: 0.2, tape: 0.2, bass: 0.8, arrange: ['2', '1'] } } },
+          chord: ['0', '1'], subWave: ['2', '2', '1', '3'], padWave: ['1', '3'], hitType: ['3', '3', '4'], hitOn: ['3', '1'], dyn: ['0', '3'], mood: ['0', '1', '6', '7'], layer: { industrial: [25, 50], odds: 0.4 }, shape: { pad: 0.2, tape: 0.2, bass: 0.8, arrange: ['2', '1'] } } },
       drift: { name: 'Drift',                                              // unhurried and changing slowly, no hits: a long breath of images
         rhythm: { mode: 'variable', start: [250, 450], end: [500, 900], ramp: [10, 20], at: ['end', 'start'], mult: ['1', '1', '2'] },
         look: { invert: ['off'], zoom: ['in', 'out'], amount: [0.8, 3], trail: [15, 35] },
-        sound: { pulse: [30, 50], low: [70, 95], power: [30, 60], space: [55, 85], bright: [0, 30], width: [60, 100], pitch: [0, 50], movement: [15, 40], echo: [10, 45], wash: [20, 55], ring: [0, 15], shimmer: [10, 35], hit: [30, 45], arp: [0, 30],
+        sound: { pulse: [30, 50], low: [70, 95], power: [30, 60], space: [55, 85], bright: [0, 30], width: [60, 100], pitch: [0, 50], movement: [15, 40], echo: [10, 45], wash: [8, 30], ring: [0, 15], shimmer: [10, 35], hit: [30, 45], arp: [0, 30],
           chord: ['1', '3', '2'], subWave: ['0'], padWave: ['2', '0'], hitType: ['0'], hitOn: ['0'], dyn: ['0', '2'], mood: ['2', '4', '3'], layer: { choir: [25, 50], odds: 0.5 }, shape: { pad: 0.6, tape: 0.4, bass: 0.2, arrange: ['1', '0'] } } },
       strobe: { name: 'Strobe',                                            // colour-inverted flashes on a mid tempo, dark bursts on the accents
         rhythm: { mode: 'flat', bpm: [100, 140], mult: ['2', '3', '4'] },
         look: { invert: ['colour', 'colour', 'mono'], zoom: ['in', 'off'], amount: [0.5, 2] },
         sound: { pulse: [70, 90], low: [70, 100], power: [55, 90], space: [5, 35], bright: [20, 50], width: [30, 70], pitch: [20, 70], movement: [40, 80], echo: [0, 15], wash: [0, 20], ring: [0, 30], shimmer: [0, 25], hit: [45, 70], arp: [0, 30],
-          chord: ['0', '2'], subWave: ['0', '1'], padWave: ['1', '3'], hitType: ['4', '2'], hitOn: ['3', '1'], dyn: ['0'], mood: ['0', '1', '6', '7'], layer: { industrial: [20, 40], odds: 0.25 }, shape: { pad: 0.2, tape: 0.2, bass: 0.7, arrange: ['2'] } } },
+          chord: ['0', '2'], subWave: ['0', '1', '3'], padWave: ['1', '3'], hitType: ['4', '2'], hitOn: ['3', '1'], dyn: ['0'], mood: ['0', '1', '6', '7'], layer: { industrial: [20, 40], odds: 0.25 }, shape: { pad: 0.2, tape: 0.2, bass: 0.7, arrange: ['2'] } } },
       breath: { name: 'Breath',                                            // a calm pulse, a slow zoom, an arpeggio carrying it
         rhythm: { mode: 'flat', bpm: [70, 100], mult: ['1', '2'] },
         look: { invert: ['off', 'mono'], zoom: ['out', 'out', 'in'], amount: [0.8, 3] },
-        sound: { pulse: [40, 70], low: [70, 95], power: [35, 65], space: [40, 75], bright: [10, 40], width: [50, 90], pitch: [10, 60], movement: [20, 55], echo: [0, 35], wash: [0, 40], ring: [0, 20], shimmer: [0, 30], hit: [30, 55], arp: [25, 45],
+        sound: { pulse: [40, 70], low: [70, 95], power: [35, 65], space: [40, 75], bright: [10, 40], width: [50, 90], pitch: [10, 60], movement: [20, 55], echo: [0, 35], wash: [0, 30], ring: [0, 20], shimmer: [0, 30], hit: [30, 55], arp: [25, 45],
           chord: ['2', '3', '1'], subWave: ['0', '1'], padWave: ['2', '0'], hitType: ['0', '1'], hitOn: ['2', '3'], dyn: ['0', '1'], mood: ['2', '4'], layer: { choir: [25, 45], odds: 0.5 }, shape: { pad: 0.6, tape: 0.35, bass: 0.3, arrange: ['1', '0'] } } },
     };
     const rint = ([lo, hi]) => Math.round(lo + Math.random() * (hi - lo));
@@ -2236,6 +2237,7 @@
     function migrateRhythm(o) {
       if (o && 'chordSelect' in o && !('modeSelect' in o)) o.modeSelect = '0';   // a sound saved before modes: the natural minor it was made in
       if (o && 'chordSelect' in o && !('roomSelect' in o)) o.roomSelect = '0';   // and before rooms: the measured room
+      if (o && 'chordSelect' in o && !('padToneSelect' in o)) o.padToneSelect = '0';   // and the pad's tone: warm
       if (!o || !('startMsRange' in o || 'rampRange' in o || 'atSelect' in o)) return o;
       if (o.rhythmSelect === 'variable') {
         const start = parseFloat(o.startMsRange) || 100, ramp = parseInt(o.rampRange, 10) || 12, n = baseCount(o.multSelect) || 60;
@@ -2342,7 +2344,7 @@
       if (Math.random() < 0.5) setv('dynSelect', 0);                                             // an arc over the whole clip is a bigger decision than a sound: steady half the time
       if (getn('hitTypeSelect') === 0 || Math.random() < 0.25) setv('hitTypeSelect', 0);         // hits and arpeggios come and go
       if (Math.random() < 0.55) setv('arpRange', 0);
-      setv('subWaveSelect', r < 0.5 ? 0 : r < 0.75 ? 1 : 2);
+      setv('subWaveSelect', r < 0.45 ? 0 : r < 0.65 ? 1 : r < 0.85 ? 2 : 3);
       choice('padWaveSelect', 4); choice('chordSelect', 4); rollMode(); rollRoom();
       setv('choirRange', 0); setv('industrialRange', 0);
       const slow = rhythmCutsPerSecond() <= 3, roll = Math.random();                                   // a layer now and then, never both: the drone is the sound
@@ -2370,6 +2372,7 @@
       setv('bassRateSelect', rate > 4 ? 0 : rate > 2 ? Math.floor(Math.random() * 2) : 1 + Math.floor(Math.random() * 2));   // fast cuts: a note a cut
       setv('arrangeSelect', rpick(sh.arrange));
       setv('padRange', Math.random() < sh.pad ? rint([20, 45]) : 0);
+      { const r = Math.random(); setv('padToneSelect', r < 0.5 ? 0 : r < 0.75 ? 1 : 2); }   // the pad's tone: warm half the time
       setv('tapeRange', Math.random() < sh.tape ? rint([15, 45]) : 0);
       if (Math.random() < 0.15) setv('arpRateSelect', 4 + Math.floor(Math.random() * 2));   // now and then a polyrhythm
     }
@@ -3019,7 +3022,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'keepCheck'];
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'keepCheck'];
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
     // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved

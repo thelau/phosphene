@@ -842,7 +842,7 @@ test('with the drone on, Play starts it live from the top with the settings and 
   await settle(); await settle();
   assert.equal(h.calls.some(c => c.url === '/api/music'), false);           // nothing is rendered on the server
   const play = h.ctx.__drone.plays[0];
-  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, room: 0, power: 0.55, pitch: 0.5, chord: 0, prog: 0, mode: 0, pad: 0, tape: 0, progEvery: 0, bass: 0, bassPattern: 0, bassRate: 0, arrange: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, choir: 0, industrial: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpMood: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
+  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, room: 0, power: 0.55, pitch: 0.5, chord: 0, prog: 0, mode: 0, pad: 0, padTone: 0, tape: 0, progEvery: 0, bass: 0, bassPattern: 0, bassRate: 0, arrange: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, choir: 0, industrial: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpMood: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
   assert.equal(play.offset, 0);
   assert.equal(play.starts.length, 3);                                      // the music follows the beats (2 of them for 6 picture cuts at 3 per beat) + the end
   assert.ok(Math.abs(play.starts[2] - 0.6) < 1e-9 && Math.abs(play.starts[1] - 0.3) < 1e-9);
@@ -1339,6 +1339,17 @@ test('the logo target: one switch for the Film preview and every Curate card (T 
   await settle();
   assert.equal(again.ctx.document.body.classList.contains('target-on'), true, 'on again after a reload');
   assert.equal(again.$('gridTargetBtn').getAttribute('aria-pressed'), 'true');
+});
+
+test('Wash supports, never carries: Random and every Type keep it at 30 or under, and often off', async () => {
+  const h = await playerWith();
+  let on = 0;
+  for (let i = 0; i < 300; i++) { h.run('randomMusic()'); const w = +h.$('washRange').value; assert.ok(w <= 30, `Random sound: wash ${w}`); if (w > 0) on++; }
+  assert.ok(on < 0.7 * 300, `often off: on ${on} of 300`);
+  for (const key of Object.keys(JSON.parse(JSON.stringify(h.run('CHARACTERS'))))) {
+    h.$('characterSelect').value = key;
+    for (let i = 0; i < 20; i++) { h.run('randomAll()'); assert.ok(+h.$('washRange').value <= 30, `${key}: wash ${h.$('washRange').value}`); }
+  }
 });
 
 test('arpeggio moods: Random draws them all (Pluck often), a type keeps to its own, Phase unhurried', async () => {

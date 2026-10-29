@@ -65,13 +65,33 @@
     { name: 'Hall', seconds: sp => 5 + 3 * sp, lo: 130, hi: 600, pre: 0.07, wet: 1.15 },
     { name: 'Bloom', seconds: sp => 3 + 3 * sp, lo: 150, hi: 800, pre: 0.02, wet: 1, swell: 0.45 },
   ];
+  const ROOM_SEED = 7;                                                 // one room for every seed: a reverb's noise is not heard as different, and a new one per Random cost up to 100 ms
   const roomKind = p => ROOMS[Math.max(0, Math.min(ROOMS.length - 1, Math.round(+p.room || 0)))];
   const roomLength = (kind, space) => Math.max(0.5, Math.round(kind.seconds(space) * 2) / 2);   // in half-second steps, so it is reused while a slider moves
   function makeRoom(ctx, seedN, i, roomSeconds, kind = ROOMS[0]) {
     const conv = ctx.createConvolver(); conv.normalize = false;
-    const data = cachedData(ctx.sampleRate, `room|${kind.name}|${seedN}|${i}|${roomSeconds}`, () => roomData(ctx.sampleRate, mulberry32(seedN + 7919 * (i + 1)), roomSeconds, kind));
+    const data = cachedData(ctx.sampleRate, `room|${kind.name}|${i}|${roomSeconds}`, () => roomData(ctx.sampleRate, mulberry32(ROOM_SEED + 7919 * (i + 1)), roomSeconds, kind));
     const b = ctx.createBuffer(1, data.length, ctx.sampleRate); b.copyToChannel(data, 0); conv.buffer = b;
     return conv;
+  }
+
+  // The live sound's rooms are made in a worker: a long room (the Hall's 8 s) took 60-80 ms on the main thread, and dragging Space made a
+  // new one every half second: the picture stalled (the user: everything must stay smooth). Until the exact room is ready the sound keeps the
+  // nearest one it has. Exports (offline renders) still make theirs at once.
+  let roomWorker = null, roomJob = 0;
+  const roomWaiting = new Map();
+  function roomInWorker(rate, seed, seconds, kind) {
+    if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) return null;
+    if (!roomWorker) {
+      try {
+        const src = `const TAU = ${TAU}; ${mulberry32}; ${gauss}; ${onePole}; const ROOMS = [{ pre: 0.025, hi: 900, lo: 150 }]; ${roomData};
+          onmessage = e => { const { id, rate, seed, seconds, kind } = e.data; const d = roomData(rate, mulberry32(seed), seconds, kind); postMessage({ id, d }, [d.buffer]); };`;
+        roomWorker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+        roomWorker.onmessage = e => { const f = roomWaiting.get(e.data.id); roomWaiting.delete(e.data.id); if (f) f(e.data.d); };
+      } catch (e) { roomWorker = false; }
+    }
+    if (!roomWorker) return null;
+    return new Promise(res => { const id = ++roomJob; roomWaiting.set(id, res); roomWorker.postMessage({ id, rate, seed, seconds, kind: { pre: kind.pre, hi: kind.hi, lo: kind.lo, swell: kind.swell || 0 } }); });
   }
 
   // Buffers that take a while to make (seconds of noise, the room) are made once per context and seed, not at every rebuild of the sound.
@@ -155,7 +175,15 @@
     { name: 'minor', ratios: [4.0, 4.8, 6.0, 7.2], pad: [2, 3, 4] },
     { name: 'suspended', ratios: [4.0, 4.5, 6.0, 9.0], pad: [2, 3, 5] }
   ];
-  const SUB_WAVES = ['sine', 'triangle', 'square'];           // the sub; the square is softened (a low-pass) before it saturates
+  const SUB_WAVES = ['sine', 'triangle', 'square', 'sawtooth'];   // the sub; the square is softened (a low-pass) before it saturates; 'sawtooth' is the moving pulse (below)
+  // the Pad's tone (2026-10-30, more variety on the same patch): Warm (as before: a slow low-pass), Glass (the saws through a wavefolder
+  // before the filter: glassier harmonics, still dark), Hollow (a band-pass slowly sweeping instead of the low-pass: a vocal, hollow pad)
+  const PAD_TONES = ['Warm', 'Glass', 'Hollow'];
+  const foldCache = new Map();
+  function foldCurve(k) {                                              // a wavefolder: past the edge the wave folds back instead of clipping
+    if (!foldCache.has(k)) { const n = 4097, c = new Float32Array(n); for (let i = 0; i < n; i++) c[i] = Math.sin(Math.PI * k * ((i / (n - 1)) * 2 - 1)) / 1.2; foldCache.set(k, c); }
+    return foldCache.get(k);
+  }
   const PAD_WAVES = ['sawtooth', 'square', 'triangle', 'pulse'];     // the pad's oscillators; pulse is a narrow 25% pulse
   // gain that evens out how loud each pad wave is next to the saw
   const PAD_TRIM = [1.0, 0.7, 1.3, 0.85];
@@ -339,8 +367,8 @@
     const lowpass = (fc, to) => { const a = ctx.createBiquadFilter(); a.type = 'lowpass'; a.frequency.value = fc; a.Q.value = 0.707; const b = ctx.createBiquadFilter(); b.type = 'lowpass'; b.frequency.value = fc; b.Q.value = 0.707; a.connect(b); if (to) b.connect(to); return [a, b]; };
 
     // automation helpers; each skips what is already in the past when playing from an offset
-    const sampled = (param, fn) => {                                       // a curve sampled 50 times a second
-      const from = Math.min(offset, total), span = Math.max(0.04, total - from), n = Math.max(2, Math.ceil(span * 50));
+    const sampled = (param, fn) => {                                       // a curve sampled 50 times a second, at most 600 points (they move over seconds: a
+      const from = Math.min(offset, total), span = Math.max(0.04, total - from), n = Math.max(2, Math.min(600, Math.ceil(span * 50)));   // long film's thousands of points froze each swap)
       const c = new Float32Array(n);
       for (let i = 0; i < n; i++) c[i] = fn(from + (span * i) / (n - 1));
       param.setValueCurveAtTime(c, at(from), span);
@@ -392,6 +420,11 @@
         const o = osc(SUB_WAVES[subWave], f0 * mult, undefined, true);
         lfo(0.13, f0 * mult * 0.012, o.frequency);
         if (subWave === 2) { const [l1] = lowpass(260, level); const og = gain(g * 0.8, l1); o.connect(og); }   // a square is soft: only its low harmonics
+        else if (subWave === 3) {                                          // Pulse: the saw minus itself a moment later is a pulse; that moment breathes (PWM), softened as the square
+          const [l1] = lowpass(190, level), period = 1 / (f0 * mult), dl = ctx.createDelay(0.1); dl.delayTime.value = 0.5 * period;
+          lfo(0.09, 0.14 * period, dl.delayTime);                          // the width breathes between about 36% and 64%: the fundamental stays strong
+          o.connect(gain(g * 0.5, l1)); o.connect(dl); dl.connect(gain(-g * 0.5, l1));
+        }
         else { const og = gain(g, level); o.connect(og); }
       }
       const pre = gain(0.25);
@@ -504,7 +537,9 @@
       br.connect(mix[i]);
       const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 140; hp.Q.value = 0.707;
       // the room is a convolver, and loading its impulse response is the costliest step of a rebuild: the live preview passes in a shared one
-      const conv = opts.room ? opts.room(i, seedN, roomSeconds, kind) : makeRoom(ctx, seedN, i, roomSeconds, kind);
+      // measuring the level (a 3 s offline render) takes a short room of the same energy (each is made to unit energy): the same reading,
+      // without preparing an 8 s room on the main thread at every change
+      const conv = opts.room ? opts.room(i, seedN, roomSeconds, kind) : makeRoom(ctx, seedN, i, opts.quickRoom ? Math.min(1.5, roomSeconds) : roomSeconds, kind);
       const wetG = gain(wet, mix[i]);
       const send = gain(opts.live ? 0 : 1);                                // this sound's feed into the room: it fades with the crossfade, or the room would hear old and new at full level
       sends.push(send);
@@ -656,15 +691,19 @@
     if (padAmt > 0.01) {
       const T = f0 * 4, chordAt = i => padChord(degreeAt(i), mode);
       const first = chordAt(Math.min(cursor, Math.max(0, nCuts - 1)));
-      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1100; lp.Q.value = 0.6;
-      lfo(0.06 * move, 320, lp.frequency);
-      const body = gain(0.11 * padAmt); lp.connect(body);                 // under the drone, never over it (the user: no pad takeover)
+      const tone = Math.max(0, Math.min(PAD_TONES.length - 1, Math.round(+p.padTone || 0)));
+      const lp = ctx.createBiquadFilter(); lp.type = tone === 2 ? 'bandpass' : 'lowpass'; lp.frequency.value = tone === 2 ? 650 : tone === 1 ? 1900 : 1100; lp.Q.value = tone === 2 ? 3.2 : 0.6;
+      if (tone === 2) lfo(0.05, 300, lp.frequency); else lfo(0.06 * move, 320, lp.frequency);   // Hollow: the band drifts slowly up and down
+      // Glass: each note on its own through a wavefolder (folding the whole chord at once made low difference tones: darker, not glassier),
+      // from triangles, as a West Coast patch folds a soft wave into a bright one
+      const into = n => (tone === 1 ? (() => { const g = gain(0.6); g.connect(shaper(foldCurve(3), lp)); return g; })() : lp);
+      const body = gain(0.11 * padAmt * (tone === 2 ? 1.7 : tone === 1 ? 0.8 : 1)); lp.connect(body);   // under the drone, never over it (the user: no pad takeover)
       sides.forEach((br, i) => {                                           // a chorus each side, a little apart: the Juno width
         const dl = ctx.createDelay(0.05); dl.delayTime.value = 0.012 + 0.004 * i;
         lfo(0.31 + 0.07 * i, 0.0028, dl.delayTime);
         body.connect(dl); dl.connect(gain(0.7, br)); body.connect(gain(0.5, br));
       });
-      const voices = first.map(st => [-0.007, 0.007].map(det => { const o = osc('sawtooth', T * Math.pow(2, st / 12) * (1 + det)); o.connect(lp); return [o, det]; }));
+      const voices = first.map(st => { const to = into(); return [-0.007, 0.007].map(det => { const o = osc(tone === 1 ? 'triangle' : 'sawtooth', T * Math.pow(2, st / 12) * (1 + det)); o.connect(to); return [o, det]; }); });
       perCut.push((i, t) => {
         if (!prog || i % progEvery) return;
         chordAt(i).forEach((st, n) => { for (const [o, det] of voices[n]) o.frequency.setTargetAtTime(T * Math.pow(2, st / 12) * (1 + det), t, 0.06); });
@@ -737,7 +776,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   const cutSignature = starts => { const head = []; for (const t of starts) { head.push(Math.round(t * 1000)); if (t > 4) break; } return head.join(','); };   // the cuts of the window the level is measured on: faster cuts pump differently
-  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.room, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.mode, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.tape]);
+  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.room, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.mode, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.padTone, p.tape]);
   async function level(p, starts) {
     starts = cleanStarts(starts);
     const key = levelKey(p, starts);
@@ -745,7 +784,7 @@
     const rate = 22050, secs = Math.min(3, starts[starts.length - 1]);
     const trimmed = starts.filter(s => s < secs); trimmed.push(secs);
     const ctx = new OfflineAudioContext(2, Math.max(1, Math.floor(secs * rate)), rate);
-    build(ctx, ctx.destination, p, trimmed, { offset: 0, t0: 0, total: starts[starts.length - 1], landing: false, dynamics: false });
+    build(ctx, ctx.destination, p, trimmed, { offset: 0, t0: 0, total: starts[starts.length - 1], landing: false, dynamics: false, quickRoom: true });
     const g = TARGET_RMS / (rmsOf(await ctx.startRendering()) + 1e-9);
     levelCache.set(key, g);
     if (levelCache.size > 40) levelCache.delete(levelCache.keys().next().value);
@@ -875,9 +914,21 @@
       const pre = ctx.createGain(); pre.gain.value = 0.5;                  // the shaper sees -2..2
       level.connect(pre); pre.connect(glue); glue.connect(out); out.connect(this.master);
       const room = (i, seedN, seconds, kind) => {                           // one room per setting, kept between swaps: its tail carries on through them
-        const key = `${kind.name}|${seedN}|${i}|${seconds}`;
-        if (!this.rooms.has(key)) { this.rooms.set(key, makeRoom(ctx, seedN, i, seconds, kind)); if (this.rooms.size > 8) this.rooms.delete(this.rooms.keys().next().value); }
-        return this.rooms.get(key);
+        const key = `${kind.name}|${i}|${seconds}`, put = conv => { this.rooms.set(key, conv); if (this.rooms.size > 12) this.rooms.delete(this.rooms.keys().next().value); return conv; };
+        if (this.rooms.has(key)) return this.rooms.get(key);
+        const dist = k => (k.startsWith(`${kind.name}|`) ? 0 : 100) + Math.abs(+k.split('|')[2] - seconds);   // the same kind first, else any room this side has
+        const near = [...this.rooms.keys()].filter(k => k.split('|')[1] === String(i)).sort((a, b) => dist(a) - dist(b))[0];
+        const later = near && roomInWorker(ctx.sampleRate, ROOM_SEED + 7919 * (i + 1), seconds, kind);
+        if (!later) return put(makeRoom(ctx, seedN, i, seconds, kind));      // the first of its kind (or no worker): made now
+        later.then(d => {                                                   // ready: the next swap (the slider's next move, or the next change) takes it
+          if (this.ctx !== ctx || this.rooms.has(key)) return;
+          const conv = ctx.createConvolver(); conv.normalize = false;
+          const b = ctx.createBuffer(1, d.length, ctx.sampleRate); b.copyToChannel(d, 0); conv.buffer = b;
+          put(conv);
+          const p = this.params || {}, k = roomKind(p), sp = clamp01(p.space);           // still the room the settings ask for: swap it in
+          if (this.playing && k.name === kind.name && roomLength(k, sp) === seconds) this.update(this.params, this.starts, () => this.pos());
+        });
+        return this.rooms.get(near);                                        // meanwhile the nearest room this sound already has
       };
       const t = performance.now();
       const graph = build(ctx, level, this.params, this.starts, { offset, t0: startAt - offset, startAt, live: true, room });
@@ -967,7 +1018,7 @@
       const space = Math.min(1, Math.max(0, Number.isFinite(+p.space) ? +p.space : 0.5));
       const kind = roomKind(p), seconds = roomLength(kind, space);
       for (const i of [0, 1]) {
-        const key = `${kind.name}|${seedN}|${i}|${seconds}`;
+        const key = `${kind.name}|${i}|${seconds}`;
         if (!this.rooms.has(key)) this.rooms.set(key, makeRoom(ctx, seedN, i, seconds, kind));
       }
       for (const [name, sec] of [['rumble', 4], ['air', 4]]) noiseLoop(ctx, seedN, name, sec, name === 'rumble' ? (x, r) => onePole(x, 110, r, 2) : (x, r) => { onePole(x, 1400, r, 2); const lp = x.slice(); onePole(lp, 250, r, 2); for (let i = 0; i < x.length; i++) x[i] -= lp[i]; });
@@ -1020,5 +1071,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, inMode, MODES, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz, EUCLID, euclid, euclidHit, ROOMS, roomData };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, inMode, MODES, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz, EUCLID, euclid, euclidHit, ROOMS, roomData, PAD_TONES };
 })();
