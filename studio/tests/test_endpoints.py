@@ -24,7 +24,7 @@ def live(srv, monkeypatch):
     calls = {"krea": [], "kimi": []}
     monkeypatch.setattr(srv, "get_krea_oauth_token", lambda: {"connected": True, "expired": False, "token": "t"})
     monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", lambda **kw: calls["krea"].append(kw) or png.getvalue())
-    monkeypatch.setattr(srv, "check_new_image", lambda p, pl=None: {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2})
+    monkeypatch.setattr(srv, "check_new_image", lambda p, pl=None, mark_id=None: {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2})
     monkeypatch.setattr(srv, "apply_critic", lambda f: None)
     real_popen = srv.subprocess.Popen                                  # only the browser-login helper is faked, ffmpeg etc. stay real
     monkeypatch.setattr(srv.subprocess, "Popen", lambda cmd, *a, **k: None if "opencode" in str(cmd) else real_popen(cmd, *a, **k))
@@ -322,7 +322,7 @@ def test_trash_and_restore_answer_at_once_while_a_new_image_is_checked(live, srv
     first = live("POST", "/api/generate-image", {"title": "Already Here", "prompt": "p", "model": "m"})[1]["filename"]
     checking, release = threading.Event(), threading.Event()
 
-    def slow_check(p, pl=None):
+    def slow_check(p, pl=None, mark_id=None):
         checking.set()
         release.wait(10)
         return {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2}
@@ -346,7 +346,7 @@ def test_trash_and_restore_answer_at_once_while_a_new_image_is_checked(live, srv
 
 
 def test_a_logo_check_failure_is_recorded(live, srv, monkeypatch):
-    monkeypatch.setattr(srv, "check_new_image", lambda p, pl=None: {"qa_passed": False, "qa_score": 12, "issues": ["Low center logo fidelity"], "center_corr": 0.1, "core_asymmetry": 0.0})
+    monkeypatch.setattr(srv, "check_new_image", lambda p, pl=None, mark_id=None: {"qa_passed": False, "qa_score": 12, "issues": ["Low center logo fidelity"], "center_corr": 0.1, "core_asymmetry": 0.0})
     assert live("POST", "/api/generate-image", {"title": "Bad Logo", "prompt": "p", "model": "m"})[1]["trashed"] is True
     done = [e for e in gen_log.read(None) if e["event"] == "image"][0]
     assert done["ok"] and done["qa_passed"] is False and done["qa_issues"] == ["Low center logo fidelity"]
@@ -1029,7 +1029,7 @@ def test_kimi_writing_scenes_never_undoes_what_was_trashed_meanwhile_nor_writes_
 def test_a_loose_batch_gives_each_image_its_own_place_kept_with_it(live, srv, monkeypatch, tmp_path):
     monkeypatch.setattr(srv.placement, "GUIDE_DIR", tmp_path / "guides")
     checked = []
-    monkeypatch.setattr(srv, "check_new_image", lambda p, pl=None: checked.append(pl) or {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2})
+    monkeypatch.setattr(srv, "check_new_image", lambda p, pl=None, mark_id=None: checked.append(pl) or {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2})
     _, on = live("POST", "/api/generate-image", {"title": "On Target", "prompt": "a basalt slab", "model": "m"})
     assert on["placement"] is None and checked[-1] is None
     assert "EXACT DEAD-CENTER" in live.calls["krea"][-1]["prompt"], "on target: the words it always had"
@@ -1053,3 +1053,37 @@ def test_an_image_is_made_at_the_place_its_scene_was_written_for(live, srv, monk
     assert res["placement"] == pl and f"EXACT POINT {pl['x']:g}%" in live.calls["krea"][-1]["prompt"]
     _, bad = live("POST", "/api/generate-image", {"title": "Odd", "prompt": "p", "model": "m", "target": "loose", "placement": {"kind": "loose", "x": 500}})
     assert bad["placement"]["kind"] == "loose" and bad["placement"]["x"] < 100, "an odd one from outside: a fresh place instead"
+
+
+def test_a_project_with_several_marks_makes_each_image_with_its_own(live, srv, monkeypatch, tmp_path):
+    """Other marks besides the main one: a batch uses the main one, one chosen, or a Mix; each image remembers its mark, and its
+    guide, prompt, logo check and box follow it. Images without one are the main mark's, as before."""
+    import base64
+    from test_projects import ring_png, star_png
+    monkeypatch.setattr(srv.placement, "GUIDE_DIR", tmp_path / "guides")
+    url = lambda b: "data:image/png;base64," + base64.b64encode(b).decode()
+    live("POST", "/api/projects", {"action": "create", "name": "Kestrel", "mark": url(star_png()), "mark_shape": "oval badge", "mark_noun": "badge"})
+    status, res = live("POST", "/api/projects", {"action": "add_mark", "slug": "Kestrel", "name": "Bird", "mark": url(ring_png()), "size": 14, "shape": "a flying bird", "noun": "bird symbol"})
+    assert status == 200 and [m["id"] for m in res["project"]["marks"]] == ["bird"], res
+    assert live("GET", "/api/project-mark?p=Kestrel&m=bird")[0] == 200
+    checked = []
+    monkeypatch.setattr(srv, "check_new_image", lambda p, pl=None, mark_id=None: checked.append(mark_id) or {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2})
+    _, main = live("POST", "/api/generate-image", {"title": "Main One", "prompt": "a tin", "model": "m"})
+    assert main["mark"] is None and checked[-1] is None and "SINGLE badge" in live.calls["krea"][-1]["prompt"]
+    _, bird = live("POST", "/api/generate-image", {"title": "Bird One", "prompt": "a tin", "model": "m", "mark": "bird"})
+    kw = live.calls["krea"][-1]
+    assert bird["mark"] == "bird" and checked[-1] == "bird", "the logo check measures the bird"
+    assert "SINGLE bird symbol" in kw["prompt"] and "~14% frame width" in kw["prompt"], "the prompt names it, at its own size"
+    assert kw["guide"]["files"]["dark"].exists(), "and its own guide"
+    assert srv.load_state()["marks_used"] == {bird["filename"]: "bird"}
+    plates = {p["filename"]: p for p in live("GET", "/api/state")[1]["plates"]}
+    assert plates[bird["filename"]]["mark_name"] == "Bird" and plates[bird["filename"]]["box"]["size"] == 14
+    assert plates[main["filename"]]["mark"] is None and plates[main["filename"]]["box"] is None, "a main-mark image: as before"
+    monkeypatch.setattr(srv.random, "random", lambda: 0.9)                    # Mix: the main mark about half the time; here, the other one
+    _, ideas = live("POST", "/api/invent-prompts", {"count": 2, "world": "Editorial Print", "mark": "mix"})
+    assert all(i["mark"] == "bird" for i in ideas["ideas"]) and "which mark: the bird symbol (a flying bird)" in live.calls["kimi"][-1]
+    _, one = live("POST", "/api/invent-prompts", {"count": 2, "world": "Editorial Print"})
+    assert all(i["mark"] is None for i in one["ideas"]) and "which mark:" not in live.calls["kimi"][-1], "the main mark: as before"
+    live("POST", "/api/projects", {"action": "remove_mark", "slug": "Kestrel", "mark_id": "bird"})
+    plates = {p["filename"]: p for p in live("GET", "/api/state")[1]["plates"]}
+    assert plates[bird["filename"]]["mark"] is None, "a mark since removed: its images read as the main one's"

@@ -331,3 +331,74 @@ def test_a_second_server_on_the_same_projects_folder_says_so_and_stops(tmp_path)
         assert again.poll() is None, "the lock went with the first (even killed): a new one starts"
     finally:
         again.kill(); again.wait()
+
+
+def ring_png(size=(160, 160)) -> bytes:
+    im = Image.new("RGBA", size, (0, 0, 0, 0))
+    ImageDraw.Draw(im).ellipse((10, 10, size[0] - 10, size[1] - 10), outline=(30, 30, 30, 255), width=18)
+    buf = io.BytesIO()
+    im.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_a_project_holds_other_marks_besides_its_main_one(pdir):
+    p = projects.create({"name": "Kestrel", "mark_size": 22, "mark_shape": "oval badge", "mark_noun": "badge"}, star_png())
+    assert p["marks"] == [], "a project starts with its one mark, as before"
+    p = projects.add_mark("Kestrel", {"name": "Bird", "shape": "a flying bird", "noun": "bird symbol"}, ring_png())
+    (bird,) = p["marks"]
+    assert (bird["id"], bird["name"], bird["mark_size"], bird["mark_noun"]) == ("bird", "Bird", 22.0, "bird symbol"), "the main mark's size until changed"
+    assert bird["mark_file"] == pdir / "Kestrel" / "mark-bird.png" and bird["mark_file"].is_file()
+    p = projects.add_mark("Kestrel", {"name": "Bird"}, ring_png())
+    assert [m["id"] for m in p["marks"]] == ["bird", "bird-2"], "two with one name: told apart"
+    p = projects.edit_mark("Kestrel", "bird", {"size": 30, "name": "The bird"})
+    assert (p["marks"][0]["mark_size"], p["marks"][0]["name"]) == (30.0, "The bird")
+    q = projects.with_mark(p, "bird")
+    assert (q["mark_file"], q["mark_size"], q["mark_x"], q["mark_noun"], q["qa"]) == (bird["mark_file"], 30.0, 50.0, "bird symbol", "mark"), "at the main mark's place"
+    assert projects.with_mark(p, None) is p and projects.with_mark(p, "gone") is p, "the main mark, or one that is gone: the project itself"
+    pub = projects.public(p)
+    assert [m["id"] for m in pub["marks"]] == ["bird", "bird-2"] and "m=bird" in pub["marks"][0]["url"]
+    p = projects.remove_mark("Kestrel", "bird-2")
+    assert [m["id"] for m in p["marks"]] == ["bird"] and not (pdir / "Kestrel" / "mark-bird-2.png").exists()
+    with pytest.raises(ValueError):
+        projects.add_mark("demo", {"name": "Other"}, ring_png())               # Demo keeps its one mark
+
+
+def test_a_project_from_before_marks_still_opens_as_it_was(pdir):
+    import json
+    projects.create({"name": "Old"}, star_png())
+    raw = json.loads((pdir / "old" / "project.json").read_text())
+    assert "marks" not in raw, "nothing written for a project that has none"
+    p = projects.load("old")
+    assert p["marks"] == [] and projects.public(p)["marks"] == []
+    raw["marks"] = [{"id": "../x"}, {"id": "main"}, "odd", {"id": "ok", "size": "big"}]   # anything odd in it is passed over
+    (pdir / "old" / "project.json").write_text(json.dumps(raw))
+    assert [m["id"] for m in projects.load("old")["marks"]] == ["ok"]
+
+
+def test_export_and_import_carry_the_other_marks(pdir, tmp_path):
+    projects.create({"name": "Kestrel"}, star_png())
+    projects.add_mark("Kestrel", {"name": "Bird", "size": 26, "noun": "bird"}, ring_png())
+    out = tmp_path / "c.phos"
+    projects.export_zip("Kestrel", out)
+    p = projects.import_zip(out)
+    assert p["slug"] == "Kestrel-2" and [(m["id"], m["mark_size"], m["mark_noun"]) for m in p["marks"]] == [("bird", 26.0, "bird")]
+    assert p["marks"][0]["mark_file"].is_file()
+    import zipfile                                                            # a file from before marks: one mark, as it was
+    old = tmp_path / "old.phos"
+    with zipfile.ZipFile(out) as z, zipfile.ZipFile(old, "w") as w:
+        for n in z.namelist():
+            if "mark-bird" not in n:
+                data = z.read(n)
+                if n.endswith("project.json"):
+                    import json
+                    raw = json.loads(data); raw.pop("marks", None); data = json.dumps(raw).encode()
+                w.writestr(n, data)
+    assert projects.import_zip(old)["marks"] == []
+
+
+def test_an_imported_curation_keeps_only_sound_mark_records(pdir, tmp_path):
+    import json
+    f = tmp_path / "state.json"
+    f.write_text(json.dumps({"marks_used": {"a.jpg": "bird", "../b.jpg": "bird", "c.jpg": "../x", "d.jpg": 3}}))
+    projects._clean_state(f)
+    assert json.loads(f.read_text())["marks_used"] == {"a.jpg": "bird"}

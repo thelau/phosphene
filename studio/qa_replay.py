@@ -47,7 +47,9 @@ def jobs(home: Path) -> tuple[list, dict]:
             if n in trashed and n in by_critic and n not in by_check:
                 continue                                                  # the AI critic's call, not the user's
             judged[f"{p['slug']}/{n}"] = ("left" if n in trashed else "restored") if n in by_check else "you trashed" if n in trashed else "kept"
-            todo.append((f"{p['slug']}/{n}", str(img), str(p["mark_file"]), p["mark_size"], p["mark_x"], p["mark_y"]))
+            q = projects.with_mark(p, st.get("marks_used", {}).get(n))      # as it was made: its mark, its own place (Loose / Scattered)
+            pl = st.get("placements", {}).get(n) or {}
+            todo.append((f"{p['slug']}/{n}", str(img), str(q["mark_file"]), pl.get("size", q["mark_size"]), pl.get("x", q["mark_x"]), pl.get("y", q["mark_y"])))
     return todo, judged
 
 

@@ -29,6 +29,8 @@ FRAME_W, FRAME_H = 1080, 1920
 GUIDE_DARK, GUIDE_LIGHT = "#141416", "#FEFFE7"    # the guide images: the mark in cream on near-black, and in ink on cream
 DEMO_PALETTE = ["#EC540C", "#F64570", "#5D8FF4", "#381313", "#1A1A1A", "#FEFFE7"]
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+MARK_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,29}$")   # an extra mark's id: its file is mark-<id>.png in the project's folder
+MAX_MARKS = 8                                      # extra marks besides the main one
 
 
 def _project_file(slug: str) -> Path:
@@ -77,7 +79,29 @@ def load(slug: str) -> dict:
         "guides": {k: at(f"guide_{k}", f"guide_{k}.png") for k in ("dark", "light")},
         "created": raw.get("created"),
     }
+    # other marks besides the main one (a brand's symbol, wordmark, badge...): each its own image, name, size and words, at the main
+    # mark's place. A project from before (no "marks") has none, and an older Phosphene reading this file sees only the main mark
+    p["marks"] = []
+    for m in raw.get("marks") or []:
+        if not isinstance(m, dict) or not MARK_ID.match(str(m.get("id") or "")) or m["id"] == "main" or len(p["marks"]) >= MAX_MARKS:
+            continue
+        try:
+            size = min(60.0, max(4.0, float(m.get("size", p["mark_size"]))))
+        except (TypeError, ValueError):
+            size = p["mark_size"]
+        p["marks"].append({"id": m["id"], "name": str(m.get("name") or m["id"])[:30], "mark_file": base / f"mark-{m['id']}.png", "mark_size": size,
+                           "mark_shape": str(m.get("shape") or "logo mark")[:80], "mark_noun": str(m.get("noun") or "mark")[:40]})
     return p
+
+
+def with_mark(p: dict, mark_id: str | None) -> dict:
+    """The project as an image made with one of its marks sees it: that mark's image, size and words, at the main mark's place
+    (the general logo check). The main mark, or one that is gone: the project itself."""
+    m = next((m for m in p.get("marks") or [] if m["id"] == mark_id), None)
+    if not m:
+        return p
+    return {**p, "mark_file": m["mark_file"], "mark_size": m["mark_size"], "mark_shape": m["mark_shape"], "mark_noun": m["mark_noun"],
+            "qa": "mark", "mark_id": m["id"], "mark_name": m["name"]}
 
 
 _RATIO: dict = {}
@@ -100,7 +124,9 @@ def mark_ratio(p: dict) -> float:
 def public(p: dict) -> dict:
     """What the page needs to know about a project."""
     mtime = int(p["mark_file"].stat().st_mtime) if p["mark_file"].exists() else 0
-    return {"slug": p["slug"], "name": p["name"], "mark_size": p["mark_size"], "mark_x": p["mark_x"], "mark_y": p["mark_y"],
+    marks = [{"id": m["id"], "name": m["name"], "size": m["mark_size"], "shape": m["mark_shape"], "noun": m["mark_noun"], "ratio": mark_ratio(with_mark(p, m["id"])),
+              "url": f"/api/project-mark?p={p['slug']}&m={m['id']}&t={int(m['mark_file'].stat().st_mtime) if m['mark_file'].exists() else 0}"} for m in p.get("marks") or []]
+    return {"slug": p["slug"], "marks": marks, "name": p["name"], "mark_size": p["mark_size"], "mark_x": p["mark_x"], "mark_y": p["mark_y"],
             "mark_shape": p["mark_shape"], "mark_noun": p["mark_noun"], "brief": p["brief"], "palette": p["palette"],
             "mark_ratio": mark_ratio(p), "round": p.get("qa") == "demo-tuned", "fixed": p.get("qa") == "demo-tuned",
             "mark_url": f"/api/project-mark?p={p['slug']}&t={mtime}"}
@@ -293,6 +319,77 @@ def update(slug: str, body: dict, mark_png: bytes | None = None) -> dict:
     return p
 
 
+def _mark_image(mark_png: bytes) -> Image.Image:
+    try:
+        img = Image.open(io.BytesIO(mark_png))
+        img.load()
+    except Exception:
+        raise ValueError("The mark must be a PNG or JPEG image.")
+    mark_alpha(img)                                   # raises if it is empty
+    return img
+
+
+def add_mark(slug: str, body: dict, mark_png: bytes) -> dict:
+    """Another mark for this project (at the main mark's place, its own size and words). Returns the project."""
+    raw = json.loads(_project_file(slug).read_text())
+    if raw.get("qa") == "demo-tuned":
+        raise ValueError("Demo keeps its one mark: make a new project to use others.")
+    marks = [m for m in raw.get("marks") or [] if isinstance(m, dict)]
+    if len(marks) >= MAX_MARKS:
+        raise ValueError(f"A project holds up to {MAX_MARKS + 1} marks.")
+    img = _mark_image(mark_png)
+    name = re.sub(r"\s+", " ", str(body.get("name") or "")).strip()[:30] or f"Mark {len(marks) + 2}"
+    base, mid, n = slugify(name)[:26] or "mark", None, 2
+    taken = {str(m.get("id")) for m in marks} | {"main"}
+    mid = base
+    while mid in taken:
+        mid, n = f"{base}-{n}", n + 1
+    img.convert("RGBA").save(PROJECTS_DIR / slug / f"mark-{mid}.png", "PNG")
+    marks.append(_mark_fields(body, {"id": mid, "name": name, "size": float(raw.get("mark_size", 18))}))
+    raw["marks"] = marks
+    _write(slug, raw)
+    return load(slug)
+
+
+def _mark_fields(body: dict, m: dict) -> dict:
+    if "name" in body:
+        m["name"] = re.sub(r"\s+", " ", str(body["name"] or "")).strip()[:30] or m.get("name") or m["id"]
+    if body.get("size") not in (None, ""):
+        try:
+            m["size"] = round(min(60.0, max(4.0, float(body["size"]))), 1)
+        except (TypeError, ValueError):
+            raise ValueError("A mark's size must be a number.")
+    for k in ("shape", "noun"):
+        if k in body:
+            m[k] = re.sub(r"\s+", " ", str(body[k] or "")).strip()[:80 if k == "shape" else 40] or None
+    return m
+
+
+def edit_mark(slug: str, mark_id: str, body: dict) -> dict:
+    raw = json.loads(_project_file(slug).read_text())
+    marks = [m for m in raw.get("marks") or [] if isinstance(m, dict)]
+    m = next((m for m in marks if m.get("id") == mark_id), None)
+    if not m:
+        raise FileNotFoundError(mark_id)
+    _mark_fields(body, m)
+    raw["marks"] = marks
+    _write(slug, raw)
+    return load(slug)
+
+
+def remove_mark(slug: str, mark_id: str) -> dict:
+    """The mark leaves the project (its images stay; they read as made with the main mark from then on)."""
+    raw = json.loads(_project_file(slug).read_text())
+    marks = [m for m in raw.get("marks") or [] if isinstance(m, dict)]
+    if not any(m.get("id") == mark_id for m in marks):
+        raise FileNotFoundError(mark_id)
+    raw["marks"] = [m for m in marks if m.get("id") != mark_id]
+    _write(slug, raw)
+    if MARK_ID.match(mark_id):
+        (PROJECTS_DIR / slug / f"mark-{mark_id}.png").unlink(missing_ok=True)
+    return load(slug)
+
+
 # ---- the brand in the words: DEMO's colours in the worlds and colour ideas become this project's ----
 DEMO_COLOUR = re.compile(r"(?:(?:warm |burnt |electric[- ]|hot |deep )?(?:cream|orange|blue|pink|oxblood|ink)\s*)?\(?(#EC540C|#F64570|#5D8FF4|#381313|#1A1A1A|#FEFFE7)\)?", re.I)
 
@@ -334,6 +431,9 @@ def export_zip(slug: str, out: Path) -> str:
         z.writestr(f"{top}/project.json", json.dumps(raw, indent=2) + "\n")
         z.writestr(f"{top}/state.json", json.dumps(state, indent=1))
         z.write(p["mark_file"], f"{top}/mark.png")
+        for m in p.get("marks") or []:                      # the other marks
+            if m["mark_file"].is_file():
+                z.write(m["mark_file"], f"{top}/mark-{m['id']}.png")
         for kind, f in p["guides"].items():
             if f.is_file():
                 z.write(f, f"{top}/guide_{kind}.png")
@@ -380,6 +480,15 @@ def import_zip(path: Path) -> dict:
             raise ValueError("That project file is damaged (its settings cannot be read).")
         raw.setdefault("mark_size", 18.0); raw.setdefault("mark_x", 50.0); raw.setdefault("mark_y", 50.0)
         raw["mark"] = "mark.png"
+        extra = []
+        for m in (json.loads(z.read(f"{top}/project.json")).get("marks") or [])[:MAX_MARKS]:   # the other marks, checked as add_mark checks them
+            if isinstance(m, dict) and MARK_ID.match(str(m.get("id") or "")) and m["id"] != "main" and f"{top}/mark-{m['id']}.png" in names:
+                try:
+                    extra.append(_mark_fields({k: m[k] for k in ("name", "size", "shape", "noun") if k in m}, {"id": m["id"], "name": m["id"], "size": raw["mark_size"]}))
+                except ValueError:
+                    pass
+        if extra:
+            raw["marks"] = extra
         taken = {q["name"] for q in all_projects()}                    # the same name as a project here: "Nike 2", as Finder numbers a copy
         if raw["name"] in taken:
             stem, k = re.sub(r" \d+$", "", raw["name"])[:56], 2
@@ -396,7 +505,7 @@ def import_zip(path: Path) -> dict:
             (folder / "plates").mkdir()
             for n_ in names:
                 rel = n_[len(top) + 1:]
-                ok = rel in EXPORT_NAMES[1:] or (rel.startswith("plates/") and rel.count("/") == 1 and rel.lower().endswith(".jpg") and not rel.split("/")[1].startswith("."))
+                ok = rel in EXPORT_NAMES[1:] or any(rel == f"mark-{m['id']}.png" for m in extra) or (rel.startswith("plates/") and rel.count("/") == 1 and rel.lower().endswith(".jpg") and not rel.split("/")[1].startswith("."))
                 if ok:
                     with z.open(n_) as src, open(folder / rel, "wb") as dst:
                         shutil.copyfileobj(src, dst, 1 << 20)
@@ -463,6 +572,10 @@ def _clean_state(f: Path) -> None:
     for g in st.get("groups") or []:
         if isinstance(g, dict) and isinstance(g.get("files"), list):
             g["files"] = [n for n in g["files"] if isinstance(n, str) and _bare(n)]
+    if isinstance(st.get("marks_used"), dict):        # which images were made with another of the project's marks
+        st["marks_used"] = {k: v for k, v in st["marks_used"].items() if _bare(k) and isinstance(v, str) and MARK_ID.match(v)}
+    elif "marks_used" in st:
+        del st["marks_used"]
     if isinstance(st.get("placements"), dict):
         import placement                            # (it imports this module)
         st["placements"] = {k: c for k, v in st["placements"].items() if _bare(k) and (c := placement.clean(v))}

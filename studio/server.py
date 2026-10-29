@@ -156,11 +156,15 @@ def is_demo() -> bool:
     return bool(PROJECT) and PROJECT.get("qa") == "demo-tuned"
 
 
-def current_mark(pl: dict | None = None):
+def current_mark(pl: dict | None = None, mark_id: str | None = None):
     """What the logo check looks for in this project: DEMO's orbital mask, or the project's own mark at its size and place.
-    An image with its own placement (a Loose batch): the mark at that size and place, DEMO's too (the general check)."""
+    An image with its own placement (a Loose batch): the mark at that size and place, DEMO's too (the general check).
+    An image made with another of the project's marks: that mark, at its size (or its placement's)."""
+    proj = projects.with_mark(PROJECT, mark_id) if mark_id else PROJECT
     if pl:
-        return mark_spec(PROJECT["mark_file"], pl["size"], pl["x"], pl["y"])
+        return mark_spec(proj["mark_file"], pl["size"], pl["x"], pl["y"])
+    if proj is not PROJECT:
+        return mark_spec(proj["mark_file"], proj["mark_size"], proj["mark_x"], proj["mark_y"])
     return DEMO_MARK if is_demo() else mark_spec(PROJECT["mark_file"], PROJECT["mark_size"], PROJECT["mark_x"], PROJECT["mark_y"])
 
 
@@ -197,12 +201,16 @@ def frame_area(x: float, y: float) -> str:
     return f"{v}-{h} area of the frame"
 
 
-def _plate_key(path: Path, pl: dict | None = None) -> str:
+def _plate_key(path: Path, pl: dict | None = None, mark_id: str | None = None) -> str:
     # size, not mtime: git checkouts rewrite mtimes and used to invalidate every cached result. Another project's mark: the check's
     # version too (2: fitted at other sizes and by its outline), so results from an older check are measured again; DEMO's keys stay
     # and the mark's size and place: changed in Project settings, every image is measured again against the new ones
+    proj = projects.with_mark(PROJECT, mark_id) if mark_id else PROJECT
+    mark = f":mark:{proj['mark_id']}" if proj is not PROJECT else ""   # another of its marks: measured against that one
     if pl:                                         # its own placement: measured there
-        return f"{path.name}:{path.stat().st_size}:{qa_engine.OWN_CHECK_VERSION}:at:{pl['size']:g}:{pl['x']:g}:{pl['y']:g}"
+        return f"{path.name}:{path.stat().st_size}:{qa_engine.OWN_CHECK_VERSION}:at:{pl['size']:g}:{pl['x']:g}:{pl['y']:g}{mark}"
+    if mark:
+        return f"{path.name}:{path.stat().st_size}:{qa_engine.OWN_CHECK_VERSION}{mark}:{proj['mark_size']:g}:{proj['mark_x']:g}:{proj['mark_y']:g}"
     return f"{path.name}:{path.stat().st_size}" + ("" if is_demo() else f":{qa_engine.OWN_CHECK_VERSION}:{PROJECT['mark_size']:g}:{PROJECT['mark_x']:g}:{PROJECT['mark_y']:g}")
 
 
@@ -216,13 +224,13 @@ def _flush_qa_cache() -> None:
     os.replace(tmp, QA_CACHE_FILE)  # atomic: a reader never sees a half-written file
 
 
-def get_cached_qa(path: Path, pl: dict | None = None) -> dict:
-    key = _plate_key(path, pl)
+def get_cached_qa(path: Path, pl: dict | None = None, mark_id: str | None = None) -> dict:
+    key = _plate_key(path, pl, mark_id)
     if key in QA_CACHE:
         return QA_CACHE[key]
     with QA_LOCK:  # each plate is evaluated once, even when several requests ask at the same time
         if key not in QA_CACHE:
-            _remember_qa(key, evaluate_plate_qa(path, current_mark(pl)))
+            _remember_qa(key, evaluate_plate_qa(path, current_mark(pl, mark_id)))
         return QA_CACHE[key]
 
 
@@ -242,9 +250,18 @@ def _remember_qa(key: str, result: dict, now: bool = False) -> None:
 
 
 
-def check_new_image(path: Path, pl: dict | None = None) -> dict:
+def check_new_image(path: Path, pl: dict | None = None, mark_id: str | None = None) -> dict:
     """The logo check on an image not yet among the plates (its result is cached under its final name by the caller)."""
-    return evaluate_plate_qa(path, current_mark(pl))
+    return evaluate_plate_qa(path, current_mark(pl, mark_id))
+
+
+def pick_mark(choice: str | None) -> str | None:
+    """Which of the project's marks a shot uses: the main one (None), the one chosen, or for Mix the main one about half the time and
+    the others in turn the rest. A project with one mark: always the main one."""
+    ids = [m["id"] for m in (PROJECT or {}).get("marks") or []]
+    if choice == "mix" and ids:
+        return None if random.random() < 0.5 else random.choice(ids)
+    return choice if choice in ids else None
 
 
 def apply_critic(filename: str) -> None:
@@ -254,9 +271,10 @@ def apply_critic(filename: str) -> None:
     if not st.get("critic_enabled", True) or not st.get("kimi_api_key"):
         return
     pl = st.get("placements", {}).get(filename)
+    proj = projects.with_mark(PROJECT, st.get("marks_used", {}).get(filename))
     try:
         r = critic.review_plate(PLATES_DIR / filename, call_kimi_llm, st["kimi_api_key"], st.get("kimi_model", "kimi-k3"),
-                                mark=None if is_demo() and not pl else f"small {PROJECT['mark_noun']} sits at {mark_words(placement.as_project(PROJECT, pl))['short']}")
+                                mark=None if is_demo() and not pl and proj is PROJECT else f"small {proj['mark_noun']} sits at {mark_words(placement.as_project(proj, pl))['short']}")
     except Exception as e:
         print(f"[CRITIC] {filename}: {str(e)[:120]}", flush=True)
         return
@@ -591,7 +609,7 @@ def match_world(st: dict, api_key: str, kimi_model: str, direction: str) -> dict
     return None
 
 
-def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list, target: str = "exact") -> tuple[list, dict]:
+def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list, target: str = "exact", mark: str | None = None) -> tuple[list, dict]:
     """One Kimi request for up to `count` scenes in territory `w`; `batch` = scenes already collected for this batch (never repeated)."""
     titles = st.get("titles", {})
     prompts = st.get("prompts", {})
@@ -600,7 +618,9 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
 
     n_ask = count + 2  # a little spare: some scenes come back as near-copies of past images and are dropped
     shots = diversity.sample_shots(n_ask, st.get("recent_axes"))
-    places = [placement.choose(target, PROJECT) for _ in range(n_ask)]   # Loose: each shot's own place and size, known before it is written
+    mids = [pick_mark(mark) for _ in range(n_ask)]                      # which of the project's marks each shot uses (the main one: None)
+    projs = [projects.with_mark(PROJECT, m) for m in mids]
+    places = [placement.choose(target, pj) for pj in projs]             # Loose: each shot's own place and size, known before it is written
     seen_subjects = st.get("recent_subjects", {}).get(w["name"], [])[-60:]
     avoid_block = ""
     if direction:
@@ -622,13 +642,17 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
             + "Reach for subjects a design studio would actually photograph, not the first obvious thing for the territory.\n\n"
         )
     if any(places):                                                     # Loose: where each shot's mark goes, so the scene is built around it
-        shot_lines = "\n".join(f"{line} | the mark: {mark_words(placement.as_project(PROJECT, pl))['at']}, ~{pl['size']:g}% frame width"
-                               for line, pl in zip(shot_lines.split("\n"), places))
+        shot_lines = "\n".join(f"{line} | the mark: {mark_words(placement.as_project(pj, pl))['at']}, ~{pl['size']:g}% frame width"
+                               for line, pl, pj in zip(shot_lines.split("\n"), places, projs))
+    if any(mids):                                                       # several marks: each shot says which one, and its shape
+        shot_lines = "\n".join(f"{line} | which mark: the {pj['mark_noun']} ({pj['mark_shape']})" for line, pj in zip(shot_lines.split("\n"), projs))
     liked = "\n".join(f"- {t}: {p[:200]}" for t, p in brief["liked"]) or "(none yet)"
     disliked = ", ".join(brief["disliked"]) or "(none yet)"
     mw = mark_words()
     where = (f"one small {mw['noun']} sits in every shot, each shot at its own place and size (given per shot below; often NOT at the centre: compose the scene around where it is)"
              if any(places) else f"one small {mw['noun']} sits at the {mw['at']} at {mw['size']}% frame width")
+    if any(mids):
+        where += "; the brand has several marks and each shot uses the one named in its line (draw that mark, never another, never two)"
     llm_prompt = (
         f"Return ONLY a raw JSON array (no markdown fences) of {n_ask} objects with keys \"title\", \"subject\" (the shot's main subject in 2-6 words), \"idea\", \"guide\" ('dark' or 'light' = whether the frame is mostly dark or mostly light) and \"prompt\". "
         f"They are shots for a 9:16 vertical match-cut film where {where}.\n\n"
@@ -658,7 +682,8 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     ideas = parse_llm_json(out, "[")
     for i, idea in enumerate(ideas):
         if isinstance(idea, dict):
-            idea["_place"] = places[i] if i < len(places) else placement.choose(target, PROJECT)   # the shot it was written for
+            idea["_mark"] = mids[i] if i < len(mids) else pick_mark(mark)
+            idea["_place"] = places[i] if i < len(places) else placement.choose(target, projects.with_mark(PROJECT, idea["_mark"]))   # the shot it was written for
 
     past = list(prompts.values()) + [b["prompt"] for b in batch]
     kept, dropped = [], []
@@ -680,7 +705,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     kept = kept[:count]
     info = {"asked_kimi": n_ask, "from_kimi": len(ideas), "dropped_duplicates": len(dropped), "topped_up": max(0, len(kept) - fresh)}
 
-    flat = [{"title": i.get("title", "Untitled"), "guide": i.get("guide", "dark"), "prompt": i["prompt"], "idea": i.get("idea", ""), "world": w["name"], "subject": str(i.get("subject", "")).strip(), "placement": i.get("_place")} for i in kept]
+    flat = [{"title": i.get("title", "Untitled"), "guide": i.get("guide", "dark"), "prompt": i["prompt"], "idea": i.get("idea", ""), "world": w["name"], "subject": str(i.get("subject", "")).strip(), "placement": i.get("_place"), "mark": i.get("_mark")} for i in kept]
 
     used = st.setdefault("recent_subjects", {}).setdefault(w["name"], [])
     used.extend(x["subject"] for x in flat if x["subject"])
@@ -697,14 +722,14 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
 
 
 def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, world: str | None = None, direction: str = "", stats: dict | None = None,
-                         target: str = "exact") -> list[dict]:
+                         target: str = "exact", mark: str | None = None) -> list[dict]:
     """
     One authored territory per batch (shots cohere), idea-first, steered by taste, near-duplicates dropped.
     Returns exactly `count` scenes whenever Kimi can supply them: large batches are asked in chunks of up to 10,
     and a short answer is followed up with a request for just the missing ones.
     """
     if world == "__sampler__":
-        return ask_kimi_sampler(st, api_key, kimi_model, count, direction, stats, target)
+        return ask_kimi_sampler(st, api_key, kimi_model, count, direction, stats, target, mark)
     w = chapters.choose_world(st, world or "")
     if direction and not world:
         w = match_world(st, api_key, kimi_model, direction) or invent_world(st, api_key, kimi_model, direction)
@@ -720,7 +745,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
         if need <= 0:
             break
         try:
-            got, info = _ask_chunk(st, api_key, kimi_model, w, min(need, 10), direction, out, target)
+            got, info = _ask_chunk(st, api_key, kimi_model, w, min(need, 10), direction, out, target, mark)
         except Exception:
             if not out:
                 raise                                      # nothing at all: let the caller report it
@@ -739,7 +764,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     return out[:count]
 
 
-def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direction: str = "", stats: dict | None = None, target: str = "exact") -> list[dict]:
+def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direction: str = "", stats: dict | None = None, target: str = "exact", mark: str | None = None) -> list[dict]:
     """The Sampler: one scene from each of `count` territories, the ones tried least first (to explore at large). Each territory's
     scene is written by its own Kimi request, 6 at a time, each on a copy of the state; their memory (subjects, territories, axes
     used) is merged back into `st` after, so later batches still avoid repeating them."""
@@ -750,7 +775,7 @@ def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direct
     def one(w):
         mine = json.loads(json.dumps(st))
         try:
-            got, info = _ask_chunk(mine, api_key, kimi_model, w, 1, direction, [], target)
+            got, info = _ask_chunk(mine, api_key, kimi_model, w, 1, direction, [], target, mark)
             return w, mine, got[:1], info
         except Exception as e:
             print(f"[KIMI] sampler: {w['name']} failed ({str(e)[:120]})", flush=True)
@@ -1242,7 +1267,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     name = (q.get("f") or [""])[0]
                     f = PLATES_DIR / name if name and "/" not in name and "\\" not in name and not name.startswith(".") else None
                 else:
-                    f = projects.load((q.get("p") or [PROJECT["slug"] if PROJECT else ""])[0])["mark_file"]
+                    proj = projects.load((q.get("p") or [PROJECT["slug"] if PROJECT else ""])[0])
+                    f = projects.with_mark(proj, (q.get("m") or [None])[0])["mark_file"]   # the main mark, or another of its marks
             except Exception:
                 f = None
             if f is None or not f.is_file():
@@ -1326,8 +1352,11 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
             plates = []
             placed = st.get("placements", {})
+            mark_ids = {m["id"]: m for m in (PROJECT or {}).get("marks") or []}
+            used = {k: v for k, v in st.get("marks_used", {}).items() if v in mark_ids}   # a mark since removed: read as the main one
             for p in ordered_plate_files(st):
-                qa = get_cached_qa(p, placed.get(p.name))
+                pl, mk = placed.get(p.name), used.get(p.name)
+                qa = get_cached_qa(p, pl, mk)
                 plates.append({
                     "filename": p.name,
                     "url": f"/api/plate?f={quote(p.name)}&t={int(p.stat().st_mtime)}",   # the project's own folder
@@ -1350,7 +1379,11 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "qa_score": qa["qa_score"],
                     "qa_issues": qa.get("issues", []),
                     "qa_doubt": qa.get("qa_doubt", ""),
-                    "placement": placed.get(p.name),                 # its own place and size (a Loose batch), else the project's
+                    "placement": pl,                                 # its own place and size (a Loose batch), else the project's
+                    "mark": mk, "mark_name": mark_ids[mk]["name"] if mk else None,   # made with another of the project's marks
+                    "box": ({"x": (pl or {}).get("x", PROJECT["mark_x"]), "y": (pl or {}).get("y", PROJECT["mark_y"]),
+                             "size": (pl or {}).get("size", mark_ids[mk]["mark_size"] if mk else PROJECT["mark_size"]),
+                             "ar": projects.mark_ratio(projects.with_mark(PROJECT, mk))} if pl or mk else None),   # where its logo target is drawn
                 })
 
             kimi_key = st.get("kimi_api_key", "")
@@ -1535,7 +1568,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 except Exception:
                     self.send_json({"ok": False, "error": "The mark did not arrive as an image."}, 400)
                     return
-            touches_active = action in ("switch", "create", "delete") or (action == "update" and PROJECT and body.get("slug") == PROJECT["slug"])
+            touches_active = action in ("switch", "create", "delete") or (action in ("update", "add_mark", "edit_mark", "remove_mark") and PROJECT and body.get("slug") == PROJECT["slug"])
             if touches_active and busy():
                 self.send_json({"ok": False, "busy": True, "error": "Something is running (images, an AI order or an export). Wait until it ends."}, 409)
                 return
@@ -1547,6 +1580,18 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     apply_project(projects.set_active(p["slug"]))
                 elif action == "update":
                     p = projects.update(str(body.get("slug") or ""), body, mark)
+                    if PROJECT and p["slug"] == PROJECT["slug"]:
+                        apply_project(p)
+                elif action in ("add_mark", "edit_mark", "remove_mark"):   # the project's other marks
+                    slug = str(body.get("slug") or "")
+                    if action == "add_mark":
+                        if not mark:
+                            raise ValueError("Choose the mark's image first.")
+                        p = projects.add_mark(slug, body, mark)
+                    elif action == "edit_mark":
+                        p = projects.edit_mark(slug, str(body.get("mark_id") or ""), body)
+                    else:
+                        p = projects.remove_mark(slug, str(body.get("mark_id") or ""))
                     if PROJECT and p["slug"] == PROJECT["slug"]:
                         apply_project(p)
                 elif action == "delete":                    # to the Trash; the open one gone, the next project opens (or none)
@@ -1753,6 +1798,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     direction=direction,
                     stats=stats,
                     target=body.get("target") or "exact",
+                    mark=body.get("mark") or None,
                 )
                 with STATE_LOCK:                               # Kimi took seconds: what changed meanwhile stays; only its titles are added,
                     if PROJECT and PROJECT["slug"] == started_in:   # and never into another project opened meanwhile
@@ -1792,15 +1838,22 @@ class StudioHandler(SimpleHTTPRequestHandler):
             title = body.get("title", "Outdoor Plate").strip()
             raw_prompt = body.get("prompt", "").strip()
             guide_type = body.get("guide", "dark")
-            pl = placement.clean(body.get("placement")) or placement.choose(body.get("target") or "exact", PROJECT)   # Loose: the place its scene was written for
-            guide_kw = {"guide": placement.guide(PROJECT, pl)} if pl else {"guide": current_guide()} if current_guide() else {}   # another project: its own guide image
+            mark_id = pick_mark(body.get("mark")) if body.get("mark") != "mix" else None   # another of the project's marks (the main one: None)
+            proj = projects.with_mark(PROJECT, mark_id)
+            pl = placement.clean(body.get("placement")) or placement.choose(body.get("target") or "exact", proj)   # Loose: the place its scene was written for
+            if pl:
+                guide_kw = {"guide": placement.guide(proj, pl)}
+            elif mark_id:                                                     # another mark on target: its own guide, at its size
+                guide_kw = {"guide": placement.guide(proj, {"kind": "exact", "x": proj["mark_x"], "y": proj["mark_y"], "size": proj["mark_size"]})}
+            else:
+                guide_kw = {"guide": current_guide()} if current_guide() else {}   # another project: its own guide image
             model = body.get("model", "google/nano-banana-pro")
             if model == "auto":
                 model = taste.pick_model(load_state())
                 print(f"[TASTE] auto-picked model {model}", flush=True)
             after_filename = body.get("after_filename")
 
-            seen_as = placement.as_project(PROJECT, pl)                        # the prompt names this image's place and size
+            seen_as = placement.as_project(proj, pl)                           # the prompt names this image's mark, place and size
             full_prompt = build_full_prompt(raw_prompt, seen_as)
             mkey = (PROJECT["slug"] if PROJECT else "", title)
             with MAKING_LOCK:
@@ -1836,7 +1889,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 tmp_img = PLATES_DIR / f".new-{uuid.uuid4().hex}.jpg.part"
                 im.save(tmp_img, "JPEG", quality=95)
                 try:
-                    qa = check_new_image(tmp_img, pl)
+                    qa = check_new_image(tmp_img, pl, mark_id)
                 except BaseException:
                     tmp_img.unlink(missing_ok=True)
                     raise
@@ -1850,7 +1903,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     os.replace(tmp_img, save_path)
                     qa = {**qa, "filename": filename}
                     with QA_LOCK:
-                        _remember_qa(_plate_key(save_path, pl), qa, now=True)
+                        _remember_qa(_plate_key(save_path, pl, mark_id), qa, now=True)
                     print(
                         f"[QA] {filename} ({model}) -> passed={qa['qa_passed']} score={qa['qa_score']}% "
                         f"corr={qa['center_corr']} asym={qa['core_asymmetry']} issues={qa['issues']}",
@@ -1868,6 +1921,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                             st.setdefault("ideas", {})[filename] = body["idea"]
                         if pl:
                             st.setdefault("placements", {})[filename] = pl
+                        if mark_id:
+                            st.setdefault("marks_used", {})[filename] = mark_id
                         if title not in st.setdefault("history", []):
                             st["history"].append(title)
 
@@ -1884,7 +1939,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 threading.Thread(target=apply_critic, args=(filename,), daemon=True).start()
                 took = round(time.time() - t_start, 1)
                 gen_log.record("image", id=job_id, ok=True, title=title, filename=filename, model=model, guide=guide_type, world=body.get("world"), seconds=took,
-                               attempts=trace, qa_passed=qa["qa_passed"], qa_score=qa["qa_score"], qa_issues=qa.get("issues", []), softened=bool(softened), placement=pl)
+                               attempts=trace, qa_passed=qa["qa_passed"], qa_score=qa["qa_score"], qa_issues=qa.get("issues", []), softened=bool(softened), placement=pl, mark=mark_id)
                 print(f"[GENERATE] OK {filename} ({model}) {took}s, attempt {len(trace)}/3" + ("  (prompt softened after a moderation rejection)" if softened else "") + ("" if qa["qa_passed"] else "  LOGO CHECK FAILED -> trash"), flush=True)
 
                 self.send_json({
@@ -1898,6 +1953,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "qa_doubt": qa.get("qa_doubt", ""),
                     "softened": bool(softened),
                     "placement": pl,
+                    "mark": mark_id,
                 })
             except Exception as e:
                 print(f"[GENERATE] FAILED '{title}' ({model}, guide={guide_type}) after {time.time() - t_start:.0f}s: {str(e)[:300]}", flush=True)

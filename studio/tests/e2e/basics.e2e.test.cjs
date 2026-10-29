@@ -1207,6 +1207,28 @@ test('the Selection: picked images go to the Trash from the floating bar, in one
   await ctx.close();
 });
 
+test('several marks: added in Project settings, then the generation row offers which one a batch uses; a single-mark project shows nothing new', { skip }, async () => {
+  const ctx = await fresh({ setup: st => { st.projects[0].fixed = false; st.plates[1].mark = 'bird'; st.plates[1].mark_name = 'Bird'; st.plates[1].box = { x: 50, y: 50, size: 12, ar: 1 }; } });
+  assert.equal(await page.locator('.csel[data-for="markSelect"]').isVisible(), false, 'one mark: the row as before');
+  await page.evaluate(() => openProjectForm('edit'));
+  assert.equal(await page.locator('#pfMarks').isVisible(), true);
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAHklEQVR4nGNgYGD4z0AEYBxVSF2Fo6EwGgqjoTA4AAD2dQf5kV0x5AAAAABJRU5ErkJggg==', 'base64');
+  await page.setInputFiles('#pfAddMark', { name: 'bird.png', mimeType: 'image/png', buffer: png });
+  await page.waitForSelector('.pf-mark-row');
+  assert.equal(await page.locator('.pf-mark-row input[type="text"]').inputValue(), 'Bar', 'named from Kimi\'s reading');
+  assert.match(api.state.markAdded.mark, /^data:image\/png;base64,/);
+  await shot('26-other-marks');
+  await page.click('#projectModal button >> text=Cancel');
+  assert.equal(await page.locator('.csel[data-for="markSelect"]').isVisible(), true, 'two marks: the choice appears');
+  assert.deepEqual(await page.locator('#markSelect option').allTextContents(), ['Main mark', 'Bar', 'Mix']);
+  assert.equal(await page.locator(`.card[data-filename="${api.state.plates[1].filename}"] .card-model-badge.mark`).textContent(), 'Bird', 'each card says which mark');
+  await page.selectOption('#markSelect', 'mix');
+  await page.click('#generateBtn');
+  await page.waitForFunction(() => /Done/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  assert.equal(api.state.calls.find(c => c.path === '/api/invent-prompts').body.mark, 'mix');
+  await ctx.close();
+});
+
 test('Look: each slider under its own setting (the zoom\'s Amount under Zoom, Trail on the left)', { skip }, async () => {
   const ctx = await fresh();
   await film();

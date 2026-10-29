@@ -313,8 +313,20 @@
         r.setProperty('--mark-w', `${p.mark_size}%`); r.setProperty('--mark-x', `${p.mark_x}%`); r.setProperty('--mark-y', `${p.mark_y}%`);
         r.setProperty('--mark-ar', String(p.mark_ratio || 1)); r.setProperty('--mark-r', '2px');   // always the mark's box (a round mark fits its square): the user's call
       }
+      syncMarkSelect(p);
       const centred = p.mark_x === 50 && p.mark_y === 50;
       document.getElementById('retLabel').textContent = `logo · ${centred ? 'centre' : `${p.mark_x}%, ${p.mark_y}%`} · ${p.mark_size}%`;
+    }
+    // a project with several marks: the generation row offers which one a batch uses (main, another, or a mix); a project with one: nothing
+    function syncMarkSelect(p) {
+      const sel = document.getElementById('markSelect'), marks = (p && p.marks) || [], cur = sel.value || 'main';
+      document.body.classList.toggle('multi-mark', marks.length > 0);
+      const opts = [['main', 'Main mark'], ...marks.map(m => [m.id, m.name]), ...(marks.length ? [['mix', 'Mix']] : [])];
+      if (sel.options && [...sel.options].map(o => o.value).join('|') !== opts.map(o => o[0]).join('|')) {
+        sel.innerHTML = opts.map(([v, t]) => `<option value="${escapeHtml(v)}">${escapeHtml(t)}</option>`).join('');
+      }
+      sel.value = opts.some(o => o[0] === cur) ? cur : 'main';
+      if (typeof syncSelects === 'function') syncSelects();
     }
     async function openProjectMenu(e) {
       if (e && e.stopPropagation) e.stopPropagation();
@@ -380,6 +392,8 @@
       document.getElementById('pfMark').value = '';
       const locked = !!(edit && project.fixed);                                  // DEMO: name, brand and colours change; its mark, place and words stay
       document.getElementById('pfLocked').hidden = !locked;
+      document.getElementById('pfMarks').hidden = !edit || locked;           // other marks: once the project exists (Demo keeps its one)
+      renderMarkList();
       formStage(edit ? 'ready' : 'pick');
       document.getElementById('projectTitle').textContent = edit ? `${project.name}: settings` : 'New project';
       document.getElementById('pfSave').textContent = edit ? 'Save' : 'Create project';
@@ -407,6 +421,69 @@
       } else if (projectForm && projectForm.kind === 'edit') note.hidden = true;
     }
     function closeProjectForm() { clearInterval(readingTimer); document.getElementById('projectModal').classList.remove('open'); projectForm = null; }   // also while Kimi reads: its answer is dropped
+    // an image file as the mark: drawn into a PNG (an SVG too), at most 1600 px, trimmed to the mark as the server does
+    async function markToPng(file) {
+      const url = URL.createObjectURL(file);
+      try {
+        const im = new Image(); im.src = url; await im.decode();
+        let w = im.naturalWidth || 1024, h = im.naturalHeight || 1024;
+        const k = file.type === 'image/svg+xml' ? 1600 / Math.max(w, h) : Math.min(1, 1600 / Math.max(w, h));
+        w = Math.max(1, Math.round(w * k)); h = Math.max(1, Math.round(h * k));
+        let c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d').drawImage(im, 0, 0, w, h);
+        const px = c.getContext('2d').getImageData(0, 0, w, h).data;
+        let x0 = w, y0 = h, x1 = -1, y1 = -1;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (px[(y * w + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        if (x1 < 0) throw new Error('empty');
+        if (x1 - x0 + 1 < w || y1 - y0 + 1 < h) {
+          const t = document.createElement('canvas'); t.width = x1 - x0 + 1; t.height = y1 - y0 + 1;
+          t.getContext('2d').drawImage(c, -x0, -y0); c = t;
+        }
+        return c.toDataURL('image/png');
+      } finally { URL.revokeObjectURL(url); }
+    }
+    // the project's other marks, in its settings: each saved as soon as it is added, renamed, resized or removed
+    function renderMarkList() {
+      const list = document.getElementById('pfMarkList'), marks = (project && project.marks) || [];
+      list.innerHTML = marks.map(m => `<div class="pf-mark-row" data-id="${escapeHtml(m.id)}">
+        <img src="${escapeHtml(m.url)}" alt="" />
+        <input type="text" maxlength="30" value="${escapeHtml(m.name)}" aria-label="Name of this mark" onchange="editProjectMark(this.closest('.pf-mark-row').dataset.id, { name: this.value })" />
+        <input type="number" min="4" max="60" step="0.5" value="${m.size}" aria-label="Its width, % of the frame" title="Its width, as a % of the frame's width" onchange="editProjectMark(this.closest('.pf-mark-row').dataset.id, { size: +this.value })" />
+        <span class="pf-unit">%</span>
+        <button type="button" class="icon-btn pf-x" title="Remove this mark (its images stay)" aria-label="Remove ${escapeHtml(m.name)}" onclick="removeProjectMark(this.closest('.pf-mark-row').dataset.id)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+      </div>`).join('');
+      document.getElementById('pfAddMarkBtn').hidden = marks.length >= 8;
+    }
+    async function markCall(body) {
+      const err = document.getElementById('pfError');
+      if (isBusy()) { err.textContent = 'Wait until the running job ends, then change the marks.'; return false; }
+      const r = await projectsCall({ slug: project.slug, ...body });
+      if (!r.ok) { err.textContent = r.error || 'Could not change the marks.'; return false; }
+      err.textContent = '';
+      showProject(r.project);
+      renderMarkList();
+      return true;
+    }
+    async function addProjectMark(file) {
+      if (!file || !project) return;
+      const note = document.getElementById('pfMarkReading'), input = document.getElementById('pfAddMark');
+      try {
+        const mark = await markToPng(file);
+        note.hidden = false; note.innerHTML = '<span class="spin"></span><span>Kimi is reading the mark…</span>';
+        let d = {};
+        try { d = await (await fetch('/api/describe-mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mark }) })).json(); } catch (e) {}
+        const name = (d && d.noun ? d.noun.replace(/^./, c => c.toUpperCase()) : '') || file.name.replace(/\.[a-z]+$/i, '').slice(0, 30);
+        await markCall({ action: 'add_mark', mark, name, shape: (d && d.shape) || '', noun: (d && d.noun) || '' });
+      } catch (e) {
+        document.getElementById('pfError').textContent = e.message === 'empty' ? 'That image is empty: the mark needs to show on a transparent or plain background.' : 'That file could not be read as an image.';
+      } finally { note.hidden = true; input.value = ''; }
+    }
+    function editProjectMark(id, fields) { return markCall({ action: 'edit_mark', mark_id: id, ...fields }); }
+    async function removeProjectMark(id) {
+      const m = ((project && project.marks) || []).find(x => x.id === id);
+      if (!m || !(await askConfirm(`Remove ${m.name}?`, 'Its images stay in the project; from now on they read as made with the main mark.', 'Remove'))) return;
+      await markCall({ action: 'remove_mark', mark_id: id });
+    }
     async function readProjectMark(file) {
       if (!file || !projectForm) return;
       const url = URL.createObjectURL(file);
@@ -1119,7 +1196,7 @@
       old.forEach(el => el.remove());
     }
     // an image with its own placement (a Loose batch): the logo target draws its box there (the project's otherwise)
-    function placeVars(pl) { return pl ? `--mark-x:${pl.x}%;--mark-y:${pl.y}%;--mark-w:${pl.size}%` : ''; }
+    function placeVars(pl) { return pl ? `--mark-x:${pl.x}%;--mark-y:${pl.y}%;--mark-w:${pl.size}%${pl.ar ? `;--mark-ar:${pl.ar}` : ''}` : ''; }   // (box: also another mark's shape)
     // why this image's mark is not on target: its batch asked for it (Loose / Scattered), and where
     function targetTip(pl) { return `${pl.kind === 'scattered' ? 'Scattered' : 'Loose'}: made with the mark at ${pl.x}% across, ${pl.y}% down, ${pl.size}% wide (on purpose: its batch asked for it)`; }
     function cardHtml(p) {
@@ -1135,7 +1212,7 @@
              ondragend="onDragEnd(event)"
              onclick="cardClick(event, '${p.filename}')"
              ondblclick="openViewer(event, '${p.filename}')">
-          <div class="card-thumb"${p.placement ? ` style="${placeVars(p.placement)}"` : ''}>
+          <div class="card-thumb"${p.box || p.placement ? ` style="${placeVars(p.box || p.placement)}"` : ''}>
             <img src="${p.thumb || p.url}" loading="lazy" decoding="async" alt="" />
             <span class="card-num"></span>
             ${!showTrash && seenAtLoad && !seenAtLoad.has(p.filename) ? '<span class="card-new">New</span>' : ''}
@@ -1156,6 +1233,7 @@
           <div class="card-title" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</div>
           <div class="card-meta">
             <span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>
+            ${p.mark_name ? `<span class="card-model-badge mark" title="Made with ${escapeHtml(p.mark_name)}, one of the project's marks">${escapeHtml(p.mark_name)}</span>` : ''}
             ${p.placement && p.placement.kind !== 'exact' ? `<span class="card-model-badge target" title="${escapeHtml(targetTip(p.placement))}">${p.placement.kind === 'scattered' ? 'Scattered' : 'Loose'}</span>` : ''}
             ${p.critic ? `<span class="card-model-badge" title="${escapeHtml(p.critic.reason)}">AI ${p.critic.mean}</span>` : ''}
             ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(!p.qa_passed && (p.qa_issues || []).length && p.trash_reason === 'Logo check' ? p.qa_issues.join(', ') : p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
@@ -1890,7 +1968,7 @@
     // Not in it: permanent deletes and generation (they say so when you start them), the mode and the views.
     const history = [], future = [];
     let applyingHistory = false;
-    const NOT_UNDONE = ['targetSelect', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
+    const NOT_UNDONE = ['targetSelect', 'markSelect', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
     function pushStep(step) { if (!step.settings) commitSettings(); history.push(step); if (history.length > 100) history.shift(); future.length = 0; showUndo(); return step; }
     function showUndo() {
       const b = document.getElementById('undoRandomBtn');
@@ -2681,7 +2759,7 @@
       const plan = planAt(cutPos, active.length, fx.invert, tl);
       currentIdx = plan.plate;
       const url = active[plan.plate].preview || active[plan.plate].url;
-      const box = placeVars(active[plan.plate].placement);
+      const box = placeVars(active[plan.plate].box || active[plan.plate].placement);
       if (box !== shownBox) { shownBox = box; document.querySelector('#reticle .reticle-circle').style.cssText = box; }   // this image's own box
       if (plan.plate !== aheadFrom) { aheadFrom = plan.plate; preloadAhead(plan.plate); }
       let held = false;
@@ -2745,7 +2823,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect'];
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'progSelect', 'progEverySelect', 'padRange', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect'];
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
     // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved
@@ -3140,7 +3218,7 @@
       const T = window.__TAURI__;                                            // (not TAURI: declared further down, and this runs early)
       if (T && T.event && isBusy() !== toldBusy) { toldBusy = isBusy(); T.event.emit('page-busy', toldBusy).catch(() => {}); }   // the Mac app asks before quitting mid-job
       const lockGen = generating || aiRunning;
-      ['worldSelect', 'directionInput', 'targetSelect', 'batchCountSelect', 'modelSelect', 'generateBtn', 'terrBtn', 'refineOpen', 'refineSet', 'refineClear'].forEach(id => { document.getElementById(id).disabled = lockGen; });
+      ['worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'batchCountSelect', 'modelSelect', 'generateBtn', 'terrBtn', 'refineOpen', 'refineSet', 'refineClear'].forEach(id => { document.getElementById(id).disabled = lockGen; });
       genRunningLabel();
       syncAiBtn();
       document.getElementById('exportBtn').disabled = aiRunning || !activePlates().length;
@@ -3215,7 +3293,7 @@
             const genRes = await fetch('/api/generate-image', {
               method: 'POST',
               headers: forProject({'Content-Type': 'application/json'}),
-              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, target: item.target || 'exact', placement: item.placement || null, model })
+              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, target: item.target || 'exact', placement: item.placement || null, mark: item.mark || null, model })
             });
             genData = await genRes.json();
           } catch (e) {
@@ -3331,7 +3409,7 @@
         const invRes = await fetch('/api/invent-prompts', {
           method: 'POST',
           headers: forProject({'Content-Type': 'application/json'}),
-          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact' })
+          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main' })
         });
         const invData = await invRes.json();
         if (invData.needs_kimi_key) {
@@ -3662,6 +3740,9 @@ Object.assign(window, {
   renameGroup,
   deleteGroup,
   clearPicks,
+  addProjectMark,
+  editProjectMark,
+  removeProjectMark,
   trashPicked,
   pickClick,
   toggleFullscreen,

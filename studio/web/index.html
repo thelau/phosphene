@@ -174,6 +174,10 @@
             <option value="loose">Loose</option>
             <option value="scattered">Scattered</option>
           </select>
+          <span class="gen-sep mark-only"></span>
+          <select id="markSelect" title="Which of the project's marks this batch uses: the main one, another, or a mix (each image one of them, the main one about half the time)">
+            <option value="main" selected>Main mark</option>
+          </select>
           <span class="gen-sep"></span>
           <select id="batchCountSelect" title="Number of images per batch">
           <option value="2">2 images</option>
@@ -710,6 +714,13 @@
           <label class="pf-row"><span>Brand</span><input type="text" id="pfBrief" maxlength="200" placeholder="Night Owl, a late-night bar in Lisbon" autocomplete="off" title="Who the films are for, in one line: the image prompts start from it" /></label>
           <label class="pf-row"><span>Colours</span><input type="text" id="pfPalette" maxlength="80" placeholder="#EC540C #1A1A1A #FEFFE7" autocomplete="off" oninput="drawProjectPreview()" title="The brand colours, in order of importance" /></label>
           <div class="pf-swatches" id="pfSwatches"></div>
+          <div class="pf-marks" id="pfMarks" hidden>
+            <div class="pf-marks-head"><span>Other marks</span></div>
+            <p class="pf-hint">More marks of the brand (a symbol, a wordmark, a badge…), at the main mark's place. Each batch uses the main one, one of these, or a mix.</p>
+            <div id="pfMarkList"></div>
+            <p class="pf-reading" id="pfMarkReading" hidden role="status"></p>
+            <label class="pf-add-mark" id="pfAddMarkBtn">+ Add a mark<input type="file" id="pfAddMark" accept="image/png,image/svg+xml,image/jpeg,image/webp" onchange="addProjectMark(this.files[0])" /></label>
+          </div>
         </div>
         <div class="pf-preview" id="pfPreview" title="Where the mark sits in every shot"><img id="pfPreviewMark" alt="" /></div>
       </div>

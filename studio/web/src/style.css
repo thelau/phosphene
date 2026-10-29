@@ -96,6 +96,21 @@
     .row > .csel { width: 100%; }
     .csel[data-for="batchCountSelect"] { width: 148px; }
     .csel[data-for="targetSelect"] { width: 150px; }
+    .csel[data-for="markSelect"] { width: 160px; }
+    body:not(.multi-mark) .csel[data-for="markSelect"], body:not(.multi-mark) .gen-sep.mark-only { display: none; }   /* only for a project with several marks */
+    .pf-marks { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-2); display: flex; flex-direction: column; gap: 6px; }
+    .pf-marks[hidden] { display: none; }
+    .pf-marks-head { font-size: 12px; font-weight: 600; color: var(--text-2); }
+    .pf-marks .pf-hint { margin-left: 0; }
+    .pf-marks .pf-reading { margin-left: 0; }
+    .pf-mark-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) 64px 14px 28px; align-items: center; gap: 8px; }
+    .pf-mark-row img { width: 40px; height: 32px; object-fit: contain; background: #808080; border-radius: 4px; }   /* mid grey: a black mark and a white one both show */
+    .pf-mark-row input { min-width: 0; }
+    .pf-mark-row .pf-x { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; }
+    .pf-add-mark { align-self: flex-start; padding: 6px 12px; border-radius: 7px; border: 1px dashed var(--line-3); font-size: 13px; color: var(--text-2); cursor: pointer; }
+    .pf-add-mark:hover { color: var(--text); border-color: var(--muted); }
+    .pf-add-mark input { display: none; }
+    .card-model-badge.mark { color: #E6D3A8; background: rgba(230, 200, 140, .13); }   /* made with another of the project's marks */
     .gen .csel-face { height: 44px; padding: 0 40px 0 18px; border: 0; border-radius: 0; background-color: transparent; background-position: right 16px center; font-weight: 600; font-size: 14px; }   /* room on either side of "20 images" */
     .settings-popover .csel, .ai-panel .csel { display: flex; width: 100%; }
     .look-char .csel { flex: 1; }

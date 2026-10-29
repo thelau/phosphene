@@ -93,6 +93,11 @@ function start(state = makeState()) {
         } else if (body.action === 'delete') {
           state.deleted = body.slug; state.projects = state.projects.filter(p => p.slug !== body.slug);
           state.project = state.projects.length ? state.projects[0].slug : null; state.plates = []; state.sequences[0].order = [];
+        } else if (body.action === 'add_mark' || body.action === 'edit_mark' || body.action === 'remove_mark') {   // the project's other marks
+          const p = projectOf(state), marks = p.marks || (p.marks = []);
+          if (body.action === 'add_mark') { const id = String(body.name || 'mark').toLowerCase().replace(/[^a-z0-9]+/g, '-'); marks.push({ id, name: body.name, size: p.mark_size || 18, shape: body.shape, noun: body.noun, ratio: 1, url: `/api/project-mark?p=${p.slug}&m=${id}` }); state.markAdded = body; }
+          else if (body.action === 'edit_mark') Object.assign(marks.find(m => m.id === body.mark_id), body.name !== undefined ? { name: body.name } : {}, body.size !== undefined ? { size: body.size } : {});
+          else p.marks = marks.filter(m => m.id !== body.mark_id);
         } else if (body.action === 'update') Object.assign(projectOf(state), { name: body.name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y, brief: body.brief, palette: body.palette });
         return send({ ok: true, active: state.project, project: projectOf(state), projects: state.projects });
       }
