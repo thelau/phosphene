@@ -278,10 +278,9 @@
     // plucks peaked at 0.85-1.08 against the drone's 0.63, into the final soft clip, and the top was 3-5x the drone's): a lower filter,
     // less resonance, longer notes, the bed a little higher
     { name: 'Spiral', bed: 0.5, arpGain: 1.4, arpUp: 2, morph: 1, spiral: true, arpOpen: 0.62, arpQ: 0.6, arpSustain: 1.5 },
-    // Tide (from a reference the user sent, measured 2026-10-30: no beat at all, the low end swelling and falling every 2-4 s by ~50%,
-    // free of any grid; one pedal note and its fifth for minutes; a 6.4 Hz flutter in the mids; a shape over the whole piece: mids only,
-    // then the sub comes in, a break where it drops away, back, out). The bed's own swell and shape: slow automation, no extra cost.
-    { name: 'Tide', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false, tide: true, arpOpen: 1, arpQ: 1, arpSustain: 1 },
+    // 2 was Tide (the bed swelling by itself, one note, no beat; from a reference the user sent): 10 of 28 marks liked, then "kill Tide"
+    // (the user, 2026-10-30); removed. Its number stays, as the drone, like Signal's and Lyric's
+    { name: 'Tide (retired)', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1 },
     // 3 and 4 were Signal (sines, clicks, silence) and Lyric (a lead melody, a Major mode), built and judged on 2026-10-30: 0 of 30 marks
     // liked (the user: they "kill"); removed. Their numbers stay, so a sound or a mark saved with them opens, as the drone
     { name: 'Signal (retired)', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1 },
@@ -290,9 +289,12 @@
     // off-sixteenths whose filter drifts (Bassline) and a short sequence in 3, 5 or 7 against the bar through an echo, its filter sweeping over
     // ~40 s (Arpeggio); no bass in the intro or the break. No drums: a hat was "probably cringe", then the kick "not a good idea" (the user, 2026-10-30)
     { name: 'Hypnotic', bed: 0.75, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1, grid: true, own: true },
+    // Run (the user's ask, 2026-10-30: a running bass, in the spirit of an 80s film score): the bass never stops, sixteenths on the same warped grid
+    // as Hypnotic's (it follows the speed), brassy (two saws and a square an octave under through a resonant low-pass that opens on the
+    // accents and drifts over ~30 s), a short glide between notes, the chord changes under it; the pad swells like brass on each chord
+    // (the filter opens and closes), in a big room. The Bassline pattern picks the run: Pulse steady, Octave jumping, Fifths walking, Gallop
+    { name: 'Run', bed: 0.6, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1, run: true, own: true },
   ];
-  // Tide's shape for the sub over the film (share of the clip -> level): none at first, in, a break, back
-  const tideArc = u => { const r = (a, b) => Math.min(1, Math.max(0, (u - a) / (b - a))); return 0.06 + 0.94 * r(0.06, 0.16) * (1 - 0.75 * r(0.54, 0.58) * (1 - r(0.62, 0.68))); };
   const SPIRALS = [[0, 1, 2, 3, 2, 1], [0, 2, 4, 2], [0, -1, -2, 1, 0, 2], [0, 3, 1, 4, 2, 5, 3, 1], [0, 2, 1, 3, 2, 4]];
   const SPIRAL_ROUNDS = 2;                                           // rounds of the pattern at each step of the spiral
   const EUCLID = [[3, 8], [5, 8], [5, 12], [7, 12], [5, 16], [7, 16], [9, 16]];
@@ -452,11 +454,6 @@
 
     // ---- the sub: shared by both sides ----
     const subBus = gain(1);
-    // phase-locked to the clip, so a live swap (a slider moved) carries a swell on where it was instead of starting it again
-    const slowLfo = (rate, depth, param) => { const o = osc('sine', rate, undefined, true); pitched.pop(); o.connect(gain(depth, param)); return o; };
-    let subOut = subBus;
-    if (style.tide && opts.arc !== false) { subOut = gain(1); subBus.connect(subOut); sampled(subOut.gain, t => tideArc(t / total)); }
-    const trand = mulberry32(seedN + 2027), tideRates = [0.24 + 0.08 * trand(), 0.37 + 0.1 * trand()], flutter = 6.1 + 0.6 * trand();
     {
       const base = (0.3 + 0.8 * low) * (1 + 0.6 * power);
       const level = gain(base * 0.9);                                      // a slow tremolo around it
@@ -564,14 +561,12 @@
       }
       // the pump, the landing, then the heavy saturation
       const pg = gain(1); pump(pg.gain, 0.8 * pulse, 0.07);
-      if (style.tide) slowLfo(flutter, 0.16, pg.gain);                    // Tide: the mids flutter
       const lg = gain(1); sampled(lg.gain, t => 1 - 0.35 * landed(t));
       const k = (1 + 1.5 * power) * (1 + 0.6 * industrial);
       const sat = shaper(tanhCurve(k, 1));
       body.connect(pg); pg.connect(lg); lg.connect(sat);
       const sum = gain(style.bed);                                         // the style's bed: all of it in Drone, stepped back under the sequence in Spiral
-      if (style.tide) { sum.gain.value = 0.65; slowLfo(tideRates[0], 0.22, sum.gain); slowLfo(tideRates[1], 0.13, sum.gain); }   // Tide: two slow swells, never in step: 0.3 to 1, irregular (the reference's low end moves 11-31% in 100 ms frames, Drone 11%; here ~25%)
-      sat.connect(sum); subOut.connect(sum);
+      sat.connect(sum); subBus.connect(sum);
       const br = gain(1); sum.connect(br);
       lfo(0.11 * move, 0.07, br.gain);
       sides.push(br);
@@ -756,7 +751,11 @@
       // Glass: each note on its own through a wavefolder (folding the whole chord at once made low difference tones: darker, not glassier),
       // from triangles, as a West Coast patch folds a soft wave into a bright one
       const into = n => (tone === 1 ? (() => { const g = gain(0.6); g.connect(shaper(foldCurve(3), lp)); return g; })() : lp);
-      const body = gain(0.11 * padAmt * (tone === 2 ? 1.7 : tone === 1 ? 0.8 : 1)); lp.connect(body);   // under the drone, never over it (the user: no pad takeover)
+      const body = gain(0.11 * padAmt * (tone === 2 ? 1.7 : tone === 1 ? 0.8 : 1) * (style.run ? 1.4 : 1)); lp.connect(body);   // under the drone, never over it (the user: no pad takeover)
+      if (style.run && tone !== 2) {                                       // Run: the pad swells like brass on each chord (every 8 cuts without changes): the filter opens, then settles
+        const base = lp.frequency.value, every = prog ? progEvery : 8;
+        perCut.push((i, t) => { if (i % every) return; lp.frequency.setTargetAtTime(base * 2.2, t, 0.25); lp.frequency.setTargetAtTime(base * 0.8, t + 0.7, 1.1); });
+      }
       sides.forEach((br, i) => {                                           // a chorus each side, a little apart: the Juno width
         const dl = ctx.createDelay(0.05); dl.delayTime.value = 0.012 + 0.004 * i;
         lfo(0.31 + 0.07 * i, 0.0028, dl.delayTime);
@@ -770,13 +769,16 @@
     }
 
     // ---- Hypnotic: a rolling bass and a sequence on sixteenths that follow the cuts (see STYLES) ----
-    if (style.grid) {
-      const r = mulberry32(seedN + 5521), lens = starts.slice(1).map((v, i) => v - starts[i]), whole = lens.length > 2 ? lens.slice(0, -1) : lens;
-      // beats a music cut: a power of two, so the film's usual cut (the median) makes a beat near 128 BPM (90-180); then the beat follows the cuts
-      const med = whole.slice().sort((a, b) => a - b)[whole.length >> 1] || 0.47, beatsPerCut = Math.pow(2, Math.round(Math.log2(med / 0.469)));
-      const per = 4 * beatsPerCut, step = med / per, arcOn = opts.arc !== false;
+    // sixteenths on the music cuts for Hypnotic and Run: beats a music cut a power of two, so the film's usual cut (the median) makes a beat
+    // near 128 BPM (90-180); then the beat follows the cuts. Too fast for every step: fewer (thin)
+    const sixteenths = () => {
+      const lens = starts.slice(1).map((v, i) => v - starts[i]), whole = lens.length > 2 ? lens.slice(0, -1) : lens;
+      const med = whole.slice().sort((a, b) => a - b)[whole.length >> 1] || 0.47, per = 4 * Math.pow(2, Math.round(Math.log2(med / 0.469)));
       const stepAt = i => cutNoteLen(starts, Math.min(nCuts - 1, Math.floor(i / per + 1e-9))) / per;   // the sixteenth's length here
-      const thin = (i, every) => { const sl = stepAt(i); return sl < every / 4 ? i % 4 === 0 : sl < every / 2 ? i % 2 === 0 : true; };   // too fast for every step: fewer
+      return { per, stepAt, thin: (i, every) => { const sl = stepAt(i); return sl < every / 4 ? i % 4 === 0 : sl < every / 2 ? i % 2 === 0 : true; } };
+    };
+    if (style.grid) {
+      const r = mulberry32(seedN + 5521), { per, thin } = sixteenths(), arcOn = opts.arc !== false;
       const quiet = (u, bass) => arcOn && (u < (bass ? 0.1 : 0.05) || (u > 0.56 && u < 0.64));   // no bass in the intro and the break
       const sweep = (t, P, ph) => 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / P + ph);
       const ph1 = 2 * Math.PI * r(), ph2 = 2 * Math.PI * r(), P1 = 28 + 12 * r(), P2 = 36 + 20 * r();
@@ -815,6 +817,27 @@
           strike(env, t, 1.1 * arpAmt, 0.1);
         });
       }
+    }
+
+    // ---- Run: the running bass, every sixteenth (see STYLES) ----
+    if (style.run && bassAmt > 0.01) {
+      const r = mulberry32(seedN + 6113), { per, stepAt, thin } = sixteenths();
+      const RUNS = [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 12, 0, 12, 0, 12, 0, 12, 0, 12, 0, 12, 0, 12, 7, 12],
+        [0, 0, 7, 0, 12, 0, 7, 0, 0, 0, 7, 0, 12, 7, 5, 7], [0, null, 0, 0, 12, null, 0, 0, 0, null, 0, 0, 7, null, 12, 0]];
+      const run = RUNS[Math.max(0, Math.min(RUNS.length - 1, Math.round(+p.bassPattern || 0)))];
+      const acc = run.map((_, k) => (k % 4 === 0 ? 1 : k % 2 === 0 ? 0.55 : 0.35));
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 6; lp.frequency.value = 300;
+      const env = gain(0); lp.connect(env); for (const br of sides) env.connect(gain(0.5, br));
+      const ro = [['sawtooth', -0.004, 1, 2], ['sawtooth', 0.004, 0.7, 2], ['square', 0, 0.45, 1]].map(([w, det, g, m]) => { const o = osc(w, f0 * m); o.connect(gain(g, lp)); return [o, det, m]; });
+      const ph = 2 * Math.PI * r(), P = 26 + 14 * r(), drift = t => 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / P + ph);
+      const bt = gridTime(per);
+      addGrid(per, (i, t) => {
+        const k = i % 16, note = run[k]; if (note === null || !thin(i, 0.09)) return;
+        const tt = bt(i), sl = stepAt(i), f = f0 * Math.pow(2, (note + degreeAt(Math.floor(i / per + 1e-9))) / 12);
+        for (const [o, det, m] of ro) o.frequency.setTargetAtTime(f * m * (1 + det), t, 0.006);   // a short glide: the notes run into each other
+        lp.frequency.setValueAtTime((280 + (500 + 1100 * drift(tt)) * acc[k]) * (0.8 + 0.5 * bright), t); lp.frequency.setTargetAtTime(160, t + 0.004, Math.max(0.03, sl * 0.6));
+        strike(env, t, 2 * bassAmt * (0.7 + 0.3 * acc[k]), Math.max(0.06, Math.min(0.3, sl * 2)));   // up front and nearly legato: it runs (10% of the sound at first, ~20% now)
+      });
     }
 
     // stereo width: mid/side
@@ -891,7 +914,7 @@
     const rate = 22050, secs = Math.min(3, starts[starts.length - 1]);
     const trimmed = starts.filter(s => s < secs); trimmed.push(secs);
     const ctx = new OfflineAudioContext(2, Math.max(1, Math.floor(secs * rate)), rate);
-    build(ctx, ctx.destination, p, trimmed, { offset: 0, t0: 0, total: starts[starts.length - 1], landing: false, dynamics: false, arc: false, quickRoom: true });   // the level of the full bed (Tide starts without its sub)
+    build(ctx, ctx.destination, p, trimmed, { offset: 0, t0: 0, total: starts[starts.length - 1], landing: false, dynamics: false, arc: false, quickRoom: true });   // the level of the full sound (Hypnotic's bass is out in its intro)
     const g = TARGET_RMS / (rmsOf(await ctx.startRendering()) + 1e-9);
     levelCache.set(key, g);
     if (levelCache.size > 40) levelCache.delete(levelCache.keys().next().value);

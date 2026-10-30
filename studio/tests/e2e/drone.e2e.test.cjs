@@ -771,36 +771,48 @@ test('styles: Spiral puts the sequence in front (the bed stepped back, an octave
   await ctx.close();
 });
 
-test('Tide: the bed swells by itself (about twice Drone\'s movement, within the reference\'s), the sub has its shape (in after the start, a break, back), level and dark', { skip }, async () => {
+test('Run: the running bass plays every sixteenth on the warped grid (it follows the speed and lands on the cuts), level and dark under the sub, all four runs; Tide\'s number plays the drone', { skip }, async () => {
   const ctx = await fresh();
-  const rows = await page.evaluate(async () => {
-    const P = { pulse: 0.1, low: 0.9, bright: 0.15, width: 0.3, space: 0.6, power: 0.6, seed: 11, pitch: 0.4, chord: 1, room: 2 };
-    const starts = Array.from({ length: 101 }, (_, i) => i * 0.4), out = [];
-    for (const v of [{ style: 0 }, { style: 2 }, { style: 2, seed: 99, chord: 3 }]) {
-      const r = await window.Drone.renderExport({ ...P, ...v }, starts), sr = 44100, x = r.left.map((a, i) => (a + r.right[i]) / 2);
-      const lp = new Float32Array(x.length); let y = 0; const a = 1 - Math.exp(-2 * Math.PI * 100 / sr); for (let i = 0; i < x.length; i++) { y += a * (x[i] - y); lp[i] = y; }
-      const fr = Math.round(0.1 * sr), env = []; for (let i = 0; i + fr <= x.length; i += fr) { let s = 0; for (let j = i; j < i + fr; j++) s += lp[j] * lp[j]; env.push(Math.sqrt(s / fr)); }
-      const mid = env.slice(Math.round(env.length * 0.2), Math.round(env.length * 0.5)), mean = mid.reduce((p, q) => p + q, 0) / mid.length;
-      const seg = (u0, u1) => { const e = env.slice(Math.round(env.length * u0), Math.round(env.length * u1)); return e.reduce((p, q) => p + q, 0) / e.length / mean; };
-      let s = 0, pk = 0, bad = false; for (const q of x) { if (!Number.isFinite(q)) bad = true; s += q * q; pk = Math.max(pk, Math.abs(q)); }
-      out.push({ rms: Math.sqrt(s / x.length), peak: pk, bad, depth: Math.sqrt(mid.reduce((p, q) => p + (q - mean) ** 2, 0) / mid.length) / mean, start: seg(0, 0.05), brk: seg(0.58, 0.62), late: seg(0.75, 0.85) });
+  const r = await page.evaluate(async () => {
+    const st = [0]; for (let i = 0; i < 70; i++) st.push(st[i] + 0.47 * Math.pow(0.25 / 0.47, i / 69));   // 0.47 s cuts speeding up to 0.25 s
+    const oc = new OfflineAudioContext(2, 44100, 44100), notes = [];
+    const mk = oc.createBiquadFilter.bind(oc);
+    oc.createBiquadFilter = () => { const f = mk(); const orig = f.frequency.setValueAtTime.bind(f.frequency); f.frequency.setValueAtTime = (v, t) => { if (f.Q.value === 6 && f.type === 'lowpass') notes.push(t); return orig(v, t); }; return f; };
+    const P = { pulse: 0.05, low: 0.8, bright: 0.35, width: 0.7, space: 0.65, power: 0.6, seed: 4, pitch: 0.4, hitType: 0, arp: 0, bass: 0.5, chord: 1, pad: 0.4, room: 2 };
+    window.Drone.build(oc, oc.destination, { ...P, style: 6, bassPattern: 0 }, st, { offset: 0, t0: 0 });
+    const levels = [];
+    const flat = Array.from({ length: 41 }, (_, i) => i * 0.46875);
+    for (const bassPattern of [0, 1, 2, 3]) {
+      const x = await window.Drone.renderExport({ ...P, style: 6, bassPattern, prog: 1, progEvery: 2 }, flat);
+      let s = 0, pk = 0, bad = false; for (let i = 0; i < x.left.length; i++) { const a = x.left[i]; if (!Number.isFinite(a)) bad = true; s += a * a; pk = Math.max(pk, Math.abs(a)); }
+      levels.push({ rms: Math.sqrt(s / x.left.length), peak: pk, bad });
     }
-    return out;
+    const raw = async v => { const c = new OfflineAudioContext(2, 44100 * 10, 44100); window.Drone.build(c, c.destination, { ...P, style: 6, ...v }, flat.filter(t => t < 10).concat([10]), { offset: 0, t0: 0 }); return (await c.startRendering()).getChannelData(0); };
+    const withBass = await raw({}), noBass = await raw({ bass: 0 });   // the same sound but the bass (its own random stream): the difference is the bass
+    let eb = 0, et = 0; for (let i = 44100; i < withBass.length; i++) { eb += (withBass[i] - noBass[i]) ** 2; et += withBass[i] ** 2; }
+    const bands = { share: eb / et };
+    const s13 = Array.from({ length: 13 }, (_, i) => i * 0.3), d = await window.Drone.renderExport({ ...P, style: 0 }, s13), o = await window.Drone.renderExport({ ...P, style: 2 }, s13);
+    let diff = 0; for (let i = 0; i < o.left.length; i++) diff = Math.max(diff, Math.abs(o.left[i] - d.left[i]));
+    return { st, notes: [...new Set(notes.map(t => Math.round(t * 1e4) / 1e4))].sort((a, b) => a - b), levels, diff, bands };
   });
-  console.log('tide: ' + JSON.stringify(rows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'number' ? +v.toFixed(3) : v])))));
-  const [drone, ...tide] = rows;
-  for (const m of rows) assert.ok(!m.bad && Math.abs(m.rms - 0.17) < 0.015 && m.peak <= 0.97, `level ${m.rms.toFixed(3)}, peak ${m.peak.toFixed(2)}`);
-  assert.ok(drone.start > 0.9 && drone.brk > 0.85, 'Drone has no shape of its own');
-  for (const [i, m] of tide.entries()) {
-    assert.ok(m.depth > drone.depth * 1.6 && m.depth < 0.35, `Tide ${i}: it swells (${m.depth.toFixed(2)} against Drone's ${drone.depth.toFixed(2)}; the reference 0.11-0.31)`);
-    assert.ok(m.start < 0.45 && m.brk < 0.6 && m.late > 0.85, `Tide ${i}: the sub comes in, breaks, comes back (${m.start.toFixed(2)} / ${m.brk.toFixed(2)} / ${m.late.toFixed(2)})`);
-  }
-  const dark = await spectra([{ style: 2, chord: 1, pulse: 0.1, width: 0.3, bright: 0.15 }]);
-  assert.ok(dark[0].sub > 0.45 && dark[0].high < 0.01, `Tide stays sub-heavy and dark: ${dark[0].sub.toFixed(2)} below 80 Hz, ${dark[0].high.toFixed(4)} above 2 kHz`);
+  const { st, notes } = r, total = st[st.length - 1];
+  const gap = (a, b) => { const g = []; for (let i = 1; i < notes.length; i++) if (notes[i - 1] >= a && notes[i] <= b) g.push(notes[i] - notes[i - 1]); g.sort((p, q) => p - q); return g[g.length >> 1]; };
+  const early = gap(0.05 * total, 0.3 * total), late = gap(0.7 * total, total);
+  console.log(`run: median step ${early.toFixed(3)} s early, ${late.toFixed(3)} s late, ${notes.length} notes; levels ${JSON.stringify(r.levels.map(l => [+l.rms.toFixed(3), +l.peak.toFixed(2)]))}; Tide vs drone ${r.diff}; 80-700 Hz ${JSON.stringify(r.bands)}`);
+  assert.ok(r.bands.share > 0.2, `the running bass carries the sound: ${(100 * r.bands.share).toFixed(0)}% of its energy`);
+  assert.ok(notes.length >= 0.95 * 4 * (st.length - 1), `the bass runs: a note on every sixteenth, four a cut here (${notes.length} for ${st.length - 1} cuts)`);
+  assert.ok(late < early * 0.75, `the run speeds up with the cuts (${early.toFixed(3)} s to ${late.toFixed(3)} s; the cuts went 0.47 to 0.25 s)`);
+  const onCut = st.slice(1, -1).filter(c => notes.some(t => Math.abs(t - c) < 1e-3)).length;
+  assert.ok(onCut > 60, `a note on every cut (${onCut} of ${st.length - 2})`);
+  for (const l of r.levels) assert.ok(!l.bad && Math.abs(l.rms - 0.17) < 0.015 && l.peak <= 0.97, `level ${l.rms.toFixed(3)}, peak ${l.peak.toFixed(2)}`);
+  assert.ok(r.diff < 1e-6, `Tide's number plays the drone (${r.diff})`);
+  const sp = await spectra([{ style: 6, bass: 0.5, pad: 0.4, bright: 0.35, room: 2, space: 0.65 }]);
+  console.log('run spectrum: ' + JSON.stringify(sp.map(m => ({ sub: +m.sub.toFixed(3), mid: +m.mid.toFixed(3), upper: +m.upper.toFixed(3), high: +m.high.toFixed(4) }))));
+  assert.ok(sp[0].sub > 0.15 && sp[0].high < 0.02, `dark with a low end: ${sp[0].sub.toFixed(2)} below 80 Hz, ${sp[0].high.toFixed(4)} above 2 kHz`);
   await ctx.close();
 });
 
-test('Tide and Hypnotic play as smoothly as the drone: 60 fps and no main-thread block, playing and on Random sound', { skip }, async () => {
+test('Run and Hypnotic play as smoothly as the drone: 60 fps and no main-thread block, playing and on Random sound', { skip }, async () => {
   const ctx = await fresh();
   for (let i = 0; i < 150; i++) { const f = `p${i}`; api.state.plates.push({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` }); api.state.sequences[0].order.push(f); }
   await page.reload(); await page.waitForFunction(() => document.querySelectorAll('.card').length >= 150);
@@ -812,7 +824,7 @@ test('Tide and Hypnotic play as smoothly as the drone: 60 fps and no main-thread
   });
   await page.click('#playBtn');
   await page.waitForFunction(() => document.getElementById('playBtn').textContent.includes('Pause'));
-  for (const style of ['2', '5']) {
+  for (const style of ['6', '5']) {
     await page.selectOption('#styleSelect', style);                               // choosing a style makes a sound in it at once
     await page.waitForTimeout(1200);
     await page.evaluate(() => { window.__perf.long.length = 0; window.__perf.frames.length = 0; });

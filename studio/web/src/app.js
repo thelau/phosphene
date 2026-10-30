@@ -2243,8 +2243,8 @@
       if (o && 'chordSelect' in o && !('padToneSelect' in o)) o.padToneSelect = '0';   // and the pad's tone: warm
       // a sound from before styles plays the drone; Random then picks among them. Saved before Any existed, Drone was only the default (and kept Random on it): Any; a chosen Spiral stays
       if (o && 'chordSelect' in o && !('styleVal' in o)) { o.styleVal = o.styleSelect === '1' ? '1' : '0'; o.styleSelect = o.styleSelect === '1' ? '1' : 'any'; }
-      if (o && ['3', '4'].includes(String(o.styleVal))) o.styleVal = '0';                   // Signal and Lyric are gone: the drone
-      if (o && ['3', '4'].includes(String(o.styleSelect))) o.styleSelect = 'any';
+      if (o && ['2', '3', '4'].includes(String(o.styleVal))) o.styleVal = '0';              // Tide, Signal and Lyric are gone: the drone
+      if (o && ['2', '3', '4'].includes(String(o.styleSelect))) o.styleSelect = 'any';
       if (o && String(o.modeSelect) === '4') o.modeSelect = '0';                           // and the Major mode that came with Lyric
       if (!o || !('startMsRange' in o || 'rampRange' in o || 'atSelect' in o)) return o;
       if (o.rhythmSelect === 'variable') {
@@ -2307,23 +2307,6 @@
     }
     // rules so the parts of a sound agree, whatever drew them
     // the style's own Random: Spiral is the sequence in front (on properly, an evolving mood, enough notes), clean (no choir, no metal), in a big room
-    // Tide: the bed swells by itself, so little pump on the cuts; narrow, dark and heavy; one note and its fifth (chord changes rare, and slow);
-    // no beat: hits, the bassline and the arrangement off, an arpeggio now and then, soft; a long room (from the reference the user sent)
-    function tideRules() {
-      setv('pulseRange', rint([0, 25])); setv('widthRange', rint([15, 45])); setv('brightRange', Math.min(25, getn('brightRange')));
-      setv('lowRange', Math.max(80, getn('lowRange'))); setv('movementRange', Math.min(40, getn('movementRange')));
-      if (Math.random() < 0.85) setv('progSelect', 0);
-      { const r = Math.random(); setv('chordSelect', r < 0.5 ? 1 : r < 0.75 ? 3 : 0); }        // the open fifth most of all, else suspended or the dark cluster
-      if (Math.random() < 0.8) setv('hitTypeSelect', 0);
-      setv('hitRange', Math.min(35, getn('hitRange')));
-      if (Math.random() < 0.8) setv('arpRange', 0); else { setv('arpRange', rint([22, 35])); setv('arpMoodSelect', rpick([2, 3])); setv('arpRateSelect', 0); }   // Phase or Sweep, half a note a cut
-      setv('bassRange', 0); setv('arrangeSelect', 0); setv('industrialRange', 0);
-      setv('choirRange', 0);                                                  // the taste log: the choir in 5 of Tide's 7 dislikes, none of its 5 likes
-      setv('washRange', Math.min(20, getn('washRange'))); setv('shimmerRange', Math.min(25, getn('shimmerRange'))); setv('ringRange', Math.min(15, getn('ringRange'))); setv('echoRange', Math.min(30, getn('echoRange')));
-      setv('padRange', 0);                                                    // one note: a pad's chords are not Tide (the taste logs: 2 of 6 liked)
-      if (getn('roomSelect') === 1) setv('roomSelect', rpick([0, 2, 3]));
-      setv('spaceRange', Math.max(40, getn('spaceRange')));
-    }
     // Hypnotic: Bassline is the rolling bass and Arpeggio the sequence, on sixteenths that follow the cuts; no hits (a kick was tried: "not a good
     // idea", the user, 2026-10-30), little pump on the cuts; static harmony; a plain room; no echo (the sequence has its own);
     // the rolling bass always (the taste logs: 11 of 14 liked with it, 6 of 10 without); no pad (8 of 13 liked with one, 18 of 22 without)
@@ -2340,10 +2323,24 @@
       setv('padRange', 0); setv('tapeRange', Math.random() < 0.3 ? rint([15, 35]) : 0);
       setv('widthRange', rint([40, 80])); setv('lowRange', rint([70, 95])); setv('brightRange', rint([15, 40]));
     }
+    // Run: the running bass carries it (on, any of its four runs), little pump; no hits, no cut-locked arpeggio; the chords move half the time
+    // (paced later, 3 s and up); a brassy pad, warm or glass, swelling on each chord; a big room, wide; no echo, no voices
+    function runRules() {
+      setv('pulseRange', rint([0, 15])); setv('bassRange', rint([40, 60])); setv('bassPatternSelect', Math.floor(Math.random() * 4));
+      setv('hitTypeSelect', 0); setv('arpRange', 0);
+      setv('chordSelect', rpick([0, 1, 2])); setv('modeSelect', rpick([0, 0, 1, 2, 3]));
+      setv('progSelect', Math.random() < 0.5 ? rpick([1, 2, 3]) : 0);
+      setv('padRange', rint([30, 45])); setv('padToneSelect', rpick([0, 0, 1]));
+      setv('roomSelect', rpick([2, 3])); setv('spaceRange', rint([55, 80])); setv('echoRange', 0);
+      setv('washRange', Math.min(15, getn('washRange'))); setv('shimmerRange', Math.min(20, getn('shimmerRange'))); setv('ringRange', 0);
+      setv('choirRange', 0); setv('industrialRange', 0); setv('arrangeSelect', 0); setv('dynSelect', 0);
+      setv('tapeRange', Math.random() < 0.3 ? rint([15, 30]) : 0);
+      setv('widthRange', rint([55, 90])); setv('lowRange', rint([70, 90])); setv('brightRange', rint([25, 45]));
+    }
     function styleRules(rate) {
       const st = getn('styleVal');
       if (st === 5) return hypnoticRules();
-      if (st === 2) return tideRules();
+      if (st === 6) return runRules();
       if (getn('styleVal') !== 1) return;
       if (getn('arpRange') < 40 || getn('arpRange') > 62) setv('arpRange', rint([40, 62]));   // in front, not shouting (75 peaked into the final clip)
       if ([1, 6].includes(getn('arpMoodSelect'))) setv('arpMoodSelect', rpick([0, 2, 3, 4, 5, 7]));   // Pluck (13 of 13 liked in the taste logs: the spiral moves it too), Phase, Sweep, Mutate, Accumulate, Euclid; not Dark or Acid
@@ -2351,17 +2348,15 @@
       if (getn('arpRateSelect') >= 4) setv('arpRateSelect', 1);
       if (rate > 3 && getn('arpRateSelect') > 1) setv('arpRateSelect', Math.floor(Math.random() * 2));   // fast cuts: a note or half a note a cut
       setv('choirRange', 0); setv('industrialRange', 0);
-      setv('hitRange', Math.min(30, getn('hitRange'))); setv('padRange', Math.min(30, getn('padRange'))); setv('washRange', Math.min(20, getn('washRange')));   // hits stand out over the lower bed
+      setv('hitRange', Math.min(30, getn('hitRange'))); setv('padRange', 0); setv('washRange', Math.min(20, getn('washRange')));   // hits stand out over the lower bed; no pad (the taste logs: 13 of 24 liked with one, 24 of 36 without; 0 of 5 in the fourth)
       if (rate < 5 && getn('roomSelect') < 2 && Math.random() < 0.6) setv('roomSelect', 2 + Math.floor(Math.random() * 2));   // a long tail, the hall or the bloom
       setv('spaceRange', Math.max(45, getn('spaceRange')));
       if (getn('arrangeSelect') === 2) setv('arrangeSelect', rpick([0, 1]));   // Sections drops the sequence every 8 cuts: 1 of 10 liked in the taste logs
     }
     // which style plays: the one chosen, or with Any one drawn for each Random (the user: Random should take either, 2026-10-30)
-    // by number: 3 and 4 were Signal and Lyric (0 of 30 marks liked, removed 2026-10-30), never drawn and opened as the drone.
-    // The taste logs (131 marks, 2026-10-30): Drone 49 liked of 56, Hypnotic 17 of 24, Spiral 18 of 26, Tide 10 of 25, and Tide under 2 cuts a second
-    // 2 of 11 (8 of 14 faster); a third log (197 marks): Tide 10 of 28 and 0 of 3 after those fixes, Drone 79 of 90, Hypnotic 26 of 35, Spiral 29 of 44:
-    // Any leaves Tide out (it stays in the menu, chosen by hand)
-    const STYLE_NAMES = ['Drone', 'Spiral', 'Tide', 'Drone', 'Drone', 'Hypnotic'], STYLE_ODDS = [0.5, 0.25, 0, 0, 0, 0.25];
+    // by number: 2, 3 and 4 were Tide, Signal and Lyric (removed 2026-10-30: 10 of 28 marks liked, then "kill Tide"; 0 of 30), never drawn and opened as the drone.
+    // The taste logs (197 marks): Drone 79 liked of 90, Hypnotic 26 of 35, Spiral 29 of 44. Run (6) is new: an equal share until it is judged
+    const STYLE_NAMES = ['Drone', 'Spiral', 'Drone', 'Drone', 'Drone', 'Hypnotic', 'Run'], STYLE_ODDS = [0.4, 0.2, 0, 0, 0, 0.2, 0.2];
     function rollStyle() {
       const pick = document.getElementById('styleSelect').value;
       if (pick !== 'any') { setv('styleVal', pick); return; }
@@ -2454,7 +2449,7 @@
     // the bassline and the arrangement: a type says how likely a bassline is and which arrangements suit it; Any draws them freely
     function rollShape(c) {
       const rate = rhythmCutsPerSecond();
-      const sh = c ? c.shape : { bass: 0.5, pad: 0.4, tape: 0.3, arrange: ['0', '1', '1', '2', '2', '3'] };
+      const sh = c ? c.shape : { bass: 0.5, pad: 0.4, tape: 0.3, arrange: ['0', '1', '1', '2', '3'] };   // Sections less often: 33 of 53 liked in the taste logs, the others ~80%
       setv('bassRange', Math.random() < sh.bass ? rint([35, 65]) : 0);
       setv('bassPatternSelect', Math.floor(Math.random() * 4));
       setv('bassRateSelect', rate > 4 ? 0 : rate > 2 ? Math.floor(Math.random() * 2) : 1 + Math.floor(Math.random() * 2));   // fast cuts: a note a cut

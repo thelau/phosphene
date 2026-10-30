@@ -2223,6 +2223,7 @@ test('Style: Spiral\'s Random keeps the sequence in front (on properly, a mood t
     assert.ok([0, 2, 3, 4, 5, 7].includes(n('arpMoodSelect')), `Pluck or a mood that moves, never Dark or Acid: ${n('arpMoodSelect')}`);
     if (n('arpMoodSelect') === 0) pluck++;
     assert.notEqual(n('arrangeSelect'), 2, 'no Sections in Spiral (1 of 10 liked)');
+    assert.equal(n('padRange'), 0, 'no pad in Spiral');
     assert.deepEqual([n('choirRange'), n('industrialRange')], [0, 0]);
     assert.ok(n('hitRange') <= 30 && n('padRange') <= 30 && n('washRange') <= 20 && n('spaceRange') >= 45);
     assert.equal(n('styleVal'), 1, 'Random sound stays in the style chosen');
@@ -2240,14 +2241,12 @@ test('Style: Spiral\'s Random keeps the sequence in front (on properly, a mood t
   assert.deepEqual([old.styleVal, old.styleSelect], ['0', 'any'], 'a sound saved before styles plays the drone; Random then picks among the styles');
   const mid = h.run("migrateRhythm({ chordSelect: '2', styleSelect: '0' })"), chose = h.run("migrateRhythm({ chordSelect: '2', styleSelect: '1' })");
   assert.deepEqual([mid.styleVal, mid.styleSelect, chose.styleVal, chose.styleSelect], ['0', 'any', '1', '1'], 'saved before Any: the default Drone becomes Any, a chosen Spiral stays');
-  h.$('styleSelect').value = 'any'; const seen = [0, 0, 0, 0, 0, 0];
+  h.$('styleSelect').value = 'any'; const seen = [0, 0, 0, 0, 0, 0, 0];
   for (let i = 0; i < 400; i++) { h.run('randomMusic()'); seen[n('styleVal')]++; if (n('styleVal') === 1) assert.ok(n('arpRange') >= 40, 'a Spiral drawn by Any follows its rules'); }
-  assert.ok([0, 1, 5].every(k => seen[k] > 50) && seen[2] === 0 && seen[3] === 0 && seen[4] === 0, `Any: Random takes Drone, Spiral and Hypnotic; never Tide (the taste logs: 10 of 28 liked) nor the retired Signal and Lyric (${seen})`);
+  assert.ok([0, 1, 5, 6].every(k => seen[k] > 40) && seen[2] === 0 && seen[3] === 0 && seen[4] === 0, `Any: Random takes Drone, Spiral, Hypnotic and Run; never the retired Tide, Signal and Lyric (${seen})`);
   assert.equal(h.run('synthParams()').style, n('styleVal'));
   for (let i = 0; i < 40; i++) { h.run('randomAll()'); seen[n('styleVal')] += 1000; }
   assert.ok(seen.filter(k => k > 1000).length >= 3, `Random (R) takes several too (${seen})`);
-  h.$('styleSelect').value = '2'; h.run('randomMusic()');
-  assert.equal(n('styleVal'), 2, 'chosen by hand, Tide still plays');
 });
 
 test('Random: no echo while the chords change (the taste logs: 2 of 7 liked with both, 12 of 14 without the echo)', async () => {
@@ -2261,23 +2260,22 @@ test('Random: no echo while the chords change (the taste logs: 2 of 7 liked with
   assert.ok(changes > 40, `chord changes still come (${changes} of 400)`);
 });
 
-test('Tide\'s Random: little pump on the cuts, narrow, dark and heavy, one note (changes rare), no beat (no bassline, arrangement or metal; hits and the arpeggio seldom), a long room', async () => {
+test('Run\'s Random: the running bass always (any of its runs), little pump, no hits or cut-locked arpeggio, a brassy pad, a big room, no echo or voices; the chords move now and then, 3 s and up', async () => {
   const h = await playerWith();
   const n = id => +h.$(id).value;
-  h.$('styleSelect').value = '2'; let prog = 0, hits = 0, arp = 0;
+  h.$('styleSelect').value = '6'; const runs = new Set(); let prog = 0;
   for (let i = 0; i < 300; i++) {
     h.run(i % 2 ? 'randomMusic()' : 'randomAll()');
-    assert.equal(n('styleVal'), 2);
-    assert.ok(n('pulseRange') <= 25 && n('widthRange') <= 45 && n('brightRange') <= 25 && n('lowRange') >= 80, 'little pump, narrow, dark, heavy');
-    assert.deepEqual([n('bassRange'), n('arrangeSelect'), n('industrialRange')], [0, 0, 0]);
-    assert.ok(n('roomSelect') !== 1 && n('spaceRange') >= 40, 'a long room');
-    assert.ok(n('washRange') <= 20 && n('shimmerRange') <= 25 && n('ringRange') <= 15);
-    assert.equal(n('choirRange'), 0, 'no choir in Tide (the taste log: in 5 of its 7 dislikes)');
-    assert.equal(n('padRange'), 0, 'no pad in Tide: one note');
-    if (n('progSelect')) prog++; if (n('hitTypeSelect')) hits++; if (n('arpRange')) { arp++; assert.ok(n('arpRange') <= 35 && [2, 3].includes(n('arpMoodSelect'))); }
+    assert.equal(n('styleVal'), 6);
+    assert.ok(n('bassRange') >= 40 && n('pulseRange') <= 15 && n('hitTypeSelect') === 0 && n('arpRange') === 0, 'the bass carries it');
+    assert.ok(n('padRange') >= 30 || n('tapeRange') === 0, 'a pad (tape steps aside for it)');
+    assert.ok([2, 3].includes(n('roomSelect')) && n('spaceRange') >= 55 && n('echoRange') === 0, 'a big room, no echo');
+    assert.deepEqual([n('choirRange'), n('industrialRange'), n('arrangeSelect')], [0, 0, 0]);
+    runs.add(n('bassPatternSelect')); if (n('progSelect')) prog++;
   }
-  assert.ok(prog < 45 && hits < 90 && arp < 90, `rare: changes ${prog}, hits ${hits}, arpeggio ${arp} of 300`);
-  assert.equal(h.run('synthParams()').style, 2);
+  assert.equal(runs.size, 4, 'all four runs');
+  assert.ok(prog > 40 && prog < 200, `the chords move now and then (${prog} of 300)`);
+  assert.equal(h.run('synthParams()').style, 6);
 });
 
 test('Hypnotic\'s Random: no hits (no kick), little pump, no echo, no layers; Signal and Lyric are retired: a sound saved with them opens as the drone, the Major mode as Minor', async () => {
@@ -2292,4 +2290,6 @@ test('Hypnotic\'s Random: no hits (no kick), little pump, no echo, no layers; Si
   }
   const old = h.run("migrateRhythm({ chordSelect: '1', styleVal: '4', styleSelect: '3', modeSelect: '4' })");
   assert.deepEqual([old.styleVal, old.styleSelect, old.modeSelect], ['0', 'any', '0']);
+  const tide = h.run("migrateRhythm({ chordSelect: '1', styleVal: '2', styleSelect: '2' })");
+  assert.deepEqual([tide.styleVal, tide.styleSelect], ['0', 'any'], 'Tide is gone too: the drone, and Any');
 });
