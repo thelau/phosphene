@@ -37,6 +37,14 @@
       </div>
     </nav>
     <div class="grow"></div>
+    <!-- dev only (the development window, or ⌃⌥L anywhere): mark the sound playing as liked or not, then copy them all as JSON for the agent -->
+    <div class="taste-bar" id="tasteBar" hidden>
+      <button type="button" class="small-btn" onclick="tasteMark('like')" title="I like this sound (and film): kept with every setting">Like</button>
+      <button type="button" class="small-btn" onclick="tasteMark('dislike')" title="I don't like this sound: kept with every setting">Dislike</button>
+      <input type="text" id="tasteNote" maxlength="200" placeholder="why (optional)" autocomplete="off" />
+      <button type="button" class="small-btn" id="tasteCopyBtn" onclick="tasteCopy()" title="Copy every mark as JSON, to paste to the agent">Copy 0</button>
+      <button type="button" class="icon-btn" onclick="tasteClear()" title="Clear the marks" aria-label="Clear the marks">×</button>
+    </div>
     <!-- a new version: in the top bar beside ? and Settings, on both tabs, never over the generation row -->
     <div class="update-bar" id="updateBar" hidden role="status"><span id="updateMsg"></span><button type="button" class="small-btn" id="updateBtn" onclick="installUpdate()">Restart to update</button><button type="button" class="icon-btn" onclick="document.getElementById('updateBar').hidden = true" aria-label="Later">×</button></div>
     <div class="keys">

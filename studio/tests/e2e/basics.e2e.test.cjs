@@ -1835,3 +1835,35 @@ test('a new version: "Restart to update" in the top bar, just left of ?, on both
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
+
+test('dev taste bar: hidden in the app, ⌃⌥L shows it; Like / Dislike keep the sound with every setting; Copy gives them as JSON', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945 });
+  assert.equal(await page.locator('#tasteBar').isVisible(), false, 'not in the app (only the development window, port 5173)');
+  await page.keyboard.press('Control+Alt+KeyL');
+  assert.equal(await page.locator('#tasteBar').isVisible(), true);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const fit = await page.evaluate(() => { const b = document.getElementById('tasteBar').getBoundingClientRect(), m = document.querySelector('.mode-seg').getBoundingClientRect(); return b.left - m.right; });
+  assert.ok(fit > 8, `at 1280 px it stays clear of Curate / Film (${Math.round(fit)} px)`);
+  await shot('33-taste-bar');
+  await film();
+  await page.keyboard.press('r');                                                  // a sound to judge
+  await page.fill('#tasteNote', 'too much wash');
+  await page.click('#tasteBar button:has-text("Dislike")');
+  await page.keyboard.press('r');
+  await page.click('#tasteBar button:has-text("Like")');
+  assert.equal(await text('#tasteCopyBtn'), 'Copy 2');
+  const log = await page.evaluate(() => JSON.parse(localStorage.getItem('studioTaste')));
+  assert.deepEqual(log.map(m => [m.verdict, m.note]), [['dislike', 'too much wash'], ['like', '']]);
+  assert.ok(log[0].sound && typeof log[0].sound.wash === 'number' && typeof log[0].sound.seed === 'number', 'the engine settings, seed included');
+  assert.ok(log[0].settings.bpmInput && 'modeSelect' in log[0].settings && 'roomSelect' in log[0].settings, 'the controls as set');
+  assert.notEqual(JSON.stringify(log[0].sound), JSON.stringify(log[1].sound));
+  await page.click('#tasteCopyBtn');
+  await page.waitForFunction(() => document.querySelector('#confirmBody textarea') || /marks copied/.test(document.getElementById('toast').textContent));
+  const copied = await page.evaluate(() => { const ta = document.querySelector('#confirmBody textarea'); return ta ? ta.value : document.getElementById('toast').textContent; });
+  assert.ok(/marks copied/.test(copied) || JSON.parse(copied).marks.length === 2, `copied, or shown to copy by hand: ${copied.slice(0, 80)}`);
+  if (await page.locator('#confirmModal.open').count()) await page.click('#confirmYes');
+  await page.keyboard.press('Control+Alt+KeyL');
+  assert.equal(await page.locator('#tasteBar').isVisible(), false, 'and off again');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});

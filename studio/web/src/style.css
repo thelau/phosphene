@@ -799,6 +799,12 @@
     body.app.fullscreen .topbar { padding-left: 20px; }
     .update-bar { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 4px 0 12px; border-radius: 9px; background: var(--raised); border: 1px solid var(--line-3); font-size: 13px; white-space: nowrap; }
     .update-bar .small-btn { height: 26px; padding: 0 10px; }
+    /* dev only: the taste bar (Like / Dislike the sound playing, Copy as JSON) */
+    .taste-bar { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 4px 0 6px; border: 1px dashed var(--line-3); border-radius: 9px; }
+    .taste-bar[hidden] { display: none; }
+    .taste-bar .small-btn { height: 26px; padding: 0 10px; }
+    .taste-bar input { width: 150px; height: 26px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line-3); background: var(--raised); color: var(--text); font-size: 12px; }
+    .taste-bar .icon-btn { width: 26px; height: 26px; }
     .update-bar .icon-btn { width: 26px; height: 26px; }
     .update-bar[hidden] { display: none; }
     .update-bar .small-btn { background: var(--text); color: #1A1A1A; border-color: var(--text); }

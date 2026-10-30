@@ -1655,6 +1655,7 @@
         return;
       }
       // everywhere
+      if (e.ctrlKey && e.altKey && (key === 'l' || e.code === 'KeyL')) { e.preventDefault(); toggleTasteBar(); return; }   // dev: the taste bar
       if (cmd && !e.altKey && key === 'z') { e.preventDefault(); if (e.shiftKey) redoLast(); else undoLast(); return; }
       if (cmd && key === 's') { e.preventDefault(); if (mode === 'film') { flash('editSaveBtn'); snapshotEdit(); } return; }   // Film's snapshot; never the browser's Save Page
       if (cmd && key === 'a' && mode === 'curate' && !showTrash) { e.preventDefault(); pickAll(); return; }
@@ -3775,6 +3776,50 @@
     }
     setTimeout(checkForUpdate, 4000);
     setInterval(() => { if (!pendingUpdate) checkForUpdate(); }, 30 * 60 * 1000);   // an app left open still hears of a new version (it asked only at launch)
+    // ---- dev only: a taste log. Like / Dislike marks the sound (and film) playing now with every setting; Copy puts them all on the
+    // clipboard as JSON for the agent to tune Random on (the user's ask, 2026-10-30: "it will go once we're done"). Shown in the development
+    // window (Vite, port 5173); ⌃⌥L turns it on or off anywhere (remembered). Kept in this browser only (studioTaste), never sent.
+    const TASTE_KEY = 'studioTaste';
+    const tasteLog = () => { try { return JSON.parse(localStorage.getItem(TASTE_KEY) || '[]'); } catch (e) { return []; } };
+    function tasteShown() { try { const f = localStorage.getItem('studioTasteBar'); return f ? f === '1' : location.port === '5173'; } catch (e) { return location.port === '5173'; } }
+    function syncTasteBar() { const b = document.getElementById('tasteBar'); if (!b) return; b.hidden = !tasteShown(); document.getElementById('tasteCopyBtn').textContent = `Copy ${tasteLog().length}`; }
+    function toggleTasteBar() { try { localStorage.setItem('studioTasteBar', tasteShown() ? '0' : '1'); } catch (e) {} syncTasteBar(); }
+    function tasteMark(verdict) {
+      const noteEl = document.getElementById('tasteNote'), log = tasteLog();
+      const film = Object.fromEntries(FILM_SETTINGS.map(id => { const el = document.getElementById(id); return [id, el ? (el.type === 'checkbox' ? el.checked : el.value) : null]; }));
+      const r = rhythmFor(activePlates().length);
+      log.push({
+        n: log.length + 1, at: new Date().toISOString(), verdict, note: noteEl.value.trim(),
+        project: project ? project.name : null, group: currentGroup, images: activePlates().length,
+        playing: isPlaying, type: document.getElementById('characterSelect').value,
+        cutsPerSecond: +rhythmCutsPerSecond().toFixed(2), seconds: r && r.end ? +(r.end / 30).toFixed(1) : null,
+        sound: musicOn() ? synthParams() : null,                             // what the engine plays, exactly (seed included: it can be played again)
+        settings: film,                                                     // the controls as set (to reapply), sound, rhythm and look
+      });
+      try { localStorage.setItem(TASTE_KEY, JSON.stringify(log.slice(-500))); } catch (e) {}
+      noteEl.value = '';
+      syncTasteBar();
+      setStatus(`${verdict === 'like' ? 'Liked' : 'Disliked'} · ${log.length} marked. Copy when you're done.`);
+    }
+    async function tasteCopy() {
+      const log = tasteLog();
+      if (!log.length) { setStatus('Nothing marked yet: Like or Dislike a sound while it plays.'); return; }
+      const text = JSON.stringify({ what: 'Phosphene taste log', marks: log }, null, 1);
+      try { await navigator.clipboard.writeText(text); setStatus(`${log.length} marks copied as JSON: paste them to the agent.`); }
+      catch (e) {                                                          // no clipboard here: the text, selected, to copy by hand (⌘C)
+        const done = askConfirm('Copy the marks', '', 'Done'), ta = document.createElement('textarea');
+        ta.readOnly = true; ta.value = text; ta.style.cssText = 'width:100%;height:240px;font:11px var(--mono, monospace)';
+        document.getElementById('confirmBody').appendChild(ta); ta.focus(); ta.select();
+        await done;
+      }
+    }
+    async function tasteClear() {
+      if (!tasteLog().length) return;
+      if (!(await askConfirm('Clear the marks?', `${tasteLog().length} marks go. Copy them first if you haven't.`, 'Clear'))) return;
+      try { localStorage.removeItem(TASTE_KEY); } catch (e) {}
+      syncTasteBar();
+    }
+    syncTasteBar();
     async function signOutKrea() {
       await fetch('/api/krea-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) });
       await loadState();
@@ -3976,6 +4021,9 @@ Object.assign(window, {
   toggleViewerInfo,
   viewerTrash,
   copyPromptText,
+  tasteMark,
+  tasteCopy,
+  tasteClear,
   exportVideo,
   generateImages,
   onDragEnd,
