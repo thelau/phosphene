@@ -2326,7 +2326,7 @@
     }
     // Hypnotic: Bassline is the rolling bass and Arpeggio the sequence, on sixteenths that follow the cuts; no hits (a kick was tried: "not a good
     // idea", the user, 2026-10-30), little pump on the cuts; static harmony; a plain room; no echo (the sequence has its own);
-    // the rolling bass always (the taste logs: 11 of 14 liked with it, 6 of 10 without)
+    // the rolling bass always (the taste logs: 11 of 14 liked with it, 6 of 10 without); no pad (8 of 13 liked with one, 18 of 22 without)
     function hypnoticRules() {
       setv('pulseRange', rint([0, 15]));
       setv('hitTypeSelect', 0);
@@ -2337,7 +2337,7 @@
       setv('roomSelect', rpick([0, 0, 2])); setv('spaceRange', rint([25, 60])); setv('echoRange', 0);
       setv('washRange', Math.min(15, getn('washRange'))); setv('shimmerRange', Math.min(15, getn('shimmerRange'))); setv('ringRange', Math.min(15, getn('ringRange')));
       setv('choirRange', 0); setv('industrialRange', 0); setv('arrangeSelect', 0); setv('dynSelect', 0);
-      setv('padRange', Math.random() < 0.3 ? rint([15, 25]) : 0); setv('tapeRange', Math.random() < 0.3 ? rint([15, 35]) : 0);
+      setv('padRange', 0); setv('tapeRange', Math.random() < 0.3 ? rint([15, 35]) : 0);
       setv('widthRange', rint([40, 80])); setv('lowRange', rint([70, 95])); setv('brightRange', rint([15, 40]));
     }
     function styleRules(rate) {
@@ -2354,17 +2354,18 @@
       setv('hitRange', Math.min(30, getn('hitRange'))); setv('padRange', Math.min(30, getn('padRange'))); setv('washRange', Math.min(20, getn('washRange')));   // hits stand out over the lower bed
       if (rate < 5 && getn('roomSelect') < 2 && Math.random() < 0.6) setv('roomSelect', 2 + Math.floor(Math.random() * 2));   // a long tail, the hall or the bloom
       setv('spaceRange', Math.max(45, getn('spaceRange')));
+      if (getn('arrangeSelect') === 2) setv('arrangeSelect', rpick([0, 1]));   // Sections drops the sequence every 8 cuts: 1 of 10 liked in the taste logs
     }
     // which style plays: the one chosen, or with Any one drawn for each Random (the user: Random should take either, 2026-10-30)
     // by number: 3 and 4 were Signal and Lyric (0 of 30 marks liked, removed 2026-10-30), never drawn and opened as the drone.
     // The taste logs (131 marks, 2026-10-30): Drone 49 liked of 56, Hypnotic 17 of 24, Spiral 18 of 26, Tide 10 of 25, and Tide under 2 cuts a second
-    // 2 of 11 (8 of 14 faster): Any draws Tide less, and never on slow cuts (chosen by hand it plays at any speed)
-    const STYLE_NAMES = ['Drone', 'Spiral', 'Tide', 'Drone', 'Drone', 'Hypnotic'], STYLE_ODDS = [0.45, 0.2, 0.15, 0, 0, 0.2];
+    // 2 of 11 (8 of 14 faster); a third log (197 marks): Tide 10 of 28 and 0 of 3 after those fixes, Drone 79 of 90, Hypnotic 26 of 35, Spiral 29 of 44:
+    // Any leaves Tide out (it stays in the menu, chosen by hand)
+    const STYLE_NAMES = ['Drone', 'Spiral', 'Tide', 'Drone', 'Drone', 'Hypnotic'], STYLE_ODDS = [0.5, 0.25, 0, 0, 0, 0.25];
     function rollStyle() {
       const pick = document.getElementById('styleSelect').value;
       if (pick !== 'any') { setv('styleVal', pick); return; }
-      const odds = STYLE_ODDS.map((o, k) => (k === 2 && rhythmCutsPerSecond() < 2 ? 0 : o));
-      let r = Math.random() * odds.reduce((a, b) => a + b), i = 0; while (i < odds.length - 1 && r >= odds[i]) r -= odds[i++];
+      let r = Math.random(), i = 0; while (i < STYLE_ODDS.length - 1 && r >= STYLE_ODDS[i]) r -= STYLE_ODDS[i++];
       setv('styleVal', i);
     }
     function syncStyleLabel() {                                               // Any says which style plays now
@@ -2437,16 +2438,17 @@
     function rollChanges() {
       setv('progSelect', Math.random() < 0.35 ? 1 + Math.floor(Math.random() * 4) : 0);
     }
-    // each chord 2 to 5 seconds, never under 2 s where the music cuts fastest (a variable run's quick end; every picture cut when the check is on); too fast for that, no changes.
+    // each chord 3 to 6 seconds, never under 3 s where the music cuts fastest (a variable run's quick end; every picture cut when the check is on); too fast for that, no changes.
+    // The taste logs (197 marks, 2026-10-30): chords of 3 s or more 20 of 22 liked, shorter 8 of 13 (it was 2 s at least).
     // The user's taste log (2026-10-30): 4 of 5 dislikes had chords every 0.4-1.6 s, the liked changes mostly 2 s and up. The pace was set before Random chose
     // whether the music takes every picture cut, so a ×3 then made the chords three times faster than meant.
     function paceChanges() {
       if (!getn('progSelect')) return;
       const follow = followCuts() ? (parseFloat(document.getElementById('multSelect').value) || 1) : 1, ch = changeParams();
       const fast = (1000 / Math.min(60000 / bpmValue(), ch ? ch.end_ms : Infinity)) * follow;
-      const every = [2, 4, 8, 16], ok = every.map((n, i) => [n, i]).filter(([n]) => n / fast >= 2);
+      const every = [2, 4, 8, 16], ok = every.map((n, i) => [n, i]).filter(([n]) => n / fast >= 3);
       if (!ok.length) { setv('progSelect', 0); return; }
-      const want = Math.log(fast * (2 + 3 * Math.random()));
+      const want = Math.log(fast * (3 + 3 * Math.random()));
       setv('progEverySelect', ok.reduce((b, c) => (Math.abs(Math.log(c[0]) - want) < Math.abs(Math.log(b[0]) - want) ? c : b))[1]);
     }
     // the bassline and the arrangement: a type says how likely a bassline is and which arrangements suit it; Any draws them freely

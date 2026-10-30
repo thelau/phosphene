@@ -1377,22 +1377,22 @@ test('arpeggio moods: Random draws them all (Pluck often), a type keeps to its o
   assert.equal(savedOf(h.store).arpMoodSelect, '3', 'remembered');
 });
 
-test('chord changes: Random turns them on now and then, each chord 2 to ~7 s and never under 2 s where the music cuts fastest (the user\'s dislikes: chords every 0.4-1.6 s); sent and remembered', async () => {
+test('chord changes: Random turns them on now and then, each chord 3 to 8 s and never under 3 s where the music cuts fastest (the taste logs: under 3 s 8 of 13 liked, 3 s and up 20 of 22); sent and remembered', async () => {
   const h = await playerWith();
   const n = id => +h.$(id).value, EVERY = [2, 4, 8, 16];
   const tempo = bpm => { h.$('rhythmSelect').value = 'flat'; h.$('bpmInput').value = String(bpm); h.$('bpmLock').checked = true; };
-  for (const [bpm, follow, mult, often] of [[60, false, '1', true], [160, false, '1', true], [160, true, '3', 'slowest'], [480, false, '1', 'slowest'], [600, false, '1', false]]) {   // 1, 2.7, 8 (every picture cut of a ×3), 8 and 10 music cuts a second
+  for (const [bpm, follow, mult, often] of [[60, false, '1', true], [160, false, '1', true], [300, false, '1', 'slowest'], [160, true, '3', false], [480, false, '1', false]]) {   // 1, 2.7, 5, 8 (every picture cut of a ×3) and 8 music cuts a second
     tempo(bpm); h.$('followCuts').checked = follow; h.$('multSelect').value = mult;
     const rate = (bpm / 60) * (follow ? +mult : 1); let on = 0; const seen = new Set();
     for (let i = 0; i < 300; i++) {
       h.run('randomMusic()');
       if (!n('progSelect')) continue;
       on++; const s = EVERY[n('progEverySelect')] / rate; seen.add(n('progEverySelect'));
-      assert.ok(s >= 2 && s <= 7.2, `${bpm} BPM${follow ? ' on every picture cut' : ''}: a chord lasts ${s.toFixed(2)} s`);
+      assert.ok(s >= 3 && s <= 8, `${bpm} BPM${follow ? ' on every picture cut' : ''}: a chord lasts ${s.toFixed(2)} s`);
     }
-    if (often === 'slowest') { assert.ok(on > 70 && on < 140, `now and then: ${on} of 300`); assert.deepEqual([...seen], [3], `${bpm} BPM: only every 16 cuts is 2 s or more`); }
+    if (often === 'slowest') { assert.ok(on > 70 && on < 140, `now and then: ${on} of 300`); assert.deepEqual([...seen], [3], `${bpm} BPM: only every 16 cuts is 3 s or more`); }
     else if (often) { assert.ok(on > 70 && on < 140, `now and then: ${on} of 300`); assert.ok(seen.size >= 2, `${bpm} BPM: the pace varies: ${[...seen]}`); }
-    else assert.ok(on < 20, `${bpm} BPM: too fast for 2 s chords, almost never on (${on} of 300)`);
+    else assert.ok(on < 20, `${bpm} BPM: too fast for 3 s chords, almost never on (${on} of 300)`);
   }
   h.$('followCuts').checked = false; h.$('multSelect').value = '1';
   h.$('bpmLock').checked = false;
@@ -2222,6 +2222,7 @@ test('Style: Spiral\'s Random keeps the sequence in front (on properly, a mood t
     assert.ok(n('arpRange') >= 40 && n('arpRange') <= 62, `the sequence is on properly, not shouting: ${n('arpRange')}`);
     assert.ok([0, 2, 3, 4, 5, 7].includes(n('arpMoodSelect')), `Pluck or a mood that moves, never Dark or Acid: ${n('arpMoodSelect')}`);
     if (n('arpMoodSelect') === 0) pluck++;
+    assert.notEqual(n('arrangeSelect'), 2, 'no Sections in Spiral (1 of 10 liked)');
     assert.deepEqual([n('choirRange'), n('industrialRange')], [0, 0]);
     assert.ok(n('hitRange') <= 30 && n('padRange') <= 30 && n('washRange') <= 20 && n('spaceRange') >= 45);
     assert.equal(n('styleVal'), 1, 'Random sound stays in the style chosen');
@@ -2241,14 +2242,12 @@ test('Style: Spiral\'s Random keeps the sequence in front (on properly, a mood t
   assert.deepEqual([mid.styleVal, mid.styleSelect, chose.styleVal, chose.styleSelect], ['0', 'any', '1', '1'], 'saved before Any: the default Drone becomes Any, a chosen Spiral stays');
   h.$('styleSelect').value = 'any'; const seen = [0, 0, 0, 0, 0, 0];
   for (let i = 0; i < 400; i++) { h.run('randomMusic()'); seen[n('styleVal')]++; if (n('styleVal') === 1) assert.ok(n('arpRange') >= 40, 'a Spiral drawn by Any follows its rules'); }
-  assert.ok([0, 1, 2, 5].every(k => seen[k] > 25) && seen[3] === 0 && seen[4] === 0, `Any: Random takes each style, never the retired Signal and Lyric (${seen})`);
+  assert.ok([0, 1, 5].every(k => seen[k] > 50) && seen[2] === 0 && seen[3] === 0 && seen[4] === 0, `Any: Random takes Drone, Spiral and Hypnotic; never Tide (the taste logs: 10 of 28 liked) nor the retired Signal and Lyric (${seen})`);
   assert.equal(h.run('synthParams()').style, n('styleVal'));
   for (let i = 0; i < 40; i++) { h.run('randomAll()'); seen[n('styleVal')] += 1000; }
   assert.ok(seen.filter(k => k > 1000).length >= 3, `Random (R) takes several too (${seen})`);
-  h.$('rhythmSelect').value = 'flat'; h.$('followCuts').checked = false; h.$('bpmInput').value = '90';   // 1.5 cuts a second
-  for (let i = 0; i < 300; i++) { h.run('randomMusic()'); assert.notEqual(n('styleVal'), 2, 'Any never draws Tide on slow cuts (the taste logs: 2 of 11 liked)'); }
   h.$('styleSelect').value = '2'; h.run('randomMusic()');
-  assert.equal(n('styleVal'), 2, 'chosen by hand, Tide plays at any speed');
+  assert.equal(n('styleVal'), 2, 'chosen by hand, Tide still plays');
 });
 
 test('Random: no echo while the chords change (the taste logs: 2 of 7 liked with both, 12 of 14 without the echo)', async () => {
@@ -2288,7 +2287,7 @@ test('Hypnotic\'s Random: no hits (no kick), little pump, no echo, no layers; Si
   for (let i = 0; i < 200; i++) {
     h.run(i % 2 ? 'randomMusic()' : 'randomAll()');
     assert.equal(n('styleVal'), 5);
-    assert.ok(n('bassRange') >= 35, 'the rolling bass always');
+    assert.ok(n('bassRange') >= 35 && n('padRange') === 0, 'the rolling bass always, no pad');
     assert.ok(n('hitTypeSelect') === 0 && n('pulseRange') <= 15 && n('echoRange') === 0 && n('choirRange') === 0 && n('industrialRange') === 0 && n('arrangeSelect') === 0);
   }
   const old = h.run("migrateRhythm({ chordSelect: '1', styleVal: '4', styleSelect: '3', modeSelect: '4' })");
