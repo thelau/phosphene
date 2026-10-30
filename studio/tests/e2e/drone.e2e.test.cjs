@@ -732,3 +732,23 @@ test('timbre: the moving pulse sub and the pad tones (Warm, Glass, Hollow) keep 
   assert.ok(Math.abs(hollow.mid - warm.mid) / warm.mid > 0.05, `Hollow changes the pad's middle: ${hollow.mid.toFixed(4)} vs ${warm.mid.toFixed(4)}`);
   await ctx.close();
 });
+
+test('no click on the cuts: the pump comes back up and the cut\'s tone starts in a few ms, never a step (the user heard "tick tick tick here and there")', { skip }, async () => {
+  const ctx = await fresh();
+  const rows = await page.evaluate(async BASE => {
+    const starts = Array.from({ length: 25 }, (_, i) => i * 0.37 + 0.11), sr = 44100, out = [];
+    for (const v of [{ pulse: 0 }, { pulse: 0.5 }, { pulse: 1 }, { pulse: 1, space: 0, subWave: 2 }]) {
+      const r = await window.Drone.renderExport({ ...BASE, pitch: 0.4, ...v }, starts), x = r.left;
+      const hp = new Float32Array(x.length); for (let i = 2; i < x.length; i++) hp[i] = x[i] - 2 * x[i - 1] + x[i - 2];   // what a click adds: the top
+      const win = Math.round(0.004 * sr), e = i0 => { let s = 0; for (let i = i0; i < i0 + win; i++) s += hp[i] * hp[i]; return s / win; };
+      const at = [], mid = [];
+      for (let k = 1; k < starts.length - 1; k++) { const i = Math.round(starts[k] * sr); at.push(e(i - Math.round(0.001 * sr))); mid.push(e(i + Math.round(0.15 * sr))); }
+      const med = a => a.slice().sort((p, q) => p - q)[a.length >> 1];
+      out.push({ med: med(at) / med(mid), max: Math.max(...at) / med(mid) });
+    }
+    return out;
+  }, BASE);
+  console.log('cut clicks: ' + JSON.stringify(rows.map(r => ({ med: +r.med.toFixed(2), max: +r.max.toFixed(2) }))));
+  for (const [i, r] of rows.entries()) assert.ok(r.med < 2.5 && r.max < 6, `variant ${i}: the top at the cuts is ${r.med.toFixed(1)}x the rest (worst ${r.max.toFixed(1)}x); with the old step it was ~800x at Pulse 0.9`);
+  await ctx.close();
+});

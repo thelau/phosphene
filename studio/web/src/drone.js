@@ -277,6 +277,7 @@
     const S = mode.scale, dn = ((degree % 12) + 12) % 12, idx = Math.max(0, S.indexOf(dn)), at = k => S[(idx + k) % 7] + 12 * Math.floor((idx + k) / 7) - dn + degree;
     return [at(0), at(4), at(6), at(2) + 12];
   }
+  const RISE = 0.004, TICK_RISE = 0.002;                               // how fast the pump comes back up and the cut's tone starts (time constants, s)
   // tape: wow and flutter, saturation, a darker top, dust. The dust is a few sparse clicks, made once per sample rate
   const dustCache = new Map();
   function dustBuffer(ctx) {
@@ -401,13 +402,14 @@
       const c = cutAtTime(starts, offset), tau = offset - starts[c];
       param.setValueAtTime(1 - depth * (1 - Math.exp(-tau / decay)), at(offset));
       param.setTargetAtTime(1 - depth, at(offset), decay);
-      perCut.push((i, t) => { param.setValueAtTime(1, t); param.setTargetAtTime(1 - depth, t, decay); });
+      // back up in a few ms, never a jump: an instant step of a 50 Hz sine is a click, loud or not by where the wave happens to be (the user heard "tick tick tick here and there", 2026-10-30)
+      perCut.push((i, t) => { param.setTargetAtTime(1, t, RISE); param.setTargetAtTime(1 - depth, t + 3 * RISE, decay); });
     };
     const tickEnv = (param, decay) => {                                    // a short click at every cut
       const c = cutAtTime(starts, offset), tau = offset - starts[c];
       param.setValueAtTime(Math.exp(-tau / decay), at(offset));
       param.setTargetAtTime(0, at(offset), decay);
-      perCut.push((i, t) => { param.setValueAtTime(1, t); param.setTargetAtTime(0, t, decay); });
+      perCut.push((i, t) => { param.setTargetAtTime(1, t, TICK_RISE); param.setTargetAtTime(0, t + 3 * TICK_RISE, decay); });   // a tone that starts softly, not a step
     };
 
     // ---- the sub: shared by both sides ----
