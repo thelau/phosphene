@@ -761,7 +761,7 @@ test('styles: Spiral puts the sequence in front (the bed stepped back, an octave
   const [drone, ...spiral] = rows;
   for (const [i, m] of rows.entries()) assert.ok(!m.bad && Math.abs(m.rms - 0.17) < 0.015 && m.peak <= 0.97 && m.high < 0.02, `variant ${i}: level ${m.rms.toFixed(3)}, peak ${m.peak.toFixed(2)}, ${m.high.toFixed(4)} above 2 kHz`);
   assert.ok(drone.sub > 0.45, `Drone: the sub still carries it (${drone.sub.toFixed(2)})`);
-  for (const [i, m] of spiral.entries()) assert.ok(m.sub < drone.sub - 0.1 && m.upper > drone.upper * 4, `Spiral ${i}: the sequence in front (sub ${m.sub.toFixed(2)} vs ${drone.sub.toFixed(2)}, 700 Hz-2 kHz ${m.upper.toFixed(3)} vs ${drone.upper.toFixed(3)})`);
+  for (const [i, m] of spiral.entries()) assert.ok(m.sub < drone.sub - 0.05 && m.upper > drone.upper * 2.5, `Spiral ${i}: the sequence in front (sub ${m.sub.toFixed(2)} vs ${drone.sub.toFixed(2)}, 700 Hz-2 kHz ${m.upper.toFixed(3)} vs ${drone.upper.toFixed(3)})`);
   const same = await page.evaluate(async () => {   // Drone with no style given and with style 0: the very same sound (nothing of before moved)
     const p = { pulse: 0.5, low: 0.85, bright: 0.3, width: 0.6, space: 0.5, power: 0.6, seed: 5, arp: 0.6, arpMood: 4, arpSteps: 2 }, st = Array.from({ length: 13 }, (_, i) => i * 0.3);
     const a = await window.Drone.renderExport(p, st), b = await window.Drone.renderExport({ ...p, style: 0 }, st);

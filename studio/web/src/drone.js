@@ -273,12 +273,15 @@
   // the sequence climbs and falls through the scale every few rounds (diatonic, so always in key: `SPIRALS`, steps of the mood's scale)
   // and its filter opens and shuts over tens of seconds. Same voices as the drone's arpeggio: no extra cost.
   const STYLES = [
-    { name: 'Drone', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false },
-    { name: 'Spiral', bed: 0.42, arpGain: 1.7, arpUp: 2, morph: 1, spiral: true },
+    { name: 'Drone', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1 },
+    // Spiral's sequence: in front, but rounder than the drone's plucks (the user: "quite loud, distorted, noisy", 2026-10-30; measured, the
+    // plucks peaked at 0.85-1.08 against the drone's 0.63, into the final soft clip, and the top was 3-5x the drone's): a lower filter,
+    // less resonance, longer notes, the bed a little higher
+    { name: 'Spiral', bed: 0.5, arpGain: 1.4, arpUp: 2, morph: 1, spiral: true, arpOpen: 0.62, arpQ: 0.6, arpSustain: 1.5 },
     // Tide (from a reference the user sent, measured 2026-10-30: no beat at all, the low end swelling and falling every 2-4 s by ~50%,
     // free of any grid; one pedal note and its fifth for minutes; a 6.4 Hz flutter in the mids; a shape over the whole piece: mids only,
     // then the sub comes in, a break where it drops away, back, out). The bed's own swell and shape: slow automation, no extra cost.
-    { name: 'Tide', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false, tide: true },
+    { name: 'Tide', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false, tide: true, arpOpen: 1, arpQ: 1, arpSustain: 1 },
   ];
   // Tide's shape for the sub over the film (share of the clip -> level): none at first, in, a break, back
   const tideArc = u => { const r = (a, b) => Math.min(1, Math.max(0, (u - a) / (b - a))); return 0.06 + 0.94 * r(0.06, 0.16) * (1 - 0.75 * r(0.54, 0.58) * (1 - r(0.62, 0.68))); };
@@ -657,13 +660,14 @@
         return notes[Math.max(0, Math.min(N - 1, j))];
       };
       const voices = Array.from({ length: m.voices }, (_, vi) => {          // fixed voices: no node per note
-        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = m.q; lp.frequency.value = m.open;
+        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = m.q * style.arpQ; lp.frequency.value = m.open * style.arpOpen;
         const env = gain(0);
         if (m.acid) lp.connect(shaper(satCurve(1.6), env)); else lp.connect(env);   // Acid: driven after the filter
         const pan = phase || m.euclid ? (vi ? [0.15, 1] : [1, 0.15]) : [1, 1];   // Phase: one loop leans left, the other right; Euclid: ping-pong
-        env.connect(gain(0.6 * m.gain * style.arpGain * pan[0], arr.arp[0])); env.connect(gain(0.6 * m.gain * style.arpGain * pan[1], arr.arp[1]));
+        const outs = [gain(0.6 * m.gain * style.arpGain * pan[0], arr.arp[0]), gain(0.6 * m.gain * style.arpGain * pan[1], arr.arp[1])];
+        env.connect(outs[0]); env.connect(outs[1]);
         const oscs = [-MOOD_DETUNE, MOOD_DETUNE].map(det => { const o = osc('sawtooth', 200); o.connect(lp); return [o, det]; });
-        return { lp, env, oscs };
+        return { lp, env, oscs, outs };
       });
       const L = pattern.length, mrand = mulberry32(seedN + 977);
       const accent = m.acid ? pattern.map(() => mrand() < 0.3) : null, slide = m.acid ? pattern.map(() => mrand() < 0.25) : null;   // fixed per step: a line, not noise
@@ -673,18 +677,19 @@
       const mutateTo = cycle => { while (mutCycle < cycle) { mutated[Math.floor(mrand() * L)] = Math.floor(mrand() * notes.length); mutCycle++; } };
       const noteAt = st => noteOf(m.accumulate ? pattern[accPos[st % accPos.length]] : m.mutate ? (mutateTo(Math.floor(st / L)), mutated[st % L]) : pattern[st % L], st);
       const [ek, en] = EUCLID[Math.floor(mrand() * EUCLID.length)], gate = m.euclid ? euclid(ek, en) : null;
+      if (style.spiral && gate) for (const v of voices) for (const g of v.outs) g.gain.value *= Math.sqrt(en / ek);   // Spiral: a Euclidean line has rests: more on its hits, to stand as far in front
       const per = ARP_PER_CUT[arpRate];
       perCut.push((i, tc) => {
         for (const [step, at0, len] of noteTimes(starts, i, per)) {
           const t = tc + (at0 - starts[i]);
           const s = arc(at0);
           const stepLen = len / per;
-          const decay = Math.min(1.6, Math.max(0.08, stepLen * 0.9 * m.sustain)) * (1.5 - s), f = noteAt(step) * lift(s, 1.2);
-          const sw = m.sweep ? 0.15 + 0.85 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / m.sweep)) : style.morph ? 0.45 + 0.85 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / morphP + morphPh)) : 1;   // Sweep: how far the filter opens now; Spiral: its slow arc
+          const decay = Math.min(1.6, Math.max(0.08, stepLen * 0.9 * m.sustain * style.arpSustain)) * (1.5 - s), f = noteAt(step) * lift(s, 1.2);
+          const sw = m.sweep ? 0.15 + 0.85 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / m.sweep)) : style.morph ? 0.5 + 0.6 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / morphP + morphPh)) : 1;   // Sweep: how far the filter opens now; Spiral: its slow arc
           const acc = accent ? (accent[step % L] ? 1.35 : 0.8) : 1, glide = slide && slide[step % L];
           const play = (v, fq, tt) => {
             for (const [o, det] of v.oscs) { if (glide) o.frequency.setTargetAtTime(fq * (1 + det), tt, 0.045); else o.frequency.setValueAtTime(fq * (1 + det), tt); }
-            v.lp.frequency.setValueAtTime(Math.max(m.close * 1.2, m.open * sw * acc) * lift(s, 0.8), tt); v.lp.frequency.setTargetAtTime(m.close * lift(s, 1.2), tt + 0.003, decay / 3);
+            v.lp.frequency.setValueAtTime(Math.max(m.close * 1.2, m.open * style.arpOpen * sw * acc) * lift(s, 0.8), tt); v.lp.frequency.setTargetAtTime(m.close * lift(s, 1.2), tt + 0.003, decay / 3);
             strike(v.env, tt, 2.2 * arpAmt * (accent ? (acc > 1 ? 1.2 : 0.85) : 1), decay);
           };
           if (phase) { play(voices[0], f, t); play(voices[1], noteOf(patternB[step % patternB.length], step) * lift(s, 1.2), t); }   // both on every step, each round its own loop

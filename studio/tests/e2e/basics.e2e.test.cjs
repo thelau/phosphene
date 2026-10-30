@@ -1852,6 +1852,15 @@ test('dev taste bar: hidden in the app, ⌃⌥L shows it; Like / Dislike keep th
   await page.keyboard.press('r');
   await page.click('#tasteBar button:has-text("Like")');
   assert.equal(await text('#tasteCopyBtn'), 'Copy 2');
+  await page.locator('#tasteNote').blur();                                         // L and D judge without the settings in view: in full screen too
+  await page.keyboard.press('l');
+  await page.waitForSelector('#tasteFlash.on');
+  assert.equal(await text('#tasteFlash'), 'Liked · 3', 'said on the picture (the stage is what goes full screen)');
+  await page.keyboard.press('d');
+  assert.equal(await text('#tasteCopyBtn'), 'Copy 4');
+  await page.evaluate(() => { const l = JSON.parse(localStorage.getItem('studioTaste')); l.splice(2); localStorage.setItem('studioTaste', JSON.stringify(l)); });
+  await page.keyboard.press('Control+Alt+KeyL'); await page.keyboard.press('Control+Alt+KeyL');     // off and on: the bar reads the log again
+  assert.equal(await text('#tasteCopyBtn'), 'Copy 2');
   const log = await page.evaluate(() => JSON.parse(localStorage.getItem('studioTaste')));
   assert.deepEqual(log.map(m => [m.verdict, m.note]), [['dislike', 'too much wash'], ['like', '']]);
   assert.ok(log[0].sound && typeof log[0].sound.wash === 'number' && typeof log[0].sound.seed === 'number', 'the engine settings, seed included');

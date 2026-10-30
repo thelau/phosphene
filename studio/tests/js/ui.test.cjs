@@ -2218,7 +2218,7 @@ test('Style: Spiral\'s Random keeps the sequence in front (on properly, a mood t
   h.$('styleSelect').value = '1';
   for (let i = 0; i < 200; i++) {
     h.run('randomMusic()');
-    assert.ok(n('arpRange') >= 45, `the sequence is on properly: ${n('arpRange')}`);
+    assert.ok(n('arpRange') >= 40 && n('arpRange') <= 62, `the sequence is on properly, not shouting: ${n('arpRange')}`);
     assert.ok([2, 3, 4, 5, 7].includes(n('arpMoodSelect')), `a mood that moves: ${n('arpMoodSelect')}`);
     assert.deepEqual([n('choirRange'), n('industrialRange')], [0, 0]);
     assert.ok(n('hitRange') <= 40 && n('padRange') <= 30 && n('washRange') <= 20 && n('spaceRange') >= 45);
@@ -2231,13 +2231,13 @@ test('Style: Spiral\'s Random keeps the sequence in front (on properly, a mood t
   for (let i = 0; i < 200; i++) { h.run('randomMusic()'); if (!n('arpRange')) arpOff++; }
   assert.ok(arpOff > 60, `Drone: the arpeggio comes and goes as before (${arpOff} of 200 off)`);
   const seed = n('seedVal'); h.$('styleSelect').value = '1'; h.run('pickStyle()');
-  assert.ok(n('seedVal') !== seed && n('arpRange') >= 45, 'choosing a style makes a new sound in it');
+  assert.ok(n('seedVal') !== seed && n('arpRange') >= 40, 'choosing a style makes a new sound in it');
   const old = h.run("migrateRhythm({ chordSelect: '2' })");
   assert.deepEqual([old.styleVal, old.styleSelect], ['0', 'any'], 'a sound saved before styles plays the drone; Random then picks among the styles');
   const mid = h.run("migrateRhythm({ chordSelect: '2', styleSelect: '0' })"), chose = h.run("migrateRhythm({ chordSelect: '2', styleSelect: '1' })");
   assert.deepEqual([mid.styleVal, mid.styleSelect, chose.styleVal, chose.styleSelect], ['0', 'any', '1', '1'], 'saved before Any: the default Drone becomes Any, a chosen Spiral stays');
   h.$('styleSelect').value = 'any'; const seen = [0, 0, 0];
-  for (let i = 0; i < 200; i++) { h.run('randomMusic()'); seen[n('styleVal')]++; if (n('styleVal') === 1) assert.ok(n('arpRange') >= 45, 'a Spiral drawn by Any follows its rules'); }
+  for (let i = 0; i < 200; i++) { h.run('randomMusic()'); seen[n('styleVal')]++; if (n('styleVal') === 1) assert.ok(n('arpRange') >= 40, 'a Spiral drawn by Any follows its rules'); }
   assert.ok(seen.every(k => k > 35), `Any: Random takes each style (${seen})`);
   assert.equal(h.run('synthParams()').style, n('styleVal'));
   for (let i = 0; i < 40; i++) { h.run('randomAll()'); seen[n('styleVal')] += 1000; }

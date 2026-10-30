@@ -1660,6 +1660,7 @@
       if (cmd && key === 's') { e.preventDefault(); if (mode === 'film') { flash('editSaveBtn'); snapshotEdit(); } return; }   // Film's snapshot; never the browser's Save Page
       if (cmd && key === 'a' && mode === 'curate' && !showTrash) { e.preventDefault(); pickAll(); return; }
       if (cmd || e.altKey) return;
+      if (tasteShown() && (key === 'l' || key === 'd')) { e.preventDefault(); if (!e.repeat) tasteMark(key === 'l' ? 'like' : 'dislike'); return; }   // dev: judge by ear, in full screen too, without seeing the settings
       if (e.repeat && ['Tab', 'f', 't', 'r', 's'].includes(key)) { e.preventDefault(); return; }   // a held key acts once
       if (e.target && e.target.type === 'range' && key.startsWith('Arrow')) return;               // a slider with focus keeps its arrows
       if (key === 'Tab') { e.preventDefault(); if (e.target && e.target.blur) e.target.blur(); setMode(mode === 'film' ? 'curate' : 'film'); return; }
@@ -2322,7 +2323,7 @@
     function styleRules(rate) {
       if (getn('styleVal') === 2) return tideRules();
       if (getn('styleVal') !== 1) return;
-      if (getn('arpRange') < 45) setv('arpRange', rint([45, 75]));
+      if (getn('arpRange') < 40 || getn('arpRange') > 62) setv('arpRange', rint([40, 62]));   // in front, not shouting (75 peaked into the final clip)
       if ([0, 1, 6].includes(getn('arpMoodSelect'))) setv('arpMoodSelect', rpick([2, 3, 4, 5, 7]));   // Phase, Sweep, Mutate, Accumulate, Euclid: patterns that move
       if (getn('arpStepsSelect') === 0) setv('arpStepsSelect', 1 + Math.floor(Math.random() * 3));
       if (getn('arpRateSelect') >= 4) setv('arpRateSelect', 1);
@@ -3859,6 +3860,9 @@
       noteEl.value = '';
       syncTasteBar();
       setStatus(`${verdict === 'like' ? 'Liked' : 'Disliked'} · ${log.length} marked. Copy when you're done.`);
+      const fl = document.getElementById('tasteFlash');                      // on the picture too: in full screen the status bar is not seen
+      fl.textContent = `${verdict === 'like' ? 'Liked' : 'Disliked'} · ${log.length}`; fl.hidden = false; void fl.offsetWidth; fl.classList.add('on');
+      clearTimeout(tasteMark.t); tasteMark.t = setTimeout(() => { fl.classList.remove('on'); setTimeout(() => { fl.hidden = true; }, 200); }, 900);
     }
     async function tasteCopy() {
       const log = tasteLog();

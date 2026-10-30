@@ -39,8 +39,8 @@
     <div class="grow"></div>
     <!-- dev only (the development window, or ⌃⌥L anywhere): mark the sound playing as liked or not, then copy them all as JSON for the agent -->
     <div class="taste-bar" id="tasteBar" hidden>
-      <button type="button" class="small-btn" onclick="tasteMark('like')" title="I like this sound (and film): kept with every setting">Like</button>
-      <button type="button" class="small-btn" onclick="tasteMark('dislike')" title="I don't like this sound: kept with every setting">Dislike</button>
+      <button type="button" class="small-btn" onclick="tasteMark('like')" title="I like this sound (and film): kept with every setting (L, in full screen too)">Like</button>
+      <button type="button" class="small-btn" onclick="tasteMark('dislike')" title="I don't like this sound: kept with every setting (D, in full screen too)">Dislike</button>
       <input type="text" id="tasteNote" maxlength="200" placeholder="why (optional)" autocomplete="off" />
       <button type="button" class="small-btn" id="tasteCopyBtn" onclick="tasteCopy()" title="Copy every mark as JSON, to paste to the agent">Copy 0</button>
       <button type="button" class="icon-btn" onclick="tasteClear()" title="Clear the marks" aria-label="Clear the marks">×</button>
@@ -314,6 +314,7 @@
             <img id="stageImg" alt="" />
             <img id="stageGhost" alt="" aria-hidden="true" />
             <canvas id="stageCanvas" aria-hidden="true"></canvas>
+            <div class="taste-flash" id="tasteFlash" aria-live="polite" hidden></div>
             <div class="reticle" id="reticle">
               <i class="ret-v"></i><i class="ret-h"></i>
               <div class="reticle-circle"></div>

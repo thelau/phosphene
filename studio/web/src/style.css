@@ -802,6 +802,10 @@
     /* dev only: the taste bar (Like / Dislike the sound playing, Copy as JSON) */
     .taste-bar { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 4px 0 6px; border: 1px dashed var(--line-3); border-radius: 9px; }
     .taste-bar[hidden] { display: none; }
+    /* L / D while judging: a short word on the picture, seen in full screen too (the stage is what goes full screen) */
+    .taste-flash { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); z-index: 6; padding: 6px 14px; border-radius: 999px; background: rgba(0, 0, 0, 0.62); color: #fff; font: 600 13px/1.2 var(--mono, monospace); pointer-events: none; opacity: 0; transition: opacity 0.18s; }
+    .taste-flash[hidden] { display: none; }
+    .taste-flash.on { opacity: 1; }
     .taste-bar .small-btn { height: 26px; padding: 0 10px; }
     .taste-bar input { width: 150px; height: 26px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line-3); background: var(--raised); color: var(--text); font-size: 12px; }
     .taste-bar .icon-btn { width: 26px; height: 26px; }
