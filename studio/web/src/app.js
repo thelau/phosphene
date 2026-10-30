@@ -2034,7 +2034,7 @@
       const paired = ['mono', 'colour'].includes(document.getElementById('invertSelect').value);
       return {
         pulse: unit('pulseRange'), low: unit('lowRange'), bright: unit('brightRange'), width: unit('widthRange'), space: unit('spaceRange'), room: parseInt(document.getElementById('roomSelect').value, 10) || 0, power: unit('powerRange'),
-        pitch: unit('pitchRange'), chord: parseInt(document.getElementById('chordSelect').value, 10) || 0, prog: parseInt(document.getElementById('progSelect').value, 10) || 0, mode: parseInt(document.getElementById('modeSelect').value, 10) || 0, style: parseInt(document.getElementById('styleSelect').value, 10) || 0, pad: unit('padRange'), padTone: parseInt(document.getElementById('padToneSelect').value, 10) || 0, tape: unit('tapeRange'), bass: unit('bassRange'), bassPattern: parseInt(document.getElementById('bassPatternSelect').value, 10) || 0, bassRate: parseInt(document.getElementById('bassRateSelect').value, 10) || 0, arrange: parseInt(document.getElementById('arrangeSelect').value, 10) || 0, progEvery: parseInt(document.getElementById('progEverySelect').value, 10) || 0, movement: unit('movementRange'), echo: unit('echoRange'),
+        pitch: unit('pitchRange'), chord: parseInt(document.getElementById('chordSelect').value, 10) || 0, prog: parseInt(document.getElementById('progSelect').value, 10) || 0, mode: parseInt(document.getElementById('modeSelect').value, 10) || 0, style: parseInt(document.getElementById('styleVal').value, 10) || 0, pad: unit('padRange'), padTone: parseInt(document.getElementById('padToneSelect').value, 10) || 0, tape: unit('tapeRange'), bass: unit('bassRange'), bassPattern: parseInt(document.getElementById('bassPatternSelect').value, 10) || 0, bassRate: parseInt(document.getElementById('bassRateSelect').value, 10) || 0, arrange: parseInt(document.getElementById('arrangeSelect').value, 10) || 0, progEvery: parseInt(document.getElementById('progEverySelect').value, 10) || 0, movement: unit('movementRange'), echo: unit('echoRange'),
         wash: unit('washRange'), ring: unit('ringRange'), shimmer: unit('shimmerRange'), choir: unit('choirRange'), industrial: unit('industrialRange'),
         hitType: parseInt(document.getElementById('hitTypeSelect').value, 10) || 0, hit: unit('hitRange'), hitOn: parseInt(document.getElementById('hitOnSelect').value, 10) || 0,
         arp: unit('arpRange'), arpMood: parseInt(document.getElementById('arpMoodSelect').value, 10) || 0, arpSteps: parseInt(document.getElementById('arpStepsSelect').value, 10) || 0, arpRate: parseInt(document.getElementById('arpRateSelect').value, 10) || 0,
@@ -2060,6 +2060,7 @@
       if (on && musicWasOn === false && !droneLive.playing) droneLive.fresh();   // Source Off then on: a brand-new sound connection (the reset when the sound is lost)
       musicWasOn = on;
       document.getElementById('synthBox').hidden = !on;
+      syncStyleLabel();
       if (on) warmSound();
       document.getElementById('soundOffNote').hidden = on;
       for (const k of ['pulse', 'low', 'bright', 'width', 'space', 'power', 'pitch', 'movement', 'echo', 'wash', 'ring', 'shimmer', 'choir', 'industrial', 'hit', 'arp', 'bass', 'pad', 'tape']) document.getElementById(`${k}Val`).textContent = document.getElementById(`${k}Range`).value;
@@ -2239,7 +2240,8 @@
       if (o && 'chordSelect' in o && !('modeSelect' in o)) o.modeSelect = '0';   // a sound saved before modes: the natural minor it was made in
       if (o && 'chordSelect' in o && !('roomSelect' in o)) o.roomSelect = '0';   // and before rooms: the measured room
       if (o && 'chordSelect' in o && !('padToneSelect' in o)) o.padToneSelect = '0';   // and the pad's tone: warm
-      if (o && 'chordSelect' in o && !('styleSelect' in o)) o.styleSelect = '0';   // and before styles: the drone
+      // a sound from before styles plays the drone; Random then picks among them. Saved before Any existed, Drone was only the default (and kept Random on it): Any; a chosen Spiral stays
+      if (o && 'chordSelect' in o && !('styleVal' in o)) { o.styleVal = o.styleSelect === '1' ? '1' : '0'; o.styleSelect = o.styleSelect === '1' ? '1' : 'any'; }
       if (!o || !('startMsRange' in o || 'rampRange' in o || 'atSelect' in o)) return o;
       if (o.rhythmSelect === 'variable') {
         const start = parseFloat(o.startMsRange) || 100, ramp = parseInt(o.rampRange, 10) || 12, n = baseCount(o.multSelect) || 60;
@@ -2302,7 +2304,7 @@
     // rules so the parts of a sound agree, whatever drew them
     // the style's own Random: Spiral is the sequence in front (on properly, an evolving mood, enough notes), clean (no choir, no metal), in a big room
     function styleRules(rate) {
-      if (getn('styleSelect') !== 1) return;
+      if (getn('styleVal') !== 1) return;
       if (getn('arpRange') < 45) setv('arpRange', rint([45, 75]));
       if ([0, 1, 6].includes(getn('arpMoodSelect'))) setv('arpMoodSelect', rpick([2, 3, 4, 5, 7]));   // Phase, Sweep, Mutate, Accumulate, Euclid: patterns that move
       if (getn('arpStepsSelect') === 0) setv('arpStepsSelect', 1 + Math.floor(Math.random() * 3));
@@ -2312,6 +2314,18 @@
       setv('hitRange', Math.min(40, getn('hitRange'))); setv('padRange', Math.min(30, getn('padRange'))); setv('washRange', Math.min(20, getn('washRange')));
       if (rate < 5 && getn('roomSelect') < 2 && Math.random() < 0.6) setv('roomSelect', 2 + Math.floor(Math.random() * 2));   // a long tail, the hall or the bloom
       setv('spaceRange', Math.max(45, getn('spaceRange')));
+    }
+    // which style plays: the one chosen, or with Any one drawn for each Random (the user: Random should take either, 2026-10-30)
+    const STYLE_NAMES = ['Drone', 'Spiral'], STYLE_ODDS = [0.5, 0.5];
+    function rollStyle() {
+      const pick = document.getElementById('styleSelect').value;
+      if (pick !== 'any') { setv('styleVal', pick); return; }
+      let r = Math.random(), i = 0; while (i < STYLE_ODDS.length - 1 && r >= STYLE_ODDS[i]) r -= STYLE_ODDS[i++];
+      setv('styleVal', i);
+    }
+    function syncStyleLabel() {                                               // Any says which style plays now
+      const opt = document.querySelector('#styleSelect option[value="any"]');
+      if (opt) opt.textContent = `Any · ${STYLE_NAMES[getn('styleVal')] || STYLE_NAMES[0]} now`;
     }
     function soundRules() {
       const rate = rhythmCutsPerSecond();
@@ -2353,6 +2367,7 @@
     }
     function randomMusic(quiet) {
       if (quiet !== true) rememberForUndo();
+      rollStyle();
       for (const [k, range] of Object.entries(RANDOM_RANGES)) setv(`${k}Range`, rint(range));
       for (const k of ['echo', 'wash', 'ring', 'shimmer']) if (Math.random() < 0.5) setv(`${k}Range`, 0);   // flavours, not the rule: often none
       const r = Math.random();
@@ -2403,6 +2418,7 @@
       if (Math.random() < 0.15) setv('arpRateSelect', 4 + Math.floor(Math.random() * 2));   // now and then a polyrhythm
     }
     function applySound(c) {
+      rollStyle();
       for (const k of Object.keys(RANDOM_RANGES)) if (!LAYERS.includes(k)) setv(`${k}Range`, rint(c[k]));
       for (const k of LAYERS) setv(`${k}Range`, c.layer[k] && Math.random() < c.layer.odds ? rint(c.layer[k]) : 0);   // the type's layer, now and then (more often in the slow, open types)
       setv('arpMoodSelect', rpick(c.mood));
@@ -3049,7 +3065,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'keepCheck'];
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'keepCheck'];
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
     // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved
