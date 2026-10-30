@@ -800,7 +800,7 @@ test('Tide: the bed swells by itself (about twice Drone\'s movement, within the 
   await ctx.close();
 });
 
-test('Signal, Lyric and Hypnotic play as smoothly as the drone: 60 fps and no main-thread block, playing and on Random sound', { skip }, async () => {
+test('Tide and Hypnotic play as smoothly as the drone: 60 fps and no main-thread block, playing and on Random sound', { skip }, async () => {
   const ctx = await fresh();
   for (let i = 0; i < 150; i++) { const f = `p${i}`; api.state.plates.push({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` }); api.state.sequences[0].order.push(f); }
   await page.reload(); await page.waitForFunction(() => document.querySelectorAll('.card').length >= 150);
@@ -812,7 +812,7 @@ test('Signal, Lyric and Hypnotic play as smoothly as the drone: 60 fps and no ma
   });
   await page.click('#playBtn');
   await page.waitForFunction(() => document.getElementById('playBtn').textContent.includes('Pause'));
-  for (const style of ['3', '4', '5']) {
+  for (const style of ['2', '5']) {
     await page.selectOption('#styleSelect', style);                               // choosing a style makes a sound in it at once
     await page.waitForTimeout(1200);
     await page.evaluate(() => { window.__perf.long.length = 0; window.__perf.frames.length = 0; });
@@ -829,59 +829,47 @@ test('Signal, Lyric and Hypnotic play as smoothly as the drone: 60 fps and no ma
   await ctx.close();
 });
 
-test('Signal (sines, clicks, silence), Lyric (a melody over the chords) and Hypnotic (its own clock, a soft kick on the beat): level, each its own character', { skip }, async () => {
+test('Hypnotic without drums: level and dark, no kick on the beat; the retired Signal and Lyric numbers play the drone, sample for sample', { skip }, async () => {
   const ctx = await fresh();
-  const rows = await page.evaluate(async () => {
-    const P = { pulse: 0.6, low: 0.85, bright: 0.4, width: 0.7, space: 0.4, power: 0.6, seed: 11, pitch: 0.4, hitType: 1, hit: 0.5, arp: 0.5, arpSteps: 2, arpRate: 1, bass: 0.5, chord: 1 };
-    const flat = Array.from({ length: 65 }, (_, i) => i * 0.46875), fast = Array.from({ length: 151 }, (_, i) => i * 0.2);   // 128 BPM cuts; 5 a second
-    const fft = (x, n) => { const re = new Float64Array(n), im = new Float64Array(n); for (let i = 0; i < n; i++) re[i] = (x[i] || 0) * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1)));
-      for (let i = 1, j = 0; i < n; i++) { let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) { [re[i], re[j]] = [re[j], re[i]]; } }
-      for (let len = 2; len <= n; len <<= 1) { const ang = (-2 * Math.PI) / len, wr = Math.cos(ang), wi = Math.sin(ang); for (let i = 0; i < n; i += len) { let cr = 1, ci = 0; for (let k = 0; k < len / 2; k++) { const a = i + k, b = i + k + len / 2, tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr; re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti; const q = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = q; } } }
-      return [re, im]; };
-    const out = {};
-    for (const [name, v, st] of [['drone', { style: 0, pulse: 0.1, hit: 0 }, flat], ['signal', { style: 3 }, fast], ['lyric', { style: 4, mode: 4, prog: 1, progEvery: 2, pad: 0.35, hit: 0 }, flat], ['hypnotic', { style: 5, pulse: 0.1 }, flat], ['hypnotic, no kick', { style: 5, pulse: 0.1, hitType: 0 }, flat]]) {
-      const r = await window.Drone.renderExport({ ...P, ...v }, st), x = r.left, n = x.length, sr = 44100, total = st[st.length - 1];
-      let s = 0, pk = 0, bad = false; for (let i = 0; i < n; i++) { const a = x[i], c = r.right[i]; if (!Number.isFinite(a) || !Number.isFinite(c)) bad = true; s += a * a + c * c; pk = Math.max(pk, Math.abs(a), Math.abs(c)); }
-      const rms = Math.sqrt(s / (2 * n)), N = 1 << 19, [re, im] = fft(x.subarray(sr * 2), N); let tot = 0, sub = 0, mid = 0, top = 0;
-      for (let q = 1; q < N / 2; q++) { const f = q * sr / N, pw = re[q] ** 2 + im[q] ** 2; tot += pw; if (f < 80) sub += pw; else if (f >= 300 && f < 2000) mid += pw; else if (f >= 2000) top += pw; }
-      const fr = 441; let quiet = 0, frames = 0; for (let i = 0; i + fr <= n; i += fr) { let q = 0; for (let j = i; j < i + fr; j++) q += x[j] * x[j]; if (Math.sqrt(q / fr) < rms * 0.1) quiet++; frames++; }
-      const lp = new Float32Array(n); let y = 0; const al = 1 - Math.exp(-2 * Math.PI * 150 / sr); for (let i = 0; i < n; i++) { y += al * (x[i] - y); lp[i] = y; }
-      const win = Math.round(0.07 * sr), band = (a, c) => { let q = 0; for (let i = Math.max(0, a); i < Math.min(n, c); i++) q += lp[i] * lp[i]; return Math.sqrt(q / Math.max(1, c - a)); };
-      let after = 0, before = 0; for (let t = 0.46875 * 9; t < total - 4; t += 0.46875) { const i = Math.round(t * sr); after += band(i, i + win); before += band(i - win, i); }
-      out[name] = { rms, peak: pk, bad, sub: sub / tot, mid: mid / tot, top: top / tot, quiet: quiet / frames, beat: after / before };
-    }
-    out.major = window.Drone.padChord(0, window.Drone.MODES[4]);
-    return out;
+  const r = await page.evaluate(async () => {
+    const P = { pulse: 0.1, low: 0.85, bright: 0.3, width: 0.6, space: 0.4, power: 0.6, seed: 11, pitch: 0.4, hitType: 0, arp: 0.5, arpSteps: 2, arpRate: 1, bass: 0.5, chord: 1 };
+    const flat = Array.from({ length: 65 }, (_, i) => i * 0.46875), sr = 44100, total = flat[flat.length - 1];
+    const h = await window.Drone.renderExport({ ...P, style: 5 }, flat), x = h.left, n = x.length;
+    let s = 0, pk = 0, top = 0, bad = false, y = 0, y2 = 0;
+    const lp = new Float32Array(n), al = 1 - Math.exp(-2 * Math.PI * 150 / sr), ah = 1 - Math.exp(-2 * Math.PI * 2000 / sr);
+    for (let i = 0; i < n; i++) { const a = x[i]; if (!Number.isFinite(a)) bad = true; s += a * a; pk = Math.max(pk, Math.abs(a)); y += al * (a - y); lp[i] = y; y2 += ah * (a - y2); top += (a - y2) ** 2; }
+    const band = (a, c) => { let q = 0; for (let i = Math.max(0, a); i < Math.min(n, c); i++) q += lp[i] * lp[i]; return Math.sqrt(q / Math.max(1, c - a)); };
+    let after = 0, before = 0; for (let t = 0.46875 * 9; t < total - 4; t += 0.46875) { const i = Math.round(t * sr), w = Math.round(0.07 * sr); after += band(i, i + w); before += band(i - w, i); }
+    const st = Array.from({ length: 13 }, (_, i) => i * 0.3), d = await window.Drone.renderExport({ ...P, hitType: 0, style: 0 }, st);
+    const diffs = []; for (const old of [3, 4]) { const o = await window.Drone.renderExport({ ...P, hitType: 0, style: old }, st); let m = 0; for (let i = 0; i < o.left.length; i++) m = Math.max(m, Math.abs(o.left[i] - d.left[i])); diffs.push(m); }
+    return { rms: Math.sqrt(s / n), peak: pk, bad, top: top / s, beat: after / before, diffs };
   });
-  console.log('three styles: ' + JSON.stringify(Object.fromEntries(Object.entries(rows).map(([k, v]) => [k, Array.isArray(v) ? v : Object.fromEntries(Object.entries(v).map(([a, b]) => [a, typeof b === 'number' ? +b.toFixed(4) : b]))]))));
-  const { drone, signal, lyric, hypnotic } = rows;
-  for (const name of ['drone', 'signal', 'lyric', 'hypnotic', 'hypnotic, no kick']) { const m = rows[name]; assert.ok(!m.bad && Math.abs(m.rms - 0.17) < 0.015 && m.peak <= 0.97, `${name}: level ${m.rms.toFixed(3)}, peak ${m.peak.toFixed(2)}`); }
-  assert.ok(signal.quiet > 0.25, `Signal: silence between (${(100 * signal.quiet).toFixed(0)}% of 10 ms frames near silent)`);
-  assert.ok(signal.top > drone.top * 20 && signal.top > 0.004, `Signal: the highs of sines, clicks and data (${signal.top.toFixed(4)} above 2 kHz, the drone ${drone.top.toFixed(5)})`);
-  assert.ok(lyric.mid > drone.mid * 1.5 && lyric.top < 0.01, `Lyric: the melody in the middle (${lyric.mid.toFixed(3)} at 300 Hz-2 kHz, the drone ${drone.mid.toFixed(3)}), still warm (${lyric.top.toFixed(4)} above 2 kHz)`);
-  assert.deepEqual(rows.major, [0, 7, 11, 16], 'Major: I maj7, its third an octave up');
-  assert.ok(hypnotic.beat > 1.12 && rows['hypnotic, no kick'].beat < 1.06, `Hypnotic: the kick is felt on the beat (${hypnotic.beat.toFixed(2)}, without it ${rows['hypnotic, no kick'].beat.toFixed(2)})`);
-  assert.ok(hypnotic.top < 0.01, `Hypnotic: dark (${hypnotic.top.toFixed(4)} above 2 kHz)`);
+  console.log('hypnotic, no drums: ' + JSON.stringify(r));
+  assert.ok(!r.bad && Math.abs(r.rms - 0.17) < 0.015 && r.peak <= 0.97, `level ${r.rms.toFixed(3)}, peak ${r.peak.toFixed(2)}`);
+  assert.ok(r.top < 0.02, `dark: ${r.top.toFixed(4)} of the energy above ~2 kHz`);
+  assert.ok(r.beat < 1.08, `no kick: the low end hardly moves on the beat (${r.beat.toFixed(2)})`);
+  assert.ok(r.diffs.every(v => v < 1e-6), `Signal's and Lyric's numbers play the drone (${r.diffs})`);
   await ctx.close();
 });
 
-test('Hypnotic follows the curve of the speed: its beat speeds up with the cuts and every cut lands on a beat (the user: the music must follow the speed)', { skip }, async () => {
+test('Hypnotic follows the curve of the speed: its sixteenths speed up with the cuts and land on them (the user: the music must follow the speed)', { skip }, async () => {
   const ctx = await fresh();
-  const r = await page.evaluate(async () => {
+  const r = await page.evaluate(() => {
     const st = [0]; for (let i = 0; i < 70; i++) st.push(st[i] + 0.47 * Math.pow(0.25 / 0.47, i / 69));   // 0.47 s cuts speeding up to 0.25 s
-    const P = { pulse: 0.05, low: 0.8, bright: 0.3, width: 0.6, space: 0.4, power: 0.6, seed: 4, pitch: 0.4, hitType: 1, hit: 0.55, arp: 0, bass: 0, chord: 1, style: 5 };
-    const rr = await window.Drone.renderExport(P, st), x = rr.left, n = x.length, sr = 44100, total = st[st.length - 1];
-    const lp = new Float32Array(n); let y = 0; const al = 1 - Math.exp(-2 * Math.PI * 150 / sr); for (let i = 0; i < n; i++) { y += al * (x[i] - y); lp[i] = y; }
-    const band = (a, c) => { let q = 0; for (let i = Math.max(0, a); i < Math.min(n, c); i++) q += lp[i] * lp[i]; return Math.sqrt(q / Math.max(1, c - a)); };
-    const ratio = (times, w) => { let a = 0, b = 0; for (const t of times) { const i = Math.round(t * sr), k = Math.round(w * sr); a += band(i, i + k); b += band(i - k, i); } return a / b; };
-    const late = st.filter((t, i) => i > 0 && t > total * 0.66 && t < total - 1);   // the fast end, after the break
-    const fixed = []; for (let t = Math.ceil(total * 0.66 / 0.469) * 0.469; t < total - 1; t += 0.469) fixed.push(t);   // where a steady 128 BPM clock would put its beats
-    return { onCuts: ratio(late, 0.05), onFixed: ratio(fixed, 0.05), rms: Math.sqrt(x.reduce((s, v) => s + v * v, 0) / n) };
+    const oc = new OfflineAudioContext(2, 44100, 44100), notes = [];
+    const mk = oc.createBiquadFilter.bind(oc);
+    oc.createBiquadFilter = () => { const f = mk(); const orig = f.frequency.setValueAtTime.bind(f.frequency); f.frequency.setValueAtTime = (v, t) => { if (f.Q.value === 5 && f.type === 'lowpass') notes.push(t); return orig(v, t); }; return f; };
+    window.Drone.build(oc, oc.destination, { pulse: 0.05, low: 0.8, bright: 0.3, width: 0.6, space: 0.4, power: 0.6, seed: 4, pitch: 0.4, hitType: 0, arp: 0.5, bass: 0.5, chord: 1, style: 5 }, st, { offset: 0, t0: 0 });
+    return { st, notes: [...new Set(notes.map(t => Math.round(t * 1e4) / 1e4))].sort((a, b) => a - b) };
   });
-  console.log('hypnotic follows: ' + JSON.stringify(r));
-  assert.ok(r.onCuts > 1.12, `the kick lands on the cuts at the fast end (${r.onCuts.toFixed(2)})`);
-  assert.ok(r.onFixed < r.onCuts - 0.05, `and not on a steady clock any more (${r.onFixed.toFixed(2)})`);
-  assert.ok(Math.abs(r.rms - 0.17) < 0.015);
+  const { st, notes } = r, total = st[st.length - 1];
+  const gaps = (a, b) => { const g = []; for (let i = 1; i < notes.length; i++) if (notes[i - 1] >= a && notes[i] <= b) g.push(notes[i] - notes[i - 1]); return Math.min(...g); };
+  const early = gaps(0.1 * total, 0.3 * total), late = gaps(0.7 * total, total);
+  console.log(`hypnotic follows: shortest step ${early.toFixed(3)} s early, ${late.toFixed(3)} s late, ${notes.length} notes`);
+  assert.ok(notes.length > 100, 'the bass and the sequence play');
+  assert.ok(late < early * 0.75, `the sixteenths speed up with the cuts (${early.toFixed(3)} s to ${late.toFixed(3)} s; the cuts went 0.47 to 0.25 s)`);
+  const onCut = st.slice(1, -1).filter(c => c > 0.1 * total && notes.some(t => Math.abs(t - c) < 1e-3)).length;
+  assert.ok(onCut > 20, `notes fall exactly on the cuts (${onCut} cuts)`);
   await ctx.close();
 });
 
