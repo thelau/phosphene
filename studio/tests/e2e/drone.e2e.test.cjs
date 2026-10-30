@@ -864,3 +864,23 @@ test('Signal (sines, clicks, silence), Lyric (a melody over the chords) and Hypn
   assert.ok(hypnotic.top < 0.01, `Hypnotic: dark (${hypnotic.top.toFixed(4)} above 2 kHz)`);
   await ctx.close();
 });
+
+test('Hypnotic follows the curve of the speed: its beat speeds up with the cuts and every cut lands on a beat (the user: the music must follow the speed)', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(async () => {
+    const st = [0]; for (let i = 0; i < 70; i++) st.push(st[i] + 0.47 * Math.pow(0.25 / 0.47, i / 69));   // 0.47 s cuts speeding up to 0.25 s
+    const P = { pulse: 0.05, low: 0.8, bright: 0.3, width: 0.6, space: 0.4, power: 0.6, seed: 4, pitch: 0.4, hitType: 1, hit: 0.55, arp: 0, bass: 0, chord: 1, style: 5 };
+    const rr = await window.Drone.renderExport(P, st), x = rr.left, n = x.length, sr = 44100, total = st[st.length - 1];
+    const lp = new Float32Array(n); let y = 0; const al = 1 - Math.exp(-2 * Math.PI * 150 / sr); for (let i = 0; i < n; i++) { y += al * (x[i] - y); lp[i] = y; }
+    const band = (a, c) => { let q = 0; for (let i = Math.max(0, a); i < Math.min(n, c); i++) q += lp[i] * lp[i]; return Math.sqrt(q / Math.max(1, c - a)); };
+    const ratio = (times, w) => { let a = 0, b = 0; for (const t of times) { const i = Math.round(t * sr), k = Math.round(w * sr); a += band(i, i + k); b += band(i - k, i); } return a / b; };
+    const late = st.filter((t, i) => i > 0 && t > total * 0.66 && t < total - 1);   // the fast end, after the break
+    const fixed = []; for (let t = Math.ceil(total * 0.66 / 0.469) * 0.469; t < total - 1; t += 0.469) fixed.push(t);   // where a steady 128 BPM clock would put its beats
+    return { onCuts: ratio(late, 0.05), onFixed: ratio(fixed, 0.05), rms: Math.sqrt(x.reduce((s, v) => s + v * v, 0) / n) };
+  });
+  console.log('hypnotic follows: ' + JSON.stringify(r));
+  assert.ok(r.onCuts > 1.12, `the kick lands on the cuts at the fast end (${r.onCuts.toFixed(2)})`);
+  assert.ok(r.onFixed < r.onCuts - 0.05, `and not on a steady clock any more (${r.onFixed.toFixed(2)})`);
+  assert.ok(Math.abs(r.rms - 0.17) < 0.015);
+  await ctx.close();
+});

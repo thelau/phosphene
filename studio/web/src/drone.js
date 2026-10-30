@@ -431,9 +431,17 @@
     const grids = [];                                                        // Hypnotic's clock: steps of its own, scheduled as the cuts are
     const advance = to => {
       while (cursor < nCuts && starts[cursor] <= to) { const i = cursor++; for (const h of perCut) h(i, at(starts[i])); }
-      for (const g of grids) while (g.i < g.n && g.i * g.step <= to) { const i = g.i++; g.fn(i, at(i * g.step)); }
+      for (const g of grids) while (g.i < g.n && g.time(g.i) <= to) { const i = g.i++; g.fn(i, at(g.time(i))); }
     };
-    const addGrid = (step, fn) => grids.push({ step, fn, n: Math.max(0, Math.ceil(total / step - 1e-9)), i: Math.max(0, Math.ceil(offset / step - 1e-9)) });
+    // a grid of `per` steps a music cut, warped along the cuts: it speeds up and slows down with them, and every cut lands on a step
+    // (Hypnotic's sixteenths; the user: the music must follow the curve of the speed). Step i sits at cut position i / per.
+    const gridTime = per => i => { const u = i / per, c = Math.min(nCuts - 1, Math.floor(u + 1e-9)); return starts[c] + (u - c) * cutNoteLen(starts, c); };
+    const addGrid = (per, fn) => {
+      const time = gridTime(per), c = cutAtTime(starts, offset), len = cutNoteLen(starts, c);
+      const from = Math.max(0, Math.ceil((c + (len > 0 ? (offset - starts[c]) / len : 0)) * per - 1e-9));
+      let n = Math.ceil(nCuts * per - 1e-9); while (n > 0 && time(n - 1) >= total - 0.002) n--;   // the short last cut: nothing past the end
+      grids.push({ time, fn, n, i: from });
+    };
     const pump = (param, depth, decay) => {                                // dips and comes back on every cut
       const c = cutAtTime(starts, offset), tau = offset - starts[c];
       param.setValueAtTime(1 - depth * (1 - Math.exp(-tau / decay)), at(offset));
@@ -839,10 +847,11 @@
     // ---- Hypnotic: a clock of its own, a soft kick, a rolling bass, a sequence (see STYLES) ----
     if (style.grid) {
       const r = mulberry32(seedN + 5521), lens = starts.slice(1).map((v, i) => v - starts[i]), whole = lens.length > 2 ? lens.slice(0, -1) : lens;
-      const lo = Math.min(...whole), hi = Math.max(...whole);
-      let bpm = 122 + 12 * r();
-      if (hi <= lo * 1.03 && lo > 0) { let b = 60 / lo; while (b < 116) b *= 2; while (b > 140) b /= 2; if (b >= 116) bpm = b; }
-      const step = 60 / bpm / 4, arcOn = opts.arc !== false, KICK = +(opts.kick ?? 1.9), DUCK = +(opts.duck ?? 0.25);   // the kick over the sub: a duck as deep as the kick cancelled it out in the low end (measured)
+      // beats a music cut: a power of two, so the film's usual cut (the median) makes a beat near 128 BPM (90-180); then the beat follows the cuts
+      const med = whole.slice().sort((a, b) => a - b)[whole.length >> 1] || 0.47, beatsPerCut = Math.pow(2, Math.round(Math.log2(med / 0.469)));
+      const per = 4 * beatsPerCut, step = med / per, arcOn = opts.arc !== false, KICK = +(opts.kick ?? 1.9), DUCK = +(opts.duck ?? 0.25);   // the kick over the sub: a duck as deep as the kick cancelled it out in the low end (measured)
+      const stepAt = i => cutNoteLen(starts, Math.min(nCuts - 1, Math.floor(i / per + 1e-9))) / per;   // the sixteenth's length here
+      const thin = (i, every) => { const sl = stepAt(i); return sl < every / 4 ? i % 4 === 0 : sl < every / 2 ? i % 2 === 0 : true; };   // too fast for every step: fewer
       const quiet = (u, kick) => arcOn && (u < (kick ? 0.1 : 0.05) || (u > 0.56 && u < 0.64));   // no kick (nor bass) in the intro and the break
       const sweep = (t, P, ph) => 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / P + ph);
       const ph1 = 2 * Math.PI * r(), ph2 = 2 * Math.PI * r(), P1 = 28 + 12 * r(), P2 = 36 + 20 * r();
@@ -853,8 +862,10 @@
       if (hitType > 0 && hitAmt > 0.01) {                                  // the kick: a sine falling to the root, round, under 200 Hz
         const kO = osc('sine', f0), kG = gain(0); kO.connect(kG);
         const [kIn] = lowpass(200, mix[0]); kG.connect(kIn); const [kIn2] = lowpass(200, mix[1]); kG.connect(kIn2);
-        addGrid(step, (i, t) => {
-          if (i % 4 || quiet((i * step) / total, true)) return;
+        const kickTime = gridTime(per);
+        addGrid(per, (i, t) => {
+          const b = i / 4, beat = 4 * stepAt(i);                         // a beat shorter than 0.2 s: every other one; under 0.1 s: every fourth
+          if (i % 4 || quiet(kickTime(i) / total, true) || (beat < 0.1 ? b % 4 : beat < 0.2 ? b % 2 : 0)) return;
           kO.frequency.setValueAtTime(f0 * 3, t); kO.frequency.exponentialRampToValueAtTime(f0, t + 0.06);
           strike(kG, t, KICK * hitAmt, 0.3);
           for (const sm of sums) { sm.gain.setTargetAtTime(style.bed * (1 - DUCK * hitAmt), t + 0.004, 0.01); sm.gain.setTargetAtTime(style.bed, t + 0.05, 0.1); }   // the bed makes way, a moment after the kick's attack
@@ -862,15 +873,17 @@
       }
       if (hatOn) {
         const hg = voiceNoise(0.25, 'highpass', 7500, 0.7, mix[0]); hg.connect(mix[1]);
-        addGrid(step, (i, t) => { const u = (i * step) / total; if (i % 4 === 2 && u > 0.18 && u < 0.92 && !quiet(u)) strike(hg, t, 0.1, 0.03); });
+        const ht = gridTime(per);
+        addGrid(per, (i, t) => { const u = ht(i) / total; if (i % 4 === 2 && u > 0.18 && u < 0.92 && !quiet(u) && stepAt(i) > 0.05) strike(hg, t, 0.1, 0.03); });
       }
       if (bassAmt > 0.01) {                                                // rolling: the off-sixteenths, the root, a fifth or octave now and then
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 5; lp.frequency.value = 250;
         const env = gain(0); lp.connect(env); for (const br of sides) env.connect(gain(0.5, br));
         const bo = [['sawtooth', -0.003, 1], ['square', 0.003, 0.4]].map(([w, det, g]) => { const o = osc(w, f0 * 2); o.connect(gain(g, lp)); return [o, det]; });
-        addGrid(step, (i, t) => {
-          const k = i % 16, tt = i * step; if (!bassMask[k] || quiet(tt / total, true)) return;
-          const f = f0 * 2 * Math.pow(2, (bassNote[k] + degreeAt(cutAtTime(starts, tt))) / 12);
+        const bt = gridTime(per);
+        addGrid(per, (i, t) => {
+          const k = i % 16, tt = bt(i); if (!bassMask[k] || quiet(tt / total, true) || !thin(i, 0.1)) return;
+          const f = f0 * 2 * Math.pow(2, (bassNote[k] + degreeAt(Math.floor(i / per + 1e-9))) / 12);
           for (const [o, det] of bo) o.frequency.setValueAtTime(f * (1 + det), t);
           lp.frequency.setValueAtTime(260 + 900 * sweep(tt, P1, ph1), t); lp.frequency.setTargetAtTime(120, t + 0.004, 0.03);
           strike(env, t, 1.5 * bassAmt, 0.07);
@@ -883,9 +896,10 @@
         env.connect(dl); dl.connect(dk); dk.connect(fb); fb.connect(dl);
         sides.forEach((br, j) => { env.connect(gain(0.45, br)); dk.connect(gain(j ? 0.3 : 0.18, br)); });
         const so = [-0.004, 0.004].map(det => { const o = osc('sawtooth', T); o.connect(lp); return [o, det]; });
-        addGrid(step, (i, t) => {
-          if (!seqMask[i % 16]) return;
-          const tt = i * step, f = T * Math.pow(2, seqNotes[i % seqL] / 12);
+        const st2 = gridTime(per);
+        addGrid(per, (i, t) => {
+          if (!seqMask[i % 16] || !thin(i, 0.1)) return;
+          const tt = st2(i), f = T * Math.pow(2, seqNotes[i % seqL] / 12);
           for (const [o, det] of so) o.frequency.setValueAtTime(f * (1 + det), t);
           lp.frequency.setValueAtTime(450 + 2000 * sweep(tt, P2, ph2), t); lp.frequency.setTargetAtTime(300, t + 0.003, 0.04);
           strike(env, t, 1.1 * arpAmt, 0.1);
