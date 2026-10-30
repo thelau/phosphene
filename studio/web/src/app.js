@@ -2323,6 +2323,7 @@
         }
         if (getn('industrialRange') > 0) { setv('hitTypeSelect', 0); setv('ringRange', Math.min(20, getn('ringRange'))); }   // its bursts are the hits
       }
+      paceChanges();
       if (getn('arrangeSelect') === 3 && rhythmMode() !== 'variable') setv('arrangeSelect', 1);   // a flat speed has nothing to follow
       if (getn('arrangeSelect')) {                                                                 // an arrangement needs at least two layers to move
         const layers = () => [getn('arpRange'), getn('bassRange'), getn('hitTypeSelect')].filter(Boolean).length;
@@ -2357,12 +2358,21 @@
       soundRules();
       if (quiet !== true) { updateMusic(); commitSettings('Random sound'); }
     }
-    // chord changes now and then (a third of the time), each chord lasting 1 to 4 seconds of this film's music: the harmonic pace varies too
+    // chord changes now and then (a third of the time); how often they come is set last, in soundRules (paceChanges), once the music's cuts are known
     function rollChanges() {
-      if (Math.random() >= 0.35) { setv('progSelect', 0); return; }
-      setv('progSelect', 1 + Math.floor(Math.random() * 4));
-      const want = rhythmCutsPerSecond() * (1 + 3 * Math.random()), every = [2, 4, 8, 16];
-      setv('progEverySelect', every.reduce((b, n, i) => (Math.abs(n - want) < Math.abs(every[b] - want) ? i : b), 0));
+      setv('progSelect', Math.random() < 0.35 ? 1 + Math.floor(Math.random() * 4) : 0);
+    }
+    // each chord 2 to 5 seconds, never under 2 s where the music cuts fastest (a variable run's quick end; every picture cut when the check is on); too fast for that, no changes.
+    // The user's taste log (2026-10-30): 4 of 5 dislikes had chords every 0.4-1.6 s, the liked changes mostly 2 s and up. The pace was set before Random chose
+    // whether the music takes every picture cut, so a ×3 then made the chords three times faster than meant.
+    function paceChanges() {
+      if (!getn('progSelect')) return;
+      const follow = followCuts() ? (parseFloat(document.getElementById('multSelect').value) || 1) : 1, ch = changeParams();
+      const fast = (1000 / Math.min(60000 / bpmValue(), ch ? ch.end_ms : Infinity)) * follow;
+      const every = [2, 4, 8, 16], ok = every.map((n, i) => [n, i]).filter(([n]) => n / fast >= 2);
+      if (!ok.length) { setv('progSelect', 0); return; }
+      const want = Math.log(fast * (2 + 3 * Math.random()));
+      setv('progEverySelect', ok.reduce((b, c) => (Math.abs(Math.log(c[0]) - want) < Math.abs(Math.log(b[0]) - want) ? c : b))[1]);
     }
     // the bassline and the arrangement: a type says how likely a bassline is and which arrangements suit it; Any draws them freely
     function rollShape(c) {

@@ -1377,16 +1377,24 @@ test('arpeggio moods: Random draws them all (Pluck often), a type keeps to its o
   assert.equal(savedOf(h.store).arpMoodSelect, '3', 'remembered');
 });
 
-test('chord changes: Random turns them on now and then, each chord 1 to 4 seconds long whatever the speed; sent and remembered', async () => {
+test('chord changes: Random turns them on now and then, each chord 2 to ~7 s and never under 2 s where the music cuts fastest (the user\'s dislikes: chords every 0.4-1.6 s); sent and remembered', async () => {
   const h = await playerWith();
-  const n = id => +h.$(id).value;
+  const n = id => +h.$(id).value, EVERY = [2, 4, 8, 16];
   const tempo = bpm => { h.$('rhythmSelect').value = 'flat'; h.$('bpmInput').value = String(bpm); h.$('bpmLock').checked = true; };
-  for (const [bpm, allowed] of [[60, [0, 1]], [160, [0, 1, 2]], [480, [2, 3]]]) {  // 1, 2.7 and 8 cuts a second: 1-4 s a chord in whole cut counts
-    tempo(bpm); let on = 0; const seen = new Set();
-    for (let i = 0; i < 300; i++) { h.run('randomMusic()'); if (n('progSelect')) { on++; seen.add(n('progEverySelect')); assert.ok(allowed.includes(n('progEverySelect')), `${bpm} BPM: every ${n('progEverySelect')}`); } }
-    assert.ok(on > 70 && on < 140, `now and then: ${on} of 300`);
-    assert.ok(seen.size >= 2, `${bpm} BPM: the pace varies: ${[...seen]}`);
+  for (const [bpm, follow, mult, often] of [[60, false, '1', true], [160, false, '1', true], [160, true, '3', 'slowest'], [480, false, '1', 'slowest'], [600, false, '1', false]]) {   // 1, 2.7, 8 (every picture cut of a ×3), 8 and 10 music cuts a second
+    tempo(bpm); h.$('followCuts').checked = follow; h.$('multSelect').value = mult;
+    const rate = (bpm / 60) * (follow ? +mult : 1); let on = 0; const seen = new Set();
+    for (let i = 0; i < 300; i++) {
+      h.run('randomMusic()');
+      if (!n('progSelect')) continue;
+      on++; const s = EVERY[n('progEverySelect')] / rate; seen.add(n('progEverySelect'));
+      assert.ok(s >= 2 && s <= 7.2, `${bpm} BPM${follow ? ' on every picture cut' : ''}: a chord lasts ${s.toFixed(2)} s`);
+    }
+    if (often === 'slowest') { assert.ok(on > 70 && on < 140, `now and then: ${on} of 300`); assert.deepEqual([...seen], [3], `${bpm} BPM: only every 16 cuts is 2 s or more`); }
+    else if (often) { assert.ok(on > 70 && on < 140, `now and then: ${on} of 300`); assert.ok(seen.size >= 2, `${bpm} BPM: the pace varies: ${[...seen]}`); }
+    else assert.ok(on < 20, `${bpm} BPM: too fast for 2 s chords, almost never on (${on} of 300)`);
   }
+  h.$('followCuts').checked = false; h.$('multSelect').value = '1';
   h.$('bpmLock').checked = false;
   h.$('progSelect').value = '1'; h.$('progEverySelect').value = '2'; h.run('updateMusic()');
   assert.deepEqual([h.run('synthParams()').prog, h.run('synthParams()').progEvery], [1, 2]);
