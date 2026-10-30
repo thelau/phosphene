@@ -768,8 +768,12 @@
       return { per, stepAt, thin: (i, every) => { const sl = stepAt(i); return sl < every / 4 ? i % 4 === 0 : sl < every / 2 ? i % 2 === 0 : true; } };
     };
     if (style.grid) {
-      const r = mulberry32(seedN + 5521), { per, thin } = sixteenths(), arcOn = opts.arc !== false;
-      const quiet = (u, bass) => arcOn && (u < (bass ? 0.1 : 0.05) || (u > 0.56 && u < 0.64));   // no bass in the intro and the break
+      const r = mulberry32(seedN + 5521), { per, thin } = sixteenths();
+      // the bass plays all film long: it used to sit out an intro and a break (the user, 2026-10-30: parts that come and go "is weird")
+      // each Random its own register, note lengths, echo and accents (the user: "a lot of repetition", 2026-10-31), its own stream so the
+      // patterns above draw as before
+      const v = mulberry32(seedN + 5557), seqUp = v() < 0.35 ? 0.5 : 1, bassDecay = 0.05 + 0.07 * v(), seqDecay = 0.07 + 0.12 * v(), echoFb = 0.25 + 0.22 * v();
+      const accents = [k => (k % 4 === 2 ? 1 : 0.6), k => ([0, 3, 6].includes(k % 8) ? 1 : 0.55), k => ([2, 6, 10, 13].includes(k) ? 1 : 0.55)][Math.floor(v() * 3)];
       const sweep = (t, P, ph) => 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / P + ph);
       const ph1 = 2 * Math.PI * r(), ph2 = 2 * Math.PI * r(), P1 = 28 + 12 * r(), P2 = 36 + 20 * r();
       r(); const bassMask = Array.from({ length: 16 }, (_, k) => (k % 4 ? r() < 0.8 : false)), bassNote = Array.from({ length: 16 }, (_, k) => (k === 14 && r() < 0.5 ? 7 : k === 10 && r() < 0.3 ? 12 : 0));
@@ -782,18 +786,18 @@
         const bo = [['sawtooth', -0.003, 1], ['square', 0.003, 0.4]].map(([w, det, g]) => { const o = osc(w, f0 * 2); o.connect(gain(g, lp)); return [o, det]; });
         const bt = gridTime(per);
         addGrid(per, (i, t) => {
-          const k = i % 16, tt = bt(i); if (!bassMask[k] || quiet(tt / total, true) || !thin(i, 0.1)) return;
+          const k = i % 16, tt = bt(i); if (!bassMask[k] || !thin(i, 0.1)) return;
           const f = f0 * 2 * Math.pow(2, (bassNote[k] + degreeAt(Math.floor(i / per + 1e-9))) / 12);
           for (const [o, det] of bo) o.frequency.setValueAtTime(f * (1 + det), t);
-          lp.frequency.setValueAtTime(260 + 900 * sweep(tt, P1, ph1), t); lp.frequency.setTargetAtTime(120, t + 0.004, 0.03);
-          strike(env, t, 1.5 * bassAmt, 0.07);
+          lp.frequency.setValueAtTime((260 + 900 * sweep(tt, P1, ph1)) * (0.75 + 0.35 * accents(k)), t); lp.frequency.setTargetAtTime(120, t + 0.004, 0.03);
+          strike(env, t, 1.5 * bassAmt * (0.8 + 0.2 * accents(k)), bassDecay);
         });
       }
       if (arpAmt > 0.01) {                                                 // the sequence: 3, 5 or 7 notes against the bar, through an echo
-        const T = f0 * 8, lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 5; lp.frequency.value = 800;
+        const T = f0 * 8 * seqUp, lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 5; lp.frequency.value = 800;   // an octave lower now and then
         const env = gain(0); lp.connect(env);
         const echoAt = c => Math.min(0.95, 3 * cutNoteLen(starts, c) / per);   // three sixteenths of the speed here, not of the usual one
-        const dl = ctx.createDelay(1); dl.delayTime.value = echoAt(Math.min(nCuts - 1, cutAtTime(starts, offset))); const fb = gain(0.38), dk = ctx.createBiquadFilter(); dk.type = 'lowpass'; dk.frequency.value = 2200;
+        const dl = ctx.createDelay(1); dl.delayTime.value = echoAt(Math.min(nCuts - 1, cutAtTime(starts, offset))); const fb = gain(echoFb), dk = ctx.createBiquadFilter(); dk.type = 'lowpass'; dk.frequency.value = 2200;
         perCut.push((c, t) => dl.delayTime.setTargetAtTime(echoAt(c), t, ECHO_GLIDE));
         env.connect(dl); dl.connect(dk); dk.connect(fb); fb.connect(dl);
         sides.forEach((br, j) => { env.connect(gain(0.45, br)); dk.connect(gain(j ? 0.3 : 0.18, br)); });
@@ -804,7 +808,7 @@
           const tt = st2(i), f = T * Math.pow(2, seqNotes[i % seqL] / 12);
           for (const [o, det] of so) o.frequency.setValueAtTime(f * (1 + det), t);
           lp.frequency.setValueAtTime(450 + 2000 * sweep(tt, P2, ph2), t); lp.frequency.setTargetAtTime(300, t + 0.003, 0.04);
-          strike(env, t, 1.1 * arpAmt, 0.1);
+          strike(env, t, 1.1 * arpAmt * (seqUp < 1 ? 1.25 : 1), seqDecay);
         });
       }
     }

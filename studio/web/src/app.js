@@ -2306,11 +2306,14 @@
     // a random rhythm: a tempo (Flat) or a run that speeds up or slows down (Variable), and the Multiple
     function randomRhythm(quiet) {
       if (quiet !== true) rememberForUndo();
-      if (Math.random() < 0.55) applyRhythm({ mode: 'flat', bpm: [60, 200], mult: ['0.5', '1', '1', '2', '2', '3', '4'] });   // a steady tempo
+      if (Math.random() < 0.55) {                                            // a steady tempo; a third of the time a fast one (3-7 cuts a second: 41 of 52 liked in the
+        if (Math.random() < 0.33) applyRhythm({ mode: 'flat', bpm: [200, 420], mult: ['1', '1', '2'] });   // taste logs, the most of any speed, and drawn rarely)
+        else applyRhythm({ mode: 'flat', bpm: [60, 200], mult: ['0.5', '1', '1', '2', '2', '3', '4'] });
+      }
       else if (Math.random() < 0.3 && !document.getElementById('bpmLock').checked) randomWave();   // now and then there and back
       else {
         const slowing = Math.random() < 0.5;
-        applyRhythm({ mode: 'variable', start: slowing ? [60, 200] : [300, 900], end: slowing ? [300, 900] : [60, 200], ramp: [6, 20], at: Math.random() < 0.7 ? 'end' : 'start', mult: ['1', '1', '2', '2', '3'] });
+        applyRhythm({ mode: 'variable', start: slowing ? [60, 200] : [300, 900], end: slowing ? [300, 900] : [60, 200], ramp: Math.random() < 0.25 ? [24, 48] : [6, 20], at: Math.random() < 0.7 ? 'end' : 'start', mult: ['1', '1', '2', '2', '3'] });   // now and then a long, slow change
       }
       document.getElementById('followCuts').checked = Math.random() < 0.15;
       refreshVideo(quiet === true);
@@ -2368,7 +2371,7 @@
       setv('bassRange', rint([35, 60]));
       setv('arpRange', Math.random() < 0.85 ? rint([30, 55]) : 0);
       setv('chordSelect', rpick([0, 1, 2])); setv('modeSelect', rpick([0, 0, 1, 2]));
-      if (Math.random() < 0.85) setv('progSelect', 0);
+      if (Math.random() < 0.6) setv('progSelect', 0);                       // the chords move now and then: a loop that changes key (the user: "a lot of repetition")
       setv('roomSelect', rpick([0, 0, 2])); setv('spaceRange', rint([25, 60])); setv('echoRange', 0);
       setv('washRange', Math.min(15, getn('washRange'))); setv('shimmerRange', Math.min(15, getn('shimmerRange'))); setv('ringRange', Math.min(15, getn('ringRange')));
       setv('choirRange', 0); setv('industrialRange', 0); setv('arrangeSelect', 0); setv('dynSelect', 0);

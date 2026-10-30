@@ -1162,7 +1162,10 @@ test('Random video: every draw is a valid speed and look inside the slider range
   for (let i = 0; i < 300; i++) {
     h.run('randomVideo()');
     const mode = h.$('rhythmSelect').value; seen[mode]++;
-    if (mode === 'flat') { const b = +h.$('bpmInput').value; assert.ok(b >= 60 && b <= 200, `tempo ${b}`); }
+    if (mode === 'flat') {
+      const b = +h.$('bpmInput').value; assert.ok(b >= 60 && b <= 420, `tempo ${b}`);
+      if (b > 200) { seen.fast = (seen.fast || 0) + 1; assert.ok(['1', '2'].includes(h.$('multSelect').value), 'a fast film cuts once or twice a beat: never under a frame'); }
+    }
     else {
       const ch = h.run('changeParams()'), s = 60000 / +h.$('bpmInput').value;
       if (ch.points.length === 4) {                                              // there and back: out, the middle held, back to the first speed
@@ -1184,6 +1187,7 @@ test('Random video: every draw is a valid speed and look inside the slider range
   }
   assert.ok(seen.flat > 60 && seen.variable > 60, `both speeds come up (${JSON.stringify(seen)})`);
   assert.ok(seen.wave > 10 && seen.wave < seen.variable / 2, `there and back now and then (${JSON.stringify(seen)})`);
+  assert.ok(seen.fast > 25 && seen.fast < seen.flat / 2, `a fast steady film about a third of the steady ones (${JSON.stringify(seen)})`);
   h.$('bpmInput').value = '77'; h.$('rhythmSelect').value = 'flat'; h.$('invertSelect').value = 'colour'; h.$('multSelect').value = '2';
   h.run('commitSettings(); history.length = 0');                                   // the hand-set values are a step of their own (the 300 draws filled the history: start clean)
   const n = h.run('history.length');

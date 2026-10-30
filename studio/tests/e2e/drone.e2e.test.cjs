@@ -766,6 +766,30 @@ test('styles: Spiral is gone (the user: "just kill SPIRAL"): its number plays th
   await ctx.close();
 });
 
+test('Hypnotic varies from one Random to the next and its bass plays all film long (the user: "a lot of repetition"; parts that come and go "is weird"); every one level', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(async () => {
+    const flat = Array.from({ length: 41 }, (_, i) => i * 0.46875), T = flat.at(-1);
+    const P = { pulse: 0.05, low: 0.85, bright: 0.3, width: 0.6, space: 0.4, power: 0.6, pitch: 0.4, hitType: 0, arp: 0.45, bass: 0.5, chord: 1, style: 5 };
+    const raw = async v => { const sr = 22050, c = new OfflineAudioContext(2, Math.ceil(sr * T), sr); window.Drone.build(c, c.destination, { ...P, seed: 7, ...v }, flat, { offset: 0, t0: 0 }); return { x: (await c.startRendering()).getChannelData(0), sr }; };
+    const a = await raw({ arp: 0 }), n = await raw({ arp: 0, bass: 0 });
+    const band = (u0, u1) => { let e = 0, k = 0; for (let i = Math.floor(u0 * a.x.length); i < Math.floor(u1 * a.x.length); i++) { e += (a.x[i] - n.x[i]) ** 2; k++; } return Math.sqrt(e / k); };
+    const levels = [];
+    for (const seed of [2, 5, 9, 14]) {
+      const x = await window.Drone.renderExport({ ...P, seed }, flat);
+      let e = 0, pk = 0, bad = false; for (const v of x.left) { if (!Number.isFinite(v)) bad = true; e += v * v; pk = Math.max(pk, Math.abs(v)); }
+      levels.push({ rms: Math.sqrt(e / x.left.length), pk, bad });
+    }
+    const shapes = [];
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) { const x = await raw({ seed, bass: 0 }); let e = 0; for (let i = 0; i < x.x.length; i += 7) e += x.x[i] * x.x[i]; shapes.push(+e.toFixed(1)); }
+    return { intro: band(0.02, 0.09), brk: band(0.57, 0.63), mid: band(0.3, 0.5), levels, shapes };
+  });
+  assert.ok(r.intro > r.mid * 0.5 && r.brk > r.mid * 0.5, `the bass plays in the intro (${r.intro.toFixed(3)}) and where the break was (${r.brk.toFixed(3)}), as in the middle (${r.mid.toFixed(3)})`);
+  assert.ok(new Set(r.shapes).size >= 6, `each seed its own sequence: ${r.shapes}`);
+  for (const [i, m] of r.levels.entries()) assert.ok(!m.bad && Math.abs(m.rms - 0.17) < 0.015 && m.pk <= 0.97, `level ${i}: ${m.rms.toFixed(3)}, peak ${m.pk.toFixed(2)}`);
+  await ctx.close();
+});
+
 test('Run varies from one Random to the next (the user: "a bit repetitive"): each family has several runs and the accents fall in several groupings; every one level and dark; the same loop all film long', { skip }, async () => {
   const ctx = await fresh();
   const r = await page.evaluate(async () => {
