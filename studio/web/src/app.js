@@ -2320,8 +2320,51 @@
       if (getn('roomSelect') === 1) setv('roomSelect', rpick([0, 2, 3]));
       setv('spaceRange', Math.max(40, getn('spaceRange')));
     }
+    // Signal: no drone, its sliders play its voices (Low the sine sub, Bright the high tone, Hits the clicks, Arpeggio the data, Pulse how much sounds);
+    // nothing of the drone's colours (they are silent there anyway), almost dry, wide
+    function signalRules() {
+      setv('pulseRange', rint([30, 90])); setv('lowRange', rint([55, 100])); setv('brightRange', rint([20, 70])); setv('widthRange', rint([60, 100]));
+      setv('spaceRange', rint([0, 25])); setv('roomSelect', rpick([0, 1]));
+      setv('hitTypeSelect', 1); setv('hitRange', rint([35, 70]));
+      if (Math.random() < 0.3) setv('arpRange', 0); else { setv('arpRange', rint([35, 70])); setv('arpStepsSelect', 1 + Math.floor(Math.random() * 3)); }
+      for (const id of ['choirRange', 'industrialRange', 'padRange', 'bassRange', 'washRange', 'ringRange', 'shimmerRange', 'echoRange', 'tapeRange']) setv(id, 0);
+      setv('progSelect', 0); setv('arrangeSelect', 0); setv('dynSelect', 0);
+    }
+    // Lyric: a melody over moving chords: the major mode often, the changes on, chords without a third under the lead (it carries the third), a pad, brighter
+    function lyricRules() {
+      { const r = Math.random(); setv('modeSelect', r < 0.4 ? 4 : r < 0.75 ? 1 : 0); }
+      setv('chordSelect', rpick([1, 3]));
+      if (Math.random() < 0.75) setv('progSelect', 1 + Math.floor(Math.random() * 4));
+      setv('padRange', Math.random() < 0.7 ? rint([25, 45]) : 0); setv('padToneSelect', rpick([0, 0, 1]));
+      setv('bassRange', Math.random() < 0.5 ? rint([35, 55]) : 0);
+      if (Math.random() < 0.5) setv('arpRange', 0); else { setv('arpRange', rint([25, 40])); setv('arpMoodSelect', rpick([0, 2, 4])); }
+      if (Math.random() < 0.6) setv('hitTypeSelect', 0); setv('hitRange', Math.min(45, getn('hitRange')));
+      setv('choirRange', 0); setv('industrialRange', 0);
+      setv('brightRange', rint([30, 55])); setv('widthRange', rint([50, 90])); setv('spaceRange', rint([40, 75]));
+      if (getn('roomSelect') === 1) setv('roomSelect', rpick([0, 2, 3]));
+      setv('tapeRange', Math.min(30, getn('tapeRange'))); setv('washRange', Math.min(20, getn('washRange')));
+    }
+    // Hypnotic: its own clock; Hits is the kick (most of the time, soft), Bassline the rolling bass, Arpeggio the sequence; the bed hardly
+    // pumps on the cuts (the kick ducks it); static harmony; a plain room; no echo (the sequence has its own)
+    function hypnoticRules() {
+      setv('pulseRange', rint([0, 15]));
+      if (Math.random() < 0.85) { setv('hitTypeSelect', 1); setv('hitRange', rint([35, 60])); } else setv('hitTypeSelect', 0);
+      setv('bassRange', Math.random() < 0.75 ? rint([35, 60]) : 0);
+      setv('arpRange', Math.random() < 0.85 ? rint([30, 55]) : 0);
+      setv('chordSelect', rpick([0, 1, 2])); setv('modeSelect', rpick([0, 0, 1, 2]));
+      if (Math.random() < 0.85) setv('progSelect', 0);
+      setv('roomSelect', rpick([0, 0, 2])); setv('spaceRange', rint([25, 60])); setv('echoRange', 0);
+      setv('washRange', Math.min(15, getn('washRange'))); setv('shimmerRange', Math.min(15, getn('shimmerRange'))); setv('ringRange', Math.min(15, getn('ringRange')));
+      setv('choirRange', 0); setv('industrialRange', 0); setv('arrangeSelect', 0); setv('dynSelect', 0);
+      setv('padRange', Math.random() < 0.3 ? rint([15, 25]) : 0); setv('tapeRange', Math.random() < 0.3 ? rint([15, 35]) : 0);
+      setv('widthRange', rint([40, 80])); setv('lowRange', rint([70, 95])); setv('brightRange', rint([15, 40]));
+    }
     function styleRules(rate) {
-      if (getn('styleVal') === 2) return tideRules();
+      const st = getn('styleVal');
+      if (st === 3) return signalRules();
+      if (st === 4) return lyricRules();
+      if (st === 5) return hypnoticRules();
+      if (st === 2) return tideRules();
       if (getn('styleVal') !== 1) return;
       if (getn('arpRange') < 40 || getn('arpRange') > 62) setv('arpRange', rint([40, 62]));   // in front, not shouting (75 peaked into the final clip)
       if ([0, 1, 6].includes(getn('arpMoodSelect'))) setv('arpMoodSelect', rpick([2, 3, 4, 5, 7]));   // Phase, Sweep, Mutate, Accumulate, Euclid: patterns that move
@@ -2329,12 +2372,12 @@
       if (getn('arpRateSelect') >= 4) setv('arpRateSelect', 1);
       if (rate > 3 && getn('arpRateSelect') > 1) setv('arpRateSelect', Math.floor(Math.random() * 2));   // fast cuts: a note or half a note a cut
       setv('choirRange', 0); setv('industrialRange', 0);
-      setv('hitRange', Math.min(40, getn('hitRange'))); setv('padRange', Math.min(30, getn('padRange'))); setv('washRange', Math.min(20, getn('washRange')));
+      setv('hitRange', Math.min(30, getn('hitRange'))); setv('padRange', Math.min(30, getn('padRange'))); setv('washRange', Math.min(20, getn('washRange')));   // hits stand out over the lower bed
       if (rate < 5 && getn('roomSelect') < 2 && Math.random() < 0.6) setv('roomSelect', 2 + Math.floor(Math.random() * 2));   // a long tail, the hall or the bloom
       setv('spaceRange', Math.max(45, getn('spaceRange')));
     }
     // which style plays: the one chosen, or with Any one drawn for each Random (the user: Random should take either, 2026-10-30)
-    const STYLE_NAMES = ['Drone', 'Spiral', 'Tide'], STYLE_ODDS = [0.4, 0.3, 0.3];
+    const STYLE_NAMES = ['Drone', 'Spiral', 'Tide', 'Signal', 'Lyric', 'Hypnotic'], STYLE_ODDS = [0.25, 0.15, 0.15, 0.15, 0.15, 0.15];
     function rollStyle() {
       const pick = document.getElementById('styleSelect').value;
       if (pick !== 'any') { setv('styleVal', pick); return; }

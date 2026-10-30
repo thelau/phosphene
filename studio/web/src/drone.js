@@ -225,6 +225,8 @@
     { name: 'Dorian', scale: [0, 2, 3, 5, 7, 9, 10], steps: { Descend: [0, -2, -7, -5], Lift: [0, 3, 5, 3], Pendulum: [0, -7], Wander: [0, -2, 3, -5, 5, 2] } },
     { name: 'Phrygian', scale: [0, 1, 3, 5, 7, 8, 10], steps: { Descend: [0, -2, -4, -2], Lift: [0, 1, 3, 1], Pendulum: [0, 1], Wander: [0, -2, 1, 3, 5, -4] } },
     { name: 'Harmonic minor', scale: [0, 2, 3, 5, 7, 8, 11], steps: { Descend: [0, -4, -7, -5], Lift: [0, 5, 7, 5], Pendulum: [0, -5], Wander: [0, -4, 5, -5, -7] } },
+    // brighter: I vi IV V and friends (vii has no fifth in the key, so it is never a chord here); Random draws it only for Lyric
+    { name: 'Major', scale: [0, 2, 4, 5, 7, 9, 11], steps: { Descend: [0, -3, -7, -5], Lift: [0, 5, 7, 5], Pendulum: [0, -3], Wander: [0, -3, 5, 2, -5, 7] } },
   ];
   function inMode(st, mode) {                                          // a degree of the natural minor (semitones over the tonic) as the same degree of the mode
     const o = Math.floor(st / 12), n = st - 12 * o, i = [0, 2, 3, 5, 7, 8, 10].indexOf(n);
@@ -282,6 +284,18 @@
     // free of any grid; one pedal note and its fifth for minutes; a 6.4 Hz flutter in the mids; a shape over the whole piece: mids only,
     // then the sub comes in, a break where it drops away, back, out). The bed's own swell and shape: slow automation, no extra cost.
     { name: 'Tide', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false, tide: true, arpOpen: 1, arpQ: 1, arpSustain: 1 },
+    // Signal: no drone; pure sines, deliberate clicks, data-like blips and a noise burst now and then, each switched on and off exactly on
+    // the cuts, silence between, thrown left and right, almost dry (sine-and-click new media art). Its sliders play its own voices:
+    // Low the sine sub, Bright the high tone, Hits the clicks, Arpeggio the data stream (Notes its length), Pulse how much of it sounds.
+    { name: 'Signal', bed: 0, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1, signal: true, own: true, wet: 0.25 },
+    // Lyric: a lead melody over the chords (phrases of eight notes, A A B A, landing on a tone of the chord when the chord changes,
+    // gliding, a delayed vibrato), the bed a little back, the arpeggio under it; Random brings the major mode and the chord changes
+    { name: 'Lyric', bed: 0.55, arpGain: 0.75, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1, lyric: true },
+    // Hypnotic: a steady clock of its own (the film's tempo when it is steady and can be a techno tempo, so cuts land on beats; else
+    // 122-134 BPM), a soft kick tuned to the root that ducks the bed (Hits), a rolling bass on the off-sixteenths whose filter drifts
+    // (Bassline), a short sequence in 3, 5 or 7 against the bar through an echo, its filter sweeping over ~40 s (Arpeggio), a quiet hat
+    // now and then; no kick in the intro or the break. Minimal drums, not trying too hard (the user's call)
+    { name: 'Hypnotic', bed: 0.75, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1, grid: true, own: true },
   ];
   // Tide's shape for the sub over the film (share of the clip -> level): none at first, in, a break, back
   const tideArc = u => { const r = (a, b) => Math.min(1, Math.max(0, (u - a) / (b - a))); return 0.06 + 0.94 * r(0.06, 0.16) * (1 - 0.75 * r(0.54, 0.58) * (1 - r(0.62, 0.68))); };
@@ -414,9 +428,12 @@
     const perCut = [];                                                       // (cut index, context time) handlers, run in order
     let cursor = 0;
     { const c = cutAtTime(starts, offset); cursor = starts[c] >= offset - 0.001 ? c : c + 1; }
+    const grids = [];                                                        // Hypnotic's clock: steps of its own, scheduled as the cuts are
     const advance = to => {
       while (cursor < nCuts && starts[cursor] <= to) { const i = cursor++; for (const h of perCut) h(i, at(starts[i])); }
+      for (const g of grids) while (g.i < g.n && g.i * g.step <= to) { const i = g.i++; g.fn(i, at(i * g.step)); }
     };
+    const addGrid = (step, fn) => grids.push({ step, fn, n: Math.max(0, Math.ceil(total / step - 1e-9)), i: Math.max(0, Math.ceil(offset / step - 1e-9)) });
     const pump = (param, depth, decay) => {                                // dips and comes back on every cut
       const c = cutAtTime(starts, offset), tau = offset - starts[c];
       param.setValueAtTime(1 - depth * (1 - Math.exp(-tau / decay)), at(offset));
@@ -468,7 +485,7 @@
 
     // ---- shared sources for the mid body ----
     const ratios = chord.ratios, lfoGains = [0.2, 0.8, 1.0, 0.6];
-    const sides = [];
+    const sides = [], sums = [];
     const air = noiseLoop(ctx, seedN, 'air', 4, (x, r) => { onePole(x, 1400, r, 2); const lowpassed = x.slice(); onePole(lowpassed, 250, r, 2); for (let i = 0; i < x.length; i++) x[i] -= lowpassed[i]; });
     keep(air);
     const lfoRates = ratios.map(() => (0.15 + 0.55 * rand()) * move);
@@ -550,7 +567,7 @@
       const k = (1 + 1.5 * power) * (1 + 0.6 * industrial);
       const sat = shaper(tanhCurve(k, 1));
       body.connect(pg); pg.connect(lg); lg.connect(sat);
-      const sum = gain(style.bed);                                         // the style's bed: all of it in Drone, stepped back under the sequence in Spiral
+      const sum = gain(style.bed); sums.push(sum);                                         // the style's bed: all of it in Drone, stepped back under the sequence in Spiral
       if (style.tide) { sum.gain.value = 0.65; slowLfo(tideRates[0], 0.22, sum.gain); slowLfo(tideRates[1], 0.13, sum.gain); }   // Tide: two slow swells, never in step: 0.3 to 1, irregular (the reference's low end moves 11-31% in 100 ms frames, Drone 11%; here ~25%)
       sat.connect(sum); subOut.connect(sum);
       const br = gain(1); sum.connect(br);
@@ -559,7 +576,7 @@
     }
 
     // ---- the room: the send skips the sub ----
-    const kind = roomKind(p), roomSeconds = roomLength(kind, space), wet = (0.05 + 0.5 * space) * kind.wet;
+    const kind = roomKind(p), roomSeconds = roomLength(kind, space), wet = (0.05 + 0.5 * space) * kind.wet * (style.wet ?? 1);
     const mix = [gain(1), gain(1)];
     sides.forEach((br, i) => {
       br.connect(mix[i]);
@@ -588,7 +605,7 @@
     sides.forEach(br => arr.hits.connect(gain(0.9, br)));
 
     // ---- the bassline: before the hits, so the chord changes move it with the bed ----
-    if (bassAmt > 0.01) {
+    if (!style.own && bassAmt > 0.01) {
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 5; lp.frequency.value = 200;
       const env = gain(0); lp.connect(env); env.connect(gain(0.55, arr.bass[0])); env.connect(gain(0.55, arr.bass[1]));
       const oscs = [['sawtooth', -0.003, 1], ['square', 0.003, 0.5]].map(([w, det, g]) => { const o = osc(w, f0 * 2); o.connect(gain(g, lp)); return [o, det]; });
@@ -617,7 +634,7 @@
       const f = ctx.createBiquadFilter(); f.type = filterType; f.frequency.value = fc; f.Q.value = q;
       const g = gain(0, to); n.connect(f); f.connect(g); g.__filter = f; return g;
     };
-    if (hitType > 0 && hitAmt > 0.01) {
+    if (!style.own && hitType > 0 && hitAmt > 0.01) {
       const a = hitAmt;
       let fire;
       if (hitType === 1) {                                                // thud: a sub that drops onto the root
@@ -646,7 +663,7 @@
     }
 
     // ---- arpeggio: a short pattern of plucked notes that repeats, stepping with the cuts. One voice (two detuned saws), its pitch automated ----
-    if (arpAmt > 0.01 && arpMood.scale) {
+    if (!style.own && arpAmt > 0.01 && arpMood.scale) {
       const notes = moodNotes(arpMood, f0 * 4 * style.arpUp, mode), m = arpMood;
       const phase = m.shape === 'phase';
       const loopA = phase ? Math.max(4, Math.min(8, arpSteps)) : arpSteps;
@@ -697,7 +714,7 @@
           else play(voices[step % voices.length], f, t);
         }
       });
-    } else if (arpAmt > 0.01) {
+    } else if (!style.own && arpAmt > 0.01) {
       const degrees = [];                                                // the notes it may use: the chord's tones over two octaves, kept dark
       for (const r of chord.ratios) for (const oct of [0.5, 1]) { const f = f0 * r * oct; if (f > 100 && f < 700) degrees.push(f * style.arpUp); }
       degrees.sort((x, y) => x - y);
@@ -745,6 +762,135 @@
         if (!prog || i % progEvery) return;
         chordAt(i).forEach((st, n) => { for (const [o, det] of voices[n]) o.frequency.setTargetAtTime(T * Math.pow(2, st / 12) * (1 + det), t, 0.06); });
       });
+    }
+
+    // ---- Signal: sines, clicks, data and silence, switched exactly on the cuts (see STYLES) ----
+    if (style.signal) {
+      const r = mulberry32(seedN + 3301), dens = 0.3 + 0.6 * pulse, PH = 8;
+      const out = [gain(1, mix[0]), gain(1, mix[1])], both = gain(1); both.connect(out[0]); both.connect(out[1]);
+      // a gate: on and off in `edge` seconds (sub-millisecond for the clicks and blips: their edge is the sound; 3 ms for the sub: no click)
+      const gate = (g, t, len, peak, edge) => { g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + edge); g.gain.setValueAtTime(peak, t + Math.max(edge, len - edge)); g.gain.linearRampToValueAtTime(0, t + len); };
+      const phrase = () => Array.from({ length: PH }, (_, k) => ({
+        on: k === 0 || r() < dens, sub: r() < 0.6, hi: r() < 0.45, click: r() < 0.8, dbl: r() < 0.25, data: r() < 0.7, burst: k > 0 && r() < 0.12 * dens,
+        bits: Array.from({ length: 16 }, () => r() < 0.55), fi: Array.from({ length: 16 }, () => Math.floor(r() * 5)),
+      }));
+      const A = phrase(), B = phrase(), song = [A, A, A, B];                // systematic: the same phrase, then a variation
+      const subO = osc('sine', f0), subG = gain(0, both); subO.connect(subG);
+      const hiO = osc('sine', 9000 + 5000 * r()), hiG = [gain(0, out[0]), gain(0, out[1])]; hiO.connect(hiG[0]); hiO.connect(hiG[1]);
+      const nz = ctx.createBufferSource(); nz.buffer = knockNoise(ctx, 0.5); nz.loop = true; keep(nz);
+      const nhp = ctx.createBiquadFilter(); nhp.type = 'highpass'; nhp.frequency.value = 1800; nz.connect(nhp);
+      const clickG = [gain(0, out[0]), gain(0, out[1])]; nhp.connect(clickG[0]); nhp.connect(clickG[1]);
+      const nbp = ctx.createBiquadFilter(); nbp.type = 'bandpass'; nbp.frequency.value = 5200; nbp.Q.value = 0.6; nz.connect(nbp);
+      const burstG = gain(0, both); nbp.connect(burstG);
+      const base = 1100 + 900 * r(), FR = [1, 1.5, 2, 3, 4].map(k => base * k);
+      const dataO = osc('sine', base), dataG = [gain(0, out[0]), gain(0, out[1])]; dataO.connect(dataG[0]); dataO.connect(dataG[1]);
+      const nData = ARP_STEPS[pick(p.arpSteps, ARP_STEPS.length)];
+      perCut.push((i, t) => {
+        if (i >= nCuts) return;
+        const c = song[Math.floor(i / PH) % song.length][i % PH], len = starts[i + 1] - starts[i];
+        if (!c.on || len <= 0.004) return;
+        const side = i % 2;
+        if (c.sub && low > 0.01) gate(subG, t, len * 0.92, 0.45 * low, 0.003);
+        if (c.hi && bright > 0.01) gate(hiG[side], t, len * 0.5, 0.008 + 0.03 * bright, 0.002);   // a high sine pierces: kept low
+        if (c.click && hitAmt > 0.01) {
+          const ck = tt => { clickG[side].gain.setValueAtTime(0, tt); clickG[side].gain.linearRampToValueAtTime(0.6 * hitAmt, tt + 0.0003); clickG[side].gain.linearRampToValueAtTime(0, tt + 0.003); };
+          ck(t); if (c.dbl && len > 0.08) ck(t + len / 8);
+        }
+        if (c.data && arpAmt > 0.01) {
+          const n = Math.max(1, Math.min(nData, Math.floor(len / 0.012))), sl = len / n;
+          for (let j = 0; j < n; j++) if (c.bits[j]) { const tj = t + j * sl; dataO.frequency.setValueAtTime(FR[c.fi[j]], tj); gate(dataG[j % 2], tj, sl * 0.6, 0.04 + 0.18 * arpAmt, 0.0004); }
+        }
+        if (c.burst) gate(burstG, t, len * 0.7, 0.22, 0.002);
+      });
+    }
+
+    // ---- Lyric: a lead melody over the chords (see STYLES) ----
+    if (style.lyric) {
+      const r = mulberry32(seedN + 4409), T = f0 * 8;
+      const scale = [];                                                    // the mode's notes around T, in semitones from the tonic (T)
+      for (let o = -1; o <= 1; o++) for (const st of mode.scale) { const f = T * Math.pow(2, (st + 12 * o) / 12); if (f >= T * 0.7 && f <= T * 2.2) scale.push(st + 12 * o); }
+      const mid = scale.indexOf(0) >= 0 ? scale.indexOf(0) : scale.length >> 1;
+      const make = () => { const out = []; let c = mid + Math.floor(r() * 3) - 1; for (let k = 0; k < 8; k++) { out.push(k === 7 || (k > 0 && r() < 0.18) ? null : c); c = Math.max(0, Math.min(scale.length - 1, c + [-2, -1, -1, 1, 1, 2][Math.floor(r() * 6)] + (c < mid - 3 ? 1 : c > mid + 3 ? -1 : 0))); } return out; };
+      const A = make(), B = A.slice(0, 4).concat(make().slice(4)), song = [A, A, B, A];   // phrases of eight, the eighth a rest: room to breathe
+      const meanCut = total / Math.max(1, nCuts), per = meanCut > 0.8 ? 2 : 1 / Math.max(1, Math.round(0.42 / meanCut));   // a note every ~0.4 s or more
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.Q.value = 0.8;
+      const env = gain(0); lp.connect(env); for (const br of sides) env.connect(gain(0.5, br));
+      const oscs = [['sawtooth', -0.003], ['square', 0.003]].map(([w, det]) => { const o = osc(w, T); o.connect(gain(w === 'square' ? 0.45 : 1, lp)); lfo(5.2, 7, o.detune); return [o, det]; });
+      const snap = (st, i) => {                                            // on a change of chord, the nearest tone of the new chord
+        const ch = padChord(degreeAt(i), mode).map(x => ((x % 12) + 12) % 12);
+        let best = st; for (let d = 0; d <= 6; d++) { if (ch.includes((((st + d) % 12) + 12) % 12)) { best = st + d; break; } if (ch.includes((((st - d) % 12) + 12) % 12)) { best = st - d; break; } }
+        return best;
+      };
+      perCut.push((i, tc) => {
+        for (const [step, at0, len] of noteTimes(starts, i, per)) {
+          const t = tc + (at0 - starts[i]), ph = song[Math.floor(step / 8) % song.length], k = step % 8, idx = ph[k];
+          const noteLen = len / per;
+          if (idx === null) { env.gain.setTargetAtTime(0, t, 0.06); continue; }
+          let st = scale[idx]; if (k === 0 || (prog && i % progEvery === 0)) st = snap(st, i);
+          const f = T * Math.pow(2, st / 12);
+          for (const [o, det] of oscs) o.frequency.setTargetAtTime(f * (1 + det), t, 0.025);   // a glide into the note
+          lp.frequency.setTargetAtTime(2600, t, 0.01); lp.frequency.setTargetAtTime(1300, t + 0.03, 0.35);
+          env.gain.setTargetAtTime(0.5, t, 0.012);
+          if (ph[(k + 1) % 8] === null) env.gain.setTargetAtTime(0, t + noteLen * 0.8, 0.07);
+        }
+      });
+    }
+
+    // ---- Hypnotic: a clock of its own, a soft kick, a rolling bass, a sequence (see STYLES) ----
+    if (style.grid) {
+      const r = mulberry32(seedN + 5521), lens = starts.slice(1).map((v, i) => v - starts[i]), whole = lens.length > 2 ? lens.slice(0, -1) : lens;
+      const lo = Math.min(...whole), hi = Math.max(...whole);
+      let bpm = 122 + 12 * r();
+      if (hi <= lo * 1.03 && lo > 0) { let b = 60 / lo; while (b < 116) b *= 2; while (b > 140) b /= 2; if (b >= 116) bpm = b; }
+      const step = 60 / bpm / 4, arcOn = opts.arc !== false, KICK = +(opts.kick ?? 1.9), DUCK = +(opts.duck ?? 0.25);   // the kick over the sub: a duck as deep as the kick cancelled it out in the low end (measured)
+      const quiet = (u, kick) => arcOn && (u < (kick ? 0.1 : 0.05) || (u > 0.56 && u < 0.64));   // no kick (nor bass) in the intro and the break
+      const sweep = (t, P, ph) => 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / P + ph);
+      const ph1 = 2 * Math.PI * r(), ph2 = 2 * Math.PI * r(), P1 = 28 + 12 * r(), P2 = 36 + 20 * r();
+      const hatOn = r() < 0.45, bassMask = Array.from({ length: 16 }, (_, k) => (k % 4 ? r() < 0.8 : false)), bassNote = Array.from({ length: 16 }, (_, k) => (k === 14 && r() < 0.5 ? 7 : k === 10 && r() < 0.3 ? 12 : 0));
+      const seqL = [3, 5, 7][Math.floor(r() * 3)], seqMask = Array.from({ length: 16 }, () => r() < 0.75);
+      const scale = []; for (const st of mode.scale) for (const o of [0, 12]) scale.push(st + o);
+      const seqNotes = Array.from({ length: seqL }, () => scale[Math.floor(r() * 9)]);
+      if (hitType > 0 && hitAmt > 0.01) {                                  // the kick: a sine falling to the root, round, under 200 Hz
+        const kO = osc('sine', f0), kG = gain(0); kO.connect(kG);
+        const [kIn] = lowpass(200, mix[0]); kG.connect(kIn); const [kIn2] = lowpass(200, mix[1]); kG.connect(kIn2);
+        addGrid(step, (i, t) => {
+          if (i % 4 || quiet((i * step) / total, true)) return;
+          kO.frequency.setValueAtTime(f0 * 3, t); kO.frequency.exponentialRampToValueAtTime(f0, t + 0.06);
+          strike(kG, t, KICK * hitAmt, 0.3);
+          for (const sm of sums) { sm.gain.setTargetAtTime(style.bed * (1 - DUCK * hitAmt), t + 0.004, 0.01); sm.gain.setTargetAtTime(style.bed, t + 0.05, 0.1); }   // the bed makes way, a moment after the kick's attack
+        });
+      }
+      if (hatOn) {
+        const hg = voiceNoise(0.25, 'highpass', 7500, 0.7, mix[0]); hg.connect(mix[1]);
+        addGrid(step, (i, t) => { const u = (i * step) / total; if (i % 4 === 2 && u > 0.18 && u < 0.92 && !quiet(u)) strike(hg, t, 0.1, 0.03); });
+      }
+      if (bassAmt > 0.01) {                                                // rolling: the off-sixteenths, the root, a fifth or octave now and then
+        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 5; lp.frequency.value = 250;
+        const env = gain(0); lp.connect(env); for (const br of sides) env.connect(gain(0.5, br));
+        const bo = [['sawtooth', -0.003, 1], ['square', 0.003, 0.4]].map(([w, det, g]) => { const o = osc(w, f0 * 2); o.connect(gain(g, lp)); return [o, det]; });
+        addGrid(step, (i, t) => {
+          const k = i % 16, tt = i * step; if (!bassMask[k] || quiet(tt / total, true)) return;
+          const f = f0 * 2 * Math.pow(2, (bassNote[k] + degreeAt(cutAtTime(starts, tt))) / 12);
+          for (const [o, det] of bo) o.frequency.setValueAtTime(f * (1 + det), t);
+          lp.frequency.setValueAtTime(260 + 900 * sweep(tt, P1, ph1), t); lp.frequency.setTargetAtTime(120, t + 0.004, 0.03);
+          strike(env, t, 1.5 * bassAmt, 0.07);
+        });
+      }
+      if (arpAmt > 0.01) {                                                 // the sequence: 3, 5 or 7 notes against the bar, through an echo
+        const T = f0 * 8, lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 5; lp.frequency.value = 800;
+        const env = gain(0); lp.connect(env);
+        const dl = ctx.createDelay(1); dl.delayTime.value = 3 * step; const fb = gain(0.38), dk = ctx.createBiquadFilter(); dk.type = 'lowpass'; dk.frequency.value = 2200;
+        env.connect(dl); dl.connect(dk); dk.connect(fb); fb.connect(dl);
+        sides.forEach((br, j) => { env.connect(gain(0.45, br)); dk.connect(gain(j ? 0.3 : 0.18, br)); });
+        const so = [-0.004, 0.004].map(det => { const o = osc('sawtooth', T); o.connect(lp); return [o, det]; });
+        addGrid(step, (i, t) => {
+          if (!seqMask[i % 16]) return;
+          const tt = i * step, f = T * Math.pow(2, seqNotes[i % seqL] / 12);
+          for (const [o, det] of so) o.frequency.setValueAtTime(f * (1 + det), t);
+          lp.frequency.setValueAtTime(450 + 2000 * sweep(tt, P2, ph2), t); lp.frequency.setTargetAtTime(300, t + 0.003, 0.04);
+          strike(env, t, 1.1 * arpAmt, 0.1);
+        });
+      }
     }
 
     // stereo width: mid/side
