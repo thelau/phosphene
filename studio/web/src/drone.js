@@ -310,7 +310,7 @@
     const S = mode.scale, dn = ((degree % 12) + 12) % 12, idx = Math.max(0, S.indexOf(dn)), at = k => S[(idx + k) % 7] + 12 * Math.floor((idx + k) / 7) - dn + degree;
     return [at(0), at(4), at(6), at(2) + 12];
   }
-  const RISE = 0.004, TICK_RISE = 0.002;                               // how fast the pump comes back up and the cut's tone starts (time constants, s)
+  const RISE = 0.004, TICK_RISE = 0.002, ECHO_GLIDE = 0.08;           // ...and how fast an echo's time follows a new cut length                               // how fast the pump comes back up and the cut's tone starts (time constants, s)
   // tape: wow and flutter, saturation, a darker top, dust. The dust is a few sparse clicks, made once per sample rate
   const dustCache = new Map();
   function dustBuffer(ctx) {
@@ -599,8 +599,11 @@
       br.connect(hp); hp.connect(send); send.connect(conv); conv.connect(wetG);
       links.push([send, conv], [conv, wetG]);
       if (echo > 0.01) {                                                   // a dark feedback echo, a different time each side
-        const avg = total / Math.max(1, nCuts);
-        const dl = ctx.createDelay(2); dl.delayTime.value = Math.min(0.75, Math.max(0.18, avg * 3)) * (i ? 1.33 : 1);
+        // three cuts long, a third more on the right; it follows the speed: each cut glides it to that cut's length (a variable film held the
+        // average and drifted against the beat), slowly enough that the echoes do not bend in pitch
+        const echoAt = c => Math.min(0.75, Math.max(0.18, cutNoteLen(starts, c) * 3)) * (i ? 1.33 : 1);
+        const dl = ctx.createDelay(2); dl.delayTime.value = echoAt(Math.min(nCuts - 1, cutAtTime(starts, offset)));
+        perCut.push((c, t) => dl.delayTime.setTargetAtTime(echoAt(c), t, ECHO_GLIDE));
         const fb = gain(0.3 + 0.3 * echo), dark = ctx.createBiquadFilter(); dark.type = 'lowpass'; dark.frequency.value = 900;
         const hp2 = ctx.createBiquadFilter(); hp2.type = 'highpass'; hp2.frequency.value = 140; hp2.Q.value = 0.707;
         br.connect(hp2); hp2.connect(dl); dl.connect(dark); dark.connect(fb); fb.connect(dl); dark.connect(gain(0.7 * echo, mix[i]));
@@ -892,7 +895,9 @@
       if (arpAmt > 0.01) {                                                 // the sequence: 3, 5 or 7 notes against the bar, through an echo
         const T = f0 * 8, lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 5; lp.frequency.value = 800;
         const env = gain(0); lp.connect(env);
-        const dl = ctx.createDelay(1); dl.delayTime.value = 3 * step; const fb = gain(0.38), dk = ctx.createBiquadFilter(); dk.type = 'lowpass'; dk.frequency.value = 2200;
+        const echoAt = c => Math.min(0.95, 3 * cutNoteLen(starts, c) / per);   // three sixteenths of the speed here, not of the usual one
+        const dl = ctx.createDelay(1); dl.delayTime.value = echoAt(Math.min(nCuts - 1, cutAtTime(starts, offset))); const fb = gain(0.38), dk = ctx.createBiquadFilter(); dk.type = 'lowpass'; dk.frequency.value = 2200;
+        perCut.push((c, t) => dl.delayTime.setTargetAtTime(echoAt(c), t, ECHO_GLIDE));
         env.connect(dl); dl.connect(dk); dk.connect(fb); fb.connect(dl);
         sides.forEach((br, j) => { env.connect(gain(0.45, br)); dk.connect(gain(j ? 0.3 : 0.18, br)); });
         const so = [-0.004, 0.004].map(det => { const o = osc('sawtooth', T); o.connect(lp); return [o, det]; });

@@ -884,3 +884,28 @@ test('Hypnotic follows the curve of the speed: its beat speeds up with the cuts 
   assert.ok(Math.abs(r.rms - 0.17) < 0.015);
   await ctx.close();
 });
+
+test('the echoes follow the speed in every style: the Echo setting and Hypnotic\'s sequence echo glide to each cut\'s length (they held the average and drifted against the beat)', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(() => {
+    const st = [0]; for (let i = 0; i < 60; i++) st.push(st[i] + 0.25 * Math.pow(0.12 / 0.25, i / 59));   // 0.25 s cuts speeding up to 0.12 s (three cuts: under the echo's 0.75 s cap)
+    const out = {};
+    for (const [name, p] of [['drone', { style: 0, echo: 0.5 }], ['spiral', { style: 1, echo: 0.5, arp: 0.5, arpMood: 4 }], ['tide', { style: 2, echo: 0.3 }], ['lyric', { style: 4, echo: 0.4 }], ['hypnotic', { style: 5, echo: 0, arp: 0.5, hitType: 0 }]]) {
+      const oc = new OfflineAudioContext(2, 44100, 44100), seen = [];
+      const mk = oc.createDelay.bind(oc);
+      oc.createDelay = max => { const d = mk(max); const orig = d.delayTime.setTargetAtTime.bind(d.delayTime); d.delayTime.setTargetAtTime = (v, t, tau) => { seen.push([t, v, max]); return orig(v, t, tau); }; return d; };
+      window.Drone.build(oc, oc.destination, { pulse: 0.5, low: 0.8, bright: 0.3, width: 0.6, space: 0.4, power: 0.6, seed: 3, pitch: 0.4, ...p }, st, { offset: 0, t0: 0 });
+      out[name] = seen.filter(([, , max]) => max === 2 || max === 1);   // the echoes' delays (the chorus and tape use short ones)
+    }
+    return { st, out };
+  });
+  const len = c => r.st[c + 1] - r.st[c], cutOf = t => r.st.findIndex((s, i) => Math.abs(s - t) < 1e-6);
+  for (const [name, events] of Object.entries(r.out)) {
+    assert.ok(events.length >= 30, `${name}: the echo moves with the cuts (${events.length} glides)`);
+    const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+    const early = mean(events.filter(([t]) => t < 1.5).map(e => e[1])), late = mean(events.filter(([t]) => t > r.st[r.st.length - 8]).map(e => e[1]));
+    assert.ok(early > late * 1.6, `${name}: shorter where the cuts are faster (${early.toFixed(3)} s early, ${late.toFixed(3)} s late; the cuts went 0.25 to 0.12 s)`);
+    for (const [t, v] of events) { const c = cutOf(t); if (c < 0 || c >= r.st.length - 2) continue; const base = name === 'hypnotic' ? null : Math.min(0.75, Math.max(0.18, len(c) * 3)); if (base) assert.ok(Math.abs(v - base) < 1e-6 || Math.abs(v - base * 1.33) < 1e-6, `${name}: three cuts long at cut ${c} (${v} vs ${base})`); }
+  }
+  await ctx.close();
+});
