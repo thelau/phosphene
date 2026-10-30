@@ -37,7 +37,7 @@ def jobs(home: Path) -> tuple[list, dict]:
     todo, judged = [], {}
     for f in sorted(home.glob("*/project.json")):
         p = projects.load(f.parent.name)
-        if p["qa"] == "demo-tuned" or not p["state_file"].exists():
+        if p.get("demo") or not p["state_file"].exists():
             continue
         st = json.loads(p["state_file"].read_text())
         trashed, by_check = set(st.get("trashed", [])), set(st.get("qa_failed", []))

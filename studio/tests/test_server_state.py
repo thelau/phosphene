@@ -255,6 +255,27 @@ def test_plate_key_of_another_mark_follows_its_size_and_place(srv, make_plate, m
     assert srv._plate_key(p) != k18
 
 
+def test_Demo_orbital_mark_keeps_its_tuned_check_when_another_mark_leads(srv, make_plate, monkeypatch, tmp_path):
+    """Made with the orbital mark, an image is judged by DEMO's tuned check (its own keys, no version) even when it is not the default;
+    the new default gets the general check; a Loose placement, as before, the general check at that spot."""
+    import shutil
+    shutil.copytree(srv.projects.ROOT_DIR / "projects" / "demo", srv.projects.PROJECTS_DIR / "demo", dirs_exist_ok=True)
+    from test_projects import ring_png
+    srv.projects.add_mark("demo", {"name": "Wordmark", "size": 30}, ring_png())
+    mid = srv.projects.make_default("demo", "wordmark")
+    p = {**srv.projects.load("demo"), "plates_dir": srv.PLATES_DIR, "state_file": srv.CURATION_FILE, "qa_cache_file": srv.QA_CACHE_FILE,   # never the real places
+         "thumbs_dir": srv.THUMBS_DIR, "features_file": tmp_path / "features.json"}
+    monkeypatch.setattr(srv.qa_engine, "LOGO_CREAM_PATH", srv.qa_engine.LOGO_CREAM_PATH)
+    srv.apply_project(p)
+    assert srv.PLATES_DIR == tmp_path / "plates"
+    assert srv.qa_engine.LOGO_CREAM_PATH == p["marks"][0]["mark_file"], "its check reads the orbital mark where it now lives"
+    assert not srv.is_demo() and srv.current_mark() is not srv.DEMO_MARK, "the wordmark: the general check"
+    assert srv.current_mark(None, mid) is srv.DEMO_MARK, "the orbital mark: its tuned one"
+    assert srv.current_mark({"kind": "loose", "size": 17, "x": 51, "y": 50}, mid) is not srv.DEMO_MARK
+    f = make_plate(srv.PLATES_DIR / "a.jpg")
+    assert srv._plate_key(f, None, mid) == f"a.jpg:{f.stat().st_size}:mark:{mid}"
+
+
 def test_a_damaged_state_file_is_set_aside_never_written_over(srv):
     """It held the whole curation: a read that fails must not replace it with an empty one (the audit's worst finding)."""
     srv.CURATION_FILE.write_text('{"trashed": ["a.jpg"], "order": ["b.jpg"], "groups": [{"id": "g"')   # cut off mid-write

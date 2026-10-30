@@ -429,5 +429,53 @@ def test_make_default_swaps_the_mark_into_the_main_slot_and_every_image_keeps_it
     assert (pdir / "Kestrel" / f"mark-{mid}.png").read_bytes() == main_before
     st = projects.swap_marks_used({"marks_used": {"b.jpg": "bird"}}, mid, ["a.jpg", "b.jpg"])
     assert st["marks_used"] == {"a.jpg": "bird"}, "a.jpg was the badge's (now under 'bird'); b.jpg was the bird's (now the default)"
+
+
+def test_Demo_can_make_another_mark_default_and_its_orbital_mark_keeps_its_check_words_and_lock_wherever_it_sits(pdir):
+    """The user's yes (2026-10-30): what made Demo special hung on the project; it now goes with its orbital mark."""
+    import json
+    orbital = projects.load("demo")["mark_file"]
+    orbital_bytes, repo_guide = orbital.read_bytes(), projects.load("demo")["guides"]["dark"]
+    guide_bytes = repo_guide.read_bytes()
+    projects.add_mark("demo", {"name": "Wordmark", "shape": "wordmark", "noun": "wordmark", "size": 30}, ring_png())
+    mid = projects.make_default("demo", "wordmark")
+    p = projects.load("demo")
+    assert (p["qa"], p["demo"], p["mark_name"], p["mark_noun"], p["mark_size"]) == ("mark", True, "Wordmark", "wordmark", 30), "the wordmark leads, with the general check"
+    assert p["mark_file"] == pdir / "demo" / "mark.png" and p["mark_file"].read_bytes() == ring_png()
+    (orb,) = p["marks"]
+    assert (orb["id"], orb["qa"], orb["mark_size"], orb["mark_x"], orb["mark_shape"], orb["mark_noun"]) == (mid, "demo-tuned", 18, 50, "circular orbital logo", "circular mark")
+    assert orb["mark_file"].read_bytes() == orbital_bytes and orbital.read_bytes() == orbital_bytes, "copied in; the repository's original never moved"
+    assert repo_guide.read_bytes() == guide_bytes and p["guides"]["dark"].parent == pdir / "demo", "the wordmark's guides in its folder, never over the originals"
+    assert p["plates_dir"] == projects.ROOT_DIR / "assets" / "ai-plates", "its images stay where they always were"
+    q = projects.with_mark(p, mid)
+    assert q["qa"] == "demo-tuned" and projects.mark_ratio(q) == 1.0, "its own check and round box, as a mark of the list"
+    pub = projects.public(p)
+    assert pub["fixed"] is False and pub["marks"][0]["fixed"] is True, "the lock goes with it"
+    assert projects.rebrand("orange (#EC540C)", p) == "orange (#EC540C)", "still Demo: its colours stay"
+    # locked: the form cannot change, replace or remove it
+    p = projects.save_marks("demo", [{"id": mid, "name": "X", "size": 40, "x": 20, "noun": "ring"}], {0: star_png()})
+    assert [(m["id"], m["name"], m["mark_size"], m["mark_x"], m["mark_noun"]) for m in p["marks"]] == [(mid, "Main mark", 18, 50, "circular mark")]
+    assert p["marks"][0]["mark_file"].read_bytes() == orbital_bytes
+    assert [m["id"] for m in projects.save_marks("demo", [], {})["marks"]] == [mid], "never removed"
     with pytest.raises(ValueError):
-        projects.add_mark("demo", {"name": "Other"}, ring_png()) and projects.make_default("demo", "other")
+        projects.edit_mark("demo", mid, {"size": 30})
+    with pytest.raises(ValueError):
+        projects.remove_mark("demo", mid)
+    # and back: the orbital mark is the default again, exactly as it was
+    back = projects.make_default("demo", mid)
+    p = projects.load("demo")
+    assert (p["qa"], p["mark_size"], p["mark_shape"], p["mark_noun"]) == ("demo-tuned", 18, "circular orbital logo", "circular mark")
+    assert p["mark_file"].read_bytes() == orbital_bytes and projects.public(p)["fixed"] is True
+    assert [(m["id"], m["qa"], m["mark_noun"]) for m in p["marks"]] == [(back, "mark", "wordmark")]
+    raw = json.loads((pdir / "demo" / "project.json").read_text())
+    assert raw["paths"]["state"] == "studio/curation_state.json" and "guide_dark" not in raw["paths"]
+
+
+def test_a_Demo_file_with_its_orbital_mark_in_the_list_travels_and_opens_so(pdir, tmp_path):
+    from pathlib import Path
+    projects.add_mark("demo", {"name": "Wordmark"}, ring_png())
+    mid = projects.make_default("demo", "wordmark")
+    out = tmp_path / "demo.phos"
+    projects.export_zip("demo", out)
+    p = projects.import_zip(out)
+    assert p["qa"] == "mark" and p["demo"] and [(m["id"], m["qa"]) for m in p["marks"]] == [(mid, "demo-tuned")]

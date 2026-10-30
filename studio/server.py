@@ -111,8 +111,9 @@ def apply_project(p: dict) -> None:
     except Exception:
         QA_CACHE = {}
     features.use_cache(p["features_file"])
-    if p.get("qa") == "demo-tuned":                                       # DEMO's logo check reads its orbital mark from the project
-        qa_engine.LOGO_CREAM_PATH = p["mark_file"]
+    orbital = p["mark_file"] if p.get("qa") == "demo-tuned" else next((m["mark_file"] for m in p.get("marks") or [] if m.get("qa") == "demo-tuned"), None)
+    if orbital:                                                              # DEMO's logo check reads its orbital mark from the project, wherever it sits
+        qa_engine.LOGO_CREAM_PATH = orbital
 
 
 def apply_no_project() -> None:
@@ -162,8 +163,8 @@ def current_mark(pl: dict | None = None, mark_id: str | None = None):
     proj = projects.with_mark(PROJECT, mark_id) if mark_id else PROJECT
     if pl:
         return mark_spec(proj["mark_file"], pl["size"], pl["x"], pl["y"])
-    if proj is not PROJECT:
-        return mark_spec(proj["mark_file"], proj["mark_size"], proj["mark_x"], proj["mark_y"])
+    if proj is not PROJECT:                        # another mark; Demo's orbital one keeps its tuned check wherever it sits
+        return DEMO_MARK if proj.get("qa") == "demo-tuned" else mark_spec(proj["mark_file"], proj["mark_size"], proj["mark_x"], proj["mark_y"])
     return DEMO_MARK if is_demo() else mark_spec(PROJECT["mark_file"], PROJECT["mark_size"], PROJECT["mark_x"], PROJECT["mark_y"])
 
 
@@ -208,6 +209,8 @@ def _plate_key(path: Path, pl: dict | None = None, mark_id: str | None = None) -
     mark = f":mark:{proj['mark_id']}" if proj is not PROJECT else ""   # another of its marks: measured against that one
     if pl:                                         # its own placement: measured there
         return f"{path.name}:{path.stat().st_size}:{qa_engine.OWN_CHECK_VERSION}:at:{pl['size']:g}:{pl['x']:g}:{pl['y']:g}{mark}"
+    if mark and proj.get("qa") == "demo-tuned":   # Demo's orbital mark, not its default: its own check, which has no version
+        return f"{path.name}:{path.stat().st_size}{mark}"
     if mark:
         return f"{path.name}:{path.stat().st_size}:{qa_engine.OWN_CHECK_VERSION}{mark}:{proj['mark_size']:g}:{proj['mark_x']:g}:{proj['mark_y']:g}"
     return f"{path.name}:{path.stat().st_size}" + ("" if is_demo() else f":{qa_engine.OWN_CHECK_VERSION}:{PROJECT['mark_size']:g}:{PROJECT['mark_x']:g}:{PROJECT['mark_y']:g}")

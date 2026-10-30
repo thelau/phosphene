@@ -453,7 +453,7 @@
       const main = edit && project.has_mark !== false ? { key: 'main', id: 'main', name: project.mark_name || 'Main mark', size: project.mark_size, x: project.mark_x, y: project.mark_y,
         shape: project.mark_shape, noun: project.mark_noun, url: project.mark_url, ar: project.mark_ratio || 1, locked: !!project.fixed } : null;
       const extras = edit ? (project.marks || []).map(m => ({ key: m.id, id: m.id, name: m.name, size: m.size, x: m.x ?? project.mark_x, y: m.y ?? project.mark_y,
-        shape: m.shape, noun: m.noun, url: m.url, ar: m.ratio || 1 })) : [];
+        shape: m.shape, noun: m.noun, url: m.url, ar: m.ratio || 1, locked: !!m.fixed })) : [];   // Demo's orbital mark: locked wherever it sits
       projectForm = { kind: edit ? 'edit' : 'new', name: edit ? project.name : '', brief: edit ? project.brief : '', palette: edit ? [...(project.palette || [])] : [],
         marks: main ? [main, ...extras] : [], def: main ? 'main' : null, sel: edit ? 'project' : null, fromKimi: false, typed: new Set(), noMark: !!(edit && !main) };
       document.getElementById('projectTitle').textContent = edit ? `${project.name} · Settings` : 'New project';
@@ -524,12 +524,12 @@
           + skel.map(l => `<div class="ps-field"><span>${l}</span><i class="ps-skel"></i></div>`).join('');
         return;
       }
-      const def = m.key === f.def, lockedAny = f.marks.some(x => x.locked), dis = m.locked ? ' disabled' : '';
+      const def = m.key === f.def, dis = m.locked ? ' disabled' : '';
       const slider = (label, key, min, max) => `<label class="ps-slider"><span>${label}</span><input type="range" min="${min}" max="${max}" step="0.5" value="${+m[key]}" oninput="psSetMark('${key}', +this.value)"${dis} /><b id="psv-${key}">${+m[key]}%</b></label>`;
-      d.innerHTML = (m.locked ? `<div class="ps-locked"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>${escapeHtml(project ? project.name : '')}'s main mark is fixed: its image, size, place and words.</div>` : '')
+      d.innerHTML = (m.locked ? `<div class="ps-locked"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>This mark of ${escapeHtml(project ? project.name : '')}'s is fixed: its image, size, place and words, and its own mark check, wherever it sits.</div>` : '')
         + `<div class="ps-mark-head"><div class="ps-big"><span class="ps-big-thumb"><img src="${escapeHtml(m.url)}" alt="${escapeHtml(m.name)}" /></span>${m.locked ? '' : `<button type="button" class="link-btn" onclick="psPick('replace')">Replace…</button>`}</div>
           <div class="ps-mark-name"><label class="ps-field"><span>Name</span><input type="text" id="psMarkName" maxlength="30" value="${escapeHtml(m.name)}" oninput="psSetMark('name', this.value)" autocomplete="off"${dis} /></label>
-          ${def ? '<span class="ps-default">★ Default mark</span>' : `<button type="button" class="ps-make-default" onclick="psMakeDefault()"${lockedAny ? ' disabled title="The main mark stays the default"' : ''}>Make default</button>`}</div></div>
+          ${def ? '<span class="ps-default">★ Default mark</span>' : '<button type="button" class="ps-make-default" onclick="psMakeDefault()">Make default</button>'}</div></div>
         <div class="ps-group"><span class="ps-group-head">Place in the frame</span>${slider('Width', 'size', 4, 60)}${slider('Across', 'x', 10, 90)}${slider('Down', 'y', 10, 90)}</div>
         <div class="ps-group"><span class="ps-group-head">In the prompts <small>the words Kimi uses for this mark</small></span>
           <div class="ps-two"><label class="ps-field"><span>Its shape</span><input type="text" maxlength="80" value="${escapeHtml(m.shape || '')}" oninput="psSetMark('shape', this.value)" autocomplete="off"${dis} /></label>
@@ -570,7 +570,7 @@
       const next = document.getElementById('psColourNew'); if (next) next.focus();
     }
     function psColourKey(e, input) { if (e.key === 'Enter') { e.preventDefault(); psColourAdd(input); } }
-    function psMakeDefault() { const m = psMark(projectForm.sel); if (m && !projectForm.marks.some(x => x.locked)) { projectForm.def = m.key; renderPS(); } }
+    function psMakeDefault() { const m = psMark(projectForm.sel); if (m) { projectForm.def = m.key; renderPS(); } }   // Demo's too: its orbital mark keeps its check and words wherever it sits
     function psRemove() {
       const f = projectForm, m = psMark(f.sel);
       if (!m || m.locked || m.key === f.def) return;

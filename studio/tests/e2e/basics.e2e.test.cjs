@@ -546,7 +546,7 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   assert.deepEqual(await page.locator('.ps-rail-head').allTextContents(), ['Project', 'Marks1']);
   assert.equal(await page.locator('.ps-proj.on').count(), 1, 'the project first');
   await page.click('.ps-mark[data-key="main"]');
-  assert.match(await text('.ps-locked'), /main mark is fixed/);
+  assert.match(await text('.ps-locked'), /mark of Demo.s is fixed/);
   for (const sel of ['#psMarkName', '.ps-slider input', '.ps-two input']) assert.equal(await page.locator(sel).first().isDisabled(), true, sel);
   assert.equal(await page.locator('.ps-remove').count(), 0, 'the default mark is never removed');
   await page.click('.ps-proj');
