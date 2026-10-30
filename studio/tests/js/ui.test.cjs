@@ -2242,6 +2242,21 @@ test('Style: Spiral\'s Random keeps the sequence in front (on properly, a mood t
   assert.equal(h.run('synthParams()').style, n('styleVal'));
   for (let i = 0; i < 40; i++) { h.run('randomAll()'); seen[n('styleVal')] += 1000; }
   assert.ok(seen.filter(k => k > 1000).length >= 3, `Random (R) takes several too (${seen})`);
+  h.$('rhythmSelect').value = 'flat'; h.$('followCuts').checked = false; h.$('bpmInput').value = '90';   // 1.5 cuts a second
+  for (let i = 0; i < 300; i++) { h.run('randomMusic()'); assert.notEqual(n('styleVal'), 2, 'Any never draws Tide on slow cuts (the taste logs: 2 of 11 liked)'); }
+  h.$('styleSelect').value = '2'; h.run('randomMusic()');
+  assert.equal(n('styleVal'), 2, 'chosen by hand, Tide plays at any speed');
+});
+
+test('Random: no echo while the chords change (the taste logs: 2 of 7 liked with both, 12 of 14 without the echo)', async () => {
+  const h = await playerWith();
+  const n = id => +h.$(id).value;
+  let changes = 0;
+  for (let i = 0; i < 400; i++) {
+    h.run(i % 2 ? 'randomMusic()' : 'randomAll()');
+    if (n('progSelect')) { changes++; assert.equal(n('echoRange'), 0); }
+  }
+  assert.ok(changes > 40, `chord changes still come (${changes} of 400)`);
 });
 
 test('Tide\'s Random: little pump on the cuts, narrow, dark and heavy, one note (changes rare), no beat (no bassline, arrangement or metal; hits and the arpeggio seldom), a long room', async () => {
@@ -2256,6 +2271,7 @@ test('Tide\'s Random: little pump on the cuts, narrow, dark and heavy, one note 
     assert.ok(n('roomSelect') !== 1 && n('spaceRange') >= 40, 'a long room');
     assert.ok(n('washRange') <= 20 && n('shimmerRange') <= 25 && n('ringRange') <= 15);
     assert.equal(n('choirRange'), 0, 'no choir in Tide (the taste log: in 5 of its 7 dislikes)');
+    assert.equal(n('padRange'), 0, 'no pad in Tide: one note');
     if (n('progSelect')) prog++; if (n('hitTypeSelect')) hits++; if (n('arpRange')) { arp++; assert.ok(n('arpRange') <= 35 && [2, 3].includes(n('arpMoodSelect'))); }
   }
   assert.ok(prog < 45 && hits < 90 && arp < 90, `rare: changes ${prog}, hits ${hits}, arpeggio ${arp} of 300`);
@@ -2269,6 +2285,7 @@ test('Hypnotic\'s Random: no hits (no kick), little pump, no echo, no layers; Si
   for (let i = 0; i < 200; i++) {
     h.run(i % 2 ? 'randomMusic()' : 'randomAll()');
     assert.equal(n('styleVal'), 5);
+    assert.ok(n('bassRange') >= 35, 'the rolling bass always');
     assert.ok(n('hitTypeSelect') === 0 && n('pulseRange') <= 15 && n('echoRange') === 0 && n('choirRange') === 0 && n('industrialRange') === 0 && n('arrangeSelect') === 0);
   }
   const old = h.run("migrateRhythm({ chordSelect: '1', styleVal: '4', styleSelect: '3', modeSelect: '4' })");

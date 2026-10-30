@@ -2320,16 +2320,17 @@
       setv('bassRange', 0); setv('arrangeSelect', 0); setv('industrialRange', 0);
       setv('choirRange', 0);                                                  // the taste log: the choir in 5 of Tide's 7 dislikes, none of its 5 likes
       setv('washRange', Math.min(20, getn('washRange'))); setv('shimmerRange', Math.min(25, getn('shimmerRange'))); setv('ringRange', Math.min(15, getn('ringRange'))); setv('echoRange', Math.min(30, getn('echoRange')));
-      setv('padRange', Math.min(35, getn('padRange')));
+      setv('padRange', 0);                                                    // one note: a pad's chords are not Tide (the taste logs: 2 of 6 liked)
       if (getn('roomSelect') === 1) setv('roomSelect', rpick([0, 2, 3]));
       setv('spaceRange', Math.max(40, getn('spaceRange')));
     }
     // Hypnotic: Bassline is the rolling bass and Arpeggio the sequence, on sixteenths that follow the cuts; no hits (a kick was tried: "not a good
-    // idea", the user, 2026-10-30), little pump on the cuts; static harmony; a plain room; no echo (the sequence has its own)
+    // idea", the user, 2026-10-30), little pump on the cuts; static harmony; a plain room; no echo (the sequence has its own);
+    // the rolling bass always (the taste logs: 11 of 14 liked with it, 6 of 10 without)
     function hypnoticRules() {
       setv('pulseRange', rint([0, 15]));
       setv('hitTypeSelect', 0);
-      setv('bassRange', Math.random() < 0.75 ? rint([35, 60]) : 0);
+      setv('bassRange', rint([35, 60]));
       setv('arpRange', Math.random() < 0.85 ? rint([30, 55]) : 0);
       setv('chordSelect', rpick([0, 1, 2])); setv('modeSelect', rpick([0, 0, 1, 2]));
       if (Math.random() < 0.85) setv('progSelect', 0);
@@ -2355,12 +2356,15 @@
       setv('spaceRange', Math.max(45, getn('spaceRange')));
     }
     // which style plays: the one chosen, or with Any one drawn for each Random (the user: Random should take either, 2026-10-30)
-    // by number: 3 and 4 were Signal and Lyric (0 of 30 marks liked, removed 2026-10-30), never drawn and opened as the drone
-    const STYLE_NAMES = ['Drone', 'Spiral', 'Tide', 'Drone', 'Drone', 'Hypnotic'], STYLE_ODDS = [0.4, 0.2, 0.2, 0, 0, 0.2];
+    // by number: 3 and 4 were Signal and Lyric (0 of 30 marks liked, removed 2026-10-30), never drawn and opened as the drone.
+    // The taste logs (131 marks, 2026-10-30): Drone 49 liked of 56, Hypnotic 17 of 24, Spiral 18 of 26, Tide 10 of 25, and Tide under 2 cuts a second
+    // 2 of 11 (8 of 14 faster): Any draws Tide less, and never on slow cuts (chosen by hand it plays at any speed)
+    const STYLE_NAMES = ['Drone', 'Spiral', 'Tide', 'Drone', 'Drone', 'Hypnotic'], STYLE_ODDS = [0.45, 0.2, 0.15, 0, 0, 0.2];
     function rollStyle() {
       const pick = document.getElementById('styleSelect').value;
       if (pick !== 'any') { setv('styleVal', pick); return; }
-      let r = Math.random(), i = 0; while (i < STYLE_ODDS.length - 1 && r >= STYLE_ODDS[i]) r -= STYLE_ODDS[i++];
+      const odds = STYLE_ODDS.map((o, k) => (k === 2 && rhythmCutsPerSecond() < 2 ? 0 : o));
+      let r = Math.random() * odds.reduce((a, b) => a + b), i = 0; while (i < odds.length - 1 && r >= odds[i]) r -= odds[i++];
       setv('styleVal', i);
     }
     function syncStyleLabel() {                                               // Any says which style plays now
@@ -2393,6 +2397,7 @@
         if (getn('industrialRange') > 0) { setv('hitTypeSelect', 0); setv('ringRange', Math.min(20, getn('ringRange'))); }   // its bursts are the hits
       }
       paceChanges();
+      if (getn('progSelect')) setv('echoRange', 0);                                              // an echo over chord changes: 2 of 7 liked in the taste logs, 12 of 14 without it
       if (getn('arrangeSelect') === 3 && rhythmMode() !== 'variable') setv('arrangeSelect', 1);   // a flat speed has nothing to follow
       if (getn('arrangeSelect')) {                                                                 // an arrangement needs at least two layers to move
         const layers = () => [getn('arpRange'), getn('bassRange'), getn('hitTypeSelect')].filter(Boolean).length;
