@@ -825,6 +825,25 @@ AI_JOBS: dict = {}
 AI_STEPS = ["Reading the images", "Writing the edit brief", "Cutting the edit", "Reviewing the cuts"]
 
 
+def plate_marks(st: dict, names: list) -> dict:
+    """Where each image's mark is, for the AI order: {x, y, size, id} (id: another of the project's marks, else None), or None for an
+    upload or a project with no mark. A Loose or Scattered image: its own placement; else its mark's own place and size."""
+    placed, uploads = st.get("placements", {}), set(st.get("uploads", []))
+    mark_ids = {m["id"]: m for m in (PROJECT or {}).get("marks") or []}
+    used = {k: v for k, v in st.get("marks_used", {}).items() if v in mark_ids}
+    out = {}
+    for n in names:
+        if n in uploads or not PROJECT or not PROJECT.get("has_mark", True):
+            out[n] = None
+            continue
+        mk, pl = used.get(n), placed.get(n)
+        src = mark_ids[mk] if mk else PROJECT
+        own = pl if pl and pl.get("kind") in ("loose", "scattered") else None   # Angled's few, kind "exact": on target
+        out[n] = {"x": float((own or {}).get("x", src["mark_x"])), "y": float((own or {}).get("y", src["mark_y"])),
+                  "size": float((own or {}).get("size", src["mark_size"])), "id": mk}
+    return out
+
+
 def build_ai_order(st: dict, call_llm, api_key: str, model: str, length: int | None = None, direction: str = "",
                    progress=lambda step, note="": None, only: set | None = None) -> dict:
     """Works out an AI edit of the images currently shown (does not touch the state). Kimi writes the brief; editor.py cuts the order.
@@ -835,18 +854,21 @@ def build_ai_order(st: dict, call_llm, api_key: str, model: str, length: int | N
         raise RuntimeError("Need at least two images in the selection to make an edit.")
     progress(0, f"{len(files)} images")
     world = st.get("worlds", {})
-    items = [{"name": p.name, "f": features.get(p), "world": world.get(p.name)} for p in files]
+    marks = plate_marks(st, [p.name for p in files])
+    home = {"x": PROJECT["mark_x"], "y": PROJECT["mark_y"], "size": PROJECT["mark_size"]} if PROJECT else {"x": 50.0, "y": 50.0, "size": 18.0}
+    items = [{"name": p.name, "f": features.get(p), "world": world.get(p.name), "mark": marks[p.name]} for p in files]
     features.save_cache()
     progress(1, "looking at the contact sheet")
     note, brief_ok = "", True
     try:
         sheet = editor.contact_sheet(files)
-        brief = editor.brief_to_names(editor.ask_brief(call_llm, api_key, model, sheet, len(files), direction, length), [p.name for p in files])
+        where = editor.frames_note([marks[p.name] for p in files], home, {m["id"]: m["name"] for m in (PROJECT or {}).get("marks") or []})
+        brief = editor.brief_to_names(editor.ask_brief(call_llm, api_key, model, sheet, len(files), direction, length, where), [p.name for p in files])
     except Exception as e:                      # Kimi is optional here: the edit still works from the measurements alone
         print(f"[EDIT] brief failed, using measurements only: {e!r}", flush=True)
         brief, note, brief_ok = {}, "Kimi was unavailable, so this edit uses measurements only. ", False
     progress(2, "choosing the order")
-    result = editor.order_images(items, brief, length)
+    result = editor.order_images(items, {**brief, "home": home}, length)
     progress(3, "writing the summary")
     titles = st.get("titles", {})
     return {"result": result, "summary": note + editor.summarize(titles, result, brief.get("summary")), "brief_ok": brief_ok, "images": len(files)}

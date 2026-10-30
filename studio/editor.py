@@ -9,6 +9,11 @@ The kinds of cut, strongest reason first:
   cut   - nothing carries over (allowed, but not twice in a row)
 Also: do not run three of one kind in a row, do not stay in one territory, no near-duplicates side by side,
 and follow an energy arc: hook, settle, build, peak, land.
+
+Where the mark is (roadmap 7, 2026-10-30): each image may say where its mark sits ({x, y, size} in % of the frame, and which mark),
+or that it has none (an upload). Then the edit can move: small steps of the mark between cuts read as motion (move), steps that keep
+one direction as a sweep (sweep), the end coming back to the project's place (land); two marks in one spot cut as a match (swap); the
+uploads, which have no mark, are spread out (spread). These weigh nothing when every image is the main mark on target (as before).
 """
 
 import io
@@ -20,6 +25,34 @@ from PIL import Image, ImageDraw, ImageFont
 import features as F
 
 DEFAULT_WEIGHTS = {"flip": 1.0, "echo": 1.0, "hue": 0.6, "variety": 0.8, "arc": 1.0}
+MOVE_WEIGHTS = {"move": 0.6, "sweep": 0.4, "land": 0.5, "swap": 0.6, "spread": 0.8}   # used only when the set has what they weigh
+
+
+def mark_step(ma: dict | None, mb: dict | None) -> float | None:
+    """How far the mark travels across a cut, in % of the frame (None when either image has no mark)."""
+    if not ma or not mb:
+        return None
+    return math.hypot(mb["x"] - ma["x"], mb["y"] - ma["y"])
+
+
+def move_score(d: float) -> float:
+    """A visible step reads as motion; holding still is fine; a leap across the frame breaks it."""
+    if d < 1:
+        return 0.4
+    if d <= 10:
+        return 1.0
+    if d <= 25:
+        return 1.0 - (d - 10) / 15
+    return -0.4 if d > 35 else 0.0
+
+
+def move_words(ma: dict | None, mb: dict | None) -> str:
+    d = mark_step(ma, mb)
+    if d is None or d < 1:
+        return ""
+    dx, dy = mb["x"] - ma["x"], mb["y"] - ma["y"]
+    way = ("right" if dx > 0 else "left") if abs(dx) >= abs(dy) else ("down" if dy > 0 else "up")
+    return f"the mark moves {way} {d:.0f}%"
 FLIP_AT = 0.30        # brightness change that counts as a flip
 ECHO_AT = 0.55        # centre similarity that counts as an echo
 HUE_NEAR = 28.0       # degrees
@@ -81,15 +114,24 @@ def order_images(items: list, brief: dict | None = None, length: int | None = No
     Returns {"names": [...], "cuts": [{from, to, kind, reason}], "left_out": [...]} - `names` is the edit, `left_out` the rest.
     """
     brief = brief or {}
-    w = {**DEFAULT_WEIGHTS, **{k: float(v) for k, v in (brief.get("weights") or {}).items() if k in DEFAULT_WEIGHTS}}
-    index = {it["name"]: i for i, it in enumerate(items)}
     if not items:
         return {"names": [], "cuts": [], "left_out": []}
+    marks = [it.get("mark") for it in items]
+    home = brief.get("home") or {"x": 50.0, "y": 50.0}                 # the project's place: where the edit lands
+    places = {(round(m["x"], 1), round(m["y"], 1)) for m in marks if m}
+    has = {"move": len(places) > 1, "sweep": len(places) > 1, "land": len(places) > 1,
+           "swap": len({m.get("id") for m in marks if m}) > 1, "spread": any(m is None for m in marks) and any(marks)}
+    w = {**DEFAULT_WEIGHTS, **{k: v if has[k] else 0.0 for k, v in MOVE_WEIGHTS.items()}}
+    w.update({k: float(v) for k, v in (brief.get("weights") or {}).items() if k in DEFAULT_WEIGHTS or (k in MOVE_WEIGHTS and has[k])})
+    index = {it["name"]: i for i, it in enumerate(items)}
+    near_home = lambda i: marks[i] is not None and math.hypot(marks[i]["x"] - home["x"], marks[i]["y"] - home["y"]) < 1
     by_impact = sorted(range(len(items)), key=lambda i: (-F.impact(items[i]["f"]), i))
     first = index.get(brief.get("opener"))
     if first is None:
         first = by_impact[0]
     last = index.get(brief.get("closer"))
+    if (last is None or last == first) and w["land"] > 0:                   # it lands: on the project's place
+        last = next((i for i in by_impact if i != first and near_home(i)), None)
     if last is None or last == first:
         last = next((i for i in by_impact if i != first), None) if len(items) > 1 else None
     peaks = [index[n] for n in brief.get("peaks", []) if n in index and index[n] not in (first, last)][:4]
@@ -110,8 +152,16 @@ def order_images(items: list, brief: dict | None = None, length: int | None = No
             if i != j:
                 base[i, j] = cut_score(fs[i], fs[j], worlds[i], worlds[j], w)
                 kinds[i, j] = cut_kind(fs[i], fs[j])
+                d = mark_step(marks[i], marks[j])
+                if d is not None:
+                    base[i, j] += w["move"] * 0.6 * move_score(d)
+                    if marks[i].get("id") != marks[j].get("id") and d < 3:
+                        base[i, j] += w["swap"] * 0.6                    # another mark in the same spot: a match cut
+                elif marks[i] is None and marks[j] is None and (w["spread"] > 0):
+                    base[i, j] -= w["spread"] * 0.6                      # two uploads side by side
 
     # beam search: state = (score, sequence, remaining set)
+    ups_total = sum(1 for i in pool if marks[i] is None) if w["spread"] else 0   # the uploads, spread along the film: due by each point
     states = [(0.0, [first], frozenset(inner))]
     for step in range(1, n - (1 if last is not None else 0)):
         t = step / max(1, n - 1)
@@ -131,6 +181,17 @@ def order_images(items: list, brief: dict | None = None, length: int | None = No
                     s -= 0.25                                   # two unmotivated cuts in a row
                 if j in peaks and 0.55 <= t <= 0.88:
                     s += 0.4                                    # peaks belong near the top of the build
+                if w["sweep"] and len(seq) >= 2 and marks[seq[-2]] and marks[prev] and marks[j]:
+                    ax, ay = marks[prev]["x"] - marks[seq[-2]]["x"], marks[prev]["y"] - marks[seq[-2]]["y"]
+                    bx, by = marks[j]["x"] - marks[prev]["x"], marks[j]["y"] - marks[prev]["y"]
+                    na, nb = math.hypot(ax, ay), math.hypot(bx, by)
+                    if na > 1 and nb > 1:
+                        s += w["sweep"] * 0.6 * max(0.0, (ax * bx + ay * by) / (na * nb))   # the same way again: a sweep
+                if ups_total:
+                    placed = sum(1 for x in seq if marks[x] is None) + (marks[j] is None)
+                    s -= w["spread"] * 0.5 * max(0.0, abs(placed - ups_total * (step + 1) / n) - 1)   # behind or ahead of an even spread
+                if w["land"] and t >= 0.8 and marks[j]:
+                    s += w["land"] * 0.6 * (1 - min(1.0, math.hypot(marks[j]["x"] - home["x"], marks[j]["y"] - home["y"]) / 20))   # coming home
                 key = (frozenset(rest - {j}), j)
                 if key not in nxt or nxt[key][0] < s:
                     nxt[key] = (s, seq + [j], rest - {j})
@@ -139,7 +200,8 @@ def order_images(items: list, brief: dict | None = None, length: int | None = No
         states = sorted(((s + base[seq[-1], last], seq + [last], rest) for s, seq, rest in states), key=lambda s: (-s[0], s[1]))
     best = states[0][1]
     names = [items[i]["name"] for i in best]
-    cuts = [{"from": items[a]["name"], "to": items[b]["name"], "kind": kinds[a, b], "reason": describe_cut(fs[a], fs[b], kinds[a, b])} for a, b in zip(best, best[1:])]
+    cuts = [{"from": items[a]["name"], "to": items[b]["name"], "kind": kinds[a, b],
+             "reason": " · ".join(x for x in (describe_cut(fs[a], fs[b], kinds[a, b]), move_words(marks[a], marks[b])) if x)} for a, b in zip(best, best[1:])]
     left_out = [it["name"] for i, it in enumerate(items) if i not in in_pool]
     return {"names": names, "cuts": cuts, "left_out": left_out}
 
@@ -169,7 +231,9 @@ def summarize(titles: dict, result: dict, brief_summary: str | None = None) -> s
     if not names:
         return ""
     count = {k: sum(1 for c in cuts if c["kind"] == k) for k in ("flip", "echo", "hue", "cut")}
-    line = f"Opens on “{titles.get(names[0], names[0])}”, lands on “{titles.get(names[-1], names[-1])}”: {count['flip']} flips, {count['echo']} shape echoes, {count['hue']} colour hand-offs."
+    moves = sum(1 for c in cuts if "the mark moves" in c.get("reason", ""))
+    line = (f"Opens on “{titles.get(names[0], names[0])}”, lands on “{titles.get(names[-1], names[-1])}”: {count['flip']} flips, {count['echo']} shape echoes, {count['hue']} colour hand-offs"
+            + (f", the mark moving in {moves} cuts" if moves else "") + ".")
     return f"{brief_summary.strip()} {line}" if brief_summary else line
 
 
@@ -197,11 +261,27 @@ def contact_sheet(paths: list, cols: int = 12, max_width: int = 1800) -> bytes:
 BRIEF_SYSTEM = "You are a world-class offline editor cutting a fast 9:16 match-cut title sequence. Reply with raw JSON only."
 
 
-def ask_brief(call_llm, api_key: str, model: str, sheet: bytes, count: int, direction: str = "", length: int | None = None) -> dict:
-    """Returns {opener, closer, peaks, weights, summary} with image numbers (0-based), or raises."""
+def frames_note(marks: list, home: dict, names: dict | None = None) -> str:
+    """For Kimi: where the mark is in the frames where it is not the main mark on the project's place (empty when it always is)."""
+    names = names or {}
+    lines = []
+    for i, m in enumerate(marks):
+        if m is None:
+            lines.append(f"{i}: an uploaded photo, no mark")
+        elif m.get("id") or math.hypot(m["x"] - home["x"], m["y"] - home["y"]) >= 1 or abs(m["size"] - home.get("size", m["size"])) >= 1:
+            lines.append(f"{i}: " + (f"the {names.get(m['id'], m['id'])} mark, " if m.get("id") else "") + f"at {m['x']:g}% across, {m['y']:g}% down, {m['size']:g}% wide")
+    if not lines:
+        return ""
+    return ("Where the mark sits, for the frames where it is not the main mark at its usual place "
+            f"({home['x']:g}% across, {home['y']:g}% down, {home.get('size', 18):g}% wide); every other frame has it there:\n" + "\n".join(lines) + "\n")
+
+
+def ask_brief(call_llm, api_key: str, model: str, sheet: bytes, count: int, direction: str = "", length: int | None = None, where: str = "") -> dict:
+    """Returns {opener, closer, peaks, weights, summary} with image numbers (0-based), or raises. `where`: frames_note()."""
     ask = (
-        f"The picture is a contact sheet of {count} frames numbered 0 to {count - 1}. Each frame has a small circular mark at its exact centre; "
-        f"the film is a rapid sequence of hard cuts between them.\n"
+        (f"The picture is a contact sheet of {count} frames numbered 0 to {count - 1}. Each frame has a small circular mark at its exact centre; "
+         f"the film is a rapid sequence of hard cuts between them.\n" if not where else
+         f"The picture is a contact sheet of {count} frames numbered 0 to {count - 1}; the film is a rapid sequence of hard cuts between them.\n{where}")
         + (f"Director's note: {direction}\n" if direction else "")
         + (f"The edit must use only the best {length} frames.\n" if length else "")
         + "Write the editing brief. Return ONLY JSON: {\"opener\": n, \"closer\": n, \"peaks\": [up to 4 numbers], "
@@ -209,6 +289,9 @@ def ask_brief(call_llm, api_key: str, model: str, sheet: bytes, count: int, dire
         "opener = the single strongest hook frame; closer = the frame that lands the film; peaks = the biggest moments for the top of the build. "
         "weights say how much this set needs each kind of cut: flip = dark/light contrast cuts, echo = shape matches at the centre, "
         "hue = colour hand-offs, variety = avoid neighbouring frames from the same kind of scene, arc = follow hook, settle, build, peak, land."
+        + ("" if not where else " Because the mark moves between frames you may also weigh (0-2): move = small steps of the mark from cut to cut read as motion, "
+           "sweep = keep those steps going one way, land = end with the mark back at its usual place, swap = cut between different marks in the same spot, "
+           "spread = keep the uploaded photos apart. Follow the director's note when it asks for a movement.")
     )
     out = call_llm(ask, api_key, model, images=[sheet], system=BRIEF_SYSTEM)
     i = out.find("{")
@@ -237,7 +320,7 @@ def brief_to_names(data: dict, names: list) -> dict:
     weights = {}
     for k, v in (data.get("weights") or {}).items():
         try:
-            if k in DEFAULT_WEIGHTS:
+            if k in DEFAULT_WEIGHTS or k in MOVE_WEIGHTS:
                 weights[k] = max(0.0, min(2.0, float(v)))
         except (TypeError, ValueError):
             pass

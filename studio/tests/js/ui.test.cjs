@@ -1445,7 +1445,7 @@ test('Pulse and Machine lean to Hypnotic and Run with Style on Any (the taste lo
     assert.ok(grid > 220 && grid < 340 && !c['1'], `${key}: ${JSON.stringify(c)}`);
   }
   const a = count('any');
-  assert.ok((a['0'] || 0) > 120 && (a['0'] || 0) < 200, `Any: Drone about 40%: ${JSON.stringify(a)}`);
+  assert.ok((a['0'] || 0) > 160 && (a['0'] || 0) < 240, `Any: Drone about half: ${JSON.stringify(a)}`);
 });
 
 test('pad and tape: Random keeps the pad modest and, when both come, keeps both low', async () => {
@@ -2657,4 +2657,20 @@ test('fuzz: 400 random sets of points (and garbage) always give points in order 
       assert.ok(m.curve.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y) && y >= 0 && y <= 100));
     }
   }
+});
+
+test('AI order: where the marks move, the note suggests a movement; all on target, the note as before', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: [mkPlate('a.jpg'), { ...mkPlate('b.jpg'), box: { x: 30, y: 40, size: 20, ar: 1 } }, { ...mkPlate('u.jpg'), uploaded: true }] };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('aiPanel').hidden = true; h.run('toggleAiPanel()');
+  assert.match(h.$('aiDirection').placeholder, /sweeps/);
+  h.run('toggleAiPanel()');
+  const r2 = baseRoutes();
+  r2['/api/state'] = { plates: [mkPlate('a.jpg'), mkPlate('b.jpg'), { ...mkPlate('u.jpg'), uploaded: true }] };
+  const h2 = load({ routes: r2 });
+  await settle(); await settle();
+  h2.$('aiPanel').hidden = true; h2.run('toggleAiPanel()');
+  assert.match(h2.$('aiDirection').placeholder, /open on the cap/);
 });

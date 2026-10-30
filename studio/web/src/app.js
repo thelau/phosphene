@@ -1105,6 +1105,10 @@
       if (e) e.stopPropagation();
       const panel = document.getElementById('aiPanel');
       panel.hidden = !panel.hidden;
+      if (!panel.hidden) {                                                   // where the marks move (Loose, Scattered, other marks in their places), the note can ask for a movement
+        const moves = new Set(activePlates().filter(p => !p.trashed && !p.uploaded).map(p => p.box ? `${p.box.x},${p.box.y}` : 'home')).size > 1;
+        document.getElementById('aiDirection').placeholder = moves ? 'e.g. the mark sweeps left to right, then lands on target' : 'e.g. open on the cap, end on the container';
+      }
     }
     document.addEventListener('click', () => { const p = document.getElementById('aiPanel'); if (p) p.hidden = true; });
 

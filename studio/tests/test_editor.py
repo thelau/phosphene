@@ -381,3 +381,84 @@ def test_the_ai_order_of_one_of_your_groups_is_its_own_and_moves_nothing_else(sr
     seq = srv.set_group_order(st, built, "g1")
     assert st["groups"][0]["files"] == ["e", "b", "d"] and seq["summary"] == "opens on e"
     assert sequences.get_order(st) == before, "All's order does not move"
+
+
+# ---------- where the mark is (roadmap 7): movement, landing, several marks, uploads ----------
+
+def flat_lib(n, seed=5):
+    """Images that look much alike, so where their marks sit decides the order."""
+    rnd = random.Random(seed)
+    return [{"name": f"{i:02d}.jpg", "world": "W", "f": fake(lum=0.5 + rnd.uniform(-0.05, 0.05), hue=30, sat=0.5, contrast=0.5, edges=0.5,
+                                                             centre=[rnd.uniform(-2, 2) for _ in range(144)])} for i in range(n)]
+
+
+def test_a_set_all_on_target_orders_exactly_as_before():
+    items = lib(16)
+    before = E.order_images([{k: v for k, v in it.items()} for it in items])
+    home = [{**it, "mark": {"x": 50.0, "y": 50.0, "size": 18.0, "id": None}} for it in items]
+    after = E.order_images(home, {"home": {"x": 50.0, "y": 50.0, "size": 18.0}})
+    assert after["names"] == before["names"] and [c["reason"] for c in after["cuts"]] == [c["reason"] for c in before["cuts"]]
+
+
+def test_the_mark_moves_in_small_steps_one_way_and_lands_on_its_place():
+    items = flat_lib(12)
+    xs = [20, 26, 32, 38, 44, 50, 56, 62, 68, 74, 80]                          # a row of marks across the frame, shuffled below
+    rnd = random.Random(2)
+    pos = xs[:]; rnd.shuffle(pos)
+    for it, x in zip(items, pos + [50]):
+        it["mark"] = {"x": float(x), "y": 50.0, "size": 18.0, "id": None}
+    r = E.order_images(items, {"home": {"x": 50.0, "y": 50.0, "size": 18.0}})
+    seq = [next(it["mark"]["x"] for it in items if it["name"] == n) for n in r["names"]]
+    steps = [abs(b - a) for a, b in zip(seq, seq[1:])]
+    assert sum(1 for d in steps if d <= 12) >= 8, f"mostly small steps: {seq}"
+    assert seq[-1] == 50, f"it lands on the project's place: {seq}"
+    same_way = sum(1 for a, b, c in zip(seq, seq[1:], seq[2:]) if (b - a) * (c - b) > 0)
+    assert same_way >= 5, f"steps keep a direction (a sweep): {seq}"
+    assert any("the mark moves" in c["reason"] for c in r["cuts"]) and "the mark moving in" in E.summarize({}, r)
+    random_steps = []
+    for k in range(30):                                                           # against shuffled orders
+        o = pos[:]; random.Random(k).shuffle(o); random_steps.append(sum(abs(b - a) for a, b in zip(o, o[1:])))
+    assert sum(steps) < min(random_steps), f"far smoother than chance: {sum(steps)} vs {min(random_steps)}"
+
+
+def test_two_marks_in_one_spot_cut_between_each_other_and_uploads_are_spread_out():
+    items = flat_lib(12, seed=9)
+    for i, it in enumerate(items):
+        it["mark"] = {"x": 50.0, "y": 50.0, "size": 18.0, "id": "bird" if i % 2 else None} if i < 8 else None   # 8 marked (two marks), 4 uploads
+    r = E.order_images(items, {"home": {"x": 50.0, "y": 50.0, "size": 18.0}})
+    m = {it["name"]: it["mark"] for it in items}
+    seq = [m[n] for n in r["names"]]
+    assert not any(a is None and b is None for a, b in zip(seq, seq[1:])), "no two uploads side by side"
+    swaps = sum(1 for a, b in zip(seq, seq[1:]) if a and b and a["id"] != b["id"])
+    sames = sum(1 for a, b in zip(seq, seq[1:]) if a and b and a["id"] == b["id"])
+    assert swaps > sames, f"the marks trade places: {swaps} swaps, {sames} repeats"
+
+
+def test_kimi_is_told_where_the_marks_are_only_when_they_move_and_may_weigh_it():
+    home = {"x": 50.0, "y": 50.0, "size": 18.0}
+    assert E.frames_note([{"x": 50.0, "y": 50.0, "size": 18.0, "id": None}] * 3, home) == ""
+    note = E.frames_note([{"x": 50.0, "y": 50.0, "size": 18.0, "id": None}, {"x": 31.0, "y": 62.0, "size": 12.0, "id": None},
+                          {"x": 50.0, "y": 50.0, "size": 18.0, "id": "bird"}, None], home, {"bird": "Bird"})
+    assert "1: at 31% across, 62% down, 12% wide" in note and "2: the Bird mark" in note and "3: an uploaded photo, no mark" in note and "0:" not in note
+    seen = {}
+    def llm(ask, key, model, images=None, system=None):
+        seen["ask"] = ask
+        return json.dumps({"opener": 0, "closer": 1, "weights": {"sweep": 1.6, "land": 0.2, "bogus": 3}})
+    E.ask_brief(llm, "k", "m", b"J", 4, "sweep left to right", None, note)
+    assert note in seen["ask"] and "sweep =" in seen["ask"] and "exact centre" not in seen["ask"]
+    E.ask_brief(llm, "k", "m", b"J", 4)
+    assert "exact centre" in seen["ask"] and "sweep =" not in seen["ask"], "all on target: Kimi's question as before"
+    b = E.brief_to_names({"weights": {"sweep": 1.6, "land": 9, "bogus": 3}}, ["a", "b"])
+    assert b["weights"] == {"sweep": 1.6, "land": 2.0}
+
+
+def test_plate_marks_reads_placements_marks_and_uploads(srv, monkeypatch):
+    monkeypatch.setattr(srv, "PROJECT", {**srv.PROJECT, "mark_x": 50.0, "mark_y": 50.0, "mark_size": 18.0, "has_mark": True,
+                                         "marks": [{"id": "bird", "name": "Bird", "mark_x": 40.0, "mark_y": 70.0, "mark_size": 12.0}]})
+    st = {"placements": {"b.jpg": {"kind": "scattered", "x": 20.0, "y": 30.0, "size": 25.0}, "e.jpg": {"kind": "exact", "x": 50, "y": 50, "size": 18, "angle": 20}},
+          "marks_used": {"c.jpg": "bird", "d.jpg": "gone"}, "uploads": ["u.jpg"]}
+    m = srv.plate_marks(st, ["a.jpg", "b.jpg", "c.jpg", "d.jpg", "e.jpg", "u.jpg"])
+    assert m["a.jpg"] == {"x": 50.0, "y": 50.0, "size": 18.0, "id": None}
+    assert m["b.jpg"] == {"x": 20.0, "y": 30.0, "size": 25.0, "id": None}
+    assert m["c.jpg"] == {"x": 40.0, "y": 70.0, "size": 12.0, "id": "bird"}
+    assert m["d.jpg"]["id"] is None and m["e.jpg"]["x"] == 50.0 and m["u.jpg"] is None
