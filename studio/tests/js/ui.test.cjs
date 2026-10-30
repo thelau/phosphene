@@ -1442,7 +1442,7 @@ test('Pulse and Machine lean to Hypnotic and Run with Style on Any (the taste lo
   const count = key => { h.$('characterSelect').value = key; const c = {}; for (let i = 0; i < 400; i++) { h.run('randomAll()'); const s = h.$('styleVal').value; c[s] = (c[s] || 0) + 1; } return c; };
   for (const key of ['pulse', 'machine']) {
     const c = count(key), grid = (c['5'] || 0) + (c['6'] || 0);
-    assert.ok(grid > 220 && grid < 340 && (c['1'] || 0) < 70, `${key}: ${JSON.stringify(c)}`);
+    assert.ok(grid > 220 && grid < 340 && !c['1'], `${key}: ${JSON.stringify(c)}`);
   }
   const a = count('any');
   assert.ok((a['0'] || 0) > 120 && (a['0'] || 0) < 200, `Any: Drone about 40%: ${JSON.stringify(a)}`);
@@ -2239,38 +2239,24 @@ test('after a reload mid-batch, Resume leaves out the images the server is still
   assert.doesNotMatch(h.$('statusText').innerHTML, /Retry/);
 });
 
-test('Style: Spiral\'s Random keeps the sequence in front (on properly, a mood that moves, no choir or metal); choosing a style rolls a sound in it; sent, remembered, older sounds open as Drone', async () => {
+test('Style: choosing a style rolls a sound in it; sent, remembered; Any takes Drone, Hypnotic and Run; Spiral is gone (the user: "just kill SPIRAL") and a sound saved with it, Tide, Signal or Lyric opens as the drone', async () => {
   const h = await playerWith();
   const n = id => +h.$(id).value;
-  h.$('styleSelect').value = '1';
-  let pluck = 0;
-  for (let i = 0; i < 200; i++) {
-    h.run('randomMusic()');
-    assert.ok(n('arpRange') >= 40 && n('arpRange') <= 62, `the sequence is on properly, not shouting: ${n('arpRange')}`);
-    assert.ok([0, 2, 3, 5, 7].includes(n('arpMoodSelect')), `Pluck or a mood that moves, never Dark, Acid or Mutate: ${n('arpMoodSelect')}`);
-    if (n('arpMoodSelect') === 0) pluck++;
-    assert.notEqual(n('arrangeSelect'), 2, 'no Sections in Spiral (1 of 10 liked)');
-    assert.equal(n('padRange'), 0, 'no pad in Spiral');
-    assert.deepEqual([n('choirRange'), n('industrialRange')], [0, 0]);
-    assert.ok(n('hitRange') <= 30 && n('padRange') <= 30 && n('washRange') <= 20 && n('spaceRange') >= 45);
-    assert.equal(n('styleVal'), 1, 'Random sound stays in the style chosen');
-  }
-  assert.ok(pluck > 30, `Spiral plays Pluck too (the taste logs: 13 of 13 liked), ${pluck} of 200`);
-  assert.equal(h.run('synthParams()').style, 1);
-  h.run('saveSettings()');
-  assert.equal(savedOf(h.store).styleSelect, '1');
+  assert.equal(h.$('styleSelect').options ? [...h.$('styleSelect').options].some(o => o.value === '1') : false, false, 'no Spiral in the menu');
   h.$('styleSelect').value = '0'; let arpOff = 0;
-  for (let i = 0; i < 200; i++) { h.run('randomMusic()'); if (!n('arpRange')) arpOff++; }
+  for (let i = 0; i < 200; i++) { h.run('randomMusic()'); if (!n('arpRange')) arpOff++; assert.equal(n('styleVal'), 0, 'Random sound stays in the style chosen'); }
   assert.ok(arpOff > 45, `Drone: the arpeggio comes and goes as before (${arpOff} of 200 off)`);   // ~72 on average, 52 the lowest in 200 runs (it was > 60: failed ~4% of runs)
-  const seed = n('seedVal'); h.$('styleSelect').value = '1'; h.run('pickStyle()');
-  assert.ok(n('seedVal') !== seed && n('arpRange') >= 40, 'choosing a style makes a new sound in it');
+  h.run('saveSettings()');
+  assert.equal(savedOf(h.store).styleSelect, '0');
+  const seed = n('seedVal'); h.$('styleSelect').value = '6'; h.run('pickStyle()');
+  assert.ok(n('seedVal') !== seed && n('styleVal') === 6 && n('bassRange') >= 40, 'choosing a style makes a new sound in it');
   const old = h.run("migrateRhythm({ chordSelect: '2' })");
   assert.deepEqual([old.styleVal, old.styleSelect], ['0', 'any'], 'a sound saved before styles plays the drone; Random then picks among the styles');
-  const mid = h.run("migrateRhythm({ chordSelect: '2', styleSelect: '0' })"), chose = h.run("migrateRhythm({ chordSelect: '2', styleSelect: '1' })");
-  assert.deepEqual([mid.styleVal, mid.styleSelect, chose.styleVal, chose.styleSelect], ['0', 'any', '1', '1'], 'saved before Any: the default Drone becomes Any, a chosen Spiral stays');
+  const spiral = h.run("migrateRhythm({ chordSelect: '2', styleSelect: '1', styleVal: '1' })"), any = h.run("migrateRhythm({ chordSelect: '2', styleSelect: 'any', styleVal: '1' })");
+  assert.deepEqual([spiral.styleVal, spiral.styleSelect, any.styleVal, any.styleSelect], ['0', 'any', '0', 'any'], 'Spiral chosen or drawn: the drone, and Any');
   h.$('styleSelect').value = 'any'; const seen = [0, 0, 0, 0, 0, 0, 0];
-  for (let i = 0; i < 400; i++) { h.run('randomMusic()'); seen[n('styleVal')]++; if (n('styleVal') === 1) assert.ok(n('arpRange') >= 40, 'a Spiral drawn by Any follows its rules'); }
-  assert.ok([0, 1, 5, 6].every(k => seen[k] > 40) && seen[2] === 0 && seen[3] === 0 && seen[4] === 0, `Any: Random takes Drone, Spiral, Hypnotic and Run; never the retired Tide, Signal and Lyric (${seen})`);
+  for (let i = 0; i < 400; i++) { h.run('randomMusic()'); seen[n('styleVal')]++; }
+  assert.ok(seen[0] > 150 && seen[5] > 60 && seen[6] > 60 && seen[1] + seen[2] + seen[3] + seen[4] === 0, `Any: Drone about half, Hypnotic and Run a quarter each; never the retired ones (${seen})`);
   assert.equal(h.run('synthParams()').style, n('styleVal'));
   for (let i = 0; i < 40; i++) { h.run('randomAll()'); seen[n('styleVal')] += 1000; }
   assert.ok(seen.filter(k => k > 1000).length >= 3, `Random (R) takes several too (${seen})`);

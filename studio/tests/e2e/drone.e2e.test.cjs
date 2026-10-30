@@ -753,49 +753,16 @@ test('no click on the cuts: the pump comes back up and the cut\'s tone starts in
   await ctx.close();
 });
 
-test('styles: Spiral puts the sequence in front (the bed stepped back, an octave up) and stays level and dark; Drone is as before', { skip }, async () => {
+test('styles: Spiral is gone (the user: "just kill SPIRAL"): its number plays the drone sample for sample, like Tide\'s; Drone is as before', { skip }, async () => {
   const ctx = await fresh();
-  const ARP = { arp: 0.6, arpSteps: 2, arpRate: 1 };
-  const rows = await spectra([{ ...ARP, arpMood: 4 }, { ...ARP, arpMood: 4, style: 1 }, { ...ARP, arpMood: 2, style: 1 }, { ...ARP, arpMood: 7, style: 1 }, { ...ARP, arpMood: 0, style: 1 }]);
-  console.log('styles: ' + JSON.stringify(rows.map(r => ({ rms: +r.rms.toFixed(3), sub: +r.sub.toFixed(3), upper: +r.upper.toFixed(4), high: +r.high.toFixed(4) }))));
-  const [drone, ...spiral] = rows;
-  for (const [i, m] of rows.entries()) assert.ok(!m.bad && Math.abs(m.rms - 0.17) < 0.015 && m.peak <= 0.97 && m.high < 0.02, `variant ${i}: level ${m.rms.toFixed(3)}, peak ${m.peak.toFixed(2)}, ${m.high.toFixed(4)} above 2 kHz`);
-  assert.ok(drone.sub > 0.45, `Drone: the sub still carries it (${drone.sub.toFixed(2)})`);
-  // Euclid (the third) rests between its hits, and its hits are what the limiter catches first: 1.6x the drone's upper band in this
-  // 1.5 s window (it was 2.9x, just over the line, before the user found Spiral's arpeggio could be loud)
-  for (const [i, m] of spiral.entries()) assert.ok(m.sub < drone.sub - 0.04 && m.upper > drone.upper * (i === 2 ? 1.4 : 2.5), `Spiral ${i}: the sequence in front (sub ${m.sub.toFixed(2)} vs ${drone.sub.toFixed(2)}, 700 Hz-2 kHz ${m.upper.toFixed(3)} vs ${drone.upper.toFixed(3)})`);
-  const same = await page.evaluate(async () => {   // Drone with no style given and with style 0: the very same sound (nothing of before moved)
+  const d = await page.evaluate(async () => {
     const p = { pulse: 0.5, low: 0.85, bright: 0.3, width: 0.6, space: 0.5, power: 0.6, seed: 5, arp: 0.6, arpMood: 4, arpSteps: 2 }, st = Array.from({ length: 13 }, (_, i) => i * 0.3);
-    const a = await window.Drone.renderExport(p, st), b = await window.Drone.renderExport({ ...p, style: 0 }, st);
-    let d = 0; for (let i = 0; i < a.left.length; i++) d = Math.max(d, Math.abs(a.left[i] - b.left[i])); return d;
+    const a = await window.Drone.renderExport(p, st), b = await window.Drone.renderExport({ ...p, style: 0 }, st), c = await window.Drone.renderExport({ ...p, style: 1 }, st);
+    let ab = 0, ac = 0; for (let i = 0; i < a.left.length; i++) { ab = Math.max(ab, Math.abs(a.left[i] - b.left[i])); ac = Math.max(ac, Math.abs(a.left[i] - c.left[i])); }
+    return { ab, ac };
   });
-  assert.ok(same < 1e-6, `Drone unchanged: ${same}`);
-  await ctx.close();
-});
-
-test('Spiral: the arpeggio never shouts over the bed (the user: "the arpeggio can be loud on spiral"): its loudest moments in two of the loudest Randoms measured stay near twice the bed; the limiter is unity under its threshold', { skip }, async () => {
-  const ctx = await fresh();
-  const r = await page.evaluate(async () => {
-    const L = window.Drone.ARP_LIMIT, c0 = new OfflineAudioContext(1, 22050, 22050), o = c0.createOscillator(), g = c0.createGain(), k = c0.createDynamicsCompressor();
-    g.gain.value = 0.001; o.connect(g); g.connect(k); k.connect(c0.destination); o.start();
-    for (const f of ['threshold', 'knee', 'ratio', 'attack', 'release']) k[f].value = L[f];
-    const y = (await c0.startRendering()).getChannelData(0); let pk = 0; for (let i = 11025; i < y.length; i++) pk = Math.max(pk, Math.abs(y[i]));
-    const sr = 22050, T = 12, st = Array.from({ length: 21 }, (_, i) => i * 0.6);
-    const raw = async p => { const c = new OfflineAudioContext(2, sr * T, sr); window.Drone.build(c, c.destination, p, st, { offset: 0, t0: 0 }); return (await c.startRendering()).getChannelData(0); };
-    const S = { pulse: 0.7, low: 0.75, bright: 0.3, width: 0.6, space: 0.5, room: 2, power: 0.65, pitch: 0.2, chord: 0, style: 1, shimmer: 0.4, hitType: 1, hit: 0.3, hitOn: 2, movement: 0.33 };
-    const out = [];
-    for (const v of [{ arp: 0.55, arpMood: 7, arpSteps: 3, arpRate: 0, seed: 63345 }, { arp: 0.55, arpMood: 5, arpSteps: 2, arpRate: 1, seed: 36303, echo: 0.38 }, { arp: 0.55, arpMood: 0, arpSteps: 2, arpRate: 1, seed: 11 }]) {
-      const a = await raw({ ...S, ...v }), n = await raw({ ...S, ...v, arp: 0 }), w = Math.round(0.05 * sr), wins = [];
-      let en = 0; for (let i = sr; i < a.length; i++) en += n[i] * n[i];
-      for (let s0 = sr; s0 + w < a.length; s0 += w) { let e = 0; for (let i = s0; i < s0 + w; i++) e += (a[i] - n[i]) ** 2; wins.push(Math.sqrt(e / w)); }
-      wins.sort((x, y) => x - y);
-      out.push({ loud: wins[Math.floor(wins.length * 0.95)] / Math.sqrt(en / (a.length - sr)), med: wins[wins.length >> 1] / Math.sqrt(en / (a.length - sr)) });
-    }
-    return { makeup: pk / 0.001, want: L.makeup, out };
-  });
-  console.log('spiral arp: ' + JSON.stringify(r));
-  assert.ok(Math.abs(r.makeup / r.want - 1) < 0.03, `the compressor adds ${r.makeup.toFixed(3)}x by itself, ARP_LIMIT.makeup says otherwise`);
-  for (const [i, m] of r.out.entries()) assert.ok(m.loud < 2.3 && m.loud > 1.2, `variant ${i}: the arpeggio's loudest 50 ms ${m.loud.toFixed(2)}x the bed (it was up to 2.9x; still in front)`);
+  assert.ok(d.ab < 1e-6, `Drone unchanged: ${d.ab}`);
+  assert.ok(d.ac < 1e-6, `Spiral's number plays the drone: ${d.ac}`);
   await ctx.close();
 });
 
@@ -918,7 +885,7 @@ test('the echoes follow the speed in every style: the Echo setting and Hypnotic\
   const r = await page.evaluate(() => {
     const st = [0]; for (let i = 0; i < 60; i++) st.push(st[i] + 0.25 * Math.pow(0.12 / 0.25, i / 59));   // 0.25 s cuts speeding up to 0.12 s (three cuts: under the echo's 0.75 s cap)
     const out = {};
-    for (const [name, p] of [['drone', { style: 0, echo: 0.5 }], ['spiral', { style: 1, echo: 0.5, arp: 0.5, arpMood: 4 }], ['tide', { style: 2, echo: 0.3 }], ['lyric', { style: 4, echo: 0.4 }], ['hypnotic', { style: 5, echo: 0, arp: 0.5, hitType: 0 }]]) {
+    for (const [name, p] of [['drone', { style: 0, echo: 0.5 }], ['tide', { style: 2, echo: 0.3 }], ['lyric', { style: 4, echo: 0.4 }], ['hypnotic', { style: 5, echo: 0, arp: 0.5, hitType: 0 }]]) {
       const oc = new OfflineAudioContext(2, 44100, 44100), seen = [];
       const mk = oc.createDelay.bind(oc);
       oc.createDelay = max => { const d = mk(max); const orig = d.delayTime.setTargetAtTime.bind(d.delayTime); d.delayTime.setTargetAtTime = (v, t, tau) => { seen.push([t, v, max]); return orig(v, t, tau); }; return d; };

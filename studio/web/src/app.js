@@ -2135,8 +2135,8 @@
     // Characters: kinds of film, modelled on the references, each a set of tighter ranges for the rhythm, the look and the sound (all inside RANDOM_RANGES).
     // Random rolls inside the chosen one ("Any": a different one each time); the rules below then make the parts agree.
     // Pulse and Machine, with Style on Any: Hypnotic and Run's own grid suits a steady machine pulse (the taste logs of 2026-10-30: 9 of 9
-    // liked in these types, Drone 6 of 16, Spiral 3 of 13); by number as STYLE_ODDS
-    const TYPE_PULSE_STYLES = [0.2, 0.1, 0, 0, 0, 0.35, 0.35];
+    // liked in these types, Drone 6 of 16); by number as STYLE_ODDS
+    const TYPE_PULSE_STYLES = [0.3, 0, 0, 0, 0, 0.35, 0.35];
     const CHARACTERS = {
       landing: { name: 'Landing',                                          // Ecwora / Soiltone: fast hold, then a slow landing, grey inverted copies
         rhythm: { mode: 'variable', start: [60, 120], end: [450, 900], ramp: [8, 16], at: 'end', mult: ['1', '1', '2'] },
@@ -2280,10 +2280,10 @@
       if (o && 'chordSelect' in o && !('modeSelect' in o)) o.modeSelect = '0';   // a sound saved before modes: the natural minor it was made in
       if (o && 'chordSelect' in o && !('roomSelect' in o)) o.roomSelect = '0';   // and before rooms: the measured room
       if (o && 'chordSelect' in o && !('padToneSelect' in o)) o.padToneSelect = '0';   // and the pad's tone: warm
-      // a sound from before styles plays the drone; Random then picks among them. Saved before Any existed, Drone was only the default (and kept Random on it): Any; a chosen Spiral stays
-      if (o && 'chordSelect' in o && !('styleVal' in o)) { o.styleVal = o.styleSelect === '1' ? '1' : '0'; o.styleSelect = o.styleSelect === '1' ? '1' : 'any'; }
-      if (o && ['2', '3', '4'].includes(String(o.styleVal))) o.styleVal = '0';              // Tide, Signal and Lyric are gone: the drone
-      if (o && ['2', '3', '4'].includes(String(o.styleSelect))) o.styleSelect = 'any';
+      // a sound from before styles plays the drone; Random then picks among them. Saved before Any existed, Drone was only the default (and kept Random on it): Any
+      if (o && 'chordSelect' in o && !('styleVal' in o)) { o.styleVal = '0'; o.styleSelect = 'any'; }
+      if (o && ['1', '2', '3', '4'].includes(String(o.styleVal))) o.styleVal = '0';         // Spiral, Tide, Signal and Lyric are gone: the drone
+      if (o && ['1', '2', '3', '4'].includes(String(o.styleSelect))) o.styleSelect = 'any';
       if (o && String(o.modeSelect) === '4') o.modeSelect = '0';                           // and the Major mode that came with Lyric
       if (o && 'rhythmSelect' in o && !('morePoints' in o)) o.morePoints = '[]';           // a film from before several points: its one change
       if (!o || !('startMsRange' in o || 'rampRange' in o || 'atSelect' in o)) return o;
@@ -2355,7 +2355,6 @@
       }
     }
     // rules so the parts of a sound agree, whatever drew them
-    // the style's own Random: Spiral is the sequence in front (on properly, an evolving mood, enough notes), clean (no choir, no metal), in a big room
     // Hypnotic: Bassline is the rolling bass and Arpeggio the sequence, on sixteenths that follow the cuts; no hits (a kick was tried: "not a good
     // idea", the user, 2026-10-30), little pump on the cuts; static harmony; a plain room; no echo (the sequence has its own);
     // the rolling bass always (the taste logs: 11 of 14 liked with it, 6 of 10 without); no pad (8 of 13 liked with one, 18 of 22 without)
@@ -2391,22 +2390,11 @@
       if (st === 5) return hypnoticRules();
       if (st === 6) return runRules();
       if (st === 0) return droneRules();
-      if (getn('styleVal') !== 1) return;
-      if (getn('arpRange') < 40 || getn('arpRange') > 55) setv('arpRange', rint([40, 55]));   // in front, not shouting (75 peaked into the final clip; 62 still could: the user, "the arpeggio can be loud on spiral")
-      if ([1, 4, 6].includes(getn('arpMoodSelect'))) setv('arpMoodSelect', rpick([0, 2, 3, 5, 7]));   // Pluck (13 of 13 liked in the taste logs: the spiral moves it too), Phase, Sweep, Accumulate, Euclid; not Dark, Acid or Mutate (4 of 10 liked in Spiral, the other moods 13 of 18)
-      if (getn('arpStepsSelect') === 0) setv('arpStepsSelect', 1 + Math.floor(Math.random() * 3));
-      if (getn('arpRateSelect') >= 4) setv('arpRateSelect', 1);
-      if (rate > 3 && getn('arpRateSelect') > 1) setv('arpRateSelect', Math.floor(Math.random() * 2));   // fast cuts: a note or half a note a cut
-      setv('choirRange', 0); setv('industrialRange', 0);
-      setv('hitRange', Math.min(30, getn('hitRange'))); setv('padRange', 0); setv('washRange', Math.min(20, getn('washRange')));   // hits stand out over the lower bed; no pad (the taste logs: 13 of 24 liked with one, 24 of 36 without; 0 of 5 in the fourth)
-      if (rate < 5 && getn('roomSelect') < 2 && Math.random() < 0.6) setv('roomSelect', 2 + Math.floor(Math.random() * 2));   // a long tail, the hall or the bloom
-      setv('spaceRange', Math.max(45, getn('spaceRange')));
-      if (getn('arrangeSelect') === 2) setv('arrangeSelect', rpick([0, 1]));   // Sections drops the sequence every 8 cuts: 1 of 10 liked in the taste logs
     }
     // which style plays: the one chosen, or with Any one drawn for each Random (the user: Random should take either, 2026-10-30)
-    // by number: 2, 3 and 4 were Tide, Signal and Lyric (removed 2026-10-30: 10 of 28 marks liked, then "kill Tide"; 0 of 30), never drawn and opened as the drone.
-    // The taste logs (197 marks): Drone 79 liked of 90, Hypnotic 26 of 35, Spiral 29 of 44. Run (6) is new: an equal share until it is judged
-    const STYLE_NAMES = ['Drone', 'Spiral', 'Drone', 'Drone', 'Drone', 'Hypnotic', 'Run'], STYLE_ODDS = [0.4, 0.2, 0, 0, 0, 0.2, 0.2];
+    // by number: 1, 2, 3 and 4 were Spiral, Tide, Signal and Lyric (removed 2026-10-30: "just kill SPIRAL"; 10 of 28 marks liked, then "kill Tide";
+    // 0 of 30), never drawn and opened as the drone. The taste logs: Drone 140 liked of 162, Hypnotic 45 of 57, Run 24 of 25
+    const STYLE_NAMES = ['Drone', 'Drone', 'Drone', 'Drone', 'Drone', 'Hypnotic', 'Run'], STYLE_ODDS = [0.5, 0, 0, 0, 0, 0.25, 0.25];
     function rollStyle(odds = STYLE_ODDS) {
       const pick = document.getElementById('styleSelect').value;
       if (pick !== 'any') { setv('styleVal', pick); return; }

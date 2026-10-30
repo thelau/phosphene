@@ -253,9 +253,6 @@
   // shuts over ~7 s, resonant (Barbieri's Ecstatic Computation); Mutate changes one
   // note each round (a Turing Machine); Accumulate plays 2 notes, then 3, ... up to the whole pattern, and starts over (an additive process)), how far the filter opens and shuts (`open`, `close`), its resonance (`q`) and how long a note rings (`sustain`).
   // Two voices take turns, so a note rings on under the next. Pluck keeps its own path (chord tones, a random walk).
-  // Spiral's limiter on the arpeggio (the bus runs above 1, hence pre); makeup is what WebAudio's compressor adds by itself at these
-  // settings (measured, the same in Chrome and WebKit: a test checks it)
-  const ARP_LIMIT = { pre: 0.25, threshold: -12, knee: 6, ratio: 6, attack: 0.004, release: 0.2, makeup: 1.739 };
   const ARP_MOODS = [
     { name: 'Pluck' },
     { name: 'Dark', scale: [0, 1, 3, 5, 7, 8], lo: 0.5, hi: 1.6, open: 1100, close: 240, q: 3, sustain: 1.6, gain: 1.0, voices: 1, shape: 'fall' },
@@ -272,34 +269,30 @@
     { name: 'Euclid', scale: [0, 3, 5, 7, 10], lo: 0.75, hi: 2.6, open: 1800, close: 340, q: 4, sustain: 1.3, gain: 1.0, voices: 2, shape: 'walk', euclid: true },
   ];
   // Styles: whole ways of playing the same patch (2026-10-30; inspired by artists, never named after them). Drone: the measured dark bed
-  // carries the sound, everything else under it (as before). Spiral: the sequence in front, an octave up, the bed stepped back under it;
-  // the sequence climbs and falls through the scale every few rounds (diatonic, so always in key: `SPIRALS`, steps of the mood's scale)
-  // and its filter opens and shuts over tens of seconds. Same voices as the drone's arpeggio: no extra cost.
+  // carries the sound, everything else under it (as before).
   const STYLES = [
-    { name: 'Drone', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1 },
-    // Spiral's sequence: in front, but rounder than the drone's plucks (the user: "quite loud, distorted, noisy", 2026-10-30; measured, the
-    // plucks peaked at 0.85-1.08 against the drone's 0.63, into the final soft clip, and the top was 3-5x the drone's): a lower filter,
-    // less resonance, longer notes, the bed a little higher
-    { name: 'Spiral', bed: 0.5, arpGain: 1.4, arpUp: 2, morph: 1, spiral: true, arpOpen: 0.62, arpQ: 0.6, arpSustain: 1.5 },
+    { name: 'Drone', bed: 1, arpGain: 1, arpUp: 1, arpOpen: 1, arpQ: 1, arpSustain: 1 },
+    // 1 was Spiral (the sequence in front, an octave up, climbing through the scale every two rounds, the bed stepped back): 46 of 72 marks
+    // liked under Any, 3 of 13 in Pulse and Machine, its arpeggio "can be loud", then "just kill SPIRAL" (the user, 2026-10-30); removed.
+    // Its number stays, as the drone
+    { name: 'Spiral (retired)', bed: 1, arpGain: 1, arpUp: 1, arpOpen: 1, arpQ: 1, arpSustain: 1 },
     // 2 was Tide (the bed swelling by itself, one note, no beat; from a reference the user sent): 10 of 28 marks liked, then "kill Tide"
     // (the user, 2026-10-30); removed. Its number stays, as the drone, like Signal's and Lyric's
-    { name: 'Tide (retired)', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1 },
+    { name: 'Tide (retired)', bed: 1, arpGain: 1, arpUp: 1, arpOpen: 1, arpQ: 1, arpSustain: 1 },
     // 3 and 4 were Signal (sines, clicks, silence) and Lyric (a lead melody, a Major mode), built and judged on 2026-10-30: 0 of 30 marks
     // liked (the user: they "kill"); removed. Their numbers stay, so a sound or a mark saved with them opens, as the drone
-    { name: 'Signal (retired)', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1 },
-    { name: 'Lyric (retired)', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1 },
+    { name: 'Signal (retired)', bed: 1, arpGain: 1, arpUp: 1, arpOpen: 1, arpQ: 1, arpSustain: 1 },
+    { name: 'Lyric (retired)', bed: 1, arpGain: 1, arpUp: 1, arpOpen: 1, arpQ: 1, arpSustain: 1 },
     // Hypnotic: sixteenths on the music cuts (a beat near 128 BPM at the film's usual cut, following the speed): a rolling bass on the
     // off-sixteenths whose filter drifts (Bassline) and a short sequence in 3, 5 or 7 against the bar through an echo, its filter sweeping over
     // ~40 s (Arpeggio); no bass in the intro or the break. No drums: a hat was "probably cringe", then the kick "not a good idea" (the user, 2026-10-30)
-    { name: 'Hypnotic', bed: 0.75, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1, grid: true, own: true },
+    { name: 'Hypnotic', bed: 0.75, arpGain: 1, arpUp: 1, arpOpen: 1, arpQ: 1, arpSustain: 1, grid: true, own: true },
     // Run (the user's ask, 2026-10-30: a running bass, in the spirit of an 80s film score): the bass never stops, sixteenths on the same warped grid
     // as Hypnotic's (it follows the speed), brassy (two saws and a square an octave under through a resonant low-pass that opens on the
     // accents and drifts over ~30 s), a short glide between notes, the chord changes under it; the pad swells like brass on each chord
     // (the filter opens and closes), in a big room. The Bassline pattern picks the run: Pulse steady, Octave jumping, Fifths walking, Gallop
-    { name: 'Run', bed: 0.6, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1, run: true, own: true },
+    { name: 'Run', bed: 0.6, arpGain: 1, arpUp: 1, arpOpen: 1, arpQ: 1, arpSustain: 1, run: true, own: true },
   ];
-  const SPIRALS = [[0, 1, 2, 3, 2, 1], [0, 2, 4, 2], [0, -1, -2, 1, 0, 2], [0, 3, 1, 4, 2, 5, 3, 1], [0, 2, 1, 3, 2, 4]];
-  const SPIRAL_ROUNDS = 2;                                           // rounds of the pattern at each step of the spiral
   const EUCLID = [[3, 8], [5, 8], [5, 12], [7, 12], [5, 16], [7, 16], [9, 16]];
   const euclid = (k, n) => Array.from({ length: n }, (_, i) => Math.floor(((i + 1) * k) / n) > Math.floor((i * k) / n));   // Bresenham: k hits, evenly
   const euclidHit = (gate, k, step) => (gate[step % gate.length] ? Math.floor(step / gate.length) * k + gate.slice(0, step % gate.length).filter(Boolean).length : -1);   // which hit a step is, or -1: a rest
@@ -568,7 +561,7 @@
       const k = (1 + 1.5 * power) * (1 + 0.6 * industrial);
       const sat = shaper(tanhCurve(k, 1));
       body.connect(pg); pg.connect(lg); lg.connect(sat);
-      const sum = gain(style.bed);                                         // the style's bed: all of it in Drone, stepped back under the sequence in Spiral
+      const sum = gain(style.bed);                                         // the style's bed: all of it in Drone, stepped back under Hypnotic's and Run's lines
       sat.connect(sum); subBus.connect(sum);
       const br = gain(1); sum.connect(br);
       lfo(0.11 * move, 0.07, br.gain);
@@ -603,16 +596,7 @@
     });
     // ---- hits: a percussive impact on some of the cuts. Fixed voices (made once), retriggered by automation: no node per hit ----
     // each layer the arrangement moves has its own level on the way to the sides
-    // Spiral: the sequence through a gentle limiter, so its loudest notes (slow cuts, dense or accumulating patterns) never shout over the
-    // bed (the user: "the arpeggio can be loud on spiral"; measured on 60 of its Randoms, the loudest 50 ms ran 2.9x the bed, now 2.1x)
-    const arpTo = br => {
-      if (!style.spiral) return gain(1, br);
-      const c = ctx.createDynamicsCompressor(), L = ARP_LIMIT;
-      c.threshold.value = L.threshold; c.knee.value = L.knee; c.ratio.value = L.ratio; c.attack.value = L.attack; c.release.value = L.release;
-      c.connect(gain(1 / (L.pre * L.makeup), br));                        // the compressor's own makeup gain taken back out: unity under the threshold
-      return gain(1, gain(L.pre, c));
-    };
-    const arr = { hits: gain(1), arp: [arpTo(sides[0]), arpTo(sides[1])], bass: [gain(1, sides[0]), gain(1, sides[1])] };
+    const arr = { hits: gain(1), arp: [gain(1, sides[0]), gain(1, sides[1])], bass: [gain(1, sides[0]), gain(1, sides[1])] };
     const hitBus = gain(1, arr.hits);
     sides.forEach(br => arr.hits.connect(gain(0.9, br)));
 
@@ -681,13 +665,8 @@
       const loopA = phase ? Math.max(4, Math.min(8, arpSteps)) : arpSteps;
       const pattern = moodPattern(m.shape, notes.length, loopA, rand);   // indices into the notes
       const patternB = phase ? phaseLoop(pattern) : null;
-      // Spiral: the whole pattern moves up or down the scale every few rounds (index steps, an octave folded back at the edges); Drone never moves
-      const N = notes.length, perOct = m.scale.length, srand = mulberry32(seedN + 1213), path = SPIRALS[Math.floor(srand() * SPIRALS.length)];
-      const morphP = 24 + 24 * srand(), morphPh = 2 * Math.PI * srand();   // Spiral: the filter's slow arc, 24-48 s round
-      const noteOf = (j, st) => {
-        if (style.spiral) { j += path[Math.floor(st / (pattern.length * SPIRAL_ROUNDS)) % path.length]; while (j >= N) j -= perOct; while (j < 0) j += perOct; }
-        return notes[Math.max(0, Math.min(N - 1, j))];
-      };
+      const N = notes.length;
+      const noteOf = j => notes[Math.max(0, Math.min(N - 1, j))];
       const voices = Array.from({ length: m.voices }, (_, vi) => {          // fixed voices: no node per note
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = m.q * style.arpQ; lp.frequency.value = m.open * style.arpOpen;
         const env = gain(0);
@@ -706,7 +685,6 @@
       const mutateTo = cycle => { while (mutCycle < cycle) { mutated[Math.floor(mrand() * L)] = Math.floor(mrand() * notes.length); mutCycle++; } };
       const noteAt = st => noteOf(m.accumulate ? pattern[accPos[st % accPos.length]] : m.mutate ? (mutateTo(Math.floor(st / L)), mutated[st % L]) : pattern[st % L], st);
       const [ek, en] = EUCLID[Math.floor(mrand() * EUCLID.length)], gate = m.euclid ? euclid(ek, en) : null;
-      if (style.spiral && gate) for (const v of voices) for (const g of v.outs) g.gain.value *= Math.sqrt(en / ek);   // Spiral: a Euclidean line has rests: more on its hits, to stand as far in front (the limiter keeps them from shouting)
       const per = ARP_PER_CUT[arpRate];
       perCut.push((i, tc) => {
         for (const [step, at0, len] of noteTimes(starts, i, per)) {
@@ -714,7 +692,7 @@
           const s = arc(at0);
           const stepLen = len / per;
           const decay = Math.min(1.6, Math.max(0.08, stepLen * 0.9 * m.sustain * style.arpSustain)) * (1.5 - s), f = noteAt(step) * lift(s, 1.2);
-          const sw = m.sweep ? 0.15 + 0.85 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / m.sweep)) : style.morph ? 0.5 + 0.6 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / morphP + morphPh)) : 1;   // Sweep: how far the filter opens now; Spiral: its slow arc
+          const sw = m.sweep ? 0.15 + 0.85 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / m.sweep)) : 1;   // Sweep: how far the filter opens now
           const acc = accent ? (accent[step % L] ? 1.35 : 0.8) : 1, glide = slide && slide[step % L];
           const play = (v, fq, tt) => {
             for (const [o, det] of v.oscs) { if (glide) o.frequency.setTargetAtTime(fq * (1 + det), tt, 0.045); else o.frequency.setValueAtTime(fq * (1 + det), tt); }
@@ -1213,5 +1191,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, inMode, MODES, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz, EUCLID, euclid, euclidHit, ROOMS, roomData, PAD_TONES, STYLES, SPIRALS, ARP_LIMIT };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, inMode, MODES, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz, EUCLID, euclid, euclidHit, ROOMS, roomData, PAD_TONES, STYLES };
 })();
