@@ -1990,9 +1990,9 @@
       if (pts.length) setv('bpmInput', Math.round(Math.min(BPM_RANGE[1], Math.max(BPM_RANGE[0], 60000 / clampMs(pts[0].ms)))));
       if (pts.length < 2) { setv('rhythmSelect', 'flat'); setv('morePoints', '[]'); return; }
       setv('rhythmSelect', 'variable');
-      setv('changeFrom', +pts[0].at.toFixed(4)); setv('changeTo', +pts[1].at.toFixed(4));
+      setv('changeFrom', +pts[0].at.toFixed(6)); setv('changeTo', +pts[1].at.toFixed(6));   // 6 places: a point on a picture cut stays on it
       setv('endMsRange', Math.round(clampMs(pts[1].ms))); setv('curveVal', +(+pts[1].curve || 0).toFixed(3));
-      setv('morePoints', JSON.stringify(pts.slice(2).map(p => ({ at: +p.at.toFixed(4), ms: Math.round(clampMs(p.ms)), curve: +(+p.curve || 0).toFixed(3) }))));
+      setv('morePoints', JSON.stringify(pts.slice(2).map(p => ({ at: +p.at.toFixed(6), ms: Math.round(clampMs(p.ms)), curve: +(+p.curve || 0).toFixed(3) }))));
     }
     const easeChange = (u, curve) => Math.pow(Math.min(1, Math.max(0, u)), 1 + 4 * curve);
     // the music cut length (ms) at a point of the film, x a share of its music cuts
@@ -2312,7 +2312,8 @@
     // there and back: fast, slower through the middle, fast again (or slow, faster, slow), each change even or eased
     function randomWave() {
       setv('multSelect', rpick(['1', '1', '2', '2', '3']));
-      const slowMid = Math.random() < 0.5, fast = rint([60, 200]), slow = rint([300, 900]), out = slowMid ? fast : slow, mid = slowMid ? slow : fast;
+      const slowMid = Math.random() < 0.5, fast = rint([60, 200]), slow = rint([300, 900]), mid = slowMid ? slow : fast;
+      const out = Math.round(60000 / Math.round(60000 / (slowMid ? fast : slow)));   // the tempo is whole BPM: back to exactly it (it came back up to 6 ms off)
       const a = 0.05 + Math.random() * 0.15, b = 0.35 + Math.random() * 0.15, c = b + 0.05 + Math.random() * 0.15, d = 0.8 + Math.random() * 0.2;
       setPoints([{ at: a, ms: out, curve: 0 }, { at: b, ms: mid, curve: rpick([0, 0.15, 0.3]) }, { at: c, ms: mid, curve: 0 }, { at: d, ms: out, curve: rpick([0, 0.15, 0.3]) }]);
     }
@@ -2386,6 +2387,7 @@
       const st = getn('styleVal');
       if (st === 5) return hypnoticRules();
       if (st === 6) return runRules();
+      if (st === 0) return droneRules();
       if (getn('styleVal') !== 1) return;
       if (getn('arpRange') < 40 || getn('arpRange') > 55) setv('arpRange', rint([40, 55]));   // in front, not shouting (75 peaked into the final clip; 62 still could: the user, "the arpeggio can be loud on spiral")
       if ([1, 4, 6].includes(getn('arpMoodSelect'))) setv('arpMoodSelect', rpick([0, 2, 3, 5, 7]));   // Pluck (13 of 13 liked in the taste logs: the spiral moves it too), Phase, Sweep, Accumulate, Euclid; not Dark, Acid or Mutate (4 of 10 liked in Spiral, the other moods 13 of 18)
@@ -2411,6 +2413,15 @@
     function syncStyleLabel() {                                               // Any says which style plays now
       const opt = document.querySelector('#styleSelect option[value="any"]');
       if (opt) opt.textContent = `Any · ${STYLE_NAMES[getn('styleVal')] || STYLE_NAMES[0]} now`;
+    }
+    // Drone, in Any: a little more of the noisy, percussive side (the user, 2026-10-30: "slightly more percussive... noise/wash type"; the
+    // taste logs, 374 marks: the Drone with hits 70 of 78 liked, without 70 of 84; the dark Noise burst 26 of 33 anywhere; a wash over 20
+    // 20 of 22): hits in about three Randoms of four (were 55%), the Noise burst the likeliest, a wash about half the time (was 30%), still
+    // 30 at most (it supports, never carries). A Type keeps its own hits (Float and Breath have none on purpose)
+    function droneRules() {
+      if (CHARACTERS[document.getElementById('characterSelect').value]) return;
+      if (!getn('hitTypeSelect') && !getn('industrialRange') && Math.random() < 0.45) setv('hitTypeSelect', rpick([4, 4, 2, 1]));
+      if (!getn('washRange') && Math.random() < 0.35) setv('washRange', rint([12, 30]));
     }
     function soundRules() {
       const rate = rhythmCutsPerSecond();
@@ -2594,7 +2605,7 @@
       let points = [], band = null, handles = [], linear = null;
       if (ch) {
         const pts = ch.points, last = pts.length - 1;
-        points = pts.map((p, k) => ({ k, name: k === 0 ? 'Start' : k === last ? 'End' : '', x: X(tAt(p.at)), y: yOfMs(p.ms), ms: Math.round(p.ms), pic: picMs(p.ms), sec: tAt(p.at) / 30 }));
+        points = pts.map((p, k) => ({ k, name: k === 0 ? 'Start' : k === last ? 'End' : '', x: X(tAt(p.at)), y: yOfMs(p.ms), ms: Math.round(p.ms), pic: picMs(p.ms), sec: tAt(p.at) / 30, cut: Math.min(pic.length - 1, Math.floor(p.at * (pic.length - 1) + 1e-3) + 1) }));
         band = { left: points[0].x / 10, width: Math.max(0, points[last].x - points[0].x) / 10 };
         for (let k = 0; k < last; k++) {                                    // a handle on each change (none where two points share a speed: nothing to shape)
           if (Math.abs(Math.log(pts[k + 1].ms) - Math.log(pts[k].ms)) < 1e-6) continue;
@@ -2828,11 +2839,31 @@
         const k = rsDrag.point, last = pts.length - 1;
         if (!pts[k]) return;
         const lo = k === 0 ? 0 : pts[k - 1].at + POINT_GAP, hi = k === last ? 1 : pts[k + 1].at - POINT_GAP;
-        pts[k].at = Math.max(lo, Math.min(hi, shareAt(u)));
         pts[k].ms = Math.round(clampMs(msOfY(pct)));
+        pts[k].at = pointUnder(u, pts, k, lo, hi, ch);
       }
       setPoints(pts);
       updateRhythm();
+    }
+    // where a dragged point goes: moving it changes how long the cuts around it last, so the film's length and the lane's scale change
+    // with it; read against the lane as it was, the point slid away from the pointer and was hard to drop on the right picture (the user,
+    // 2026-10-30). So it is placed where it lands under the pointer once the film is redrawn with it there (a bisection, as the curve's
+    // handle is solved), and on a picture cut: it starts the change on that picture, never between two
+    function pointUnder(u, pts, k, lo, hi, ch) {
+      const m = rsModel, nCuts = m ? m.ticks.length : 0;
+      if (!m || !nCuts) return Math.max(lo, Math.min(hi, shareAt(u)));
+      const mult = m.mult || 1, bpm = k === 0 ? Math.max(BPM_RANGE[0], Math.min(BPM_RANGE[1], Math.round(60000 / pts[0].ms))) : bpmValue();
+      const xOf = at => {                                                   // the point's place (0-1 of the lane) in the film drawn with it at `at`
+        const cc = { ...ch, points: pts.map((p, j) => (j === k ? { ...p, at } : p)) }, base = baseStarts(m.nBase, bpm, cc, m.nMusic);
+        const total = subdivideStarts(base, mult, nCuts)[nCuts], x = Math.max(0, Math.min(1, at)) * m.nMusic, i = Math.min(m.nBase - 1, Math.floor(x));
+        return Math.min(total, base[i] + (x - i) * (base[i + 1] - base[i])) / total;
+      };
+      u = Math.max(0, Math.min(1, u));
+      let a = lo, b = hi;
+      if (xOf(lo) >= u) b = lo; else if (xOf(hi) <= u) a = hi;
+      else for (let i = 0; i < 22; i++) { const c = (a + b) / 2; if (xOf(c) < u) a = c; else b = c; }
+      const j = Math.floor(((a + b) / 2) * nCuts), on = [j, j + 1].map(c => Math.max(lo, Math.min(hi, c / nCuts)));   // picture cut j starts at share j / nCuts
+      return Math.abs(xOf(on[0]) - u) <= Math.abs(xOf(on[1]) - u) ? on[0] : on[1];   // the cut that lands nearer the pointer
     }
     function rsPointUp() {
       if (!rsDrag) return;
@@ -2847,7 +2878,7 @@
       const h = m && rsDrag && rsDrag.curve !== undefined ? m.handles.find(q => q.k === rsDrag.curve) : null;
       tip.hidden = !(p || h); g.hidden = !p;
       if (p) {
-        tip.innerHTML = `<b>${p.name || 'Point'} · ${p.sec.toFixed(1)} s</b><span>${p.ms} ms · ${Math.round(60000 / p.ms)} BPM</span>${m.mult !== 1 ? `<span class="pic">pictures ${p.pic} ms</span>` : ''}`;
+        tip.innerHTML = `<b>${p.name || 'Point'} · ${p.sec.toFixed(1)} s · cut ${p.cut}</b><span>${p.ms} ms · ${Math.round(60000 / p.ms)} BPM</span>${m.mult !== 1 ? `<span class="pic">pictures ${p.pic} ms</span>` : ''}`;
         tip.style.left = `${p.x / 10}%`; tip.style.top = `${p.y}%`; tip.classList.toggle('left', p.x > 700);
         g.querySelector('.gx').style.cssText = `top:${p.y}%;width:${p.x / 10}%`;
         g.querySelector('.gy').style.cssText = `left:${p.x / 10}%;top:${p.y}%`;

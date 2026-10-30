@@ -2314,6 +2314,14 @@ test('Hypnotic\'s Random: no hits (no kick), little pump, no echo, no layers; Si
 // ---------- several points of speed on the timeline (2026-10-30, the user: "multi curves, going up and down") ----------
 
 const WAVE = [{ at: 0.2, ms: 100, curve: 0 }, { at: 0.4, ms: 800, curve: 0 }, { at: 0.6, ms: 800, curve: 0 }, { at: 0.8, ms: 100, curve: 0.5 }];
+// a dragged point lands on a picture cut, the one nearest the pointer in the film as redrawn with it there
+function underPointer(h, k, px) {
+  const m = clean(h.run('rhythmStripModel(activePlates().length)')), n = m.ticks.length, at = clean(h.run('changeParams().points'))[k].at;
+  const j = Math.round(at * n), edges = m.ticks.concat([1000]);
+  if (Math.abs(at * n - j) > 1e-3) return false;                               // on a cut
+  const x = m.points[k].x, prev = edges[Math.max(0, j - 1)], next = edges[Math.min(n, j + 1)];
+  return Math.abs(x - edges[j]) < 0.5 && px >= prev - 0.5 && px <= next + 0.5;   // within a cut of the pointer
+}
 async function timelineWith(n = 24) {
   const r = baseRoutes();
   r['/api/state'] = { plates: Array.from({ length: n }, (_, i) => mkPlate('p' + i)) };
@@ -2438,16 +2446,38 @@ test('adding a point: a click on the line puts one there at the speed there, the
   assert.equal(h.$('rsHover').hidden, true);
 });
 
+test('a dragged point stays under the pointer while the film around it stretches, and drops on a picture cut (the user: hard to drop on the right frame); the tip names the cut', async () => {
+  const h = await timelineWith(40);
+  h.$('repeatSelect').value = '4';
+  setPts(h, [{ at: 0.4, ms: 84, curve: 0 }, { at: 1, ms: 1500, curve: 0.3 }]);   // the user's film: 84 ms, then slowing to 1.5 s
+  h.run('updateRhythm()');
+  const y = ms => h.run(`yOfMs(${ms})`);
+  h.ctx.rsPointDown({ point: 0 }, lev(0, 0));
+  for (const px of [380, 300, 220, 150, 90, 260, 410, 500]) {                     // to the left the slow part grows: the film lengthens, the lane rescales
+    h.ctx.rsPointMove(lev(px, y(84)));
+    assert.ok(underPointer(h, 0, px), `under the pointer at ${px}: point at ${clean(h.run('rhythmStripModel(40)')).points[0].x}`);
+    const tip = h.$('rsTip').innerHTML, cut = Math.round(clean(h.run('changeParams().points'))[0].at * 160) + 1;
+    assert.ok(tip.includes(`cut ${cut}`), `the tip names its cut: ${tip}`);
+  }
+  h.ctx.rsPointUp();
+  assert.equal(h.$('bpmInput').value, '714', 'only where it is moved, not its speed');
+  // moving the pointer back to where it was gives the same cut: no drift
+  const at = clean(h.run('changeParams().points'))[0].at;
+  h.ctx.rsPointDown({ point: 0 }, lev(0, 0)); h.ctx.rsPointMove(lev(clean(h.run('rhythmStripModel(40)')).points[0].x, y(84))); h.ctx.rsPointUp();
+  assert.ok(Math.abs(clean(h.run('changeParams().points'))[0].at - at) < 1e-6, 'dropped where it already was: it stays');
+});
+
 test('dragging points: each between its neighbours, up or down its speed (the first is the tempo); each change\'s curve on its own handle', async () => {
   const h = await timelineWith();
   setPts(h, [{ at: 0.2, ms: 100, curve: 0 }, { at: 0.5, ms: 800, curve: 0 }, { at: 0.8, ms: 800, curve: 0 }]);
   const y = ms => h.run(`yOfMs(${ms})`), xOf = share => h.run(`rsModel.tAt(${share}) / rsModel.total * 1000`);
   const drag = (what, x, yy) => { h.ctx.rsPointDown(what, lev(0, 0)); h.ctx.rsPointMove(lev(x, yy)); h.ctx.rsPointUp(); };
   // the last point up to 100 ms: slow down, hold, speed up again
-  drag({ point: 2 }, xOf(0.9), y(100));
+  const px = xOf(0.9);
+  drag({ point: 2 }, px, y(100));
   let p = ptsOf(h);
   assert.equal(p[2].ms, 100);
-  assert.ok(Math.abs(p[2].at - 0.9) < 0.01, `where it was dropped: ${p[2].at}`);
+  assert.ok(underPointer(h, 2, px), `drawn where it was dropped (the film got shorter: read against the old lane it went elsewhere): ${p[2].at}`);
   const ys = clean(h.run('rhythmStripModel(24)').curve).map(([, v]) => v), top = ys.indexOf(Math.max(...ys));
   assert.ok(top > 10 && top < 190 && ys[0] < ys[top] - 20 && ys.at(-1) < ys[top] - 20, 'the line goes down (slower) and comes back up');
   assert.equal(h.run('history.at(-1).label'), "the change's End", 'one undo step, named');

@@ -750,13 +750,19 @@ test('the timeline is the rhythm control: drag or type the tempo and the Multipl
   let e = await page.locator('#rsEnd').boundingBox();
   await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2); await page.mouse.down();
   await page.mouse.move(lane.x + lane.width * 0.85, lane.y + lane.height * 0.9, { steps: 8 });
-  assert.match(await text('#rsTip'), /^End · [\d.]+ s\s*\d+ ms · \d+ BPM\s*pictures \d+ ms$/);
+  assert.match(await text('#rsTip'), /^End · [\d.]+ s · cut \d+\s*\d+ ms · \d+ BPM\s*pictures \d+ ms$/);
   await page.mouse.up();
   assert.equal(await page.locator('#rsTip').isVisible(), false);
   const end = +(await val('endMsRange'));
   assert.ok(Math.abs(end - 1068) < 35, `End dragged 90% down the log scale is ~1068 ms: ${end}`);   // a pixel's rounding is ~2% on a log scale
   const endBox = await page.locator('#rsEnd').boundingBox();
-  assert.ok(Math.abs(endBox.x + endBox.width / 2 - (lane.x + lane.width * 0.85)) < 12, 'the point sits under the pointer');
+  {                                                                              // the point sits on the picture cut nearest the pointer: within a cut of it
+    const cuts = (await page.evaluate(() => document.getElementById('rsTicks').getAttribute('d').match(/M[\d.]+/g).map(m => +m.slice(1)))).concat([1000]);
+    const px = endBox.x + endBox.width / 2, at = ((px - lane.x) / lane.width) * 1000, j = cuts.findIndex(c => Math.abs(c - at) < 3);
+    assert.ok(j >= 0, `the point is on a cut: ${at.toFixed(1)}`);
+    const want = 850, near = Math.max(cuts[j] - (cuts[j - 1] ?? cuts[j]), (cuts[j + 1] ?? cuts[j]) - cuts[j]);
+    assert.ok(Math.abs(at - want) <= near + 3, `the point sits under the pointer, within a cut: ${at.toFixed(1)} vs ${want} (a cut ${near.toFixed(1)})`);
+  }
   // drag Start up: faster, and it is the tempo
   e = await page.locator('#rsStart').boundingBox();
   await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2); await page.mouse.down();
@@ -802,6 +808,39 @@ test('the timeline is the rhythm control: drag or type the tempo and the Multipl
   await ctx.close();
 });
 
+test('dragging a point while it plays: the film around it stretches, the point stays on the cut under the mouse at every step, and the tip names that cut (the user: hard to drop on the right frame)', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945, setup: st => { for (let i = 0; i < 37; i++) { const f = `w${i}`; st.plates.push({ ...st.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` }); st.sequences[0].order.push(f); } } });
+  await film();
+  await page.evaluate(() => { const set = (id, v) => { document.getElementById(id).value = v; }; set('invertSelect', 'off'); set('repeatSelect', '4'); document.getElementById('followCuts').checked = false; updateFx(); });
+  await mult('1'); await tempo(714);
+  await change({ from: 0.45, to: 1, end: 1500, curve: 0.3 });                    // the user's film: 84 ms cuts, then slowing to 1.5 s
+  await page.waitForFunction(() => !document.getElementById('rsEnd').hidden);
+  await page.click('#playBtn');
+  const lane = await page.locator('#rsSpeed').boundingBox(), s = await page.locator('#rsStart').boundingBox();
+  const cy = s.y + s.height / 2;
+  await page.mouse.move(s.x + s.width / 2, cy); await page.mouse.down();
+  const n = await page.evaluate(() => document.getElementById('rsTicks').getAttribute('d').match(/M/g).length);
+  for (const u of [0.4, 0.3, 0.2, 0.12, 0.25, 0.5]) {                           // left: the slow part grows, the lane rescales under the mouse
+    await page.mouse.move(lane.x + lane.width * u, cy, { steps: 6 });
+    const r = await page.evaluate(() => {
+      const cuts = document.getElementById('rsTicks').getAttribute('d').match(/M[\d.]+/g).map(m => +m.slice(1)).concat([1000]);
+      const b = document.getElementById('rsStart').getBoundingClientRect(), l = document.getElementById('rsSpeed').getBoundingClientRect();
+      return { cuts, x: ((b.x + b.width / 2 - l.x) / l.width) * 1000, tip: document.getElementById('rsTip').textContent, from: +document.getElementById('changeFrom').value };
+    });
+    const j = r.cuts.findIndex(c => Math.abs(c - r.x) < 2);
+    assert.ok(j >= 0, `on a cut at ${u}: ${r.x.toFixed(1)}`);
+    const near = Math.max(r.cuts[j] - (r.cuts[j - 1] ?? r.cuts[j]), (r.cuts[j + 1] ?? r.cuts[j]) - r.cuts[j]);
+    assert.ok(Math.abs(r.x - u * 1000) <= near + 2, `under the mouse at ${u}: ${r.x.toFixed(1)} (a cut ${near.toFixed(1)})`);
+    assert.ok(r.tip.includes(`cut ${Math.round(r.from * n) + 1}`), `the tip names the cut: ${r.tip} (${r.from} of ${n})`);
+  }
+  await page.mouse.up();
+  assert.ok(Math.abs(+(await page.evaluate(() => document.getElementById('changeFrom').value)) * n - Math.round(+(await page.evaluate(() => document.getElementById('changeFrom').value)) * n)) < 1e-3, 'dropped on a cut');
+  const bpm = +(await page.evaluate(() => document.getElementById('bpmInput').value));
+  assert.ok(Math.abs(bpm - 714) < 714 * 0.03, `its speed as it was, give or take a pixel up or down: ${bpm}`);
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('several points on the timeline: click the line to add one, drag it up and down, shape each change on its own; Delete and Undo; it plays, exports and comes back', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945, setup: st => { for (let i = 0; i < 37; i++) { const f = `w${i}`; st.plates.push({ ...st.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` }); st.sequences[0].order.push(f); } } });
   await film();
@@ -839,7 +878,7 @@ test('several points on the timeline: click the line to add one, drag it up and 
   let e = await page.locator('#rsEnd').boundingBox();
   await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2); await page.mouse.down();
   await page.mouse.move(lane.x + lane.width * 0.85, lane.y + lane.height * 0.1, { steps: 8 });
-  assert.match(await text('#rsTip'), /^End · [\d.]+ s\s*\d+ ms · \d+ BPM/);
+  assert.match(await text('#rsTip'), /^End · [\d.]+ s · cut \d+\s*\d+ ms · \d+ BPM/);
   await page.mouse.up();
   let p = await pts();
   assert.ok(p[2].ms < 100 && p[1].ms === 800, `down to 800 ms, back up to ${p[2].ms} ms`);
