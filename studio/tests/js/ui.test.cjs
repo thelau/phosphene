@@ -2216,14 +2216,17 @@ test('Style: Spiral\'s Random keeps the sequence in front (on properly, a mood t
   const h = await playerWith();
   const n = id => +h.$(id).value;
   h.$('styleSelect').value = '1';
+  let pluck = 0;
   for (let i = 0; i < 200; i++) {
     h.run('randomMusic()');
     assert.ok(n('arpRange') >= 40 && n('arpRange') <= 62, `the sequence is on properly, not shouting: ${n('arpRange')}`);
-    assert.ok([2, 3, 4, 5, 7].includes(n('arpMoodSelect')), `a mood that moves: ${n('arpMoodSelect')}`);
+    assert.ok([0, 2, 3, 4, 5, 7].includes(n('arpMoodSelect')), `Pluck or a mood that moves, never Dark or Acid: ${n('arpMoodSelect')}`);
+    if (n('arpMoodSelect') === 0) pluck++;
     assert.deepEqual([n('choirRange'), n('industrialRange')], [0, 0]);
     assert.ok(n('hitRange') <= 30 && n('padRange') <= 30 && n('washRange') <= 20 && n('spaceRange') >= 45);
     assert.equal(n('styleVal'), 1, 'Random sound stays in the style chosen');
   }
+  assert.ok(pluck > 30, `Spiral plays Pluck too (the taste logs: 13 of 13 liked), ${pluck} of 200`);
   assert.equal(h.run('synthParams()').style, 1);
   h.run('saveSettings()');
   assert.equal(savedOf(h.store).styleSelect, '1');
