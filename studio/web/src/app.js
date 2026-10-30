@@ -1667,10 +1667,10 @@
       if (key === ' ') { e.preventDefault(); if (mode === 'curate' && !miniOpen) toggleMini(true); togglePlay(); return; }
       if (key === 't') { e.preventDefault(); flash(mode === 'film' ? 'targetBtn' : 'gridTargetBtn'); toggleReticle(); return; }
       if (key === '?') { e.preventDefault(); toggleKeys(); return; }
-      if (key === 'Escape') { document.getElementById('keysPanel').hidden = true; if (pickSel.size || trashSel.size) clearPicks(); if (rsSel) { rsSel = null; renderRhythmStrip(); } return; }
+      if (key === 'Escape') { document.getElementById('keysPanel').hidden = true; if (pickSel.size || trashSel.size) clearPicks(); if (rsSel !== null) { rsSel = null; renderRhythmStrip(); } return; }
       // the tab's own
       if (mode === 'film') {
-        if ((key === 'Delete' || key === 'Backspace') && rsSel) { removeChange(); return; }      // a selected point of the change: the change goes (never an image)
+        if ((key === 'Delete' || key === 'Backspace') && rsSel !== null) { removeChange(); return; }      // a selected point of the speed goes (never an image)
         if (FILM_KEYS[key]) { e.preventDefault(); FILM_KEYS[key](); }
       }
     }
@@ -1951,27 +1951,63 @@
       const span = starts[lo + 1] - starts[lo];
       return [lo, span > 0 ? (t - starts[lo]) / span : 0];
     }
-    // ---- the rhythm: one tempo, and at most one change of speed, both set on the timeline ----
-    // The tempo is the music's cut length (60000 / BPM ms) and the speed until a change. A change runs from the tempo at `from` to end_ms at
-    // `to` (both a share of the film's music cuts, so a point stays on its image while the speeds move), eased by `curve` (0: an even,
-    // geometric change, each cut a constant ratio of the one before, as the references slow down; 1: it waits and then changes sharply).
+    // ---- the rhythm: one tempo, and points of speed, all set on the timeline ----
+    // The tempo is the music's cut length (60000 / BPM ms) and the speed until the first point. Points (`at` a share of the film's music
+    // cuts, so a point stays on its image while the speeds move; `ms` its speed) are joined by changes, each eased by its own `curve` (0: an
+    // even, geometric change, each cut a constant ratio of the one before, as the references slow down; 1: it waits and then changes
+    // sharply), so the speed can go up and down. The first point is the tempo; after the last the film holds its speed. The first change
+    // lives in changeFrom / changeTo / endMsRange / curveVal (as before there could be more), the points after it in morePoints (JSON).
     const BPM_RANGE = [40, 1200], MS_RANGE = [50, 1500];                     // the same span both ways: 1500 to 50 ms
     const clampMs = ms => Math.min(MS_RANGE[1], Math.max(MS_RANGE[0], ms));
+    const MAX_POINTS = 12, POINT_GAP = 0.02;                                 // points never closer than 2% of the film's music cuts (Start and End's gap)
     function rhythmMode() { return document.getElementById('rhythmSelect').value === 'variable' ? 'variable' : 'flat'; }
     function changeParams() {
       if (rhythmMode() !== 'variable') return null;
       const num = (id, d) => { const v = parseFloat(document.getElementById(id).value); return Number.isFinite(v) ? v : d; };
+      const cv = c => Math.min(1, Math.max(0, Number.isFinite(+c) ? +c : 0));
       const from = Math.min(0.98, Math.max(0, num('changeFrom', 0.6))), to = Math.min(1, Math.max(from + 0.02, num('changeTo', 1)));
-      return { from, to, end_ms: Math.round(clampMs(num('endMsRange', 600))), curve: Math.min(1, Math.max(0, num('curveVal', 0))) };
+      const points = [{ at: from, ms: 60000 / bpmValue(), curve: 0 }, { at: to, ms: Math.round(clampMs(num('endMsRange', 600))), curve: cv(num('curveVal', 0)) }];
+      let more = [];
+      try { more = JSON.parse(document.getElementById('morePoints').value || '[]'); } catch (e) { more = []; }
+      for (const q of Array.isArray(more) ? more : []) {                    // kept in order and apart; anything odd is left out
+        const at = +(q && q.at), ms = +(q && q.ms), last = points[points.length - 1];
+        if (points.length >= MAX_POINTS || !Number.isFinite(at) || !Number.isFinite(ms) || at > 1 || at < last.at + POINT_GAP - 1e-3) continue;
+        points.push({ at, ms: Math.round(clampMs(ms)), curve: cv(q.curve) });
+      }
+      const end = points[points.length - 1];
+      return { from, to: end.at, end_ms: end.ms, curve: points[1].curve, points };
+    }
+    // a change's points: its own, or (a change written as before) its start at the tempo and its end
+    function pointsOf(change, bpm) {
+      const start = 60000 / bpm;
+      const pts = change.points ? change.points.map(p => ({ ...p })) : [{ at: change.from, ms: start, curve: 0 }, { at: change.to, ms: change.end_ms, curve: change.curve }];
+      pts[0].ms = start;
+      return pts;
+    }
+    // the points written back to the controls: one point (or none) is one speed
+    function setPoints(pts) {
+      pts = pts.slice(0, MAX_POINTS);
+      if (pts.length) setv('bpmInput', Math.round(Math.min(BPM_RANGE[1], Math.max(BPM_RANGE[0], 60000 / clampMs(pts[0].ms)))));
+      if (pts.length < 2) { setv('rhythmSelect', 'flat'); setv('morePoints', '[]'); return; }
+      setv('rhythmSelect', 'variable');
+      setv('changeFrom', +pts[0].at.toFixed(4)); setv('changeTo', +pts[1].at.toFixed(4));
+      setv('endMsRange', Math.round(clampMs(pts[1].ms))); setv('curveVal', +(+pts[1].curve || 0).toFixed(3));
+      setv('morePoints', JSON.stringify(pts.slice(2).map(p => ({ at: +p.at.toFixed(4), ms: Math.round(clampMs(p.ms)), curve: +(+p.curve || 0).toFixed(3) }))));
     }
     const easeChange = (u, curve) => Math.pow(Math.min(1, Math.max(0, u)), 1 + 4 * curve);
     // the music cut length (ms) at a point of the film, x a share of its music cuts
     function msAtShare(x, bpm, change) {
       const start = 60000 / bpm;
-      if (!change || x <= change.from) return start;
-      if (x >= change.to) return change.end_ms;
-      const e = easeChange((x - change.from) / (change.to - change.from), change.curve);
-      return Math.exp(Math.log(start) + (Math.log(change.end_ms) - Math.log(start)) * e);
+      if (!change) return start;
+      const pts = change.points || [{ at: change.from, ms: start }, { at: change.to, ms: change.end_ms, curve: change.curve }];
+      if (x <= pts[0].at) return start;
+      const last = pts[pts.length - 1];
+      if (x >= last.at) return last.ms;
+      let i = 0;
+      while (i < pts.length - 2 && x >= pts[i + 1].at) i++;
+      const a = pts[i], b = pts[i + 1], s = i === 0 ? start : a.ms;
+      const e = easeChange((x - a.at) / Math.max(1e-9, b.at - a.at), b.curve);
+      return Math.exp(Math.log(s) + (Math.log(b.ms) - Math.log(s)) * e);
     }
     // the music's cut length at a moment of the film (frames), for this change: the share of the music cuts reached by then, then its speed
     function msAtFrame(t, nBase, nMusic, bpm, change, base) {
@@ -2013,7 +2049,7 @@
       const bpm = bpmValue();
       const follow = followCuts();
       const ch = changeParams();
-      const key = `${nCuts}|${paired}|${mult}|${bpm}|${ch ? `${ch.from}|${ch.to}|${ch.end_ms}|${ch.curve}` : 'flat'}|${follow}`;
+      const key = `${nCuts}|${paired}|${mult}|${bpm}|${ch ? JSON.stringify(ch.points) : 'flat'}|${follow}`;
       if (timelineCache.key !== key) {
         const nBase = Math.max(1, Math.ceil(nCuts / Math.max(0.05, mult) - 1e-9));
         const nMusic = nCuts / Math.max(0.05, mult), base = baseStarts(nBase, bpm, ch, nMusic);
@@ -2190,7 +2226,7 @@
     }
     function changeName(before, after) {
       let ids = Object.keys(after).filter(id => after[id] !== before[id]);
-      if (ids.some(id => ['rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal'].includes(id))) return 'the change of speed';
+      if (ids.some(id => ['rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints'].includes(id))) return 'the change of speed';
       if (ids.length === 1 && ids[0] === 'bpmInput') return 'the tempo';
       if (ids.length === 1 && ids[0] === 'multSelect') return 'the Multiple';
       if (ids.length !== 1) return 'the settings';
@@ -2227,13 +2263,13 @@
       setv('bpmInput', Math.round(Math.min(BPM_RANGE[1], Math.max(BPM_RANGE[0], 60000 / startMs))));
       setv('endMsRange', Math.round(clampMs(endMs) / 10) * 10);
       setv('changeFrom', at === 'start' ? 0 : +(1 - share).toFixed(4)); setv('changeTo', at === 'start' ? +share.toFixed(4) : 1);
-      setv('curveVal', curve);
+      setv('curveVal', curve); setv('morePoints', '[]');
     }
     // the tempo lock: Random keeps the tempo and adds no change (the tempo is the change's start); the Multiple still rolls
     function applyRhythm(r) {
       setv('multSelect', rpick(r.mult));
-      if (document.getElementById('bpmLock').checked) { setv('rhythmSelect', 'flat'); return; }
-      if (r.mode === 'flat') { setv('rhythmSelect', 'flat'); setv('bpmInput', rint(r.bpm)); }
+      if (document.getElementById('bpmLock').checked) { setv('rhythmSelect', 'flat'); setv('morePoints', '[]'); return; }
+      if (r.mode === 'flat') { setv('rhythmSelect', 'flat'); setv('morePoints', '[]'); setv('bpmInput', rint(r.bpm)); }
       else setChange(rint(r.start), rint(r.end), rint(r.ramp), Array.isArray(r.at) ? rpick(r.at) : r.at, rpick([0, 0, 0.15, 0.3]));
     }
     // settings from before the timeline (Flat / Variable with Start, End, Change over and Change at): the same film on the timeline
@@ -2246,6 +2282,7 @@
       if (o && ['2', '3', '4'].includes(String(o.styleVal))) o.styleVal = '0';              // Tide, Signal and Lyric are gone: the drone
       if (o && ['2', '3', '4'].includes(String(o.styleSelect))) o.styleSelect = 'any';
       if (o && String(o.modeSelect) === '4') o.modeSelect = '0';                           // and the Major mode that came with Lyric
+      if (o && 'rhythmSelect' in o && !('morePoints' in o)) o.morePoints = '[]';           // a film from before several points: its one change
       if (!o || !('startMsRange' in o || 'rampRange' in o || 'atSelect' in o)) return o;
       if (o.rhythmSelect === 'variable') {
         const start = parseFloat(o.startMsRange) || 100, ramp = parseInt(o.rampRange, 10) || 12, n = baseCount(o.multSelect) || 60;
@@ -2263,6 +2300,7 @@
     function randomRhythm(quiet) {
       if (quiet !== true) rememberForUndo();
       if (Math.random() < 0.55) applyRhythm({ mode: 'flat', bpm: [60, 200], mult: ['0.5', '1', '1', '2', '2', '3', '4'] });   // a steady tempo
+      else if (Math.random() < 0.3 && !document.getElementById('bpmLock').checked) randomWave();   // now and then there and back
       else {
         const slowing = Math.random() < 0.5;
         applyRhythm({ mode: 'variable', start: slowing ? [60, 200] : [300, 900], end: slowing ? [300, 900] : [60, 200], ramp: [6, 20], at: Math.random() < 0.7 ? 'end' : 'start', mult: ['1', '1', '2', '2', '3'] });
@@ -2270,6 +2308,13 @@
       document.getElementById('followCuts').checked = Math.random() < 0.15;
       refreshVideo(quiet === true);
       if (quiet !== true) commitSettings('Random rhythm');
+    }
+    // there and back: fast, slower through the middle, fast again (or slow, faster, slow), each change even or eased
+    function randomWave() {
+      setv('multSelect', rpick(['1', '1', '2', '2', '3']));
+      const slowMid = Math.random() < 0.5, fast = rint([60, 200]), slow = rint([300, 900]), out = slowMid ? fast : slow, mid = slowMid ? slow : fast;
+      const a = 0.05 + Math.random() * 0.15, b = 0.35 + Math.random() * 0.15, c = b + 0.05 + Math.random() * 0.15, d = 0.8 + Math.random() * 0.2;
+      setPoints([{ at: a, ms: out, curve: 0 }, { at: b, ms: mid, curve: rpick([0, 0.15, 0.3]) }, { at: c, ms: mid, curve: 0 }, { at: d, ms: out, curve: rpick([0, 0.15, 0.3]) }]);
     }
     // a random look: invert and zoom
     function randomLook(quiet) {
@@ -2289,7 +2334,7 @@
     function rhythmCutsPerSecond() {
       const follow = document.getElementById('followCuts').checked ? (parseFloat(document.getElementById('multSelect').value) || 1) : 1;
       const ch = changeParams();
-      if (ch) return (1000 / ((60000 / bpmValue() + ch.end_ms) / 2)) * follow;
+      if (ch) return (1000 / (ch.points.reduce((a, p) => a + p.ms, 0) / ch.points.length)) * follow;   // the mean of the points' speeds (one change: of its two ends)
       return (bpmValue() / 60) * follow;
     }
     // the sound matched to the speed: fast cuts get a slow arpeggio, sparse hits and a drier room; slow cuts get busier notes, every-cut hits and a big room
@@ -2440,7 +2485,7 @@
     function paceChanges() {
       if (!getn('progSelect')) return;
       const follow = followCuts() ? (parseFloat(document.getElementById('multSelect').value) || 1) : 1, ch = changeParams();
-      const fast = (1000 / Math.min(60000 / bpmValue(), ch ? ch.end_ms : Infinity)) * follow;
+      const fast = (1000 / Math.min(60000 / bpmValue(), ...(ch ? ch.points.map(p => p.ms) : []))) * follow;
       const every = [2, 4, 8, 16], ok = every.map((n, i) => [n, i]).filter(([n]) => n / fast >= 3);
       if (!ok.length) { setv('progSelect', 0); return; }
       const want = Math.log(fast * (3 + 3 * Math.random()));
@@ -2528,34 +2573,35 @@
     }
     // ---- the timeline: the whole film in time, from the same timeline the player and the export use ----
     // Lanes: a tick per picture cut (click to jump), the speed (the music's cut length on a log scale, 50 ms at the top: higher is faster;
-    // the tempo before any change; one change at most, its Start and End dragged anywhere, its curve shaped by the handle), the music's
-    // cuts as blue dots, a seconds ruler (click to jump). Only the line itself takes a click in the speed lane, so a jump never edits.
+    // the tempo before the first point; points dragged anywhere, each change between two of them shaped by its handle), the music's
+    // cuts as blue dots, a seconds ruler (click to jump). Only the line itself takes a click in the speed lane (a click adds a point there),
+    // so a jump never edits.
     const SPEED_GRID = [100, 250, 500, 1000];                               // ms (600, 240, 120 and 60 BPM)
     const yOfMs = ms => ((Math.log(clampMs(ms)) - Math.log(MS_RANGE[0])) / (Math.log(MS_RANGE[1]) - Math.log(MS_RANGE[0]))) * 100;
     const msOfY = pct => Math.exp(Math.log(MS_RANGE[0]) + Math.max(0, Math.min(1, pct / 100)) * (Math.log(MS_RANGE[1]) - Math.log(MS_RANGE[0])));
-    let rsSel = null;                                                        // the selected point: 'start', 'end' or null
-    let rsDrag = null, curvePinX = null;   // curvePinX: where across the lane (0-1) the curve handle was grabbed, while it is dragged                                                       // what is being dragged: 'start', 'end', 'curve' or null
+    let rsSel = null;                                                        // the selected point: its index, or null
+    let rsDrag = null, curvePinX = null;   // what is dragged: { point: k } or { curve: k } (the change from point k to k + 1), or null; curvePinX: where across the lane (0-1) a curve's handle was grabbed
+    const dragsPoint = k => !!rsDrag && rsDrag.point === k, dragsCurve = k => !!rsDrag && rsDrag.curve === k;
     function rhythmStripModel(n) {
       if (!n) return null;
       const r = rhythmFor(n), pic = r.pic, base = r.base, nBase = r.nBase, nMusic = r.nMusic, total = pic[pic.length - 1];
       const X = f => Math.min(1000, (f / total) * 1000);
-      const lens = pic.slice(1).map((v, i) => v - pic[i]);
       const bpm = bpmValue(), ch = changeParams(), mult = parseFloat(document.getElementById('multSelect').value) || 1;
       const tAt = share => { const x = Math.max(0, Math.min(1, share)) * nMusic, i = Math.min(nBase - 1, Math.floor(x)); return Math.min(total, base[i] + (x - i) * (base[i + 1] - base[i])); };
       const curve = [];                                                     // the speed itself, through the points (the ticks show where the cuts fall)
       for (let k = 0; k <= 200; k++) { const share = k / 200; curve.push([X(tAt(share)), yOfMs(msAtShare(share, bpm, ch))]); }
       const picMs = ms => Math.round(Math.max(1000 / 30, ms / mult));       // what the picture does: with a Multiple, its cuts are shorter
-      let points = [], band = null, handle = null, linear = null;
+      let points = [], band = null, handles = [], linear = null;
       if (ch) {
-        const s0 = 60000 / bpm, xs = X(tAt(ch.from)), xe = X(tAt(ch.to)), mid = ch.from + (ch.to - ch.from) / 2;
-        points = [
-          { id: 'start', name: 'Start', x: xs, y: yOfMs(s0), ms: Math.round(s0), pic: picMs(s0), sec: tAt(ch.from) / 30 },
-          { id: 'end', name: 'End', x: xe, y: yOfMs(ch.end_ms), ms: ch.end_ms, pic: picMs(ch.end_ms), sec: tAt(ch.to) / 30 },
-        ];
-        band = { left: xs / 10, width: Math.max(0, xe - xs) / 10 };
-        const ht = rsDrag === 'curve' && curvePinX != null ? curvePinX * total : (tAt(ch.from) + tAt(ch.to)) / 2;   // the change's visual middle; while shaped, where it was grabbed
-        handle = { x: X(ht), y: yOfMs(msAtFrame(ht, nBase, nMusic, bpm, ch, base)), curve: ch.curve, t: ht };
-        linear = [xs, points[0].y, xe, points[1].y];
+        const pts = ch.points, last = pts.length - 1;
+        points = pts.map((p, k) => ({ k, name: k === 0 ? 'Start' : k === last ? 'End' : '', x: X(tAt(p.at)), y: yOfMs(p.ms), ms: Math.round(p.ms), pic: picMs(p.ms), sec: tAt(p.at) / 30 }));
+        band = { left: points[0].x / 10, width: Math.max(0, points[last].x - points[0].x) / 10 };
+        for (let k = 0; k < last; k++) {                                    // a handle on each change (none where two points share a speed: nothing to shape)
+          if (Math.abs(Math.log(pts[k + 1].ms) - Math.log(pts[k].ms)) < 1e-6) continue;
+          const ht = dragsCurve(k) && curvePinX != null ? curvePinX * total : (tAt(pts[k].at) + tAt(pts[k + 1].at)) / 2;   // the change's visual middle; while shaped, where it was grabbed
+          handles.push({ k, x: X(ht), y: yOfMs(msAtFrame(ht, nBase, nMusic, bpm, ch, base)), curve: pts[k + 1].curve, t: ht });
+          if (dragsCurve(k)) linear = [points[k].x, points[k].y, points[k + 1].x, points[k + 1].y];
+        }
       }
       const paired = ['mono', 'colour'].includes(document.getElementById('invertSelect').value), round = n * (paired ? 2 : 1);
       const loops = [];                                                     // where the images start round again (Repeat)
@@ -2564,7 +2610,36 @@
       const sec = total / 30, step = sec <= 3 ? 0.5 : sec <= 8 ? 1 : sec <= 20 ? 2 : sec <= 60 ? 5 : 10;
       const axis = [];
       for (let t = 0; t <= sec + 1e-6; t += step) axis.push({ left: (t / sec) * 100, text: `${+t.toFixed(1)} s` });
-      return { total, ticks: pic.slice(0, -1).map(X), curve, points, band, handle, linear, beats, axis, mult, flatY: yOfMs(60000 / bpm), tAt, base, nBase, nMusic, loops };
+      return { total, ticks: pic.slice(0, -1).map(X), curve, points, band, handles, linear, beats, axis, mult, flatY: yOfMs(60000 / bpm), tAt, base, nBase, nMusic, loops };
+    }
+    // the points' and the handles' elements: Start, End and the first handle are in the page, the points between and the other handles
+    // are made when first needed and kept (a point keeps its element while dragged: its index never changes then)
+    const rsExtra = { points: [], labels: [], handles: [] };
+    function rsMake(kind) {
+      const lane = document.getElementById('rsSpeed'), d = document.createElement(kind === 'label' ? 'span' : 'button');
+      d.className = kind === 'point' ? 'rs-point' : kind === 'label' ? 'rs-plabel' : 'rs-curve';
+      d.hidden = true;
+      if (kind !== 'label') {
+        d.type = 'button';
+        d.setAttribute('aria-label', kind === 'point' ? 'A point of the speed: drag sideways for where, up or down for the speed' : 'The curve of this change: drag up or down');
+        rsListen(d, kind);
+      }
+      const ref = document.getElementById('rsRemove');                       // under the × and the tooltip
+      if (lane.insertBefore && ref.parentNode === lane) lane.insertBefore(d, ref); else lane.appendChild(d);
+      return d;
+    }
+    function rsPointEls(k, last) {
+      if (k === 0) return [document.getElementById('rsStart'), document.getElementById('rsStartL')];
+      if (k === last) return [document.getElementById('rsEnd'), document.getElementById('rsEndL')];
+      if (!rsExtra.points[k - 1]) { rsExtra.points[k - 1] = rsMake('point'); rsExtra.labels[k - 1] = rsMake('label'); }
+      return [rsExtra.points[k - 1], rsExtra.labels[k - 1]];
+    }
+    function rsListen(d, kind) {
+      d.addEventListener('pointerdown', e => rsPointDown(kind === 'curve' ? { curve: +d.dataset.k } : { point: +d.dataset.k }, e));
+      d.addEventListener('pointermove', rsPointMove);
+      d.addEventListener('pointerup', rsPointUp);
+      d.addEventListener('pointercancel', rsPointUp);
+      if (kind === 'point') d.addEventListener('focus', () => { if (!d.hidden) { rsSel = +d.dataset.k; renderRhythmStrip(); } });
     }
     let rsModel = null;
     function renderRhythmStrip() {
@@ -2574,9 +2649,9 @@
       if (!m) return;
       const f = x => x.toFixed(1);
       el('rsTicks').setAttribute('d', m.ticks.map(x => `M${f(x)} 4V22`).join(''));
-      const pts = m.curve.map(([x, y]) => `${f(x)},${f(y)}`).join(' ');
-      el('rsCurve').setAttribute('points', pts);
-      el('rsArea').setAttribute('points', `0,100 ${pts} 1000,100`);
+      const line = m.curve.map(([x, y]) => `${f(x)},${f(y)}`).join(' ');
+      el('rsCurve').setAttribute('points', line);
+      el('rsArea').setAttribute('points', `0,100 ${line} 1000,100`);
       el('rsBeats').setAttribute('d', m.beats.map(x => `M${f(x)} 7h0.01`).join(''));
       if (!el('rsGridLines').childElementCount) {                            // the grid never changes: drawn once
         el('rsGridLines').innerHTML = SPEED_GRID.map((ms, i) => `<i style="top:${yOfMs(ms)}%"></i><span style="top:${yOfMs(ms)}%">${Math.round(60000 / ms)}${i ? '' : ' BPM'}</span>`).join('');
@@ -2584,24 +2659,32 @@
       }
       el('rsBand').hidden = !m.band;
       if (m.band) { el('rsBand').style.left = `${m.band.left}%`; el('rsBand').style.width = `${m.band.width}%`; }
-      for (const [id, lab, k] of [['rsStart', 'rsStartL', 0], ['rsEnd', 'rsEndL', 1]]) {
-        const p = m.points[k], dot = el(id), l = el(lab);
-        dot.hidden = l.hidden = !p;
-        if (!p) continue;
+      const pts = m.points, last = pts.length - 1;
+      [el('rsStart'), el('rsStartL'), el('rsEnd'), el('rsEndL'), el('rsCurveHandle'), ...rsExtra.points, ...rsExtra.labels, ...rsExtra.handles].forEach(d => { d.hidden = true; });
+      pts.forEach((p, k) => {
+        const [dot, l] = rsPointEls(k, last);
+        dot.dataset.k = l.dataset.k = String(k);
+        dot.hidden = false;
         dot.style.left = l.style.left = `${p.x / 10}%`;
         dot.style.top = l.style.top = `${p.y}%`;
-        dot.classList.toggle('sel', rsSel === p.id);
-        l.textContent = `${p.name} ${p.ms} ms`;                              // the music's cut only: the picture's (with a Multiple) was noise here
-        l.className = `rs-plabel${(k === 1 ? p.x > 700 : p.x > 850) ? ' left' : ''}${p.y < 30 ? ' below' : ''}`;
-        l.hidden = rsDrag === p.id;                                            // the tooltip says it while dragging
-      }
-      const selP = m.points.find(p => p.id === rsSel);
+        dot.classList.toggle('sel', rsSel === k);
+        l.textContent = p.name ? `${p.name} ${p.ms} ms` : `${p.ms} ms`;     // the music's cut only: the picture's (with a Multiple) was noise here
+        l.className = `rs-plabel${(k === last && k > 0 ? p.x > 700 : p.x > 850) ? ' left' : ''}${p.y < 30 ? ' below' : ''}`;
+        // Start and End always say their speed; a point between says it when picked or with room around it (labels would pile up)
+        const roomy = (k === 0 || p.x - pts[k - 1].x > 90) && (k === last || pts[k + 1].x - p.x > 90);
+        l.hidden = dragsPoint(k) || !(p.name || rsSel === k || roomy);         // the tooltip says it while dragging
+      });
+      const selP = rsSel !== null ? pts[rsSel] : null;
       el('rsRemove').hidden = !selP || !!rsDrag;
       if (selP) { el('rsRemove').style.left = `clamp(10px, ${selP.x / 10}%, calc(100% - 10px))`; el('rsRemove').style.top = `${selP.y}%`; el('rsRemove').classList.toggle('below', selP.y < 40); }   // above the point (below near the top): never off the end
-      el('rsCurveHandle').hidden = !m.handle;
-      if (m.handle) { el('rsCurveHandle').style.left = `${m.handle.x / 10}%`; el('rsCurveHandle').style.top = `${m.handle.y}%`; el('rsCurveHandle').classList.toggle('dragging', rsDrag === 'curve'); }
+      m.handles.forEach((h, j) => {
+        const d = j === 0 ? el('rsCurveHandle') : (rsExtra.handles[j - 1] || (rsExtra.handles[j - 1] = rsMake('curve')));
+        d.dataset.k = String(h.k);
+        d.hidden = false;
+        d.style.left = `${h.x / 10}%`; d.style.top = `${h.y}%`; d.classList.toggle('dragging', dragsCurve(h.k));
+      });
       const lin = el('rsLinear');
-      lin.toggleAttribute('hidden', !(m.linear && rsDrag === 'curve'));         // an SVG element: the attribute, it has no .hidden
+      lin.toggleAttribute('hidden', !m.linear);                                 // an SVG element: the attribute, it has no .hidden
       if (m.linear) { lin.setAttribute('x1', f(m.linear[0])); lin.setAttribute('y1', f(m.linear[1])); lin.setAttribute('x2', f(m.linear[2])); lin.setAttribute('y2', f(m.linear[3])); }
       el('rsLoops').innerHTML = m.loops.map(x => `<i style="left:${x / 10}%"></i>`).join('');
       el('rsAxis').innerHTML = m.axis.map((a, i) => `<span style="left:${a.left}%"${i === 0 ? ' class="first"' : ''}>${a.text}</span>`).join('');
@@ -2630,53 +2713,91 @@
       return Math.min(1, (lo + Math.min(1, (t - b[lo]) / Math.max(1e-9, b[lo + 1] - b[lo]))) / m.nMusic);
     }
     const laneBox = () => document.getElementById('rsSpeed').getBoundingClientRect();
-    // the speed lane: near the line (no change yet) a click adds one; anywhere else a click only clears the selection
+    // the speed lane: near the line a click adds a point there (on one speed: a change, as before); anywhere else a click only clears the selection
     let rsHoverU = null;
     function rsLaneMove(e) {
       if (rsDrag || !rsModel) return;
-      const b = laneBox(), u = (e.clientX - b.left) / b.width, yPx = e.clientY - b.top;
-      const near = !changeParams() && u >= 0 && u <= 1 && Math.abs(yPx - (rsModel.flatY / 100) * b.height) < 10;
+      const b = laneBox(), u = (e.clientX - b.left) / b.width, yPx = e.clientY - b.top, m = rsModel, ch = changeParams();
+      const onControl = e.target && e.target.closest && e.target.closest('.rs-point, .rs-curve, .rs-x');   // a point is grabbed there, never added
+      const lineY = u >= 0 && u <= 1 ? (ch ? yOfMs(msAtFrame(u * m.total, m.nBase, m.nMusic, bpmValue(), ch, m.base)) : m.flatY) : null;
+      const near = lineY !== null && !onControl && !(ch && ch.points.length >= MAX_POINTS) && Math.abs(yPx - (lineY / 100) * b.height) < 10;
       rsHoverU = near ? u : null;
       const hv = document.getElementById('rsHover');
       hv.hidden = !near;
       document.getElementById('rsSpeed').classList.toggle('can-add', near);
       if (!near) return;
-      const x = `${u * 100}%`, y = `${rsModel.flatY}%`;
+      const x = `${u * 100}%`, y = `${lineY}%`;
       hv.querySelector('i').style.left = x;
       const dot = hv.querySelector('.rs-hover-dot'), tip = hv.querySelector('.rs-hover-tip');
       dot.style.left = tip.style.left = x; dot.style.top = tip.style.top = y;
-      tip.classList.toggle('above', rsModel.flatY > 50);
+      tip.textContent = ch ? 'Click to add a point' : 'Click to add a change';
+      tip.classList.toggle('above', lineY > 50);
     }
     function rsLaneLeave() { if (rsDrag) return; rsHoverU = null; document.getElementById('rsHover').hidden = true; document.getElementById('rsSpeed').classList.remove('can-add'); }
     function rsLaneClick(e) {
-      if (dragJustEnded || e.target.closest('.rs-point, .rs-curve, .rs-x')) return;   // the click that ends a drag is not a click
-      if (rsHoverU !== null && !changeParams()) { addChange(shareAt(rsHoverU)); rsLaneLeave(); return; }
-      if (rsSel) { rsSel = null; renderRhythmStrip(); }
+      if (rsDownOnControl || e.target.closest('.rs-point, .rs-curve, .rs-x')) return;   // the click that ends a drag is not a click
+      if (e.clientX !== undefined) rsLaneMove(e);                              // near the line or not, from the click itself (a move can arrive a frame late)
+      if (rsHoverU !== null) { const at = shareAt(rsHoverU); if (changeParams()) addPoint(at); else addChange(at); rsLaneLeave(); return; }
+      if (rsSel !== null) { rsSel = null; renderRhythmStrip(); }
     }
+    // on one speed: a change from there to 22% further, End at half the speed
     function addChange(share) {
       const from = Math.max(0, Math.min(0.85, share)), start = 60000 / bpmValue();
       setv('rhythmSelect', 'variable'); setv('changeFrom', +from.toFixed(4)); setv('changeTo', +Math.min(1, from + 0.22).toFixed(4));
-      setv('endMsRange', Math.round(clampMs(start * 2))); setv('curveVal', 0.3);
-      rsSel = 'end';
+      setv('endMsRange', Math.round(clampMs(start * 2))); setv('curveVal', 0.3); setv('morePoints', '[]');
+      rsSel = 1;
       updateRhythm();
       commitSettings('Add a change of speed');
     }
+    // a point on the line where it is, at the speed there (the line does not move until it is dragged); the change it falls in keeps its curve
+    // on both sides. Before the first point or after the last the speed holds, so the new change is flat until dragged
+    function addPoint(share) {
+      const ch = changeParams();
+      if (!ch) { addChange(share); return; }
+      share = Math.max(0, Math.min(1, share));
+      const pts = ch.points.map(p => ({ ...p })), close = pts.findIndex(p => Math.abs(p.at - share) < POINT_GAP * 1.5);
+      if (close >= 0 || pts.length >= MAX_POINTS) { rsSel = close >= 0 ? close : rsSel; renderRhythmStrip(); return; }   // too close to a point: that point
+      let k = pts.findIndex(p => p.at > share);
+      if (k < 0) k = pts.length;
+      pts.splice(k, 0, { at: share, ms: Math.round(clampMs(msAtShare(share, bpmValue(), ch))), curve: k > 0 && k < pts.length ? pts[k].curve : 0.3 });
+      if (k === 0) pts[1].curve = 0.3;
+      setPoints(pts);
+      rsSel = k;
+      updateRhythm();
+      commitSettings('Add a point of speed');
+    }
+    // the selected point goes (the first: the tempo becomes the next one's speed); a change of two points goes whole, the tempo stays
     function removeChange(e) {
       if (e && e.stopPropagation) e.stopPropagation();
-      if (!changeParams()) return;
-      setv('rhythmSelect', 'flat');
+      const ch = changeParams();
+      if (!ch) return;
+      if (rsSel === null || ch.points.length <= 2) {
+        setv('rhythmSelect', 'flat'); setv('morePoints', '[]');
+        rsSel = null;
+        updateRhythm();
+        commitSettings('Remove the change of speed');
+        return;
+      }
+      const pts = ch.points.map(p => ({ ...p }));
+      pts.splice(Math.min(rsSel, pts.length - 1), 1);
+      setPoints(pts);
       rsSel = null;
       updateRhythm();
-      commitSettings('Remove the change of speed');
+      commitSettings('Remove a point of speed');
     }
-    // dragging a point: sideways sets where it sits, up or down its speed (Start's speed is the tempo); the curve handle: up or down
-    let dragJustEnded = false;
+    // dragging a point: sideways sets where it sits (between its neighbours), up or down its speed (the first point's speed is the tempo);
+    // a curve handle: up or down
+    // a click on the lane counts only when it was pressed on the lane: the click that ends dragging a point or a handle (released off it,
+    // past a neighbour) is not one. A timer cleared that before, and a click 5 ms after a drag (faster than a timer) was eaten
+    let rsDownOnControl = false;
     function rsPointDown(which, e) {
       if (e.button !== undefined && e.button !== 0) return;
       e.preventDefault(); e.stopPropagation();
-      rsDrag = which; rsSel = which === 'curve' ? rsSel : which; rsLaneLeave();
-      curvePinX = which === 'curve' && rsModel && rsModel.handle ? rsModel.handle.x / 1000 : null;   // the handle stays at this spot while it is dragged
-      if (e.currentTarget.setPointerCapture && e.pointerId !== undefined) e.currentTarget.setPointerCapture(e.pointerId);
+      rsDrag = which; if (which.point !== undefined) rsSel = which.point;
+      rsLaneLeave();
+      const h = which.curve !== undefined && rsModel ? rsModel.handles.find(q => q.k === which.curve) : null;
+      curvePinX = h ? h.x / 1000 : null;                                     // the handle stays at this spot while it is dragged
+      if (e.currentTarget && e.currentTarget.setPointerCapture && e.pointerId !== undefined) e.currentTarget.setPointerCapture(e.pointerId);
       renderRhythmStrip();
     }
     function rsPointMove(e) {
@@ -2684,41 +2805,49 @@
       const b = laneBox(), u = (e.clientX - b.left) / b.width, pct = ((e.clientY - b.top) / b.height) * 100;
       const ch = changeParams();
       if (!ch) return;
-      if (rsDrag === 'curve') {
+      const pts = ch.points.map(p => ({ ...p }));
+      if (rsDrag.curve !== undefined) {
         // the curve that passes through the pointer where the handle was grabbed: bending it changes how long each cut lasts (the film
         // gets longer or shorter, the lane rescales), so it is solved at that spot of the lane (the handle used to slide from under the pointer)
-        const bpm = bpmValue(), s0 = Math.log(60000 / bpm), s1 = Math.log(ch.end_ms), m = rsModel;
+        const k = rsDrag.curve, bpm = bpmValue(), m = rsModel;
+        if (!pts[k + 1]) return;
+        const s0 = Math.log(pts[k].ms), s1 = Math.log(pts[k + 1].ms);
         if (Math.abs(s1 - s0) < 1e-6 || !m || curvePinX == null) return;
-        const want = Math.abs(Math.log(msOfY(pct)) - s0);                      // how far from the Start's speed, at that spot
+        // how far along the change (0 its first speed, 1 its last) the pointer is, at that spot: signed, so past the first speed is 0 and
+        // never read as far from it (the curve went the wrong way when dragged past it)
+        const want = (Math.log(msOfY(pct)) - s0) / (s1 - s0);
         const away = c => {                                                    // falls as the change waits more
-          const cc = { ...ch, curve: c }, base = baseStarts(m.nBase, bpm, cc, m.nMusic);
-          return Math.abs(Math.log(msAtFrame(curvePinX * base[m.nBase], m.nBase, m.nMusic, bpm, cc, base)) - s0);
+          const cc = { ...ch, points: pts.map((p, j) => (j === k + 1 ? { ...p, curve: c } : p)) }, base = baseStarts(m.nBase, bpm, cc, m.nMusic);
+          return (Math.log(msAtFrame(curvePinX * base[m.nBase], m.nBase, m.nMusic, bpm, cc, base)) - s0) / (s1 - s0);
         };
         let lo = 0, hi = 1;
         if (want >= away(0)) hi = 0; else if (want <= away(1)) lo = 1;
-        else for (let k = 0; k < 18; k++) { const c = (lo + hi) / 2; if (away(c) > want) lo = c; else hi = c; }
-        setv('curveVal', +((lo + hi) / 2).toFixed(3));
+        else for (let i = 0; i < 18; i++) { const c = (lo + hi) / 2; if (away(c) > want) lo = c; else hi = c; }
+        pts[k + 1].curve = (lo + hi) / 2;
       } else {
-        const share = shareAt(u), ms = Math.round(clampMs(msOfY(pct)));
-        if (rsDrag === 'start') { setv('changeFrom', +Math.max(0, Math.min(ch.to - 0.02, share)).toFixed(4)); setv('bpmInput', Math.round(Math.min(BPM_RANGE[1], Math.max(BPM_RANGE[0], 60000 / ms)))); }
-        else { setv('changeTo', +Math.min(1, Math.max(ch.from + 0.02, share)).toFixed(4)); setv('endMsRange', ms); }
+        const k = rsDrag.point, last = pts.length - 1;
+        if (!pts[k]) return;
+        const lo = k === 0 ? 0 : pts[k - 1].at + POINT_GAP, hi = k === last ? 1 : pts[k + 1].at - POINT_GAP;
+        pts[k].at = Math.max(lo, Math.min(hi, shareAt(u)));
+        pts[k].ms = Math.round(clampMs(msOfY(pct)));
       }
+      setPoints(pts);
       updateRhythm();
     }
     function rsPointUp() {
       if (!rsDrag) return;
-      const what = rsDrag;
-      rsDrag = null; curvePinX = null; dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 0);
+      const what = rsDrag, n = (changeParams() || { points: [] }).points.length;
+      rsDrag = null; curvePinX = null;
       renderRhythmStrip();
-      commitSettings(what === 'curve' ? 'the curve of the change' : `the change's ${what === 'start' ? 'Start' : 'End'}`);
+      commitSettings(what.curve !== undefined ? 'the curve of the change' : what.point === 0 ? "the change's Start" : what.point === n - 1 ? "the change's End" : 'a point of the speed');
     }
     function showDragTip() {
       const tip = document.getElementById('rsTip'), g = document.getElementById('rsGuides'), m = rsModel;
-      const p = m && rsDrag && rsDrag !== 'curve' ? m.points.find(q => q.id === rsDrag) : null;
-      const h = m && rsDrag === 'curve' ? m.handle : null;
+      const p = m && rsDrag && rsDrag.point !== undefined ? m.points[rsDrag.point] : null;
+      const h = m && rsDrag && rsDrag.curve !== undefined ? m.handles.find(q => q.k === rsDrag.curve) : null;
       tip.hidden = !(p || h); g.hidden = !p;
       if (p) {
-        tip.innerHTML = `<b>${p.name} · ${p.sec.toFixed(1)} s</b><span>${p.ms} ms · ${Math.round(60000 / p.ms)} BPM</span>${m.mult !== 1 ? `<span class="pic">pictures ${p.pic} ms</span>` : ''}`;
+        tip.innerHTML = `<b>${p.name || 'Point'} · ${p.sec.toFixed(1)} s</b><span>${p.ms} ms · ${Math.round(60000 / p.ms)} BPM</span>${m.mult !== 1 ? `<span class="pic">pictures ${p.pic} ms</span>` : ''}`;
         tip.style.left = `${p.x / 10}%`; tip.style.top = `${p.y}%`; tip.classList.toggle('left', p.x > 700);
         g.querySelector('.gx').style.cssText = `top:${p.y}%;width:${p.x / 10}%`;
         g.querySelector('.gy').style.cssText = `left:${p.x / 10}%;top:${p.y}%`;
@@ -2733,14 +2862,8 @@
       lane.addEventListener('pointermove', rsLaneMove);
       lane.addEventListener('pointerleave', rsLaneLeave);
       lane.addEventListener('click', rsLaneClick);
-      for (const [id, which] of [['rsStart', 'start'], ['rsEnd', 'end'], ['rsCurveHandle', 'curve']]) {
-        const d = document.getElementById(id);
-        d.addEventListener('pointerdown', e => rsPointDown(which, e));
-        d.addEventListener('pointermove', rsPointMove);
-        d.addEventListener('pointerup', rsPointUp);
-        d.addEventListener('pointercancel', rsPointUp);
-        if (which !== 'curve') d.addEventListener('focus', () => { rsSel = which; renderRhythmStrip(); });
-      }
+      lane.addEventListener('pointerdown', e => { rsDownOnControl = !!(e.target.closest && e.target.closest('.rs-point, .rs-curve, .rs-x')); }, true);   // first: a point's own handler stops it
+      for (const [id, kind] of [['rsStart', 'point'], ['rsEnd', 'point'], ['rsCurveHandle', 'curve']]) rsListen(document.getElementById(id), kind);
     })();
     // a click on the cut ticks or the ruler puts the playhead there
     function rhythmStripClick(e) {
@@ -3107,7 +3230,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'keepCheck'];
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'keepCheck'];
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
     // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved

@@ -802,6 +802,103 @@ test('the timeline is the rhythm control: drag or type the tempo and the Multipl
   await ctx.close();
 });
 
+test('several points on the timeline: click the line to add one, drag it up and down, shape each change on its own; Delete and Undo; it plays, exports and comes back', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945, setup: st => { for (let i = 0; i < 37; i++) { const f = `w${i}`; st.plates.push({ ...st.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` }); st.sequences[0].order.push(f); } } });
+  await film();
+  const val = id => page.evaluate(id => document.getElementById(id).value, id);
+  const pts = () => page.evaluate(() => {                                         // the points as the hidden fields hold them
+    const v = id => document.getElementById(id).value;
+    if (v('rhythmSelect') !== 'variable') return [];
+    const all = [{ at: +v('changeFrom'), ms: 60000 / +v('bpmInput'), curve: 0 }, { at: +v('changeTo'), ms: +v('endMsRange'), curve: +v('curveVal') }, ...JSON.parse(v('morePoints') || '[]')];
+    return all.map(p => ({ at: +(+p.at).toFixed(3), ms: Math.round(p.ms), curve: +(+p.curve || 0).toFixed(3) }));
+  });
+  await page.evaluate(() => { const set = (id, v) => { const el = document.getElementById(id); el.value = v; }; set('invertSelect', 'off'); set('repeatSelect', '1'); document.getElementById('followCuts').checked = false; updateFx(); });
+  await mult('1'); await tempo(600);
+  await change({ from: 0.2, to: 0.5, end: 800, curve: 0 });
+  await page.waitForFunction(() => !document.getElementById('rsEnd').hidden);
+  const lane = await page.locator('#rsSpeed').boundingBox();
+  const lineY = u => page.evaluate(u => {                                            // the line's height at a place across (the drawn polyline)
+    const p = document.getElementById('rsCurve').getAttribute('points').split(' ').map(s => s.split(',').map(Number));
+    const k = Math.max(1, p.findIndex(([x]) => x >= u * 1000)), [xa, ya] = p[k - 1], [xb, yb] = p[k];
+    return ya + ((yb - ya) * (u * 1000 - xa)) / Math.max(1e-9, xb - xa);
+  }, u);
+  const at = async u => [lane.x + lane.width * u, lane.y + (lane.height * (await lineY(u))) / 100];
+  const visiblePoints = () => page.locator('.rs-point:visible').count();
+  // a point after the End: offered on the line, added at the speed there
+  let [x, y] = await at(0.8);
+  await page.mouse.move(x, y + 3);
+  assert.equal(await page.locator('#rsHover').isVisible(), true);
+  assert.equal(await text('.rs-hover-tip'), 'Click to add a point');
+  const lineBefore = await page.getAttribute('#rsCurve', 'points');
+  await page.mouse.click(x, y + 3);
+  assert.equal((await pts()).length, 3);
+  assert.equal(await visiblePoints(), 3, 'Start, the old End, the new End');
+  assert.equal(await page.getAttribute('#rsCurve', 'points'), lineBefore, 'the line does not move until the point is dragged');
+  assert.equal(await page.locator('#rsEnd.sel').count(), 1, 'the new point is the End, picked');
+  // drag it up: fast again. The speed goes down and comes back up
+  let e = await page.locator('#rsEnd').boundingBox();
+  await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2); await page.mouse.down();
+  await page.mouse.move(lane.x + lane.width * 0.85, lane.y + lane.height * 0.1, { steps: 8 });
+  assert.match(await text('#rsTip'), /^End · [\d.]+ s\s*\d+ ms · \d+ BPM/);
+  await page.mouse.up();
+  let p = await pts();
+  assert.ok(p[2].ms < 100 && p[1].ms === 800, `down to 800 ms, back up to ${p[2].ms} ms`);
+  const ys = (await page.getAttribute('#rsCurve', 'points')).split(' ').map(s => +s.split(',')[1]), low = Math.max(...ys);
+  assert.ok(ys[0] < low - 20 && ys.at(-1) < low - 20, 'the line goes down (slower) and comes back up');
+  await shot('31b-timeline-points');
+  // a handle on each change; shaping the second leaves the first
+  assert.equal(await page.locator('.rs-curve:visible').count(), 2);
+  const c0 = await pts(), h2 = page.locator('.rs-curve:visible').nth(1);
+  e = await h2.boundingBox();
+  await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2); await page.mouse.down();
+  await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2 + 14, { steps: 4 });
+  assert.match(await text('#rsTip'), /^Curve · /); assert.equal(await page.locator('#rsLinear').isVisible(), true);
+  await page.mouse.up();
+  p = await pts();
+  assert.ok(p[2].curve > c0[2].curve, `the second change waits more: ${c0[2].curve} → ${p[2].curve}`);
+  assert.equal(p[1].curve, c0[1].curve, 'the first as it was');
+  // a point inside the first change, then dragged sideways: never past its neighbours
+  [x, y] = await at(0.18);                                                        // between Start and the first change's handle
+  await page.mouse.click(x, y);                                                  // no hover first: the click alone says where
+  p = await pts();
+  assert.equal(p.length, 4, JSON.stringify(p));
+  e = await page.locator('.rs-point.sel').boundingBox();
+  await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2); await page.mouse.down();
+  await page.mouse.move(lane.x + 2, e.y + e.height / 2, { steps: 6 }); await page.mouse.up();
+  p = await pts();
+  assert.ok(Math.abs(p[1].at - (p[0].at + 0.02)) < 0.003, `stopped just after Start: ${p[1].at} (Start ${p[0].at})`);
+  // the picture's cuts follow: quick, slower, quick again
+  const tickX = await page.evaluate(() => document.getElementById('rsTicks').getAttribute('d').match(/M[\d.]+/g).map(m => +m.slice(1)));
+  const gaps = tickX.slice(1).map((v, i) => v - tickX[i]), mid = gaps.indexOf(Math.max(...gaps));
+  assert.ok(gaps[0] < gaps[mid] / 3 && gaps.at(-1) < gaps[mid] / 3 && mid > 2 && mid < gaps.length - 3, `the cuts slow down and speed up: ${gaps.map(g => g.toFixed(0))}`);
+  // Delete takes the picked point, Undo brings it back
+  await page.keyboard.press('Delete');
+  assert.equal((await pts()).length, 3);
+  assert.equal(await page.locator('#filmstrip button').count(), 40, 'never an image');
+  await page.keyboard.press('Meta+z');
+  await page.waitForFunction(() => JSON.parse(document.getElementById('morePoints').value).length === 2);
+  // it plays with the sound, without errors
+  await page.evaluate(() => { const s = document.getElementById('musicSelect'); s.value = 'on'; s.dispatchEvent(new Event('change')); });
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(600);
+  await page.keyboard.press('Space');
+  // the export is named after the tempo and the last speed
+  const last = (await pts()).at(-1).ms;
+  await page.click('#exportBtn');
+  await page.waitForSelector('#exportDock[data-state="ready"]', { timeout: 20000 });
+  const body = api.state.calls.filter(c => c.path === '/api/export-video').pop().body;
+  assert.deepEqual([body.rhythm, body.end_ms], ['variable', last]);
+  // and the points come back with the page
+  const before = await pts();
+  await page.reload();
+  await page.waitForSelector('#viewFilm', { state: 'visible' }).catch(film);
+  await page.waitForFunction(() => !document.getElementById('rsEnd').hidden, null, { timeout: 10000 });
+  assert.deepEqual(await pts(), before, 'every point back after a reload');
+  assert.equal(await visiblePoints(), 4);
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('synthesized music: the drone plays live in the page, settings swap it at once, export renders it in the page and sends it', { skip }, async () => {
   const ctx = await fresh();
   await film();

@@ -107,7 +107,7 @@ const mult = v => setHidden('multSelect', v, 'change');
 // one change of speed on the timeline (from / to: shares of the film's music cuts; the tempo is its start), or none
 const change = ({ from = 0.6, to = 1, end = 600, curve = 0, start } = {}) => page.evaluate(([from, to, end, curve, start]) => {
   const set = (id, v) => { document.getElementById(id).value = String(v); };
-  set('changeFrom', from); set('changeTo', to); set('endMsRange', end); set('curveVal', curve); if (start) set('bpmInput', Math.round(60000 / start));
+  set('changeFrom', from); set('changeTo', to); set('endMsRange', end); set('curveVal', curve); set('morePoints', '[]'); if (start) set('bpmInput', Math.round(60000 / start));
   const r = document.getElementById('rhythmSelect'); r.value = 'variable'; r.dispatchEvent(new Event('change'));
 }, [from, to, end, curve, start || 0]);
 const noChange = () => setHidden('rhythmSelect', 'flat', 'change');

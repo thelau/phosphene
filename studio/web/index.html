@@ -380,6 +380,7 @@
                 <input type="number" id="changeTo" value="1" step="any" />
                 <input type="number" id="endMsRange" value="600" step="1" />
                 <input type="number" id="curveVal" value="0" step="any" />
+                <input type="text" id="morePoints" value="[]" />
               </span>
             </div>
             <div class="rs-grid">
@@ -401,7 +402,7 @@
                   <span class="rs-plabel" id="rsStartL" hidden></span>
                   <button type="button" class="rs-point" id="rsEnd" hidden aria-label="End of the change: drag sideways for where, up or down for the speed"></button>
                   <span class="rs-plabel" id="rsEndL" hidden></span>
-                  <button type="button" class="rs-x" id="rsRemove" hidden aria-label="Remove the change" onclick="removeChange(event)"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+                  <button type="button" class="rs-x" id="rsRemove" hidden aria-label="Remove this point (of two, the change)" onclick="removeChange(event)"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
                   <span class="rs-tip" id="rsTip" role="tooltip" hidden></span>
                 </div>
                 <svg class="rs-beats" viewBox="0 0 1000 14" preserveAspectRatio="none" aria-hidden="true"><path id="rsBeats" d=""></path></svg>

@@ -959,7 +959,9 @@ test('a change on the timeline drives the cuts in frames, the summary, the sound
   h.$('bpmInput').value = '600'; h.$('multSelect').value = '1';                       // the tempo, 100 ms: where the change starts
   h.$('rhythmSelect').value = 'variable'; h.$('changeFrom').value = '0.5'; h.$('changeTo').value = '1'; h.$('endMsRange').value = '600'; h.$('curveVal').value = '0';
   h.run('updateRhythm()');
-  assert.deepEqual(clean(h.run('changeParams()')), { from: 0.5, to: 1, end_ms: 600, curve: 0 });
+  const { points, ...one } = clean(h.run('changeParams()'));
+  assert.deepEqual(one, { from: 0.5, to: 1, end_ms: 600, curve: 0 });
+  assert.deepEqual(points, [{ at: 0.5, ms: 100, curve: 0 }, { at: 1, ms: 600, curve: 0 }], 'one change: two points, the first at the tempo');
   const starts = clean(h.run('timelineFor(3)'));
   h.$('repeatSelect').value = '2'; h.run('updateTempo()');                          // Repeat ×2: the images go round twice, the film twice as long
   const twice = clean(h.run('timelineFor(3)'));
@@ -1011,7 +1013,7 @@ test('settings from before the timeline (Flat / Variable with Start, End, Change
   assert.deepEqual([m.changeFrom, +m.changeTo], ['0', 0.25], 'a build-up: 10 of 40 music cuts at the start');
   assert.equal('rampRange' in m || 'startMsRange' in m || 'atSelect' in m, false, 'the old keys go');
   const flat = clean(h.run(`migrateRhythm(${JSON.stringify({ rhythmSelect: 'flat', bpmInput: '90', startMsRange: '100', rampRange: '3', atSelect: 'end' })})`));
-  assert.deepEqual(flat, { rhythmSelect: 'flat', bpmInput: '90' });
+  assert.deepEqual(flat, { rhythmSelect: 'flat', bpmInput: '90', morePoints: '[]' }, 'saved before several points: none');
   h.run(`applySnap(${JSON.stringify({ ...old, startMsRange: '200' })})`);         // a snapshot from before
   assert.equal(h.$('bpmInput').value, '300');
 });
@@ -1078,7 +1080,9 @@ test('extreme values on the timeline stay sane: positions, speeds and the curve 
   await settle(); await settle();
   h.$('rhythmSelect').value = 'variable'; h.$('changeFrom').value = '5'; h.$('changeTo').value = '-1'; h.$('endMsRange').value = '99999'; h.$('curveVal').value = '9';
   h.run('updateRhythm()');
-  assert.deepEqual(clean(h.run('changeParams()')), { from: 0.98, to: 1, end_ms: 1500, curve: 1 });
+  const { points, ...one } = clean(h.run('changeParams()'));
+  assert.deepEqual(one, { from: 0.98, to: 1, end_ms: 1500, curve: 1 });
+  assert.equal(points.length, 2);
   for (const v of ['abc', '', 'NaN']) { h.$('changeFrom').value = v; h.$('endMsRange').value = v; assert.ok(Number.isFinite(h.run('changeParams()').from) && h.run('changeParams()').end_ms === 600, v); }
   h.$('bpmInput').value = '99999'; h.$('multSelect').value = '9'; h.run('updateTempo()');
   assert.equal(h.run('bpmValue()'), 1200);
@@ -1161,6 +1165,16 @@ test('Random video: every draw is a valid speed and look inside the slider range
     if (mode === 'flat') { const b = +h.$('bpmInput').value; assert.ok(b >= 60 && b <= 200, `tempo ${b}`); }
     else {
       const ch = h.run('changeParams()'), s = 60000 / +h.$('bpmInput').value;
+      if (ch.points.length === 4) {                                              // there and back: out, the middle held, back to the first speed
+        seen.wave = (seen.wave || 0) + 1;
+        const [a, b, c, d] = ch.points;
+        assert.ok(Math.abs(a.ms - d.ms) < 1e-6 * a.ms + 6 && b.ms === c.ms, `there and back: ${ch.points.map(p => p.ms)}`);
+        assert.ok((a.ms <= 205 && b.ms >= 300) || (a.ms >= 295 && b.ms <= 200), `fast-slow-fast or slow-fast-slow: ${a.ms}, ${b.ms}`);
+        assert.ok(ch.points.every((p, i) => i === 0 || p.at - ch.points[i - 1].at >= 0.02 - 1e-3) && d.at <= 1, 'in order and apart');
+        assert.ok([0, 0.15, 0.3].includes(b.curve) && [0, 0.15, 0.3].includes(d.curve));
+        continue;
+      }
+      assert.equal(ch.points.length, 2, 'otherwise one change');
       assert.ok(s >= 55 && s <= 905 && ch.end_ms >= 60 && ch.end_ms <= 900, `a change ${s} → ${ch.end_ms}`);
       assert.ok(ch.from >= 0 && ch.to <= 1 && ch.to > ch.from && (ch.from === 0 || ch.to === 1), `at the start or the end: ${ch.from}–${ch.to}`);
       assert.ok([0, 0.15, 0.3].includes(ch.curve));
@@ -1169,6 +1183,7 @@ test('Random video: every draw is a valid speed and look inside the slider range
     const z = +h.$('zoomAmt').value; assert.ok(z >= 0.2 && z <= 3, `zoom ${z}`);
   }
   assert.ok(seen.flat > 60 && seen.variable > 60, `both speeds come up (${JSON.stringify(seen)})`);
+  assert.ok(seen.wave > 10 && seen.wave < seen.variable / 2, `there and back now and then (${JSON.stringify(seen)})`);
   h.$('bpmInput').value = '77'; h.$('rhythmSelect').value = 'flat'; h.$('invertSelect').value = 'colour'; h.$('multSelect').value = '2';
   h.run('commitSettings(); history.length = 0');                                   // the hand-set values are a step of their own (the 300 draws filled the history: start clean)
   const n = h.run('history.length');
@@ -1540,7 +1555,7 @@ test('the timeline is drawn from the real timeline: a tick per picture cut, the 
   const y500 = h.run('yOfMs(500)');
   assert.ok(m.curve.every(([, y]) => Math.abs(y - y500) < 1e-9), 'one speed is a flat line at the tempo\'s height');
   assert.ok(Math.abs(h.run('yOfMs(50)')) < 1e-9 && Math.abs(h.run('yOfMs(1500)') - 100) < 1e-9, '50 ms at the top, 1500 at the bottom');
-  assert.equal(m.band, null); assert.deepEqual(m.points, []); assert.equal(m.handle, null);
+  assert.equal(m.band, null); assert.deepEqual(m.points, []); assert.deepEqual(m.handles, []);
   assert.deepEqual(m.beats.map(Math.round), [0, 667], 'the music on its cuts: every second picture cut at ×2');
   h.$('followCuts').checked = true; h.run('updateTempo()');
   assert.equal(plain(h.run('rhythmStripModel(3)')).beats.length, 3, 'or on every picture cut');
@@ -1554,6 +1569,8 @@ test('the timeline is drawn from the real timeline: a tick per picture cut, the 
   assert.ok(ys.slice(0, 100).every(y => Math.abs(y - v.run('yOfMs(100)')) < 1e-9), 'the tempo holds until the change');
   for (let i = 102; i < ys.length; i++) assert.ok(ys[i] > ys[i - 1], 'then it slows down all the way');
   assert.ok(Math.abs(ys.at(-1) - v.run('yOfMs(600)')) < 1e-9, 'to the End speed');
+  m.handle = m.handles[0];
+  assert.equal(m.handles.length, 1, 'one change, one handle');
   const k = m.curve.findIndex(([x]) => x >= m.handle.x), [xa, ya] = m.curve[k - 1], [xb, yb] = m.curve[k];
   assert.ok(Math.abs(m.handle.y - (ya + ((yb - ya) * (m.handle.x - xa)) / (xb - xa))) < 0.5, 'the curve handle sits on the line');
   const band = m.points.map(q => q.x);
@@ -2234,7 +2251,7 @@ test('Style: Spiral\'s Random keeps the sequence in front (on properly, a mood t
   assert.equal(savedOf(h.store).styleSelect, '1');
   h.$('styleSelect').value = '0'; let arpOff = 0;
   for (let i = 0; i < 200; i++) { h.run('randomMusic()'); if (!n('arpRange')) arpOff++; }
-  assert.ok(arpOff > 60, `Drone: the arpeggio comes and goes as before (${arpOff} of 200 off)`);
+  assert.ok(arpOff > 45, `Drone: the arpeggio comes and goes as before (${arpOff} of 200 off)`);   // ~72 on average, 52 the lowest in 200 runs (it was > 60: failed ~4% of runs)
   const seed = n('seedVal'); h.$('styleSelect').value = '1'; h.run('pickStyle()');
   assert.ok(n('seedVal') !== seed && n('arpRange') >= 40, 'choosing a style makes a new sound in it');
   const old = h.run("migrateRhythm({ chordSelect: '2' })");
@@ -2292,4 +2309,326 @@ test('Hypnotic\'s Random: no hits (no kick), little pump, no echo, no layers; Si
   assert.deepEqual([old.styleVal, old.styleSelect, old.modeSelect], ['0', 'any', '0']);
   const tide = h.run("migrateRhythm({ chordSelect: '1', styleVal: '2', styleSelect: '2' })");
   assert.deepEqual([tide.styleVal, tide.styleSelect], ['0', 'any'], 'Tide is gone too: the drone, and Any');
+});
+
+// ---------- several points of speed on the timeline (2026-10-30, the user: "multi curves, going up and down") ----------
+
+const WAVE = [{ at: 0.2, ms: 100, curve: 0 }, { at: 0.4, ms: 800, curve: 0 }, { at: 0.6, ms: 800, curve: 0 }, { at: 0.8, ms: 100, curve: 0.5 }];
+async function timelineWith(n = 24) {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: n }, (_, i) => mkPlate('p' + i)) };
+  r['/api/export-video'] = { ok: true, images: n, seconds: 2, video_url: '/outputs/x.mp4', filename: 'x.mp4' };
+  r['/api/export-audio'] = { ok: true, bytes: 44 };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('multSelect').value = '1'; h.$('invertSelect').value = 'off'; h.$('repeatSelect').value = '1'; h.$('followCuts').checked = false;
+  h.$('rsSpeed').getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 100 });   // 1 px = 0.1% across, 1% down
+  const parts = {};                                                              // the hover's line, dot and tip
+  h.$('rsHover').querySelector = sel => (parts[sel] ||= { style: {}, textContent: '', classList: { toggle() {} } });
+  h.hoverTip = () => parts['.rs-hover-tip'];
+  h.$('rsGuides').querySelector = sel => (parts['g' + sel] ||= { style: {} });
+  h.run("setMode('film')");
+  h.run('updateTempo()');
+  return h;
+}
+const setPts = (h, pts) => h.run(`setPoints(${JSON.stringify(pts)}); updateRhythm()`);
+const ptsOf = h => clean((h.run('changeParams()') || { points: [] }).points).map(p => ({ at: +p.at.toFixed(4), ms: Math.round(p.ms), curve: +p.curve.toFixed(3) }));
+const lev = (x, y, target = null) => ({ clientX: x, clientY: y, button: 0, target: { closest: () => target }, preventDefault() {}, stopPropagation() {}, currentTarget: {} });
+
+test('several points: the speed goes down and up, each change eased on its own, the tempo before the first, the last held after', () => {
+  const h = load({ routes: baseRoutes() });
+  const ms = (x, bpm = 600, pts = WAVE) => h.run(`msAtShare(${x}, ${bpm}, ${JSON.stringify({ points: pts })})`);
+  const close = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-6 * b, `${what}: ${a} vs ${b}`);
+  close(ms(0), 100, 'before the first point: the tempo'); close(ms(0.2), 100, 'at the first point');
+  close(ms(0.3), Math.sqrt(100 * 800), 'an even change is geometric: half way is the geometric mean');
+  close(ms(0.4), 800, 'the second point'); close(ms(0.5), 800, 'two points at one speed: held between them');
+  close(ms(0.7), 800 * Math.pow(100 / 800, Math.pow(0.5, 3)), 'the last change has its own curve (0.5: u^3)');
+  close(ms(0.8), 100, 'back up to speed'); close(ms(0.95), 100, 'held after the last point'); close(ms(1), 100, 'to the end');
+  close(ms(0.1, 300), 200, 'the first point is always the tempo (300 BPM: 200 ms)');
+  close(ms(0.3, 300), Math.sqrt(200 * 800), 'and the first change starts from it');
+  // the cuts: steady, slower and slower, held, faster and faster, steady
+  const t = h.run(`baseStarts(50, 600, ${JSON.stringify({ points: WAVE })})`), lens = Array.from(t).slice(1).map((v, i) => v - t[i]);
+  assert.ok(lens.slice(0, 10).every(l => Math.abs(l - 3) < 1e-9), 'the tempo first: 100 ms, 3 frames a cut');
+  for (let i = 11; i < 20; i++) assert.ok(lens[i] > lens[i - 1], `slowing down (cut ${i})`);
+  assert.ok(lens.slice(20, 30).every(l => Math.abs(l - 24) < 1e-9), 'held at 800 ms (24 frames)');
+  for (let i = 31; i < 40; i++) assert.ok(lens[i] < lens[i - 1], `speeding up again (cut ${i})`);
+  assert.ok(lens.slice(40).every(l => Math.abs(l - 3) < 1e-9), 'held at the last point\'s speed');
+  // the old way of writing a change still reads the same
+  assert.equal(h.run('msAtShare(0.75, 120, {from:0.5,to:1,end_ms:1000,curve:0})'), h.run(`msAtShare(0.75, 120, ${JSON.stringify({ points: [{ at: 0.5, ms: 500, curve: 0 }, { at: 1, ms: 1000, curve: 0 }] })})`));
+  // never under a frame, never NaN, whatever the points
+  const wild = [{ at: 0, ms: 50, curve: 0 }, { at: 0.02, ms: 1500, curve: 1 }, { at: 0.04, ms: 50, curve: 0 }, { at: 1, ms: 1500, curve: 0.3 }];
+  const w = Array.from(h.run(`baseStarts(300, 1200, ${JSON.stringify({ points: wild })})`));
+  assert.ok(w.every(Number.isFinite) && w.slice(1).every((v, i) => v - w[i] >= 1 - 1e-9), 'every cut at least a frame');
+});
+
+test('several points are kept in the controls: the first change where it always was, the others in order and apart; anything odd is left out', async () => {
+  const h = await timelineWith();
+  h.$('bpmInput').value = '300'; h.$('rhythmSelect').value = 'variable'; h.$('changeFrom').value = '0.1'; h.$('changeTo').value = '0.3'; h.$('endMsRange').value = '400'; h.$('curveVal').value = '0.2';
+  h.$('morePoints').value = JSON.stringify([{ at: 0.5, ms: 100, curve: 0.3 }, { at: 0.505, ms: 900 }, { at: 0.45, ms: 900 }, { at: 0.7, ms: 99999, curve: 7 }, { at: 1.2, ms: 200 }, { at: 'x', ms: 3 }, null, { at: 0.8 }]);
+  const ch = h.run('changeParams()');
+  assert.deepEqual(ptsOf(h), [{ at: 0.1, ms: 200, curve: 0 }, { at: 0.3, ms: 400, curve: 0.2 }, { at: 0.5, ms: 100, curve: 0.3 }, { at: 0.7, ms: 1500, curve: 1 }],
+    'too close, backwards, past the end and unreadable points are dropped; speeds and curves kept in range');
+  assert.deepEqual([ch.from, ch.to, ch.end_ms, ch.curve], [0.1, 0.7, 1500, 0.2], 'from the first point to the last; the first change\'s curve');
+  for (const bad of ['{oops', '', '5', '{"at":0.5}', 'null']) { h.$('morePoints').value = bad; assert.equal(h.run('changeParams()').points.length, 2, `"${bad}": just the first change`); }
+  h.$('morePoints').value = JSON.stringify(Array.from({ length: 30 }, (_, i) => ({ at: 0.32 + i * 0.022, ms: 100 + 30 * i, curve: 0 })));
+  assert.equal(h.run('changeParams()').points.length, h.run('MAX_POINTS'), 'at most twelve points');
+  h.$('rhythmSelect').value = 'flat';
+  assert.equal(h.run('changeParams()'), null, 'one speed: no points, whatever is stored');
+  // written back: the first point's speed is the tempo (in whole BPM), the second the first change's end, the rest in morePoints
+  setPts(h, WAVE);
+  assert.deepEqual([h.$('rhythmSelect').value, h.$('bpmInput').value, +h.$('changeFrom').value, +h.$('changeTo').value, +h.$('endMsRange').value], ['variable', '600', 0.2, 0.4, 800]);
+  assert.deepEqual(JSON.parse(h.$('morePoints').value), WAVE.slice(2));
+  assert.deepEqual(ptsOf(h), WAVE, 'a round trip keeps them');
+  setPts(h, [{ at: 0.5, ms: 250, curve: 0 }]);
+  assert.deepEqual([h.$('rhythmSelect').value, h.$('bpmInput').value, h.$('morePoints').value], ['flat', '240', '[]'], 'one point is one speed, at its speed');
+});
+
+
+test('adding a point: a click on the line puts one there at the speed there, the line unchanged; on one speed it adds a change as before', async () => {
+  const h = await timelineWith();
+  h.$('bpmInput').value = '600'; h.run('updateTempo()');
+  const y = ms => h.run(`yOfMs(${ms})`), line = () => clean(h.run('rhythmStripModel(24)').curve);
+  // one speed: the line is flat at the tempo; a click near it adds a change, End picked
+  h.ctx.rsLaneMove(lev(300, y(100)));
+  assert.equal(h.$('rsHover').hidden, false);
+  assert.equal(h.hoverTip().textContent, 'Click to add a change', 'one speed: a change, as before');
+  h.ctx.rsLaneClick(lev(300, y(100)));
+  assert.equal(h.run('changeParams().points.length'), 2, 'a change');
+  assert.equal(h.run('rsSel'), 1, 'its End picked, to be dragged');
+  // now the line has a change: away from it nothing is offered, on it a point is
+  setPts(h, [{ at: 0.2, ms: 100, curve: 0 }, { at: 0.5, ms: 800, curve: 0 }]);
+  h.ctx.rsLaneMove(lev(800, y(100)));
+  assert.equal(h.$('rsHover').hidden, true, 'the tempo\'s height is not the line any more after the change');
+  h.ctx.rsLaneMove(lev(800, y(800) + 4));
+  assert.equal(h.$('rsHover').hidden, false, 'on the line (within 10 px)');
+  assert.equal(h.hoverTip().textContent, 'Click to add a point');
+  assert.equal(h.hoverTip().style.top, `${y(800)}%`, 'the dot on the line');
+  h.ctx.rsLaneMove(lev(800, y(800), { tagName: 'BUTTON' }));
+  assert.equal(h.$('rsHover').hidden, true, 'never over a point or a handle: those are grabbed');
+  // a point after the End: the line does not move, the new point is the End now
+  let before = line();
+  h.ctx.rsLaneMove(lev(800, y(800)));
+  h.ctx.rsLaneClick(lev(800, y(800)));
+  let p = ptsOf(h);
+  assert.equal(p.length, 3);
+  assert.equal(p[2].ms, 800, 'at the speed the line has there');
+  assert.ok(Math.abs(p[2].at - h.run('shareAt(0.8)')) < 0.001, 'where the click was');
+  assert.equal(h.run('rsSel'), 2, 'the new point picked');
+  assert.ok(line().every(([x, yy], i) => Math.abs(x - before[i][0]) < 1e-6 && Math.abs(yy - before[i][1]) < 1e-6), 'the line unchanged until it is dragged');
+  assert.equal(h.$('rsEndL').textContent, 'End 800 ms', 'End is the last point');
+  // a point inside an even change splits it without changing the line (geometric on both sides)
+  before = line();
+  h.run('addPoint(0.35)');
+  p = ptsOf(h);
+  assert.equal(p.length, 4); assert.equal(p[1].at, 0.35);
+  assert.equal(p[1].ms, Math.round(Math.sqrt(100 * 800)), 'half way in log: the geometric mean');
+  assert.ok(line().every(([x, yy], i) => Math.abs(x - before[i][0]) < 0.5 && Math.abs(yy - before[i][1]) < 0.3), 'the same line');
+  // too close to a point: that point is picked instead, nothing added
+  h.run(`addPoint(${p[1].at + 0.01})`);
+  assert.equal(ptsOf(h).length, 4); assert.equal(h.run('rsSel'), 1);
+  // before the first point: a new first point at the tempo, the old first now a held step
+  h.run('addPoint(0.05)');
+  p = ptsOf(h);
+  assert.deepEqual(p.slice(0, 2).map(q => [q.at, q.ms]), [[0.05, 100], [0.2, 100]]);
+  assert.equal(h.$('bpmInput').value, '600', 'the tempo unchanged');
+  // up to twelve points; then a click on the line offers nothing
+  for (let i = 0; i < 20; i++) h.run(`addPoint(${0.52 + i * 0.022})`);
+  assert.equal(ptsOf(h).length, 12, 'at most twelve');
+  h.ctx.rsLaneMove(lev(990, y(800)));
+  assert.equal(h.$('rsHover').hidden, true);
+});
+
+test('dragging points: each between its neighbours, up or down its speed (the first is the tempo); each change\'s curve on its own handle', async () => {
+  const h = await timelineWith();
+  setPts(h, [{ at: 0.2, ms: 100, curve: 0 }, { at: 0.5, ms: 800, curve: 0 }, { at: 0.8, ms: 800, curve: 0 }]);
+  const y = ms => h.run(`yOfMs(${ms})`), xOf = share => h.run(`rsModel.tAt(${share}) / rsModel.total * 1000`);
+  const drag = (what, x, yy) => { h.ctx.rsPointDown(what, lev(0, 0)); h.ctx.rsPointMove(lev(x, yy)); h.ctx.rsPointUp(); };
+  // the last point up to 100 ms: slow down, hold, speed up again
+  drag({ point: 2 }, xOf(0.9), y(100));
+  let p = ptsOf(h);
+  assert.equal(p[2].ms, 100);
+  assert.ok(Math.abs(p[2].at - 0.9) < 0.01, `where it was dropped: ${p[2].at}`);
+  const ys = clean(h.run('rhythmStripModel(24)').curve).map(([, v]) => v), top = ys.indexOf(Math.max(...ys));
+  assert.ok(top > 10 && top < 190 && ys[0] < ys[top] - 20 && ys.at(-1) < ys[top] - 20, 'the line goes down (slower) and comes back up');
+  assert.equal(h.run('history.at(-1).label'), "the change's End", 'one undo step, named');
+  // a middle point never passes its neighbours
+  drag({ point: 1 }, 0, y(300));
+  p = ptsOf(h);
+  assert.ok(Math.abs(p[1].at - 0.22) < 0.002 && p[1].ms === 300, `stops 2% after the first: ${p[1].at}`);
+  assert.equal(h.run('history.at(-1).label'), 'a point of the speed');
+  drag({ point: 1 }, 1000, y(300));
+  assert.ok(Math.abs(ptsOf(h)[1].at - (p[2].at - 0.02)) < 0.002, 'and 2% before the next');
+  drag({ point: 1 }, xOf(0.5), y(800));
+  // the first point's speed is the tempo
+  drag({ point: 0 }, xOf(0.1), y(200));
+  assert.equal(h.$('bpmInput').value, '300'); assert.equal(ptsOf(h)[0].ms, 200);
+  // a handle on each change; shaping one leaves the others
+  let m = clean(h.run('rhythmStripModel(24)'));
+  assert.deepEqual(m.handles.map(q => q.k), [0, 1], 'three points, two changes, two handles');
+  const c0 = ptsOf(h).map(q => q.curve), hd = m.handles[1];
+  h.ctx.rsPointDown({ curve: 1 }, lev(0, 0));
+  assert.equal(h.run('curvePinX'), hd.x / 1000, 'pinned where it was grabbed');
+  h.ctx.rsPointMove(lev(hd.x, hd.y + 8));                                         // toward 800 ms (lower: slower): the speeding up waits
+  const held = clean(h.run('rhythmStripModel(24)')).handles[1];
+  assert.ok(Math.abs(held.x - hd.x) < 1e-6 && Math.abs(held.y - (hd.y + 8)) < 0.5, `the curve passes under the pointer where it was grabbed: ${held.y} vs ${hd.y + 8}`);
+  h.ctx.rsPointUp();
+  const c1 = ptsOf(h).map(q => q.curve);
+  assert.ok(c1[2] > c0[2], `the second change waits more: ${c0[2]} → ${c1[2]}`);
+  assert.deepEqual(c1.slice(0, 2), c0.slice(0, 2), 'the first as it was');
+  assert.equal(h.run('history.at(-1).label'), 'the curve of the change');
+  // dragged past either end of its change: as far as the curve goes that way (past the first speed it used to count as far away: the wrong way)
+  for (const [yy, want, what] of [[y(1400), 1, 'past 800 ms (the first speed): it waits all it can'], [y(55), 0, 'past 100 ms (the last): even']]) {
+    const g = clean(h.run('rhythmStripModel(24)')).handles[1];
+    h.ctx.rsPointDown({ curve: 1 }, lev(0, 0)); h.ctx.rsPointMove(lev(g.x, yy)); h.ctx.rsPointUp();
+    assert.ok(Math.abs(ptsOf(h)[2].curve - want) < 0.01, `${what}: ${ptsOf(h)[2].curve}`);
+  }
+  // two points at one speed: no handle there (nothing to shape)
+  setPts(h, WAVE);
+  assert.deepEqual(clean(h.run('rhythmStripModel(24)').handles).map(q => q.k), [0, 2]);
+  // while a curve is dragged, its even line shows from its own two points
+  h.ctx.rsPointDown({ curve: 2 }, lev(0, 0));
+  m = clean(h.run('rsModel'));
+  assert.deepEqual(m.linear.map(v => +v.toFixed(3)), [m.points[2].x, m.points[2].y, m.points[3].x, m.points[3].y].map(v => +v.toFixed(3)));
+  h.ctx.rsPointUp();
+});
+
+test('removing points: the picked one goes (the first: the tempo becomes the next speed); with two left the change goes, the tempo stays; Delete and Undo', async () => {
+  const h = await timelineWith();
+  const key = k => h.ctx.onKey({ key: k, target: { tagName: 'BODY' }, preventDefault() {} });
+  setPts(h, WAVE); h.run('commitSettings()');
+  h.run('rsSel = 2'); key('Delete');
+  assert.deepEqual(ptsOf(h).map(q => q.ms), [100, 800, 100], 'the picked point gone');
+  assert.equal(h.run('rsSel'), null);
+  assert.equal(h.run('history.at(-1).label'), 'Remove a point of speed');
+  h.run('undoLast()'); await settle();
+  assert.deepEqual(ptsOf(h), WAVE, 'Undo puts it back');
+  h.run('rsSel = 0'); h.run('removeChange()');
+  assert.equal(h.$('bpmInput').value, '75', 'the first gone: the tempo is the next point\'s speed (800 ms)');
+  assert.deepEqual(ptsOf(h).map(q => q.ms), [800, 800, 100]);
+  h.run('rsSel = 1'); key('Backspace');
+  assert.equal(ptsOf(h).length, 2);
+  h.run('rsSel = 1'); h.run('removeChange()');
+  assert.equal(h.$('rhythmSelect').value, 'flat', 'two points: the change goes');
+  assert.equal(h.$('bpmInput').value, '75', 'at the tempo');
+  assert.equal(h.$('morePoints').value, '[]');
+  h.run('undoLast()'); await settle();
+  assert.equal(ptsOf(h).length, 2, 'Undo brings the change back');
+  setPts(h, WAVE); h.run('rsSel = null; removeChange()');
+  assert.equal(h.$('rhythmSelect').value, 'flat', 'nothing picked (the API\'s removeChange()): the whole change goes');
+});
+
+test('the timeline draws every point (Start, the points between, End), labels that never pile up, a × on the picked one, and hides what is gone', async () => {
+  const h = await timelineWith();
+  setPts(h, [{ at: 0.1, ms: 100, curve: 0 }, { at: 0.3, ms: 600, curve: 0 }, { at: 0.32, ms: 300, curve: 0 }, { at: 0.6, ms: 900, curve: 0.3 }, { at: 0.9, ms: 200, curve: 0 }]);
+  const extra = clean(h.run('rsExtra.points.map(d => ({ hidden: d.hidden, k: d.dataset.k, left: d.style.left, top: d.style.top }))'));
+  const labels = clean(h.run('rsExtra.labels.map(d => ({ hidden: d.hidden, text: d.textContent }))'));
+  assert.equal(extra.length, 3, 'three points between Start and End');
+  assert.deepEqual(extra.map(d => [d.hidden, d.k]), [[false, '1'], [false, '2'], [false, '3']]);
+  const m = clean(h.run('rsModel'));
+  assert.deepEqual(extra.map(d => d.left), m.points.slice(1, 4).map(q => `${q.x / 10}%`), 'each at its place');
+  assert.equal(h.$('rsStartL').textContent, 'Start 100 ms'); assert.equal(h.$('rsEndL').textContent, 'End 200 ms');
+  assert.deepEqual(labels.map(l => l.text), ['600 ms', '300 ms', '900 ms'], 'the points between say their speed');
+  assert.deepEqual(labels.map(l => l.hidden), [true, true, false], 'two points close together: their labels wait to be picked');
+  h.run('rsSel = 2; renderRhythmStrip()');
+  assert.equal(h.run('rsExtra.labels[1].hidden'), false, 'picked: it says its speed');
+  assert.equal(h.$('rsRemove').hidden, false);
+  assert.equal(h.$('rsRemove').style.top, `${m.points[2].y}%`, 'the × over the picked point');
+  assert.equal(h.run('rsExtra.handles.length'), 3, 'four changes, four handles (the first in the page)');
+  assert.equal(h.$('rsCurveHandle').dataset.k, '0');
+  setPts(h, [{ at: 0.1, ms: 100, curve: 0 }, { at: 0.5, ms: 600, curve: 0 }]);
+  h.run('rsSel = null; renderRhythmStrip()');
+  assert.ok(h.run('rsExtra.points.every(d => d.hidden) && rsExtra.labels.every(d => d.hidden) && rsExtra.handles.every(d => d.hidden)'), 'one change again: the extra points and handles hidden');
+  assert.deepEqual([h.$('rsStart').hidden, h.$('rsEnd').hidden, h.$('rsCurveHandle').hidden], [false, false, false]);
+  assert.equal(h.$('rsEndL').textContent, 'End 600 ms');
+  setPts(h, []);
+  h.run('renderRhythmStrip()');
+  assert.deepEqual([h.$('rsStart').hidden, h.$('rsEnd').hidden, h.$('rsCurveHandle').hidden, h.$('rsBand').hidden], [true, true, true, true], 'one speed: nothing to drag');
+});
+
+test('several points travel with the film: saved per project, in snapshots and taste marks; an older snapshot opens with its one change; the sound, the chords and the export follow them', async () => {
+  const h = await timelineWith();
+  setPts(h, WAVE);
+  assert.deepEqual(JSON.parse(savedOf(h.store).morePoints), WAVE.slice(2), 'saved with the project\'s film');
+  const back = load({ routes: { ...baseRoutes(), '/api/state': { plates: Array.from({ length: 24 }, (_, i) => mkPlate('p' + i)) } }, storage: { 'studioFilm:demo': h.store['studioFilm:demo'] } });
+  await settle(); await settle();
+  assert.deepEqual(JSON.parse(back.$('morePoints').value), WAVE.slice(2), 'and back on the next visit');   // (the fake page's menus have no options to restore into)
+  assert.ok(h.run("FILM_SETTINGS.includes('morePoints') && 'morePoints' in editSnap().settings"), 'in snapshots and taste marks');
+  const snap = clean(h.run('editSnap().settings'));
+  h.run(`applySnap(${JSON.stringify({ ...snap, morePoints: undefined })})`);
+  setPts(h, WAVE);
+  const old = { ...snap }; delete old.morePoints;
+  h.run(`applySnap(${JSON.stringify(old)})`);
+  assert.equal(h.run('changeParams().points.length'), 2, 'a snapshot from before several points: its one change, not the points on screen');
+  h.run(`applySnap(${JSON.stringify(snap)})`);
+  assert.equal(h.run('changeParams().points.length'), 4, 'a snapshot with them: all of them');
+  // how fast the music cuts: the mean of the points; the chords: never under 3 s at the fastest point, wherever it is
+  setPts(h, [{ at: 0.1, ms: 500, curve: 0 }, { at: 0.4, ms: 60, curve: 0 }, { at: 0.6, ms: 60, curve: 0 }, { at: 0.9, ms: 500, curve: 0 }]);
+  assert.ok(Math.abs(h.run('rhythmCutsPerSecond()') - 1000 / 280) < 1e-9);
+  for (let i = 0; i < 20; i++) { h.$('progSelect').value = '1'; h.run('paceChanges()'); assert.equal(h.$('progSelect').value, '0', 'the 60 ms middle is too fast for any chord length'); }
+  setPts(h, [{ at: 0.1, ms: 500, curve: 0 }, { at: 0.4, ms: 250, curve: 0 }, { at: 0.9, ms: 1000, curve: 0 }]);
+  for (let i = 0; i < 20; i++) { h.$('progSelect').value = '1'; h.run('paceChanges()'); assert.equal(h.$('progEverySelect').value, '3', '250 ms at the fastest: 16 cuts (4 s), never 8 (2 s)'); }
+  // the music's cuts and the export
+  setPts(h, WAVE);
+  h.$('musicSelect').value = 'on';
+  await h.run('exportVideo()');
+  const sent = Array.from(h.ctx.__drone.exports.at(-1).starts), gaps = sent.slice(1).map((v, i) => v - sent[i]);
+  const slowest = gaps.indexOf(Math.max(...gaps));
+  assert.ok(gaps[0] < 0.11 && gaps.at(-1) < 0.11 && gaps[slowest] > 0.7, `the sound slows down and speeds up with the picture: ${gaps.map(g => g.toFixed(2))}`);
+  const body = h.calls.filter(c => c.url === '/api/export-video').at(-1).body;
+  assert.deepEqual([body.rhythm, body.bpm, body.end_ms], ['variable', 600, 100], 'the file is named after the tempo and the last speed');
+});
+
+test('the click that ends a drag never adds a point, even released on the line; a click pressed on the lane right after does (no timer to wait for)', async () => {
+  const h = await timelineWith();
+  setPts(h, [{ at: 0.2, ms: 100, curve: 0 }, { at: 0.5, ms: 800, curve: 0 }]);
+  const y = ms => h.run(`yOfMs(${ms})`), down = h.$('rsSpeed').listeners.pointerdown[0];
+  down({ target: { closest: () => ({ className: 'rs-point' }) } });              // pressed on a point (dragged past its neighbour, released on the line)
+  h.ctx.rsLaneMove(lev(900, y(800))); h.ctx.rsLaneClick(lev(900, y(800)));
+  assert.equal(ptsOf(h).length, 2, 'the drag\'s own click adds nothing');
+  down({ target: { closest: () => null } });                                    // pressed on the lane, at once
+  h.ctx.rsLaneClick(lev(900, y(800)));                                           // no hover first: the click itself says it is on the line
+  assert.equal(ptsOf(h).length, 3, 'a real click adds');
+  down({ target: { closest: () => null } });
+  h.ctx.rsLaneClick(lev(600, y(100)));
+  assert.equal(ptsOf(h).length, 3, 'away from the line: nothing added');
+  assert.equal(h.run('rsSel'), null, 'only the selection cleared');
+});
+
+test('fuzz: 400 random sets of points (and garbage) always give points in order and apart, a continuous speed through them, every cut a frame or more, and a timeline that draws', async () => {
+  const h = await timelineWith(30);
+  let seed = 12345;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const junk = [null, 'x', { at: NaN }, { at: 0.5, ms: -5 }, { at: -1, ms: 100 }, { at: 2, ms: 100 }, { ms: 300 }];
+  for (let round = 0; round < 400; round++) {
+    const n = 2 + Math.floor(rnd() * 14), list = [];
+    for (let i = 0; i < n; i++) list.push(rnd() < 0.1 ? junk[Math.floor(rnd() * junk.length)] : { at: rnd() * 1.1, ms: 20 + rnd() * 2000, curve: rnd() * 1.4 - 0.2 });
+    if (rnd() < 0.7) list.sort((a, b) => ((a && a.at) || 0) - ((b && b.at) || 0));
+    h.$('rhythmSelect').value = 'variable'; h.$('bpmInput').value = String(40 + Math.floor(rnd() * 1160));
+    h.$('changeFrom').value = String(rnd()); h.$('changeTo').value = String(rnd() * 1.2); h.$('endMsRange').value = String(rnd() * 2000); h.$('curveVal').value = String(rnd());
+    h.$('morePoints').value = rnd() < 0.05 ? '{broken' : JSON.stringify(list);
+    h.$('multSelect').value = ['0.5', '1', '2', '3'][Math.floor(rnd() * 4)];
+    const ch = clean(h.run('changeParams()')), p = ch.points, bpm = h.run('bpmValue()');
+    assert.ok(p.length >= 2 && p.length <= 12, `${p.length} points`);
+    p.forEach((q, i) => {
+      assert.ok(q.at >= 0 && q.at <= 1 && q.ms >= 50 && q.ms <= 1500 && q.curve >= 0 && q.curve <= 1, `round ${round}: in range ${JSON.stringify(q)}`);
+      if (i) assert.ok(q.at - p[i - 1].at >= 0.02 - 1e-3, `round ${round}: apart ${p[i - 1].at} → ${q.at}`);
+    });
+    // continuous: just before and just after each point the speed is the point's (no jumps)
+    const ms = x => h.run(`msAtShare(${x}, ${bpm}, changeParams())`);
+    for (const q of p.slice(1)) { const a = ms(q.at - 1e-7), b = ms(q.at + 1e-7); assert.ok(Math.abs(Math.log(a / b)) < 0.01 && Math.abs(Math.log(b / q.ms)) < 0.01, `round ${round}: continuous at ${q.at} (${a}, ${b}, ${q.ms})`); }
+    // between two points the speed stays between their speeds (an ease never overshoots)
+    for (let i = 1; i < p.length; i++) {
+      const lo = Math.min(p[i - 1].ms, p[i].ms) * 0.999, hi = Math.max(p[i - 1].ms, p[i].ms) * 1.001;
+      for (const f of [0.25, 0.5, 0.75]) { const v = ms(p[i - 1].at + (p[i].at - p[i - 1].at) * f); assert.ok(v >= lo && v <= hi, `round ${round}: ${v} between ${lo} and ${hi}`); }
+    }
+    if (round % 8 === 0) {                                                       // the whole page path, now and then (slower)
+      h.run('updateTempo(); updateRhythm(); renderRhythmStrip()');
+      const t = clean(h.run('timelineFor(30)')), r = clean(h.run('rhythmFor(30)'));
+      assert.ok(t.every(Number.isFinite) && t.slice(1).every((v, i) => v - t[i] >= 1 - 1e-9), `round ${round}: every picture cut a frame or more`);
+      assert.ok(r.audio.every(Number.isFinite) && r.audio.slice(1).every((v, i) => v > r.audio[i]), `round ${round}: the music's cuts in order`);
+      const m = clean(h.run('rsModel'));
+      assert.equal(m.points.length, p.length); assert.ok(m.handles.length <= p.length - 1);
+      assert.ok(m.curve.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y) && y >= 0 && y <= 100));
+    }
+  }
 });
