@@ -766,6 +766,42 @@ test('styles: Spiral is gone (the user: "just kill SPIRAL"): its number plays th
   await ctx.close();
 });
 
+test('Run varies from one Random to the next (the user: "a bit repetitive"): each family has several runs and the accents fall in several groupings; every one level and dark; the same loop all film long', { skip }, async () => {
+  const ctx = await fresh();
+  const r = await page.evaluate(async () => {
+    const flat = Array.from({ length: 41 }, (_, i) => i * 0.46875);
+    const P = { pulse: 0.05, low: 0.8, bright: 0.35, width: 0.7, space: 0.65, power: 0.6, pitch: 0.4, hitType: 0, arp: 0, bass: 0.5, chord: 1, pad: 0.4, room: 2, style: 6 };
+    const shape = async (seed, bassPattern) => {                                  // the run's notes (relative to its first) and accents (the filter's opening), first bar
+      const oc = new OfflineAudioContext(2, 44100, 44100), notes = [], opens = [];
+      const mkF = oc.createBiquadFilter.bind(oc), mkO = oc.createOscillator.bind(oc);
+      oc.createBiquadFilter = () => { const f = mkF(); const o = f.frequency.setValueAtTime.bind(f.frequency); f.frequency.setValueAtTime = (v, t) => { if (f.Q.value === 6 && f.type === 'lowpass') opens.push([t, v]); return o(v, t); }; return f; };
+      oc.createOscillator = () => { const n = mkO(); const o = n.frequency.setTargetAtTime.bind(n.frequency); n.frequency.setTargetAtTime = (v, t, tau) => { if (tau === 0.006 && n.type === 'square') notes.push([t, v]); return o(v, t, tau); }; return n; };
+      window.Drone.build(oc, oc.destination, { ...P, seed, bassPattern }, flat, { offset: 0, t0: 0 });
+      const n16 = notes.sort((a, b) => a[0] - b[0]).slice(0, 16), o16 = opens.sort((a, b) => a[0] - b[0]).slice(0, 16);
+      return { notes: n16.map(([, v]) => Math.round(12 * Math.log2(v / n16[0][1]))).join(','), acc: o16.map(([, v]) => (v > o16[0][1] * 0.8 ? 'X' : '.')).join(''),
+               bar2: notes.slice(16, 32).map(([, v]) => Math.round(12 * Math.log2(v / n16[0][1]))).join(',') };
+    };
+    const out = {};
+    for (const fam of [0, 1, 2, 3]) out[fam] = await Promise.all(Array.from({ length: 16 }, (_, i) => shape(i + 1, fam)));
+    const levels = [];
+    for (const seed of [3, 8, 13]) for (const bassPattern of [0, 2]) {
+      const x = await window.Drone.renderExport({ ...P, seed, bassPattern, prog: 1, progEvery: 2 }, flat);
+      let e = 0, pk = 0, bad = false; for (const a of x.left) { if (!Number.isFinite(a)) bad = true; e += a * a; pk = Math.max(pk, Math.abs(a)); }
+      levels.push({ rms: Math.sqrt(e / x.left.length), pk, bad });
+    }
+    return { out, levels };
+  });
+  for (const fam of [1, 2, 3]) {
+    const runs = new Set(r.out[fam].map(x => x.notes));
+    assert.ok(runs.size >= 2, `family ${fam}: several runs across seeds (${[...runs].join(' | ')})`);
+  }
+  const accents = new Set(Object.values(r.out).flat().map(x => x.acc));
+  assert.ok(accents.size >= 3, `several accent groupings (${[...accents].join(' | ')})`);
+  for (const x of r.out[2]) assert.equal(x.bar2, x.notes, 'the same loop bar after bar (no chord change here): never parts that come and go');
+  for (const [i, m] of r.levels.entries()) assert.ok(!m.bad && Math.abs(m.rms - 0.17) < 0.015 && m.pk <= 0.97, `level ${i}: ${m.rms.toFixed(3)}, peak ${m.pk.toFixed(2)}`);
+  await ctx.close();
+});
+
 test('Run: the running bass plays every sixteenth on the warped grid (it follows the speed and lands on the cuts), level and dark under the sub, all four runs; Tide\'s number plays the drone', { skip }, async () => {
   const ctx = await fresh();
   const r = await page.evaluate(async () => {

@@ -2377,7 +2377,7 @@
       setv('pulseRange', rint([0, 15])); setv('bassRange', rint([40, 60])); setv('bassPatternSelect', Math.floor(Math.random() * 4));
       setv('hitTypeSelect', 0); setv('arpRange', 0);
       setv('chordSelect', rpick([0, 1, 2])); setv('modeSelect', rpick([0, 0, 1, 2, 3]));
-      setv('progSelect', Math.random() < 0.5 ? rpick([1, 2, 3]) : 0);
+      setv('progSelect', Math.random() < 0.8 ? rpick([1, 2, 3]) : 0);   // the chords move most of the time: the loop changes key (the user: Run "a bit repetitive"; a loop may "change tune")
       setv('padRange', rint([30, 45])); setv('padToneSelect', rpick([0, 0, 1]));
       setv('roomSelect', rpick([2, 3])); setv('spaceRange', rint([55, 80])); setv('echoRange', 0);
       setv('washRange', Math.min(15, getn('washRange'))); setv('shimmerRange', Math.min(20, getn('shimmerRange'))); setv('ringRange', 0);

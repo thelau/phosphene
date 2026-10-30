@@ -811,11 +811,22 @@
 
     // ---- Run: the running bass, every sixteenth (see STYLES) ----
     if (style.run && bassAmt > 0.01) {
-      const r = mulberry32(seedN + 6113), { per, stepAt, thin } = sixteenths();
-      const RUNS = [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 12, 0, 12, 0, 12, 0, 12, 0, 12, 0, 12, 0, 12, 7, 12],
-        [0, 0, 7, 0, 12, 0, 7, 0, 0, 0, 7, 0, 12, 7, 5, 7], [0, null, 0, 0, 12, null, 0, 0, 0, null, 0, 0, 7, null, 12, 0]];
-      const run = RUNS[Math.max(0, Math.min(RUNS.length - 1, Math.round(+p.bassPattern || 0)))];
-      const acc = run.map((_, k) => (k % 4 === 0 ? 1 : k % 2 === 0 ? 0.55 : 0.35));
+      const r = mulberry32(seedN + 6113), { per, stepAt, thin } = sixteenths(), rA = mulberry32(seedN + 6127)();
+      // the Bassline pattern picks the run's family; the seed one of its three runs and where the accents fall (the user: "Run needs more
+      // variety, it's pretty good but it feels a bit repetitive", 2026-10-30): the same loop all film long, only its notes and accents
+      // differ from one Random to the next (never parts that come and go: "different parts in the loop is weird"). Root, fifth and
+      // octave only, so it stays in key over every chord
+      const RUNS = [
+        [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 7, 12, 12]],   // Pulse: steady
+        [[0, 12, 0, 12, 0, 12, 0, 12, 0, 12, 0, 12, 0, 12, 7, 12], [0, 12, 12, 0, 12, 12, 0, 12, 0, 12, 12, 0, 12, 12, 0, 12], [0, 0, 12, 0, 0, 12, 0, 12, 0, 0, 12, 0, 0, 12, 7, 12]],   // Octave: jumping
+        [[0, 0, 7, 0, 12, 0, 7, 0, 0, 0, 7, 0, 12, 7, 5, 7], [0, 7, 12, 7, 0, 7, 12, 7, 0, 7, 12, 7, 12, 7, 5, 7], [12, 7, 5, 0, 12, 7, 5, 0, 12, 7, 5, 0, 12, 12, 7, 7]],   // Fifths: walking
+        [[0, null, 0, 0, 12, null, 0, 0, 0, null, 0, 0, 7, null, 12, 0], [0, null, 0, 0, 0, null, 0, 0, 12, null, 12, 12, 7, null, 7, 7], [0, 0, null, 0, 0, null, 0, 0, 12, 0, null, 0, 7, null, 12, 0]],   // Gallop
+      ];
+      const fam = RUNS[Math.max(0, Math.min(RUNS.length - 1, Math.round(+p.bassPattern || 0)))], run = fam[Math.floor(r() * fam.length)];
+      const ACCENTS = [k => (k % 4 === 0 ? 1 : k % 2 === 0 ? 0.55 : 0.35),                   // on the beat
+        k => ([0, 3, 6].includes(k % 8) ? 1 : 0.4),                                          // 3-3-2: the off-kilter push of a sequencer run
+        k => ([0, 3, 6, 9, 12].includes(k) ? 1 : 0.4)];                                      // 3-3-3-3-4 across the bar
+      const acc = run.map((_, k) => ACCENTS[Math.floor(rA * ACCENTS.length)](k));
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 6; lp.frequency.value = 300;
       const env = gain(0); lp.connect(env); for (const br of sides) env.connect(gain(0.5, br));
       const ro = [['sawtooth', -0.004, 1, 2], ['sawtooth', 0.004, 0.7, 2], ['square', 0, 0.45, 1]].map(([w, det, g, m]) => { const o = osc(w, f0 * m); o.connect(gain(g, lp)); return [o, det, m]; });
