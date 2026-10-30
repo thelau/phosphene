@@ -492,6 +492,12 @@
               </select>
             </div>
             <div id="synthBox" hidden>
+              <label class="row"><span class="lbl">Style</span>
+                <select id="styleSelect" onchange="pickStyle()" title="A whole way of playing the sound. Choosing one makes a new sound in it at once; Random sound stays in it">
+                  <option value="0">Drone · the dark bed</option>
+                  <option value="1">Spiral · sequences in front</option>
+                </select>
+              </label>
               <div class="sound-tabs" role="tablist" aria-label="Sound groups">
                 <button role="tab" id="soundTabBed" data-group="bed" onclick="showSoundGroup('bed')">Bed <span>6</span></button>
                 <button role="tab" id="soundTabTone" data-group="tone" onclick="showSoundGroup('tone')">Tone <span>8</span></button>

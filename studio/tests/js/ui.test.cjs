@@ -842,7 +842,7 @@ test('with the drone on, Play starts it live from the top with the settings and 
   await settle(); await settle();
   assert.equal(h.calls.some(c => c.url === '/api/music'), false);           // nothing is rendered on the server
   const play = h.ctx.__drone.plays[0];
-  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, room: 0, power: 0.55, pitch: 0.5, chord: 0, prog: 0, mode: 0, pad: 0, padTone: 0, tape: 0, progEvery: 0, bass: 0, bassPattern: 0, bassRate: 0, arrange: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, choir: 0, industrial: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpMood: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
+  assert.deepEqual(JSON.parse(JSON.stringify(play.params)), { pulse: 0.4, low: 0.8, bright: 0.2, width: 0.9, space: 0.75, room: 0, power: 0.55, pitch: 0.5, chord: 0, prog: 0, mode: 0, style: 0, pad: 0, padTone: 0, tape: 0, progEvery: 0, bass: 0, bassPattern: 0, bassRate: 0, arrange: 0, movement: 0.5, echo: 0, wash: 0, ring: 0, shimmer: 0, choir: 0, industrial: 0, hitType: 0, hit: 0, hitOn: 0, arp: 0, arpMood: 0, arpSteps: 0, arpRate: 0, dynamics: 0, subWave: 0, padWave: 0, seed: 42, paired: true, landAt: 0.4 });
   assert.equal(play.offset, 0);
   assert.equal(play.starts.length, 3);                                      // the music follows the beats (2 of them for 6 picture cuts at 3 per beat) + the end
   assert.ok(Math.abs(play.starts[2] - 0.6) < 1e-9 && Math.abs(play.starts[1] - 0.3) < 1e-9);
@@ -2210,4 +2210,27 @@ test('after a reload mid-batch, Resume leaves out the images the server is still
   await h.run("prog.actions.find(a => a.label === 'Resume').run()"); await settle(); await settle();
   assert.deepEqual(JSON.parse(h.run('JSON.stringify(prog.slots)')), ['ok'], 'already being made: it arrives by itself');
   assert.doesNotMatch(h.$('statusText').innerHTML, /Retry/);
+});
+
+test('Style: Spiral\'s Random keeps the sequence in front (on properly, a mood that moves, no choir or metal); choosing a style rolls a sound in it; sent, remembered, older sounds open as Drone', async () => {
+  const h = await playerWith();
+  const n = id => +h.$(id).value;
+  h.$('styleSelect').value = '1';
+  for (let i = 0; i < 200; i++) {
+    h.run('randomMusic()');
+    assert.ok(n('arpRange') >= 45, `the sequence is on properly: ${n('arpRange')}`);
+    assert.ok([2, 3, 4, 5, 7].includes(n('arpMoodSelect')), `a mood that moves: ${n('arpMoodSelect')}`);
+    assert.deepEqual([n('choirRange'), n('industrialRange')], [0, 0]);
+    assert.ok(n('hitRange') <= 40 && n('padRange') <= 30 && n('washRange') <= 20 && n('spaceRange') >= 45);
+    assert.equal(n('styleSelect'), 1, 'Random sound stays in the style');
+  }
+  assert.equal(h.run('synthParams()').style, 1);
+  h.run('saveSettings()');
+  assert.equal(savedOf(h.store).styleSelect, '1');
+  h.$('styleSelect').value = '0'; let arpOff = 0;
+  for (let i = 0; i < 200; i++) { h.run('randomMusic()'); if (!n('arpRange')) arpOff++; }
+  assert.ok(arpOff > 60, `Drone: the arpeggio comes and goes as before (${arpOff} of 200 off)`);
+  const seed = n('seedVal'); h.$('styleSelect').value = '1'; h.run('pickStyle()');
+  assert.ok(n('seedVal') !== seed && n('arpRange') >= 45, 'choosing a style makes a new sound in it');
+  assert.equal(h.run("migrateRhythm({ chordSelect: '2' })").styleSelect, '0', 'a sound saved before styles opens as Drone');
 });

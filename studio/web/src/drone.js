@@ -268,6 +268,16 @@
     // (ping-pong); the melody moves on only on hits (2026-10-30, more variety in the same style)
     { name: 'Euclid', scale: [0, 3, 5, 7, 10], lo: 0.75, hi: 2.6, open: 1800, close: 340, q: 4, sustain: 1.3, gain: 1.0, voices: 2, shape: 'walk', euclid: true },
   ];
+  // Styles: whole ways of playing the same patch (2026-10-30; inspired by artists, never named after them). Drone: the measured dark bed
+  // carries the sound, everything else under it (as before). Spiral: the sequence in front, an octave up, the bed stepped back under it;
+  // the sequence climbs and falls through the scale every few rounds (diatonic, so always in key: `SPIRALS`, steps of the mood's scale)
+  // and its filter opens and shuts over tens of seconds. Same voices as the drone's arpeggio: no extra cost.
+  const STYLES = [
+    { name: 'Drone', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false },
+    { name: 'Spiral', bed: 0.42, arpGain: 1.7, arpUp: 2, morph: 1, spiral: true },
+  ];
+  const SPIRALS = [[0, 1, 2, 3, 2, 1], [0, 2, 4, 2], [0, -1, -2, 1, 0, 2], [0, 3, 1, 4, 2, 5, 3, 1], [0, 2, 1, 3, 2, 4]];
+  const SPIRAL_ROUNDS = 2;                                           // rounds of the pattern at each step of the spiral
   const EUCLID = [[3, 8], [5, 8], [5, 12], [7, 12], [5, 16], [7, 16], [9, 16]];
   const euclid = (k, n) => Array.from({ length: n }, (_, i) => Math.floor(((i + 1) * k) / n) > Math.floor((i * k) / n));   // Bresenham: k hits, evenly
   const euclidHit = (gate, k, step) => (gate[step % gate.length] ? Math.floor(step / gate.length) * k + gate.slice(0, step % gate.length).filter(Boolean).length : -1);   // which hit a step is, or -1: a rest
@@ -339,7 +349,7 @@
     const pick = (v, n) => Math.max(0, Math.min(n - 1, Math.round(+v || 0)));
     const choir = clamp01(p.choir || 0), industrial = clamp01(p.industrial || 0);   // two layers mixed into the drone: low voices, and metal and noise
     const hitType = pick(p.hitType, 5), hitAmt = clamp01(p.hit || 0), hitOn = pick(p.hitOn, 4);
-    const arpMood = ARP_MOODS[pick(p.arpMood, ARP_MOODS.length)];
+    const arpMood = ARP_MOODS[pick(p.arpMood, ARP_MOODS.length)], style = STYLES[pick(p.style, STYLES.length)];
     const arpAmt = clamp01(p.arp || 0), arpSteps = ARP_STEPS[pick(p.arpSteps, ARP_STEPS.length)], arpRate = pick(p.arpRate, ARP_PER_CUT.length);
     const dynamics = opts.dynamics === false ? 0 : pick(p.dynamics, 4);
     const prog = PROGRESSIONS[pick(p.prog, PROGRESSIONS.length)], progEvery = PROG_EVERY[pick(p.progEvery, PROG_EVERY.length)];
@@ -525,7 +535,7 @@
       const k = (1 + 1.5 * power) * (1 + 0.6 * industrial);
       const sat = shaper(tanhCurve(k, 1));
       body.connect(pg); pg.connect(lg); lg.connect(sat);
-      const sum = gain(1);
+      const sum = gain(style.bed);                                         // the style's bed: all of it in Drone, stepped back under the sequence in Spiral
       sat.connect(sum); subBus.connect(sum);
       const br = gain(1); sum.connect(br);
       lfo(0.11 * move, 0.07, br.gain);
@@ -621,17 +631,24 @@
 
     // ---- arpeggio: a short pattern of plucked notes that repeats, stepping with the cuts. One voice (two detuned saws), its pitch automated ----
     if (arpAmt > 0.01 && arpMood.scale) {
-      const notes = moodNotes(arpMood, f0 * 4, mode), m = arpMood;
+      const notes = moodNotes(arpMood, f0 * 4 * style.arpUp, mode), m = arpMood;
       const phase = m.shape === 'phase';
       const loopA = phase ? Math.max(4, Math.min(8, arpSteps)) : arpSteps;
-      const pattern = moodPattern(m.shape, notes.length, loopA, rand).map(i => notes[i]);
+      const pattern = moodPattern(m.shape, notes.length, loopA, rand);   // indices into the notes
       const patternB = phase ? phaseLoop(pattern) : null;
+      // Spiral: the whole pattern moves up or down the scale every few rounds (index steps, an octave folded back at the edges); Drone never moves
+      const N = notes.length, perOct = m.scale.length, srand = mulberry32(seedN + 1213), path = SPIRALS[Math.floor(srand() * SPIRALS.length)];
+      const morphP = 24 + 24 * srand(), morphPh = 2 * Math.PI * srand();   // Spiral: the filter's slow arc, 24-48 s round
+      const noteOf = (j, st) => {
+        if (style.spiral) { j += path[Math.floor(st / (pattern.length * SPIRAL_ROUNDS)) % path.length]; while (j >= N) j -= perOct; while (j < 0) j += perOct; }
+        return notes[Math.max(0, Math.min(N - 1, j))];
+      };
       const voices = Array.from({ length: m.voices }, (_, vi) => {          // fixed voices: no node per note
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = m.q; lp.frequency.value = m.open;
         const env = gain(0);
         if (m.acid) lp.connect(shaper(satCurve(1.6), env)); else lp.connect(env);   // Acid: driven after the filter
         const pan = phase || m.euclid ? (vi ? [0.15, 1] : [1, 0.15]) : [1, 1];   // Phase: one loop leans left, the other right; Euclid: ping-pong
-        env.connect(gain(0.6 * m.gain * pan[0], arr.arp[0])); env.connect(gain(0.6 * m.gain * pan[1], arr.arp[1]));
+        env.connect(gain(0.6 * m.gain * style.arpGain * pan[0], arr.arp[0])); env.connect(gain(0.6 * m.gain * style.arpGain * pan[1], arr.arp[1]));
         const oscs = [-MOOD_DETUNE, MOOD_DETUNE].map(det => { const o = osc('sawtooth', 200); o.connect(lp); return [o, det]; });
         return { lp, env, oscs };
       });
@@ -640,8 +657,8 @@
       const accPos = [];                                                  // Accumulate: 2 notes, then 3, ... then the whole pattern, over again
       if (m.accumulate) for (let k = Math.min(2, L); k <= L; k++) for (let j = 0; j < k; j++) accPos.push(j);
       let mutCycle = 0; const mutated = pattern.slice();                 // Mutate: the pattern as it stands this round; one note changes per round
-      const mutateTo = cycle => { while (mutCycle < cycle) { mutated[Math.floor(mrand() * L)] = notes[Math.floor(mrand() * notes.length)]; mutCycle++; } };
-      const noteAt = st => m.accumulate ? pattern[accPos[st % accPos.length]] : m.mutate ? (mutateTo(Math.floor(st / L)), mutated[st % L]) : pattern[st % L];
+      const mutateTo = cycle => { while (mutCycle < cycle) { mutated[Math.floor(mrand() * L)] = Math.floor(mrand() * notes.length); mutCycle++; } };
+      const noteAt = st => noteOf(m.accumulate ? pattern[accPos[st % accPos.length]] : m.mutate ? (mutateTo(Math.floor(st / L)), mutated[st % L]) : pattern[st % L], st);
       const [ek, en] = EUCLID[Math.floor(mrand() * EUCLID.length)], gate = m.euclid ? euclid(ek, en) : null;
       const per = ARP_PER_CUT[arpRate];
       perCut.push((i, tc) => {
@@ -650,21 +667,21 @@
           const s = arc(at0);
           const stepLen = len / per;
           const decay = Math.min(1.6, Math.max(0.08, stepLen * 0.9 * m.sustain)) * (1.5 - s), f = noteAt(step) * lift(s, 1.2);
-          const sw = m.sweep ? 0.15 + 0.85 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / m.sweep)) : 1;   // Sweep: how far the filter opens now
+          const sw = m.sweep ? 0.15 + 0.85 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / m.sweep)) : style.morph ? 0.45 + 0.85 * (0.5 - 0.5 * Math.cos((2 * Math.PI * at0) / morphP + morphPh)) : 1;   // Sweep: how far the filter opens now; Spiral: its slow arc
           const acc = accent ? (accent[step % L] ? 1.35 : 0.8) : 1, glide = slide && slide[step % L];
           const play = (v, fq, tt) => {
             for (const [o, det] of v.oscs) { if (glide) o.frequency.setTargetAtTime(fq * (1 + det), tt, 0.045); else o.frequency.setValueAtTime(fq * (1 + det), tt); }
             v.lp.frequency.setValueAtTime(Math.max(m.close * 1.2, m.open * sw * acc) * lift(s, 0.8), tt); v.lp.frequency.setTargetAtTime(m.close * lift(s, 1.2), tt + 0.003, decay / 3);
             strike(v.env, tt, 2.2 * arpAmt * (accent ? (acc > 1 ? 1.2 : 0.85) : 1), decay);
           };
-          if (phase) { play(voices[0], f, t); play(voices[1], patternB[step % patternB.length] * lift(s, 1.2), t); }   // both on every step, each round its own loop
+          if (phase) { play(voices[0], f, t); play(voices[1], noteOf(patternB[step % patternB.length], step) * lift(s, 1.2), t); }   // both on every step, each round its own loop
           else if (gate) { const h = euclidHit(gate, ek, step); if (h >= 0) play(voices[h % 2], noteAt(h) * lift(s, 1.2), t); }   // a rest, or the next note, on the other side
           else play(voices[step % voices.length], f, t);
         }
       });
     } else if (arpAmt > 0.01) {
       const degrees = [];                                                // the notes it may use: the chord's tones over two octaves, kept dark
-      for (const r of chord.ratios) for (const oct of [0.5, 1]) { const f = f0 * r * oct; if (f > 100 && f < 700) degrees.push(f); }
+      for (const r of chord.ratios) for (const oct of [0.5, 1]) { const f = f0 * r * oct; if (f > 100 && f < 700) degrees.push(f * style.arpUp); }
       degrees.sort((x, y) => x - y);
       const pattern = [];
       let cur = Math.floor(rand() * degrees.length);
@@ -675,7 +692,7 @@
       const env = gain(0);
       const voices = [-0.004, 0.004].map(det => { const o = osc('sawtooth', 200); o.connect(lp); return [o, det]; });
       lp.connect(env);
-      env.connect(gain(0.6, arpBus[0])); env.connect(gain(0.6, arpBus[1]));
+      env.connect(gain(0.6 * style.arpGain, arpBus[0])); env.connect(gain(0.6 * style.arpGain, arpBus[1]));
       const per = ARP_PER_CUT[arpRate];
       perCut.push((i, tc) => {
         for (const [step, at0, len] of noteTimes(starts, i, per)) {
@@ -778,7 +795,7 @@
   // How loud the graph is at these settings, from a short offline render (so the live preview matches the export level).
   const levelCache = new Map();
   const cutSignature = starts => { const head = []; for (const t of starts) { head.push(Math.round(t * 1000)); if (t > 4) break; } return head.join(','); };   // the cuts of the window the level is measured on: faster cuts pump differently
-  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.room, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.prog, p.progEvery, p.mode, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.padTone, p.tape]);
+  const levelKey = (p, starts) => JSON.stringify([cutSignature(starts || []), p.choir, p.industrial, p.pulse, p.low, p.bright, p.width, p.space, p.room, p.power, p.seed, p.paired, p.pitch, p.chord, p.echo, p.movement, p.wash, p.ring, p.shimmer, p.subWave, p.padWave, p.hitType, p.hit, p.hitOn, p.arp, p.arpSteps, p.arpRate, p.arpMood, p.style, p.prog, p.progEvery, p.mode, p.bass, p.bassPattern, p.bassRate, p.arrange, p.pad, p.padTone, p.tape]);
   async function level(p, starts) {
     starts = cleanStarts(starts);
     const key = levelKey(p, starts);
@@ -1073,5 +1090,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, inMode, MODES, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz, EUCLID, euclid, euclidHit, ROOMS, roomData, PAD_TONES };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, inMode, MODES, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz, EUCLID, euclid, euclidHit, ROOMS, roomData, PAD_TONES, STYLES, SPIRALS };
 })();
