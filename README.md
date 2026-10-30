@@ -6,6 +6,43 @@ synthesized drone. Curate the images, cut the film, export an MP4.
 It runs on your own computer. You sign in with your own Krea account (images use its credits) and your own Kimi key
 (it writes the image ideas).
 
+![Curate: the generation row, the selection and the floating film preview](docs/screenshots/curate.jpg)
+
+## What it does
+
+**Curate** — make and choose the images.
+- Pick a **territory** (Editorial Print, Packaging, Out-of-Home…), or *Describe your own*, *Surprise me*, or a *Sampler* across
+  territories; *Refine* narrows it. **Generate** asks Kimi for scene ideas and Krea for the images, with the mark drawn into a guide
+  at its exact place and size (**On target**), close to it (**Loose**) or anywhere (**Scattered**).
+- Every new image is **checked for the mark** (right place, right size): clear misses go to the Trash, doubtful ones get a badge.
+- Keep or trash by hand; the app learns from it (the taste loop steers the next prompts and models).
+- **Groups**: your own, and automatic ones by look, territory, mark, position and source. **Add images** (or drop them) mixes your
+  own photos in. **AI order…** rearranges the selection like an editor (contrast cuts, shape echoes, colour hand-offs, an energy arc,
+  and where each mark sits); a note steers it.
+
+| Territories | AI order | The image viewer (with its prompt) |
+|---|---|---|
+| ![](docs/screenshots/territories.jpg) | ![](docs/screenshots/ai-order.jpg) | ![](docs/screenshots/viewer.jpg) |
+
+**Film** — cut the images to a rhythm and a sound, and export.
+
+![Film: the preview, the timeline with points of speed, Look and Sound](docs/screenshots/film.jpg)
+
+- **The timeline is the rhythm**: a tempo, a Multiple (picture cuts per music cut), Repeat, and **points of speed** — click the line to
+  add one, drag it, shape each change with its handle — so a film can slow down and speed up again.
+- **Look**: inverted copies (grey or colour), a slow zoom in or out per cut, a trail.
+- **Sound**: a synthesized score made in the page (WebAudio), in a **style** — Drone (the dark bed measured from the reference
+  films), Hypnotic (minimal, on a grid that follows the speed) or Run (a running bass) — with its bed, tone, textures and notes.
+  **Random** rolls a whole film inside a **Type** (Landing, Build, Pulse, Machine…), **Random sound** a new sound for the same cut.
+- **Snapshots** keep ways of cutting the same curation; **Export MP4** renders 1080 × 1920 with the sound, in the page.
+
+**Projects** — one per mark. A project can hold several marks (a symbol, a wordmark, a badge), each with its own place and size and
+the words the prompts use for it; colours belong to the project. Projects travel as `.phos` files (Export / Import project…).
+
+| Project settings | Sound, the Notes tab |
+|---|---|
+| ![](docs/screenshots/project-settings.jpg) | ![](docs/screenshots/film-notes.jpg) |
+
 ## The Mac app (easiest)
 
 Download **Phosphene.dmg** from the link you were sent, open it and drag Phosphene into Applications.
@@ -64,7 +101,33 @@ npm run setup        # only needed when packages changed; safe to run any time
 
 ## For developers
 
-`AGENTS.md` describes how everything works. Tests: `.venv/bin/python -m pytest studio/tests -q`.
+`AGENTS.md` describes how everything works, in detail and with the reasons behind each choice: read it before changing anything.
+
+**How it is built**
+
+| Part | Where | What |
+|---|---|---|
+| The page | `studio/web/` (`index.html`, `src/app.js`, `src/style.css`) | Vite, plain JavaScript. Curate, Film, the timeline, Random. |
+| The sound | `studio/web/src/drone.js` | WebAudio: the same graph plays live and renders the export offline. |
+| The picture | `studio/web/src/render.js` | WebGL2: the same renderer draws the preview and every exported frame. |
+| The server | `studio/server.py` | Python, no framework: the JSON API, the plates, generation, the logo check, encoding (ffmpeg). |
+| Projects | `studio/projects.py`, `studio/placement.py` | Marks, places and sizes, guides, `.phos` files. |
+| Images | `studio/krea_mcp_client.py` | Krea over MCP (OAuth sign-in), the prompts written by Kimi. |
+| Mark check | `studio/qa_engine.py` | Is the mark at its place and size? (`npm run qa:replay` checks it against your own keeps and trashes.) |
+| AI order | `studio/editor.py`, `studio/features.py` | Kimi's editing brief, then a deterministic search for the order. |
+| The Mac app | `app/` | Tauri 2: a native window around the same page and a frozen server; updates from GitHub. |
+
+**Tests** (no network, no credits, never your real data):
+
+```sh
+npm test                                                  # the page, in node with a fake DOM (~10 s)
+.venv/bin/python -m pytest studio/tests -q                # the server, and the browser tests below (~4 min)
+node --test studio/tests/e2e/*.e2e.test.cjs              # the real page in headless Chrome against a fake API
+```
+
+Run the tests of what you change while you work, the fast suite before each commit (`--ignore=studio/tests/test_e2e.py`), and
+everything before a release. Screenshots of a test run: `E2E_SHOTS=/some/folder`. The screenshots above were taken from a copy of
+Demo on a separate server.
 
 ## Releasing the Mac app
 
