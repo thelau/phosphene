@@ -2220,7 +2220,7 @@ test('Style: Spiral\'s Random keeps the sequence in front (on properly, a mood t
   for (let i = 0; i < 200; i++) {
     h.run('randomMusic()');
     assert.ok(n('arpRange') >= 40 && n('arpRange') <= 62, `the sequence is on properly, not shouting: ${n('arpRange')}`);
-    assert.ok([0, 2, 3, 4, 5, 7].includes(n('arpMoodSelect')), `Pluck or a mood that moves, never Dark or Acid: ${n('arpMoodSelect')}`);
+    assert.ok([0, 2, 3, 5, 7].includes(n('arpMoodSelect')), `Pluck or a mood that moves, never Dark, Acid or Mutate: ${n('arpMoodSelect')}`);
     if (n('arpMoodSelect') === 0) pluck++;
     assert.notEqual(n('arrangeSelect'), 2, 'no Sections in Spiral (1 of 10 liked)');
     assert.equal(n('padRange'), 0, 'no pad in Spiral');
