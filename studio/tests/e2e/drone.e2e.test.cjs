@@ -770,3 +770,32 @@ test('styles: Spiral puts the sequence in front (the bed stepped back, an octave
   assert.ok(same < 1e-6, `Drone unchanged: ${same}`);
   await ctx.close();
 });
+
+test('Tide: the bed swells by itself (about twice Drone\'s movement, within the reference\'s), the sub has its shape (in after the start, a break, back), level and dark', { skip }, async () => {
+  const ctx = await fresh();
+  const rows = await page.evaluate(async () => {
+    const P = { pulse: 0.1, low: 0.9, bright: 0.15, width: 0.3, space: 0.6, power: 0.6, seed: 11, pitch: 0.4, chord: 1, room: 2 };
+    const starts = Array.from({ length: 101 }, (_, i) => i * 0.4), out = [];
+    for (const v of [{ style: 0 }, { style: 2 }, { style: 2, seed: 99, chord: 3 }]) {
+      const r = await window.Drone.renderExport({ ...P, ...v }, starts), sr = 44100, x = r.left.map((a, i) => (a + r.right[i]) / 2);
+      const lp = new Float32Array(x.length); let y = 0; const a = 1 - Math.exp(-2 * Math.PI * 100 / sr); for (let i = 0; i < x.length; i++) { y += a * (x[i] - y); lp[i] = y; }
+      const fr = Math.round(0.1 * sr), env = []; for (let i = 0; i + fr <= x.length; i += fr) { let s = 0; for (let j = i; j < i + fr; j++) s += lp[j] * lp[j]; env.push(Math.sqrt(s / fr)); }
+      const mid = env.slice(Math.round(env.length * 0.2), Math.round(env.length * 0.5)), mean = mid.reduce((p, q) => p + q, 0) / mid.length;
+      const seg = (u0, u1) => { const e = env.slice(Math.round(env.length * u0), Math.round(env.length * u1)); return e.reduce((p, q) => p + q, 0) / e.length / mean; };
+      let s = 0, pk = 0, bad = false; for (const q of x) { if (!Number.isFinite(q)) bad = true; s += q * q; pk = Math.max(pk, Math.abs(q)); }
+      out.push({ rms: Math.sqrt(s / x.length), peak: pk, bad, depth: Math.sqrt(mid.reduce((p, q) => p + (q - mean) ** 2, 0) / mid.length) / mean, start: seg(0, 0.05), brk: seg(0.58, 0.62), late: seg(0.75, 0.85) });
+    }
+    return out;
+  });
+  console.log('tide: ' + JSON.stringify(rows.map(r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'number' ? +v.toFixed(3) : v])))));
+  const [drone, ...tide] = rows;
+  for (const m of rows) assert.ok(!m.bad && Math.abs(m.rms - 0.17) < 0.015 && m.peak <= 0.97, `level ${m.rms.toFixed(3)}, peak ${m.peak.toFixed(2)}`);
+  assert.ok(drone.start > 0.9 && drone.brk > 0.85, 'Drone has no shape of its own');
+  for (const [i, m] of tide.entries()) {
+    assert.ok(m.depth > drone.depth * 1.6 && m.depth < 0.35, `Tide ${i}: it swells (${m.depth.toFixed(2)} against Drone's ${drone.depth.toFixed(2)}; the reference 0.11-0.31)`);
+    assert.ok(m.start < 0.45 && m.brk < 0.6 && m.late > 0.85, `Tide ${i}: the sub comes in, breaks, comes back (${m.start.toFixed(2)} / ${m.brk.toFixed(2)} / ${m.late.toFixed(2)})`);
+  }
+  const dark = await spectra([{ style: 2, chord: 1, pulse: 0.1, width: 0.3, bright: 0.15 }]);
+  assert.ok(dark[0].sub > 0.45 && dark[0].high < 0.01, `Tide stays sub-heavy and dark: ${dark[0].sub.toFixed(2)} below 80 Hz, ${dark[0].high.toFixed(4)} above 2 kHz`);
+  await ctx.close();
+});

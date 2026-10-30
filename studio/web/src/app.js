@@ -2303,7 +2303,24 @@
     }
     // rules so the parts of a sound agree, whatever drew them
     // the style's own Random: Spiral is the sequence in front (on properly, an evolving mood, enough notes), clean (no choir, no metal), in a big room
+    // Tide: the bed swells by itself, so little pump on the cuts; narrow, dark and heavy; one note and its fifth (chord changes rare, and slow);
+    // no beat: hits, the bassline and the arrangement off, an arpeggio now and then, soft; a long room (from the reference the user sent)
+    function tideRules() {
+      setv('pulseRange', rint([0, 25])); setv('widthRange', rint([15, 45])); setv('brightRange', Math.min(25, getn('brightRange')));
+      setv('lowRange', Math.max(80, getn('lowRange'))); setv('movementRange', Math.min(40, getn('movementRange')));
+      if (Math.random() < 0.85) setv('progSelect', 0);
+      { const r = Math.random(); setv('chordSelect', r < 0.5 ? 1 : r < 0.75 ? 3 : 0); }        // the open fifth most of all, else suspended or the dark cluster
+      if (Math.random() < 0.8) setv('hitTypeSelect', 0);
+      setv('hitRange', Math.min(35, getn('hitRange')));
+      if (Math.random() < 0.8) setv('arpRange', 0); else { setv('arpRange', rint([22, 35])); setv('arpMoodSelect', rpick([2, 3])); setv('arpRateSelect', 0); }   // Phase or Sweep, half a note a cut
+      setv('bassRange', 0); setv('arrangeSelect', 0); setv('industrialRange', 0);
+      setv('washRange', Math.min(20, getn('washRange'))); setv('shimmerRange', Math.min(25, getn('shimmerRange'))); setv('ringRange', Math.min(15, getn('ringRange'))); setv('echoRange', Math.min(30, getn('echoRange')));
+      setv('padRange', Math.min(35, getn('padRange')));
+      if (getn('roomSelect') === 1) setv('roomSelect', rpick([0, 2, 3]));
+      setv('spaceRange', Math.max(40, getn('spaceRange')));
+    }
     function styleRules(rate) {
+      if (getn('styleVal') === 2) return tideRules();
       if (getn('styleVal') !== 1) return;
       if (getn('arpRange') < 45) setv('arpRange', rint([45, 75]));
       if ([0, 1, 6].includes(getn('arpMoodSelect'))) setv('arpMoodSelect', rpick([2, 3, 4, 5, 7]));   // Phase, Sweep, Mutate, Accumulate, Euclid: patterns that move
@@ -2316,7 +2333,7 @@
       setv('spaceRange', Math.max(45, getn('spaceRange')));
     }
     // which style plays: the one chosen, or with Any one drawn for each Random (the user: Random should take either, 2026-10-30)
-    const STYLE_NAMES = ['Drone', 'Spiral'], STYLE_ODDS = [0.5, 0.5];
+    const STYLE_NAMES = ['Drone', 'Spiral', 'Tide'], STYLE_ODDS = [0.4, 0.3, 0.3];
     function rollStyle() {
       const pick = document.getElementById('styleSelect').value;
       if (pick !== 'any') { setv('styleVal', pick); return; }

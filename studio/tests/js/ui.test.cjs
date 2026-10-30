@@ -2236,10 +2236,27 @@ test('Style: Spiral\'s Random keeps the sequence in front (on properly, a mood t
   assert.deepEqual([old.styleVal, old.styleSelect], ['0', 'any'], 'a sound saved before styles plays the drone; Random then picks among the styles');
   const mid = h.run("migrateRhythm({ chordSelect: '2', styleSelect: '0' })"), chose = h.run("migrateRhythm({ chordSelect: '2', styleSelect: '1' })");
   assert.deepEqual([mid.styleVal, mid.styleSelect, chose.styleVal, chose.styleSelect], ['0', 'any', '1', '1'], 'saved before Any: the default Drone becomes Any, a chosen Spiral stays');
-  h.$('styleSelect').value = 'any'; const seen = [0, 0];
+  h.$('styleSelect').value = 'any'; const seen = [0, 0, 0];
   for (let i = 0; i < 200; i++) { h.run('randomMusic()'); seen[n('styleVal')]++; if (n('styleVal') === 1) assert.ok(n('arpRange') >= 45, 'a Spiral drawn by Any follows its rules'); }
-  assert.ok(seen[0] > 60 && seen[1] > 60, `Any: Random takes either (${seen})`);
+  assert.ok(seen.every(k => k > 35), `Any: Random takes each style (${seen})`);
   assert.equal(h.run('synthParams()').style, n('styleVal'));
   for (let i = 0; i < 40; i++) { h.run('randomAll()'); seen[n('styleVal')] += 1000; }
   assert.ok(seen[0] > 1000 && seen[1] > 1000, `Random (R) takes either too (${seen})`);
+});
+
+test('Tide\'s Random: little pump on the cuts, narrow, dark and heavy, one note (changes rare), no beat (no bassline, arrangement or metal; hits and the arpeggio seldom), a long room', async () => {
+  const h = await playerWith();
+  const n = id => +h.$(id).value;
+  h.$('styleSelect').value = '2'; let prog = 0, hits = 0, arp = 0;
+  for (let i = 0; i < 300; i++) {
+    h.run(i % 2 ? 'randomMusic()' : 'randomAll()');
+    assert.equal(n('styleVal'), 2);
+    assert.ok(n('pulseRange') <= 25 && n('widthRange') <= 45 && n('brightRange') <= 25 && n('lowRange') >= 80, 'little pump, narrow, dark, heavy');
+    assert.deepEqual([n('bassRange'), n('arrangeSelect'), n('industrialRange')], [0, 0, 0]);
+    assert.ok(n('roomSelect') !== 1 && n('spaceRange') >= 40, 'a long room');
+    assert.ok(n('washRange') <= 20 && n('shimmerRange') <= 25 && n('ringRange') <= 15);
+    if (n('progSelect')) prog++; if (n('hitTypeSelect')) hits++; if (n('arpRange')) { arp++; assert.ok(n('arpRange') <= 35 && [2, 3].includes(n('arpMoodSelect'))); }
+  }
+  assert.ok(prog < 45 && hits < 90 && arp < 90, `rare: changes ${prog}, hits ${hits}, arpeggio ${arp} of 300`);
+  assert.equal(h.run('synthParams()').style, 2);
 });

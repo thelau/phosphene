@@ -275,7 +275,13 @@
   const STYLES = [
     { name: 'Drone', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false },
     { name: 'Spiral', bed: 0.42, arpGain: 1.7, arpUp: 2, morph: 1, spiral: true },
+    // Tide (from a reference the user sent, measured 2026-10-30: no beat at all, the low end swelling and falling every 2-4 s by ~50%,
+    // free of any grid; one pedal note and its fifth for minutes; a 6.4 Hz flutter in the mids; a shape over the whole piece: mids only,
+    // then the sub comes in, a break where it drops away, back, out). The bed's own swell and shape: slow automation, no extra cost.
+    { name: 'Tide', bed: 1, arpGain: 1, arpUp: 1, morph: 0, spiral: false, tide: true },
   ];
+  // Tide's shape for the sub over the film (share of the clip -> level): none at first, in, a break, back
+  const tideArc = u => { const r = (a, b) => Math.min(1, Math.max(0, (u - a) / (b - a))); return 0.06 + 0.94 * r(0.06, 0.16) * (1 - 0.75 * r(0.54, 0.58) * (1 - r(0.62, 0.68))); };
   const SPIRALS = [[0, 1, 2, 3, 2, 1], [0, 2, 4, 2], [0, -1, -2, 1, 0, 2], [0, 3, 1, 4, 2, 5, 3, 1], [0, 2, 1, 3, 2, 4]];
   const SPIRAL_ROUNDS = 2;                                           // rounds of the pattern at each step of the spiral
   const EUCLID = [[3, 8], [5, 8], [5, 12], [7, 12], [5, 16], [7, 16], [9, 16]];
@@ -424,6 +430,11 @@
 
     // ---- the sub: shared by both sides ----
     const subBus = gain(1);
+    // phase-locked to the clip, so a live swap (a slider moved) carries a swell on where it was instead of starting it again
+    const slowLfo = (rate, depth, param) => { const o = osc('sine', rate, undefined, true); pitched.pop(); o.connect(gain(depth, param)); return o; };
+    let subOut = subBus;
+    if (style.tide && opts.arc !== false) { subOut = gain(1); subBus.connect(subOut); sampled(subOut.gain, t => tideArc(t / total)); }
+    const trand = mulberry32(seedN + 2027), tideRates = [0.24 + 0.08 * trand(), 0.37 + 0.1 * trand()], flutter = 6.1 + 0.6 * trand();
     {
       const base = (0.3 + 0.8 * low) * (1 + 0.6 * power);
       const level = gain(base * 0.9);                                      // a slow tremolo around it
@@ -531,12 +542,14 @@
       }
       // the pump, the landing, then the heavy saturation
       const pg = gain(1); pump(pg.gain, 0.8 * pulse, 0.07);
+      if (style.tide) slowLfo(flutter, 0.16, pg.gain);                    // Tide: the mids flutter
       const lg = gain(1); sampled(lg.gain, t => 1 - 0.35 * landed(t));
       const k = (1 + 1.5 * power) * (1 + 0.6 * industrial);
       const sat = shaper(tanhCurve(k, 1));
       body.connect(pg); pg.connect(lg); lg.connect(sat);
       const sum = gain(style.bed);                                         // the style's bed: all of it in Drone, stepped back under the sequence in Spiral
-      sat.connect(sum); subBus.connect(sum);
+      if (style.tide) { sum.gain.value = 0.65; slowLfo(tideRates[0], 0.22, sum.gain); slowLfo(tideRates[1], 0.13, sum.gain); }   // Tide: two slow swells, never in step: 0.3 to 1, irregular (the reference's low end moves 11-31% in 100 ms frames, Drone 11%; here ~25%)
+      sat.connect(sum); subOut.connect(sum);
       const br = gain(1); sum.connect(br);
       lfo(0.11 * move, 0.07, br.gain);
       sides.push(br);
@@ -803,7 +816,7 @@
     const rate = 22050, secs = Math.min(3, starts[starts.length - 1]);
     const trimmed = starts.filter(s => s < secs); trimmed.push(secs);
     const ctx = new OfflineAudioContext(2, Math.max(1, Math.floor(secs * rate)), rate);
-    build(ctx, ctx.destination, p, trimmed, { offset: 0, t0: 0, total: starts[starts.length - 1], landing: false, dynamics: false, quickRoom: true });
+    build(ctx, ctx.destination, p, trimmed, { offset: 0, t0: 0, total: starts[starts.length - 1], landing: false, dynamics: false, arc: false, quickRoom: true });   // the level of the full bed (Tide starts without its sub)
     const g = TARGET_RMS / (rmsOf(await ctx.startRendering()) + 1e-9);
     levelCache.set(key, g);
     if (levelCache.size > 40) levelCache.delete(levelCache.keys().next().value);
