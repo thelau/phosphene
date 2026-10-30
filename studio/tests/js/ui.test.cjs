@@ -1417,7 +1417,7 @@ test('chord changes: Random turns them on now and then, each chord 3 to 8 s and 
   assert.equal(savedOf(h.store).progSelect, '1');
 });
 
-test('bassline and arrangement: Random brings them in by type, an arrangement always has layers to move, Follows needs a changing speed; sent', async () => {
+test('bassline and arrangement: Random brings the bassline in by type and never an arrangement (the user: "I hate these notes that come in later"); an arrangement set by hand is sent', async () => {
   const h = await playerWith();
   const n = id => +h.$(id).value;
   const types = JSON.parse(JSON.stringify(h.run('CHARACTERS')));
@@ -1426,16 +1426,26 @@ test('bassline and arrangement: Random brings them in by type, an arrangement al
     for (let i = 0; i < 60; i++) {
       h.run('randomAll()');
       if (n('bassRange')) bass++;
-      if (n('arrangeSelect')) assert.ok([n('arpRange'), n('bassRange'), n('hitTypeSelect')].filter(Boolean).length >= 2, `${key}: an arrangement has at least two layers to move`);
-      if (n('arrangeSelect') === 3) assert.equal(h.$('rhythmSelect').value, 'variable', `${key}: Follows the speed only on a changing speed`);
+      assert.equal(n('arrangeSelect'), 0, `${key}: no arrangement from Random`);
       if (h.run('rhythmCutsPerSecond()') > 5) assert.equal(n('bassRateSelect'), 0, `${key}: fast cuts, a bass note a cut`);
-      if (types[key]) assert.ok(types[key].sound.shape.arrange.includes(h.$('arrangeSelect').value) || (h.$('arrangeSelect').value === '1' && types[key].sound.shape.arrange.includes('3')), `${key}: arrangement ${h.$('arrangeSelect').value}`);
     }
     if (types[key] && types[key].sound.shape.bass >= 0.7) assert.ok(bass > 30, `${key}: mostly a bassline (${bass} of 60)`);
   }
   h.$('bassRange').value = '50'; h.$('bassPatternSelect').value = '3'; h.$('arrangeSelect').value = '2'; h.run('updateMusic()');
   const p = h.run('synthParams()');
   assert.deepEqual([p.bass, p.bassPattern, p.arrange], [0.5, 3, 2]);
+});
+
+test('Pulse and Machine lean to Hypnotic and Run with Style on Any (the taste logs: 9 of 9 liked there); Any keeps its own odds', async () => {
+  const h = await playerWith();
+  h.$('styleSelect').value = 'any';
+  const count = key => { h.$('characterSelect').value = key; const c = {}; for (let i = 0; i < 400; i++) { h.run('randomAll()'); const s = h.$('styleVal').value; c[s] = (c[s] || 0) + 1; } return c; };
+  for (const key of ['pulse', 'machine']) {
+    const c = count(key), grid = (c['5'] || 0) + (c['6'] || 0);
+    assert.ok(grid > 220 && grid < 340 && (c['1'] || 0) < 70, `${key}: ${JSON.stringify(c)}`);
+  }
+  const a = count('any');
+  assert.ok((a['0'] || 0) > 120 && (a['0'] || 0) < 200, `Any: Drone about 40%: ${JSON.stringify(a)}`);
 });
 
 test('pad and tape: Random keeps the pad modest and, when both come, keeps both low', async () => {
