@@ -253,6 +253,9 @@
   // shuts over ~7 s, resonant (Barbieri's Ecstatic Computation); Mutate changes one
   // note each round (a Turing Machine); Accumulate plays 2 notes, then 3, ... up to the whole pattern, and starts over (an additive process)), how far the filter opens and shuts (`open`, `close`), its resonance (`q`) and how long a note rings (`sustain`).
   // Two voices take turns, so a note rings on under the next. Pluck keeps its own path (chord tones, a random walk).
+  // Spiral's limiter on the arpeggio (the bus runs above 1, hence pre); makeup is what WebAudio's compressor adds by itself at these
+  // settings (measured, the same in Chrome and WebKit: a test checks it)
+  const ARP_LIMIT = { pre: 0.25, threshold: -12, knee: 6, ratio: 6, attack: 0.004, release: 0.2, makeup: 1.739 };
   const ARP_MOODS = [
     { name: 'Pluck' },
     { name: 'Dark', scale: [0, 1, 3, 5, 7, 8], lo: 0.5, hi: 1.6, open: 1100, close: 240, q: 3, sustain: 1.6, gain: 1.0, voices: 1, shape: 'fall' },
@@ -600,7 +603,16 @@
     });
     // ---- hits: a percussive impact on some of the cuts. Fixed voices (made once), retriggered by automation: no node per hit ----
     // each layer the arrangement moves has its own level on the way to the sides
-    const arr = { hits: gain(1), arp: [gain(1, sides[0]), gain(1, sides[1])], bass: [gain(1, sides[0]), gain(1, sides[1])] };
+    // Spiral: the sequence through a gentle limiter, so its loudest notes (slow cuts, dense or accumulating patterns) never shout over the
+    // bed (the user: "the arpeggio can be loud on spiral"; measured on 60 of its Randoms, the loudest 50 ms ran 2.9x the bed, now 2.1x)
+    const arpTo = br => {
+      if (!style.spiral) return gain(1, br);
+      const c = ctx.createDynamicsCompressor(), L = ARP_LIMIT;
+      c.threshold.value = L.threshold; c.knee.value = L.knee; c.ratio.value = L.ratio; c.attack.value = L.attack; c.release.value = L.release;
+      c.connect(gain(1 / (L.pre * L.makeup), br));                        // the compressor's own makeup gain taken back out: unity under the threshold
+      return gain(1, gain(L.pre, c));
+    };
+    const arr = { hits: gain(1), arp: [arpTo(sides[0]), arpTo(sides[1])], bass: [gain(1, sides[0]), gain(1, sides[1])] };
     const hitBus = gain(1, arr.hits);
     sides.forEach(br => arr.hits.connect(gain(0.9, br)));
 
@@ -694,7 +706,7 @@
       const mutateTo = cycle => { while (mutCycle < cycle) { mutated[Math.floor(mrand() * L)] = Math.floor(mrand() * notes.length); mutCycle++; } };
       const noteAt = st => noteOf(m.accumulate ? pattern[accPos[st % accPos.length]] : m.mutate ? (mutateTo(Math.floor(st / L)), mutated[st % L]) : pattern[st % L], st);
       const [ek, en] = EUCLID[Math.floor(mrand() * EUCLID.length)], gate = m.euclid ? euclid(ek, en) : null;
-      if (style.spiral && gate) for (const v of voices) for (const g of v.outs) g.gain.value *= Math.sqrt(en / ek);   // Spiral: a Euclidean line has rests: more on its hits, to stand as far in front
+      if (style.spiral && gate) for (const v of voices) for (const g of v.outs) g.gain.value *= Math.sqrt(en / ek);   // Spiral: a Euclidean line has rests: more on its hits, to stand as far in front (the limiter keeps them from shouting)
       const per = ARP_PER_CUT[arpRate];
       perCut.push((i, tc) => {
         for (const [step, at0, len] of noteTimes(starts, i, per)) {
@@ -1201,5 +1213,5 @@
     }
   }
 
-  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, inMode, MODES, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz, EUCLID, euclid, euclidHit, ROOMS, roomData, PAD_TONES, STYLES, SPIRALS };
+  window.Drone = { build, level, renderExport, toWav, Live, TARGET_RMS, CHORDS, ARP_MOODS, padChord, inMode, MODES, notesIn, noteTimes, PROGRESSIONS, PROG_EVERY, BASS_PATTERNS, ARRANGEMENTS, phaseLoop, rootHz, EUCLID, euclid, euclidHit, ROOMS, roomData, PAD_TONES, STYLES, SPIRALS, ARP_LIMIT };
 })();

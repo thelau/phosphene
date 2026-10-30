@@ -2387,7 +2387,7 @@
       if (st === 5) return hypnoticRules();
       if (st === 6) return runRules();
       if (getn('styleVal') !== 1) return;
-      if (getn('arpRange') < 40 || getn('arpRange') > 62) setv('arpRange', rint([40, 62]));   // in front, not shouting (75 peaked into the final clip)
+      if (getn('arpRange') < 40 || getn('arpRange') > 55) setv('arpRange', rint([40, 55]));   // in front, not shouting (75 peaked into the final clip; 62 still could: the user, "the arpeggio can be loud on spiral")
       if ([1, 4, 6].includes(getn('arpMoodSelect'))) setv('arpMoodSelect', rpick([0, 2, 3, 5, 7]));   // Pluck (13 of 13 liked in the taste logs: the spiral moves it too), Phase, Sweep, Accumulate, Euclid; not Dark, Acid or Mutate (4 of 10 liked in Spiral, the other moods 13 of 18)
       if (getn('arpStepsSelect') === 0) setv('arpStepsSelect', 1 + Math.floor(Math.random() * 3));
       if (getn('arpRateSelect') >= 4) setv('arpRateSelect', 1);
