@@ -293,8 +293,8 @@
     { name: 'Lyric', bed: 0.55, arpGain: 0.75, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1, lyric: true },
     // Hypnotic: a steady clock of its own (the film's tempo when it is steady and can be a techno tempo, so cuts land on beats; else
     // 122-134 BPM), a soft kick tuned to the root that ducks the bed (Hits), a rolling bass on the off-sixteenths whose filter drifts
-    // (Bassline), a short sequence in 3, 5 or 7 against the bar through an echo, its filter sweeping over ~40 s (Arpeggio), a quiet hat
-    // now and then; no kick in the intro or the break. Minimal drums, not trying too hard (the user's call)
+    // (Bassline), a short sequence in 3, 5 or 7 against the bar through an echo, its filter sweeping over ~40 s (Arpeggio); no kick in
+    // the intro or the break. Minimal drums, not trying too hard: the kick only (a hat was tried: "probably cringe", the user, 2026-10-30)
     { name: 'Hypnotic', bed: 0.75, arpGain: 1, arpUp: 1, morph: 0, spiral: false, arpOpen: 1, arpQ: 1, arpSustain: 1, grid: true, own: true },
   ];
   // Tide's shape for the sub over the film (share of the clip -> level): none at first, in, a break, back
@@ -858,7 +858,7 @@
       const quiet = (u, kick) => arcOn && (u < (kick ? 0.1 : 0.05) || (u > 0.56 && u < 0.64));   // no kick (nor bass) in the intro and the break
       const sweep = (t, P, ph) => 0.5 - 0.5 * Math.cos((2 * Math.PI * t) / P + ph);
       const ph1 = 2 * Math.PI * r(), ph2 = 2 * Math.PI * r(), P1 = 28 + 12 * r(), P2 = 36 + 20 * r();
-      const hatOn = r() < 0.45, bassMask = Array.from({ length: 16 }, (_, k) => (k % 4 ? r() < 0.8 : false)), bassNote = Array.from({ length: 16 }, (_, k) => (k === 14 && r() < 0.5 ? 7 : k === 10 && r() < 0.3 ? 12 : 0));
+      r(); const bassMask = Array.from({ length: 16 }, (_, k) => (k % 4 ? r() < 0.8 : false)), bassNote = Array.from({ length: 16 }, (_, k) => (k === 14 && r() < 0.5 ? 7 : k === 10 && r() < 0.3 ? 12 : 0));
       const seqL = [3, 5, 7][Math.floor(r() * 3)], seqMask = Array.from({ length: 16 }, () => r() < 0.75);
       const scale = []; for (const st of mode.scale) for (const o of [0, 12]) scale.push(st + o);
       const seqNotes = Array.from({ length: seqL }, () => scale[Math.floor(r() * 9)]);
@@ -873,11 +873,6 @@
           strike(kG, t, KICK * hitAmt, 0.3);
           for (const sm of sums) { sm.gain.setTargetAtTime(style.bed * (1 - DUCK * hitAmt), t + 0.004, 0.01); sm.gain.setTargetAtTime(style.bed, t + 0.05, 0.1); }   // the bed makes way, a moment after the kick's attack
         });
-      }
-      if (hatOn) {
-        const hg = voiceNoise(0.25, 'highpass', 7500, 0.7, mix[0]); hg.connect(mix[1]);
-        const ht = gridTime(per);
-        addGrid(per, (i, t) => { const u = ht(i) / total; if (i % 4 === 2 && u > 0.18 && u < 0.92 && !quiet(u) && stepAt(i) > 0.05) strike(hg, t, 0.1, 0.03); });
       }
       if (bassAmt > 0.01) {                                                // rolling: the off-sixteenths, the root, a fifth or octave now and then
         const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 5; lp.frequency.value = 250;
