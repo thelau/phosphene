@@ -2690,7 +2690,7 @@ test('AI order: Motion says what it will do with the images shown (their path, a
   assert.equal(h.$('aiLineK').textContent, 'Motion');
   assert.equal(h.$('aiLineT').textContent, 'A path of 3 steps, top to bottom · 2 angles. The order follows the mark along the path and turning.');
   assert.match(h.$('aiDirection').placeholder, /spin at the end/);
-  assert.equal(h.$('aiNote').textContent, 'Rearranges the 4 images shown. ⌘Z puts them back.');
+  assert.equal(h.$('aiShown').textContent, 'Rearranges the 4 images shown. ⌘Z puts them back.');
   const r2 = baseRoutes();
   r2['/api/state'] = { plates: [mkPlate('a.jpg'), mkPlate('b.jpg'), { ...mkPlate('u.jpg'), uploaded: true }] };
   const h2 = load({ routes: r2 });

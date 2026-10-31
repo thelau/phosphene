@@ -1511,7 +1511,7 @@
         b.setAttribute('aria-checked', String(on)); b.disabled = off;
         b.title = off ? 'Nothing moves in these images' : '';
       });
-      document.getElementById('aiNote').textContent = `Rearranges the ${n} image${n === 1 ? '' : 's'} shown. ⌘Z puts them back.`;
+      document.getElementById('aiShown').textContent = `Rearranges the ${n} image${n === 1 ? '' : 's'} shown. ⌘Z puts them back.`;
       const line = document.getElementById('aiLine');
       line.classList.toggle('motion', aiMode === 'motion');
       document.getElementById('aiLineK').textContent = aiMode === 'motion' ? 'Motion' : 'Look';
