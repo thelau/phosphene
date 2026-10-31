@@ -119,12 +119,15 @@ test('AI order: Look or Motion; Motion only when the marks move, turn or change 
   await page.click('#aiBtn');
   assert.equal(await page.locator('#aiPanel .ai-mode button[data-mode="motion"]').isDisabled(), true, 'all on target: nothing to move');
   assert.equal(await page.locator('#aiPanel .ai-mode button[data-mode="look"]').getAttribute('aria-checked'), 'true');
+  assert.match(await text('#aiLine'), /Motion needs images that differ in place, angle or size/, 'why, in the panel');
   await ctx.close();
   ctx = await fresh({ setup: st => { st.plates[1].placement = { kind: 'exact', x: 50, y: 50, size: 18, rot: 90 }; st.plates[1].box = { x: 50, y: 50, size: 18, ar: 1, rot: 90 }; } });
   await page.click('#aiBtn');
   await page.click('#aiPanel .ai-mode button[data-mode="motion"]');
   assert.equal(await page.locator('#aiPanel .ai-mode button[data-mode="motion"]').getAttribute('aria-checked'), 'true');
-  assert.match(await page.locator('#aiDirection').getAttribute('placeholder'), /spinning/);
+  assert.match(await page.locator('#aiDirection').getAttribute('placeholder'), /spin at the end/);
+  assert.match(await text('#aiLine'), /2 angles\. The order follows the mark turning\./, 'what Motion will do, from the images shown');
+  assert.equal(await page.locator('#aiGo').evaluate(b => getComputedStyle(b).backgroundColor), 'rgb(254, 255, 231)', 'Re-order is cream');
   await page.waitForTimeout(300); await shot('15b-ai-motion');
   await page.click('#aiGo');
   for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/order-ai'); i++) await page.waitForTimeout(100);

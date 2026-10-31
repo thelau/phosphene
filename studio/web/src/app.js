@@ -1480,20 +1480,45 @@
     // two ways to order (the user, 2026-10-31): Look (light, shape, colour, as before) or Motion (the mark's movement first: its path,
     // its turns, its size); Motion only when the images shown have a mark that moves, turns or changes size
     let aiMode = (() => { try { return localStorage.getItem('studioAiMode') === 'motion' ? 'motion' : 'look'; } catch (e) { return 'look'; } })();
+    // where an image's mark is, its size and angle (no box of its own: the project's place and size)
+    function markAt(p) {
+      const b = p.box || {}, home = project || { mark_x: 50, mark_y: 50, mark_size: 18 };
+      return { x: +(b.x != null ? b.x : home.mark_x), y: +(b.y != null ? b.y : home.mark_y), size: +(b.size != null ? b.size : home.mark_size), rot: cardRot(p) };
+    }
     function marksMove() {
-      return new Set(activePlates().filter(p => !p.trashed && !p.uploaded).map(p => (p.box ? `${p.box.x},${p.box.y},${p.box.size},${p.box.rot || 0}` : 'home'))).size > 1;
+      return new Set(activePlates().filter(p => !p.trashed && !p.uploaded).map(p => { const a = markAt(p); return `${a.x},${a.y},${a.size},${a.rot}`; })).size > 1;
+    }
+    // what Motion can make of the images shown, in one line (Claude Design's AIOrder): their path, angles and sizes; or why it can't
+    function motionLine() {
+      const shown = activePlates().filter(p => !p.trashed && !p.uploaded), runs = {};
+      shown.forEach(p => { const pa = p.placement && p.placement.path; if (pa) (runs[pa.run] = runs[pa.run] || []).push(pa); });
+      const run = Object.values(runs).sort((a, b) => b.length - a.length)[0];
+      const angles = new Set(shown.map(cardRot)).size, sizes = new Set(shown.map(p => markAt(p).size)).size;
+      const way = { 0: 'left to right', 90: 'top to bottom', 45: 'diagonally down', '-45': 'diagonally up' };
+      const parts = [], verbs = [];
+      if (run) { parts.push(`A path of ${run.length} step${run.length > 1 ? 's' : ''}, ${way[run[0].dir] || 'across'}`); verbs.push('along the path'); }
+      else if (marksMove()) { const loose = shown.filter(p => p.placement && ['loose', 'scattered'].includes(p.placement.kind)).length; if (loose) { parts.push(`${loose} image${loose > 1 ? 's' : ''} off target`); verbs.push('across the frame'); } }
+      if (angles > 1) { parts.push(`${angles} angles`); verbs.push('turning'); }
+      if (sizes > 1) { parts.push(`${sizes} sizes`); verbs.push('growing'); }
+      return parts.length ? `${parts.join(' · ')}. The order follows the mark ${verbs.length > 1 ? `${verbs.slice(0, -1).join(', ')} and ${verbs[verbs.length - 1]}` : verbs[0] || 'as it moves'}.` : '';
     }
     function setAiMode(m) {
-      const moves = marksMove();
+      const moves = marksMove(), n = activePlates().filter(p => !p.trashed).length;
       aiMode = m === 'motion' && moves ? 'motion' : 'look';
       try { localStorage.setItem('studioAiMode', m === 'motion' ? 'motion' : 'look'); } catch (e) {}
       document.querySelectorAll('#aiPanel .ai-mode button').forEach(b => {
         const on = b.dataset.mode === aiMode, off = b.dataset.mode === 'motion' && !moves;
         b.setAttribute('aria-checked', String(on)); b.disabled = off;
-        b.title = off ? 'The images shown all have their mark in one place, upright, at one size: nothing to move' : '';
+        b.title = off ? 'Nothing moves in these images' : '';
       });
-      document.getElementById('aiDirection').placeholder = aiMode === 'motion' ? 'e.g. the mark sweeps left to right, spinning, then lands on target'
-        : moves ? 'e.g. the mark sweeps left to right, then lands on target' : 'e.g. open on the cap, end on the container';
+      document.getElementById('aiNote').textContent = `Rearranges the ${n} image${n === 1 ? '' : 's'} shown. ⌘Z puts them back.`;
+      const line = document.getElementById('aiLine');
+      line.classList.toggle('motion', aiMode === 'motion');
+      document.getElementById('aiLineK').textContent = aiMode === 'motion' ? 'Motion' : 'Look';
+      document.getElementById('aiLineT').textContent = aiMode === 'motion' ? motionLine()
+        : !moves ? `Motion needs images that differ in place, angle or size. These ${n} share all three: try Path or more angles in the Mark menu.`   // why, in the panel, not only in a tooltip
+        : 'From light to dark, by shape and colour, with an arc from the hook to the landing.';
+      document.getElementById('aiDirection').placeholder = aiMode === 'motion' ? 'e.g. slow at the start, spin at the end' : 'e.g. light to dark, then a burst of colour';
     }
     function toggleAiPanel(e) {
       if (e) e.stopPropagation();

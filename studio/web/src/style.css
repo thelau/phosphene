@@ -843,14 +843,23 @@
     .order-tools { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; }
     .order-tools[hidden] { display: none; }
     .order-tools > button { height: 34px; }
-    .ai-panel { position: absolute; top: 100%; right: 0; margin-top: 6px; z-index: 45; width: 340px; background: var(--raised); border: 1px solid var(--line-3); border-radius: 12px; padding: 16px; box-shadow: 0 20px 50px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 12px; }
+    .ai-panel { position: absolute; top: 100%; right: 0; margin-top: 6px; z-index: 45; width: 400px; box-sizing: border-box; background: var(--raised); border: 1px solid var(--line-3); border-radius: 12px; padding: 16px; box-shadow: 0 20px 50px rgba(0,0,0,.5); display: flex; flex-direction: column; gap: 12px; }
     .ai-panel[hidden] { display: none; }
-    .ai-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-    .ai-mode button { transition: none; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line-3); background: transparent; color: var(--text-2); text-align: left; }
-    .ai-mode button b { font-size: 13px; color: var(--text); }
-    .ai-mode button small { font-size: 11px; color: var(--faint); }
-    .ai-mode button[aria-checked="true"] { border-color: var(--orange); background: rgba(236, 84, 12, .12); }
-    .ai-mode button:disabled { opacity: .4; cursor: default; }
+    .ai-head { display: flex; flex-direction: column; gap: 4px; }
+    .ai-head h4 { font-size: 16px; }
+    .ai-head .ai-panel-note { margin-top: 0; }
+    .ai-mode { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .ai-mode button { transition: none; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px; border-radius: 10px; border: 1.5px solid var(--line-2); background: #191816; color: var(--text); text-align: left; }
+    .ai-mode button b { font-size: 14px; }
+    .ai-mode button small { font-size: 12px; line-height: 1.4; color: var(--muted); }
+    .ai-mode button[aria-checked="true"] { border-color: var(--orange); background: var(--ticked-bg); }
+    .ai-mode button:disabled { opacity: .45; cursor: default; }
+    span.ai-draw { display: flex; gap: 3px; }
+    span.ai-draw i { width: 22px; height: 38px; border-radius: 3px; }
+    .ai-line { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; border-radius: 8px; background: #1A1918; font-size: 12px; line-height: 1.45; color: var(--text-2); }
+    .ai-line.motion { background: #211A15; color: #F2D3BF; }
+    .ai-line-k { flex: none; padding-top: 2px; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+    #aiGo { transition: none; background: var(--text); border-color: var(--text); color: #1A1A1A; }   /* Re-order: cream (orange fill is Generate's only) */
     .ai-panel h4 { font-size: 15px; }
     .ai-panel-note { font-size: 12px; color: var(--muted); margin-top: -6px; }
     .ai-panel label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-2); }

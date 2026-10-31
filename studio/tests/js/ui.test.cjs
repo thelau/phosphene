@@ -2679,18 +2679,24 @@ test('fuzz: 400 random sets of points (and garbage) always give points in order 
   }
 });
 
-test('AI order: where the marks move, the note suggests a movement; all on target, the note as before', async () => {
+test('AI order: Motion says what it will do with the images shown (their path, angles, sizes); when nothing moves, it is off and the panel says why', async () => {
   const r = baseRoutes();
-  r['/api/state'] = { plates: [mkPlate('a.jpg'), { ...mkPlate('b.jpg'), box: { x: 30, y: 40, size: 20, ar: 1 } }, { ...mkPlate('u.jpg'), uploaded: true }] };
+  const step = i => ({ shape: 'line', dir: 90, len: 70, i, n: 3, run: 'r1' });
+  r['/api/state'] = { plates: [0, 1, 2].map(i => ({ ...mkPlate(`p${i}.jpg`), placement: { kind: 'path', x: 50, y: 20 + i * 30, size: 18, rot: i ? 90 : 0, path: step(i) }, box: { x: 50, y: 20 + i * 30, size: 18, ar: 1, rot: i ? 90 : 0 } })).concat([{ ...mkPlate('u.jpg'), uploaded: true }]) };
   const h = load({ routes: r });
   await settle(); await settle();
   h.$('aiPanel').hidden = true; h.run('toggleAiPanel()');
-  assert.match(h.$('aiDirection').placeholder, /sweeps/);
-  h.run('toggleAiPanel()');
+  h.run("setAiMode('motion')");
+  assert.equal(h.$('aiLineK').textContent, 'Motion');
+  assert.equal(h.$('aiLineT').textContent, 'A path of 3 steps, top to bottom · 2 angles. The order follows the mark along the path and turning.');
+  assert.match(h.$('aiDirection').placeholder, /spin at the end/);
+  assert.equal(h.$('aiNote').textContent, 'Rearranges the 4 images shown. ⌘Z puts them back.');
   const r2 = baseRoutes();
   r2['/api/state'] = { plates: [mkPlate('a.jpg'), mkPlate('b.jpg'), { ...mkPlate('u.jpg'), uploaded: true }] };
   const h2 = load({ routes: r2 });
   await settle(); await settle();
   h2.$('aiPanel').hidden = true; h2.run('toggleAiPanel()');
-  assert.match(h2.$('aiDirection').placeholder, /open on the cap/);
+  h2.run("setAiMode('motion')");
+  assert.equal(h2.$('aiLineK').textContent, 'Look', 'nothing moves: Motion stays off');
+  assert.match(h2.$('aiLineT').textContent, /^Motion needs images that differ in place, angle or size\. These 3 share all three/);
 });
