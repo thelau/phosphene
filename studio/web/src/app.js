@@ -1830,17 +1830,17 @@
       const box = p.box || pl, x = +(box.x != null ? box.x : (project ? project.mark_x : 50)), y = +(box.y != null ? box.y : (project ? project.mark_y : 50));
       const dx = ((x - 50) / 100 * 8).toFixed(1), dy = ((y - 50) / 100 * 14).toFixed(1);
       const frame = `<span class="cm-frame">${c[2] ? `<img class="pm-thumb" src="${escapeHtml(c[2])}" alt="" style="transform:translate(-50%,-50%) translate(${dx}px,${dy}px) rotate(${rot}deg) scale(${k})" />` : ''}</span>`;
-      const tip = [name, pl.path ? `Path ${PATH_GLYPH[pl.path.dir] || '→'} ${pl.path.i + 1}/${pl.path.n}` : POSITION_NAMES[pl.kind || 'exact'] || 'On target', rot ? rotLabel(rot) : 'upright', k !== 1 ? sizeLabel(k) : 'own size', p.as_designed ? 'as designed' : ''].filter(Boolean).join(' · ');
-      return { frame, vals, tip };
+      const where = pl.path ? `Path ${PATH_GLYPH[pl.path.dir] || '→'} ${pl.path.i + 1}/${pl.path.n}` : POSITION_NAMES[pl.kind || 'exact'] || 'On target';
+      const tip = [name, where, rot ? rotLabel(rot) : 'upright', k !== 1 ? sizeLabel(k) : 'own size', p.as_designed ? 'as designed' : ''].filter(Boolean).join(' · ');
+      const words = [choices.length ? name : '', where, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
+      return { frame, vals, tip, words };
     }
     // the mark check's verdict, on the image as one solid pill (a dot at size S): red for QA flagged and Mark check, amber to check
-    function cardQa(p) {
-      if (!p.qa_passed) {
-        const label = p.trash_reason === 'Mark check' ? 'Mark check' : 'QA flagged';
-        return `<span class="card-qa red" title="${escapeHtml((p.qa_issues || []).join(', ') || label)}">${label}</span>`;
-      }
-      return p.qa_doubt ? `<span class="card-qa amber" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : '';
+    function qaPill(p) {
+      if (!p.qa_passed) { const label = p.trash_reason === 'Mark check' ? 'Mark check' : 'QA flagged'; return { label, cls: 'red', tip: (p.qa_issues || []).join(', ') || label }; }
+      return p.qa_doubt ? { label: 'Check the mark', cls: 'amber', tip: p.qa_doubt } : null;
     }
+    function cardQa(p) { const q = qaPill(p); return q ? `<span class="card-qa ${q.cls}" title="${escapeHtml(q.tip)}">${q.label}</span>` : ''; }
     function promptInfoHtml(p) {
       return `${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-check po-qa">Mark check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : p.qa_doubt ? `<span class="po-check po-doubt">Mark check: ${escapeHtml(p.qa_doubt)}</span>` : ''}`;
     }
@@ -1919,7 +1919,14 @@
       document.getElementById('viewerImg').src = p.url;
       document.getElementById('viewerFrame').setAttribute('style', placeVars(p.box || p.placement));   // the mark target (T) as on its card
       document.getElementById('viewerTitle').textContent = p.title || '';
-      document.getElementById('viewerCount').textContent = `${viewerAt + 1} / ${list.length}`;
+      document.getElementById('viewerCount').textContent = `${viewerAt + 1} / ${list.length}${showTrash ? ' in the Trash' : ''}`;
+      // the card's cluster spelled out, since there is room (Claude Design's ViewerFilm): which mark, where, the angle, the size, as designed
+      const made = cardMade(p), mEl = document.getElementById('viewerMade');
+      mEl.hidden = !made;
+      if (made) { mEl.innerHTML = `${made.frame}<span>${escapeHtml(made.words)}</span>${p.as_designed ? '<span class="cm-designed"><i></i></span><span class="viewer-faint">as designed</span>' : ''}`; mEl.querySelectorAll('img').forEach(fitMarkTone); }
+      document.getElementById('viewerModel').textContent = p.uploaded ? 'Uploaded' : formatModelShort(p.model);
+      const qa = qaPill(p);
+      document.getElementById('viewerQa').innerHTML = qa ? `<span class="viewer-qa ${qa.cls}" title="${escapeHtml(qa.tip)}">${qa.label}</span>` : '';
       document.getElementById('viewerTrashBtn').hidden = !!p.trashed;            // in the Trash: Restore in its place, as on the cards
       document.getElementById('viewerRestoreBtn').hidden = !p.trashed;
       const info = document.getElementById('viewerInfo');
@@ -3706,7 +3713,7 @@
     function toggleReticle(force) {
       const on = document.getElementById('reticle').classList.toggle('visible', force === undefined ? undefined : !!force);
       document.body.classList.toggle('target-on', on);
-      for (const id of ['targetBtn', 'gridTargetBtn']) document.getElementById(id).setAttribute('aria-pressed', String(on));
+      for (const id of ['targetBtn', 'gridTargetBtn', 'viewerTargetBtn']) document.getElementById(id).setAttribute('aria-pressed', String(on));   // one switch: the toolbar's, Film's and the viewer's (the modal covers the toolbar)
       try { localStorage.setItem('studioTarget', on ? '1' : '0'); } catch (e) {}
     }
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}

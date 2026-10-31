@@ -1176,7 +1176,14 @@ test('Curate: thumbnail sizes, trash from the grid with Undo, restore picked ima
   assert.equal(await targetShown(), 'none', 'no target unless T is on');
   await page.keyboard.press('t');                                                 // T works in the viewer: the target on the image, as on its card
   assert.equal(await targetShown(), 'dashed');
+  assert.equal(await page.locator('#viewerTargetBtn').getAttribute('aria-pressed'), 'true', 'its T button shows the same state');
   await page.keyboard.press('t');
+  await page.click('#viewerTargetBtn');                                           // the button: the same switch as the toolbar's (the modal covers it)
+  assert.deepEqual([await targetShown(), await page.locator('#gridTargetBtn').getAttribute('aria-pressed')], ['dashed', 'true']);
+  await page.click('#viewerTargetBtn');
+  assert.equal(await page.locator('#viewer').isVisible(), true, 'the header\'s buttons never close the viewer');
+  assert.equal(await text('.viewer-esc'), 'esc', 'Esc as a quiet key hint, no × button');
+  assert.match(await text('#viewerModel'), /nano-banana/, 'the model, no score');
   await page.click('#viewerInfoBtn');                                            // the card's Info and Trash, in the viewer too
   assert.equal(await page.locator('#viewerInfo').isVisible(), true, 'Info opens beside the image, the viewer stays');
   await page.keyboard.press('t'); await shot('20b-viewer-info-target'); await page.keyboard.press('t');
@@ -1219,7 +1226,7 @@ test('Curate: thumbnail sizes, trash from the grid with Undo, restore picked ima
   await page.click('#viewerRestoreBtn');
   for (let i = 0; i < 50 && api.state.plates.find(x => x.filename === inTrash).trashed; i++) await page.waitForTimeout(100);
   assert.equal(api.state.plates.find(x => x.filename === inTrash).trashed, false, 'restored from the viewer');
-  await page.waitForFunction(() => document.getElementById('viewerCount').textContent === '1 / 1');
+  await page.waitForFunction(() => document.getElementById('viewerCount').textContent === '1 / 1 in the Trash');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Meta+z');                                            // one undo step: back in the Trash
   await page.waitForFunction(() => document.querySelectorAll('.card').length === 2);

@@ -596,19 +596,37 @@
     /* the image viewer (double-click a card): the image as large as the window allows, the next with the arrows */
     .viewer { position: fixed; inset: 0; z-index: 300; background: rgba(8, 8, 9, .94); display: flex; align-items: center; justify-content: center; }
     .viewer[hidden] { display: none; }
-    .viewer-frame { position: relative; height: min(calc(100vh - 110px), calc((100vw - 160px) * 16 / 9)); aspect-ratio: 9 / 16; max-width: 100%; }
+    .viewer-frame { position: relative; height: min(calc(100vh - 100px), calc((100vw - 160px) * 16 / 9)); aspect-ratio: 9 / 16; max-width: 100%; margin-top: 60px; }
+    /* the viewer's header (Claude Design's ViewerFilm): esc as a quiet key hint, the title and where it is, how it was made in words,
+       the model and the QA pill; then T, Info and Trash (Restore, cream, in the Trash) */
+    .viewer-head { position: absolute; left: 0; right: 0; top: 0; height: 60px; box-sizing: border-box; display: flex; align-items: center; gap: 14px; padding: 0 20px; border-bottom: 1px solid #22201D; background: #0E0D0C; cursor: default; }
+    .viewer-esc { font-family: var(--mono); font-size: 10px; padding: 2px 6px; border-radius: 4px; border: 1px solid #34312C; color: var(--faint); }
+    .viewer-id { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .viewer-l1 { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+    .viewer-l1 b { font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .viewer-count { font-family: var(--mono); font-size: 11px; color: var(--faint); white-space: nowrap; }
+    .viewer-l2 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .viewer-made { display: inline-flex; align-items: center; gap: 7px; height: 22px; padding: 0 8px; border-radius: 6px; background: #1F1E1B; font-family: var(--mono); font-size: 11px; color: var(--text-2); white-space: nowrap; }
+    .viewer-made[hidden] { display: none; }
+    .viewer-made .cm-frame { width: 12px; height: 19px; }
+    .viewer-made .cm-frame .pm-thumb { width: 10px; height: 10px; }
+    .viewer-faint { color: var(--faint); }
+    .viewer-model { font-family: var(--mono); font-size: 11px; color: var(--model); white-space: nowrap; }
+    .viewer-qa { padding: 2px 7px; border-radius: var(--r-pill); font-family: var(--mono); font-size: 10px; font-weight: 600; white-space: nowrap; }
+    .viewer-qa.red { background: var(--qa-red-bg); color: var(--qa-red); }
+    .viewer-qa.amber { background: var(--amber-bg); color: var(--amber); }
+    .viewer-fill { flex: 1; }
+    .viewer-tools { display: flex; gap: 8px; }
+    .viewer-tool { transition: none; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0; border: 1px solid #34312C; border-radius: 7px; background: transparent; color: var(--text); font-size: 13px; font-weight: 600; }
+    .viewer-tool.wide { width: auto; padding: 0 12px; }
+    .viewer-tool:hover { border-color: var(--text-2); }
+    .viewer-tool[aria-pressed="true"] { border-color: var(--orange); color: var(--orange); }
+    .viewer-restore { background: var(--text); border-color: var(--text); color: #1A1A1A; font-weight: 700; }
     .viewer-frame img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: 4px; }
     .viewer-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 64px; border: 0; border-radius: 10px; background: transparent; color: var(--text-2); font-size: 40px; line-height: 1; cursor: pointer; }
     .viewer-nav:hover { background: var(--raised); color: var(--text); }
     .viewer-nav.prev { left: 24px; } .viewer-nav.next { right: 24px; }
-    .viewer-bar { position: absolute; bottom: 22px; left: 0; right: 0; display: flex; justify-content: center; gap: 14px; font-size: 13px; color: var(--text-2); pointer-events: none; }
-    .viewer-bar span:first-child { color: var(--text); }
-    .viewer-bar { align-items: center; }
-    .viewer-tools { display: flex; gap: 6px; margin-left: 6px; pointer-events: auto; }   /* the card's Info and Trash, in the viewer too */
-    .viewer-tool { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line-3); border-radius: 8px; background: var(--raised); color: var(--text-2); cursor: pointer; }
-    .viewer-tool:hover, .viewer-tool[aria-pressed="true"] { color: var(--text); border-color: var(--text-2); }
     .viewer-tool[hidden] { display: none; }
-    .viewer-restore { width: auto; padding: 0 12px; font-size: 13px; font-weight: 600; }
     .viewer-info { position: absolute; right: 96px; top: 50%; transform: translateY(-50%); width: min(340px, calc(100vw - 192px)); max-height: 70vh; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 18px; border: 1px solid var(--line-3); border-radius: 12px; background: var(--panel); font-size: 13px; line-height: 1.5; color: var(--text-2); -webkit-user-select: text; user-select: text; }
     .viewer-info[hidden] { display: none; }
     .viewer-info b { color: var(--text); } .viewer-info .po-check { font-size: 12px; } .viewer-info button { align-self: flex-start; }
