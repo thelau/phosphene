@@ -336,7 +336,7 @@ class BatchPlan:
         self.scales = scale_set(scale) if target in ("exact", "path") else [1.0]   # Loose and Scattered choose their own sizes
         self.count = max(1, int(count or 1))
         base = path_for(target, path)
-        self.path = placement.clean_path({**base, "i": 0, "n": self.count, "run": run or f"{time.time_ns() % 10**12:x}"}) if base else None
+        self.path = placement.clean_path({**base, "i": 0, "n": self.count, "run": run or f"{time.time_ns() % 10**12:x}", **({} if run else {"fit": 1})}) if base else None   # a new run: reach scaled to the room
         self.steps = [i for i in (steps or []) if 0 <= i < self.count] or None   # Make N: only a run's missing steps, each with its own turn
         self.queue, self.next = list(self.steps or range(self.count)), self.count
 
@@ -378,7 +378,7 @@ def path_runs(st: dict) -> dict:
     for name, pl in st.get("placements", {}).items():
         pa = (pl or {}).get("path") if isinstance(pl, dict) else None
         if pa and pa.get("run"):
-            r = runs.setdefault(pa["run"], {"run": pa["run"], "n": pa["n"], "shape": pa["shape"], "dir": pa["dir"], "len": pa["len"], "anchor": pa.get("anchor", "through"), "files": []})
+            r = runs.setdefault(pa["run"], {"run": pa["run"], "n": pa["n"], "shape": pa["shape"], "dir": pa["dir"], "len": pa["len"], "anchor": pa.get("anchor", "through"), "fit": pa.get("fit", 0), "files": []})
             r["files"].append(name)
     for run, r in runs.items():
         made = rec.get(run) or {}
@@ -940,7 +940,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     plan = None
     if fill:                                                                    # Make N: a run's missing steps, with its own turns
         target, mark, rot, scale, count = "path", fill["mark"], fill["rot"], fill["scale"], len(fill["steps"])
-        plan = BatchPlan("path", mark, rot, scale, {k: fill[k] for k in ("shape", "dir", "len", "anchor")}, fill["n"], steps=fill["steps"], run=fill["run"])
+        plan = BatchPlan("path", mark, rot, scale, {k: fill[k] for k in ("shape", "dir", "len", "anchor", "fit")}, fill["n"], steps=fill["steps"], run=fill["run"])
     if world == "__sampler__":
         return ask_kimi_sampler(st, api_key, kimi_model, count, direction, stats, target, mark, keep, rot, scale, path, seed, plan)
     w = chapters.choose_world(st, world or "")

@@ -156,6 +156,10 @@ test('Path: Steps decide how many; a run left with gaps says so after its batch,
   assert.equal(await text('#placeName'), 'Path → 40% · lands · 8 steps', 'it says the mark lands home');
   const ends = await page.locator('#placeMenu .mm-path circle').evaluateAll(els => els.map(e => [+e.getAttribute('cx'), +e.getAttribute('cy')]));
   assert.ok(Math.abs(ends[ends.length - 1][0] - 35) < 0.5, 'the drawing ends on the target');
+  const drawn = async r => { await page.click(`#placeMenu [data-list="plen"][data-v="${r}"]`); return page.locator('#placeMenu .mm-path svg[role="img"] line[stroke-dasharray="1 3"]').evaluate(l => Math.hypot(l.x2.baseVal.value - l.x1.baseVal.value, l.y2.baseVal.value - l.y1.baseVal.value)); };
+  const across = [await drawn(20), await drawn(40), await drawn(70)];
+  assert.ok(across[0] < across[1] && across[1] < across[2], `landing across, each reach its own length (40% and 70% were the same): ${across}`);
+  await page.click('#placeMenu [data-list="plen"][data-v="40"]');
   await page.evaluate(() => togglePlaceMenu(null, false));
   await page.click('#generateBtn');
   await page.waitForFunction(() => /Done/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });

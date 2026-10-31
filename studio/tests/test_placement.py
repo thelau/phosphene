@@ -249,3 +249,26 @@ def test_a_path_can_land_on_the_target_or_leave_it(srv):
     assert placement.clean_path({"shape": "line", "dir": 0, "len": 40, "i": 0, "n": 2, "anchor": "sideways"}).get("anchor") is None
     far = [placement.choose("path", {**p, "mark_y": 80}, path={"shape": "line", "dir": 90, "len": 70, "i": i, "n": 2, "anchor": "leaves"}) for i in range(2)]
     assert far[0]["y"] == 80.0 and far[1]["y"] + far[1]["size"] * 1080 / 1920 / 2 <= 100 - placement.MARGIN + 0.2, "shrunk so its far end stays inside"
+
+
+def test_short_of_room_the_three_reaches_share_it_so_they_always_differ(srv):
+    """A path that lands or leaves needs all its reach on one side of the target: across a 9:16 frame 40% and 70% came out the same
+    (with a big mark, all three). A new run scales them to the room; with room, nothing changes; a run from before keeps its places."""
+    for size in (18, 30, 50):
+        p = {**demo(srv), "mark_size": size}
+        for d in (0, 90, 45, -45):
+            for anchor in ("through", "lands", "leaves"):
+                far = []
+                for ln in (20, 40, 70):
+                    pl = placement.choose("path", p, path={"shape": "line", "dir": d, "len": ln, "i": 0 if anchor == "lands" else 1, "n": 2, "anchor": anchor, "fit": 1})
+                    far.append(max(abs(pl["x"] - 50), abs(pl["y"] - 50)))
+                    h = pl["size"] * 1080 / 1920 / 2
+                    assert placement.MARGIN - 0.2 <= pl["x"] - pl["size"] / 2 and pl["x"] + pl["size"] / 2 <= 100 - placement.MARGIN + 0.2, (size, d, anchor, ln, pl)
+                    assert placement.MARGIN - 0.2 <= pl["y"] - h and pl["y"] + h <= 100 - placement.MARGIN + 0.2, (size, d, anchor, ln, pl)
+                assert far[0] < far[1] < far[2], f"mark {size}%, direction {d}, {anchor}: {far}"
+    roomy = placement.choose("path", demo(srv), path={"shape": "line", "dir": 90, "len": 70, "i": 0, "n": 2, "fit": 1})
+    assert abs(roomy["y"] - 15) < 0.2, "with room, as before: 70% down through the target is 70% of the height"
+    old = placement.choose("path", {**demo(srv), "mark_size": 50}, path={"shape": "line", "dir": 0, "len": 70, "i": 0, "n": 2})
+    assert old["x"] == 31.0 and "fit" not in old["path"], "a run from before: its reach cut to the room, as it was made"
+    assert srv.BatchPlan("path", path={"shape": "line"}, count=3).path["fit"] == 1, "a new run scales"
+    assert "fit" not in srv.BatchPlan("path", path={"shape": "line", "dir": 0, "len": 40}, count=3, steps=[1], run="abc").path, "Make N on an old run: as it was"

@@ -52,7 +52,8 @@ def clean_path(path) -> dict | None:
         return None
     anchor = path.get("anchor") if path.get("anchor") in PATH_ANCHORS else "through"
     return {"shape": path["shape"], "dir": d, "len": ln, "i": i, "n": n, "run": str(path.get("run") or "")[:16],
-            **({"anchor": anchor} if anchor != "through" else {})}    # through, as every path before anchors: nothing added
+            **({"anchor": anchor} if anchor != "through" else {}),     # through, as every path before anchors: nothing added
+            **({"fit": 1} if path.get("fit") else {})}                  # its reach scaled to the room (see path_place); runs from before keep theirs
 
 
 def path_place(project: dict, path: dict, size: float, ratio: float) -> tuple[float, float]:
@@ -66,13 +67,17 @@ def path_place(project: dict, path: dict, size: float, ratio: float) -> tuple[fl
     dx, dy = u * math.cos(a) - v * math.sin(a), u * math.sin(a) + v * math.cos(a)    # its reach: % of the frame along each axis (70% down: 70% of the height)
     hx, hy = project["mark_x"], project["mark_y"]
     hw, hh = size / 2, size * ratio * projects.FRAME_W / projects.FRAME_H / 2
-    ln = float(path["len"])
-    for e in (shape(0.0)[0] - o[0], shape(1.0)[0] - o[0]):     # both ends of the line inside: shrink it until they are
+    most = 100.0
+    for e in (shape(0.0)[0] - o[0], shape(1.0)[0] - o[0]):     # the longest it can be with both ends inside the frame
         ex, ey = e * math.cos(a), e * math.sin(a)
         for c, h, d in ((hx, hw, ex), (hy, hh, ey)):
             if abs(d) > 1e-9:
-                room = ((100 - MARGIN - h - c) if d > 0 else (c - MARGIN - h)) / abs(d)
-                ln = max(0.0, min(ln, room))
+                most = max(0.0, min(most, ((100 - MARGIN - h - c) if d > 0 else (c - MARGIN - h)) / abs(d)))
+    ln = float(path["len"])
+    # when the room is under the longest reach, the reaches share it: 70% goes as far as the frame allows, 40% and 20% in proportion
+    # (cut to the room alone, a path that lands or leaves had 40% and 70% the same, across often all three: the user, 2026-10-31);
+    # with room, nothing changes (70% down through the target: 70% of the height). A run from before keeps how it was placed.
+    ln = ln * min(1.0, most / max(PATH_LENS)) if path.get("fit") else min(ln, most)
     return round(hx + dx * ln, 1), round(hy + dy * ln, 1)
 
 

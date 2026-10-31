@@ -349,10 +349,11 @@
       const home = project || { mark_x: 50, mark_y: 50, mark_size: 18 }, a = ps.dir * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
       const sh = { through: 0, lands: -0.5, leaves: 0.5 }[ps.anchor] || 0, ends = [sh - 0.5, sh + 0.5];
       const hw = home.mark_size / 2, hh = home.mark_size * (1080 / 1920) / 2, M = 6;
-      let ln = ps.len;
+      let most = 100;                                                        // the longest it can be with both ends inside
       for (const e of ends) for (const [c, h, d] of [[home.mark_x, hw, e * ca], [home.mark_y, hh, e * sa]]) {
-        if (Math.abs(d) > 1e-9) ln = Math.max(0, Math.min(ln, ((d > 0 ? 100 - M - h - c : c - M - h) / Math.abs(d))));
+        if (Math.abs(d) > 1e-9) most = Math.max(0, Math.min(most, ((d > 0 ? 100 - M - h - c : c - M - h) / Math.abs(d))));
       }
+      const ln = ps.len * Math.min(1, most / 70);                           // short of room, the reaches share it: 70% as far as it goes
       return { x: home.mark_x, y: home.mark_y, ca, sa, ln, ends };            // a point at u (from ends[0] to ends[1]): x + ca·u·ln, y + sa·u·ln (% of the frame)
     }
     const pathOn = () => document.getElementById('targetSelect').value === 'path';
@@ -516,7 +517,7 @@
           <div class="mm-prow"><span>Reach</span><span class="mm-btns" role="radiogroup" aria-label="Reach">${PATH_LENS.map(([v]) => `<button type="button" class="mm-reach" role="radio" data-list="plen" data-v="${v}" aria-checked="${st.ps.len === v}" title="${v}% of the frame"><span class="mm-bar"><i style="left:${(100 - v) / 2}%;width:${v}%"></i></span><span>${v}%</span></button>`).join('')}</span></div>
           <div class="mm-prow"><span>Target</span><span class="mm-steps" role="radiogroup" aria-label="Where the target is on the path">${PATH_ANCHORS.map(([v, nm, tip]) => `<button type="button" class="mm-step mm-anchor" role="radio" data-list="panchor" data-v="${v}" aria-checked="${st.ps.anchor === v}" title="${tip}">${nm}</button>`).join('')}</span></div>
           <div class="mm-prow"><span class="mm-strong">Steps</span><span class="mm-steps" role="radiogroup" aria-label="Steps">${PATH_STEPS.map(v => `<button type="button" class="mm-step" role="radio" data-list="psteps" data-v="${v}" aria-checked="${st.ps.steps === v}" title="${v} images, one a step">${v}</button>`).join('')}</span></div>
-          <span class="mm-help">Reach is how much of the frame the path covers. Steps is one image each: more steps, smoother motion.</span></div></div>`;
+          <span class="mm-help">Reach is how much of the frame the path covers (70% as far as the frame allows). Steps is one image each: more steps, smoother motion.</span></div></div>`;
       }
       html += '</div></div>';
       // More: angle and size, folded until used (open by itself while either is set)
