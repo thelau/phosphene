@@ -1210,6 +1210,18 @@ test('Curate: thumbnail sizes, trash from the grid with Undo, restore picked ima
   await page.click('#trashRestoreSel');
   await page.waitForFunction(() => document.getElementById('tabSelection').textContent.replace(/\s+/g, ' ').trim().endsWith(' 5'));
   assert.equal(await page.locator('.card').count(), 2);
+  // in the Trash the viewer has Restore where Trash was
+  const inTrash = await page.locator('.card').nth(0).getAttribute('data-filename');
+  await page.locator('.card').nth(0).dblclick({ position: { x: 60, y: 120 } });
+  await page.waitForSelector('#viewer:not([hidden])');
+  assert.deepEqual([await page.locator('#viewerTrashBtn').isVisible(), await page.locator('#viewerRestoreBtn').isVisible()], [false, true]);
+  await page.click('#viewerRestoreBtn');
+  for (let i = 0; i < 50 && api.state.plates.find(x => x.filename === inTrash).trashed; i++) await page.waitForTimeout(100);
+  assert.equal(api.state.plates.find(x => x.filename === inTrash).trashed, false, 'restored from the viewer');
+  await page.waitForFunction(() => document.getElementById('viewerCount').textContent === '1 / 1');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Meta+z');                                            // one undo step: back in the Trash
+  await page.waitForFunction(() => document.querySelectorAll('.card').length === 2);
   await page.click('#tabSelection');
   // the floating preview plays the film in Curate, hides to a pill, and opens Film
   assert.equal(await page.locator('#miniPlayer #stageImg').count(), 1, 'the one stage sits in the floating preview');

@@ -1037,6 +1037,22 @@ test('the multiple only changes the picture: the music keeps its cuts, with one 
   assert.ok(Math.abs(v.audio[1] - 0.3) < 1e-9);
 });
 
+test('a Multiple past one picture a frame counts as one a frame: the music keeps its speed and lasts as long as the pictures', async () => {
+  const r = baseRoutes();
+  r['/api/state'] = { plates: Array.from({ length: 16 }, (_, i) => mkPlate('p' + i)) };
+  const h = load({ routes: r });
+  await settle(); await settle();
+  h.$('bpmInput').value = '341'; h.$('multSelect').value = '9'; h.$('repeatSelect').value = '4'; h.run('updateTempo()');   // 176 ms / 9 = 20 ms: under a frame
+  const f = JSON.parse(JSON.stringify(h.run('rhythmFor(16)')));
+  const cuts = f.pic.slice(1).map((t, i) => t - f.pic[i]);
+  assert.ok(cuts.every(c => c > 1 - 1e-6 && c < 1 + 1e-6), 'every picture a frame, none pushed out');
+  assert.ok(Math.abs(f.base[f.nBase] - f.end) < 60000 / 341 * 30 / 1000 + 1e-6, 'the music runs to the end of the pictures');
+  const beats = f.audio.slice(1, -1).map((t, i) => t - f.audio[i]);
+  assert.ok(beats.every(b => Math.abs(b - 60 / 341) < 1e-6), 'at its own speed: 176 ms a cut');
+  h.$('multSelect').value = '4'; h.run('updateTempo()');
+  assert.equal(JSON.parse(JSON.stringify(h.run('rhythmFor(16)'))).mult, 4, 'within reach: as asked');
+});
+
 // ---------- extremes: the page's rhythm in every combination ----------
 
 function clean(v) { return JSON.parse(JSON.stringify(v)); }

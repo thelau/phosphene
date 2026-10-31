@@ -1501,7 +1501,8 @@
       document.getElementById('viewerFrame').setAttribute('style', placeVars(p.box || p.placement));   // the mark target (T) as on its card
       document.getElementById('viewerTitle').textContent = p.title || '';
       document.getElementById('viewerCount').textContent = `${viewerAt + 1} / ${list.length}`;
-      document.getElementById('viewerTrashBtn').hidden = !!p.trashed;            // in the Trash: Info only
+      document.getElementById('viewerTrashBtn').hidden = !!p.trashed;            // in the Trash: Restore in its place, as on the cards
+      document.getElementById('viewerRestoreBtn').hidden = !p.trashed;
       const info = document.getElementById('viewerInfo');
       if (!info.hidden) info.innerHTML = promptInfoHtml(p) + `<button type="button" class="po-copy" onclick="copyPromptText(event, '${p.filename}')">Copy prompt</button>`;
       for (const d of [1, -1]) { const q = list[(viewerAt + d + list.length) % list.length]; if (q && window.Image) new Image().src = q.url; }   // the next ones ready
@@ -1520,6 +1521,12 @@
       if (!p || p.trashed) return;
       await setTrash({ stopPropagation() {} }, p.filename, true);           // the same as the card's: one undo step, the toast
       if (viewerOpen()) showViewer();                                       // the next image takes its place
+    }
+    async function viewerRestore() {
+      const p = visiblePlates()[viewerAt];
+      if (!p || !p.trashed) return;
+      await setTrash({ stopPropagation() {} }, p.filename, false);          // the same as the card's Restore: one undo step
+      if (viewerOpen()) showViewer();                                       // the next image of the Trash takes its place
     }
     // the floating film preview in Curate: the same stage, moved here, so there is one player and one sound
     let miniOpen = true;
@@ -2078,13 +2085,17 @@
       const ch = changeParams();
       const key = `${nCuts}|${paired}|${mult}|${bpm}|${ch ? JSON.stringify(ch.points) : 'flat'}|${follow}`;
       if (timelineCache.key !== key) {
-        const nBase = Math.max(1, Math.ceil(nCuts / Math.max(0.05, mult) - 1e-9));
-        const nMusic = nCuts / Math.max(0.05, mult), base = baseStarts(nBase, bpm, ch, nMusic);
-        const pic = subdivideStarts(base, mult, nCuts), end = pic[nCuts];
+        // the picture changes at most once a frame (30 fps): a Multiple past that, at the film's fastest speed, counts as that (×9 at
+        // 176 ms asked for 20 ms pictures, each pushed out to a frame, and the pictures ran on past the music, its last cut held 0.8 s)
+        const fastest = ch ? Math.min(60000 / bpm, ...ch.points.map(p => p.ms)) : 60000 / bpm;
+        const m = Math.max(0.05, Math.min(mult, (fastest * 30) / 1000));
+        const nBase = Math.max(1, Math.ceil(nCuts / m - 1e-9));
+        const nMusic = nCuts / m, base = baseStarts(nBase, bpm, ch, nMusic);
+        const pic = subdivideStarts(base, m, nCuts), end = pic[nCuts];
         // the music's cuts: the base cuts that fall inside the clip, or (if the user asks) every picture cut
         const audio = follow ? pic.map(f => f / 30) : base.filter(f => f < end - 1e-6).concat([end]).map(f => f / 30);
         if (audio.length < 2) audio.push(audio[0] + 0.1);                                       // no images: still a valid (empty) clip
-        timelineCache = { key, value: { pic, audio, base, nBase, nMusic, end, landAt: pic[Math.max(0, nCuts - (paired ? 2 : 1))] / 30 } };
+        timelineCache = { key, value: { pic, audio, base, nBase, nMusic, end, mult: m, landAt: pic[Math.max(0, nCuts - (paired ? 2 : 1))] / 30 } };
       }
       return timelineCache.value;
     }
@@ -2618,7 +2629,7 @@
       if (!n) return null;
       const r = rhythmFor(n), pic = r.pic, base = r.base, nBase = r.nBase, nMusic = r.nMusic, total = pic[pic.length - 1];
       const X = f => Math.min(1000, (f / total) * 1000);
-      const bpm = bpmValue(), ch = changeParams(), mult = parseFloat(document.getElementById('multSelect').value) || 1;
+      const bpm = bpmValue(), ch = changeParams(), mult = r.mult;
       const tAt = share => { const x = Math.max(0, Math.min(1, share)) * nMusic, i = Math.min(nBase - 1, Math.floor(x)); return Math.min(total, base[i] + (x - i) * (base[i + 1] - base[i])); };
       const curve = [];                                                     // the speed itself, through the points (the ticks show where the cuts fall)
       for (let k = 0; k <= 200; k++) { const share = k / 200; curve.push([X(tAt(share)), yOfMs(msAtShare(share, bpm, ch))]); }
@@ -4281,6 +4292,7 @@ Object.assign(window, {
   selectAllTrash,
   toggleViewerInfo,
   viewerTrash,
+  viewerRestore,
   copyPromptText,
   tasteMark,
   tasteCopy,
