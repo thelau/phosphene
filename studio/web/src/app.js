@@ -309,49 +309,57 @@
       const centred = p.mark_x === 50 && p.mark_y === 50;
       document.getElementById('retLabel').textContent = `mark · ${centred ? 'centre' : `${p.mark_x}%, ${p.mark_y}%`} · ${p.mark_size}%`;
     }
-    // a project with several marks: the generation row offers which one a batch uses (main, another, or a mix); a project with one: nothing
+    // a project with several marks: the generation row offers which of them a batch uses, ticked (one or more: they take turns); one mark: nothing
     function syncMarkSelect(p) {
-      const sel = document.getElementById('markSelect'), marks = (p && p.marks) || [], cur = sel.value || 'main';
+      const marks = (p && p.marks) || [];
       document.body.classList.toggle('multi-mark', marks.length > 0);
-      const opts = [['main', 'Main mark'], ...marks.map(m => [m.id, m.name]), ...(marks.length ? [['mix', 'Mix']] : [])];
-      if (sel.options && [...sel.options].map(o => o.value).join('|') !== opts.map(o => o[0]).join('|')) {
-        sel.innerHTML = opts.map(([v, t]) => `<option value="${escapeHtml(v)}">${escapeHtml(t)}</option>`).join('');
-      }
-      sel.value = opts.some(o => o[0] === cur) ? cur : 'main';
+      document.getElementById('markSelect').value = markTicks(marks).join(',');
       if (typeof renderPlace === 'function') renderPlace();
+    }
+    // the marks ticked, in the project's order ('main' and ids, kept as "main,bird" in #markSelect); "mix" (before the ticks) is all of them; none: the main one
+    function markTicks(marks = (project && project.marks) || []) {
+      const ids = ['main', ...marks.map(m => m.id)], v = document.getElementById('markSelect').value || 'main';
+      const on = v === 'mix' ? ids : v.split(',');
+      const out = ids.filter(x => on.includes(x));
+      return out.length ? out : ['main'];
     }
     // the Mark menu: which of the project's marks (with several), where it goes, and Keep it as designed; one button, sections inside
     const POSITIONS = [['exact', 'On target', 'same spot and size in every image'], ['loose', 'Loose', 'a little off, a little bigger or smaller'], ['scattered', 'Scattered', 'anywhere, much bigger or smaller']];
     function markChoices() {
       const marks = (project && project.marks) || [];
-      return marks.length ? [['main', 'Main mark', project.mark_url], ...marks.map(m => [m.id, m.name, m.url]), ['mix', 'Mix', null]] : [];
+      return marks.length ? [['main', 'Main mark', project.mark_url], ...marks.map(m => [m.id, m.name, m.url])] : [];
     }
     function renderPlace() {
-      const t = document.getElementById('targetSelect').value || 'exact', mk = document.getElementById('markSelect').value || 'main';
-      const keep = document.getElementById('keepCheck').checked, choices = markChoices(), mine = choices.find(c => c[0] === mk) || choices[0];
+      const t = document.getElementById('targetSelect').value || 'exact', ticks = markTicks();
+      const keep = document.getElementById('keepCheck').checked, choices = markChoices(), on = choices.filter(c => ticks.includes(c[0]));
       const pos = (POSITIONS.find(p => p[0] === t) || POSITIONS[0])[1];
-      const label = (c, p, k) => [c ? (c[0] === 'main' ? 'Main' : c[1]) : '', p, k ? 'As designed' : ''].filter(Boolean).join(' · ');
-      const name = document.getElementById('placeName');
-      name.textContent = label(mine, pos, keep);
+      const markWord = k => (k === choices.length ? `All ${k} marks` : `${k} marks`);   // several ticked: how many, "All 4 marks" when every one is
+      const label = (m, p, k) => [m, p, k ? 'As designed' : ''].filter(Boolean).join(' · ');
+      const name = document.getElementById('placeName'), one = on.length === 1 ? on[0] : null;
+      name.textContent = label(!choices.length ? '' : one ? (one[0] === 'main' ? 'Main' : one[1]) : markWord(on.length), pos, keep);
       const thumb = document.getElementById('placeThumb'), mixIcon = document.getElementById('placeMix');
-      thumb.hidden = !(mine && mine[2]);
-      if (mine && mine[2] && thumb.getAttribute('src') !== mine[2]) { thumb.src = mine[2]; fitMarkTone(thumb); }   // as the top bar shows it: a dark mark as a light silhouette
-      const pair = choices.filter(c => c[2]).slice(0, 2).map(c => c[2]);   // Mix shows two of your marks, as in its menu, so the button keeps its icon
-      mixIcon.hidden = !(mine && !mine[2] && pair.length);
+      thumb.hidden = !(one && one[2]);
+      if (one && one[2] && thumb.getAttribute('src') !== one[2]) { thumb.src = one[2]; fitMarkTone(thumb); }   // as the top bar shows it: a dark mark as a light silhouette
+      const pair = on.filter(c => c[2]).slice(0, 2).map(c => c[2]);   // several ticked: two of them, overlapping, so the button keeps an icon
+      mixIcon.hidden = !(on.length > 1 && pair.length);
       if (!mixIcon.hidden && mixIcon.dataset.urls !== pair.join(' ')) {
         mixIcon.dataset.urls = pair.join(' ');
         mixIcon.innerHTML = pair.map(u => `<img class="pm-thumb" src="${escapeHtml(u)}" alt="" />`).join('');
         mixIcon.querySelectorAll('img').forEach(fitMarkTone);
       }
-      name.style.minWidth = placeLabelWidth(name, (choices.length ? choices : [null]).flatMap(c => POSITIONS.flatMap(([, p]) => [label(c, p, false), label(c, p, true)]))) + 'px';   // as wide as its widest choice: the row never moves
+      const words = choices.length ? [...choices.map(c => (c[0] === 'main' ? 'Main' : c[1])), ...choices.slice(1).map((c, i) => markWord(i + 2))] : [''];
+      name.style.minWidth = placeLabelWidth(name, words.flatMap(w => POSITIONS.flatMap(([, p]) => [label(w, p, false), label(w, p, true)]))) + 'px';   // as wide as its widest choice: the row never moves
       const m = document.getElementById('placeMenu');
       if (m.hidden) return;
       const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
       const item = (list, v, inner, on) => `<div class="tm-item" role="menuitemradio" data-list="${list}" data-v="${escapeHtml(v)}" aria-selected="${on}" aria-checked="${on}">${inner}${check}</div>`;
       const img = url => `<img class="pm-thumb" src="${escapeHtml(url)}" alt="" />`;
-      const mix = `<span class="pm-mix">${choices.filter(c => c[2]).slice(0, 2).map(c => img(c[2])).join('')}</span>`;
+      // the marks are ticks, one or more (the user, 2026-10-31: Mix said too little, and gave the main mark half the batch); the line under them says how they share it
+      const n = Math.max(1, +document.getElementById('batchCountSelect').value || 1), k = ticks.length, lo = Math.floor(n / k);
+      const share = k < 2 ? 'Tick more marks to take turns between them' : lo < 1 ? `They take turns: ${n} image${n > 1 ? 's' : ''}, one mark each` : `They take turns: ${n} images, ${lo}${n % k ? ` or ${lo + 1}` : ''} of each`;
       m.innerHTML = (choices.length ? '<div class="tm-head"><span>Mark</span></div>' + choices.map(([v, name, url]) =>
-          item('mark', v, `${url ? img(url) : mix}<span>${escapeHtml(name)}${v === 'mix' ? ' <span class="tm-sub">switches between your marks</span>' : ''}</span>`, v === mk)).join('') + '<div class="tm-sep"></div>' : '')
+          `<div class="tm-item pm-mark" role="menuitemcheckbox" data-list="mark" data-v="${escapeHtml(v)}" aria-checked="${ticks.includes(v)}"${ticks.length === 1 && ticks[0] === v ? ' aria-disabled="true" title="At least one mark"' : ''}><span class="pm-box"></span>${url ? img(url) : ''}<span>${escapeHtml(name)}</span></div>`).join('')
+          + `<div class="pm-share">${share}</div><div class="tm-sep"></div>` : '')
         + '<div class="tm-head"><span>Position</span></div>' + POSITIONS.map(([v, name, sub]) => item('position', v, `<span>${name} <span class="tm-sub">${sub}</span></span>`, v === t)).join('')
         + '<div class="tm-sep"></div>'
         + `<div class="tm-item pm-keep" role="menuitemcheckbox" data-list="keep" data-v="keep" aria-checked="${keep}"><span class="pm-box"></span><span>Keep it as designed <span class="tm-sub">same colours and lettering as your file</span></span></div>`;
@@ -376,7 +384,12 @@
     }
     function choosePlace(list, v) {
       if (list === 'keep') { const k = document.getElementById('keepCheck'); k.checked = !k.checked; }
-      else setv(list === 'mark' ? 'markSelect' : 'targetSelect', v);
+      else if (list === 'mark') {
+        const t = markTicks(), on = t.includes(v) ? t.filter(x => x !== v) : [...t, v];
+        if (!on.length) return;                                              // one mark at least
+        setv('markSelect', markChoices().map(c => c[0]).filter(x => on.includes(x)).join(','));
+      }
+      else setv('targetSelect', v);
       saveSettings();
       renderPlace();                                                         // it stays open: a pick in each section
     }
@@ -863,7 +876,7 @@
       shown.forEach(p => { if (p.world) worlds[p.world] = (worlds[p.world] || 0) + 1; });
       Object.entries(worlds).filter(([, n]) => n >= 6).sort((a, b) => b[1] - a[1]).forEach(([w, n]) => auto.push({ key: `world:${w}`, name: w, n }));
       // Mark, Position and Source: each only when the selection holds two kinds or more (one mark only: nothing to choose between)
-      const marks = new Map(markChoices().filter(c => c[0] !== 'mix').map(c => [c[0], c]));
+      const marks = new Map(markChoices().map(c => [c[0], c]));
       const names = { mark: v => (marks.get(v) || [v, v === 'main' ? 'Main mark' : v])[1], pos: v => POSITION_NAMES[v], src: v => (v === 'uploaded' ? 'Uploaded' : 'Generated') };
       const order = { mark: [...marks.keys()], pos: Object.keys(POSITION_NAMES), src: ['generated', 'uploaded'] };
       Object.entries(MADE_BY).forEach(([kind, by]) => {
@@ -1325,6 +1338,7 @@
       }
       gridView = showTrash;
       patchChildren(grid, items);
+      grid.querySelectorAll('.card-mark img').forEach(fitMarkTone);         // measured once a mark, then only a class
       const empty = document.getElementById('gridEmpty');
       empty.hidden = items.length > 0;
       empty.textContent = showTrash ? 'The Trash is empty.' : project ? 'No images yet. Choose a territory and press Generate.' : 'No images yet';
@@ -1392,12 +1406,21 @@
           <div class="card-meta">
             ${p.uploaded ? '<span class="card-model-badge uploaded" title="One of your own images: it is not checked for the mark">Uploaded</span>' : `<span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>`}
             ${p.as_designed ? '<span class="card-model-badge designed" title="Kept exactly as designed: its colours, lettering and details">As designed</span>' : ''}
-            ${p.mark_name ? `<span class="card-model-badge mark" title="Made with ${escapeHtml(p.mark_name)}, one of the project's marks">${escapeHtml(p.mark_name)}</span>` : ''}
+            ${cardMark(p)}
             ${p.placement && p.placement.kind !== 'exact' ? `<span class="card-model-badge target" title="${escapeHtml(targetTip(p.placement))}">${p.placement.kind === 'scattered' ? 'Scattered' : 'Loose'}</span>` : ''}
             ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(!p.qa_passed && (p.qa_issues || []).length && p.trash_reason === 'Mark check' ? p.qa_issues.join(', ') : p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
             ${!p.qa_passed ? (p.trash_reason === 'Mark check' ? '' : `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>`) : p.qa_doubt ? `<span class="card-model-badge doubt" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : ''}
           </div>
         </div>`;
+    }
+    // with several marks, every card shows which one it was made with, as a small icon (the user, 2026-10-31: two marks may share a name)
+    function cardMark(p) {
+      const choices = markChoices();
+      if (!choices.length || p.uploaded) return '';
+      const c = choices.find(x => x[0] === (p.mark || 'main')) || choices[0];
+      if (!c[2]) return '';
+      const name = c[0] === 'main' ? (project.mark_name || 'Main mark') : c[1];
+      return `<span class="card-mark" title="Made with ${escapeHtml(name)}"><img src="${escapeHtml(c[2])}" alt="${escapeHtml(name)}" /></span>`;
     }
     function promptInfoHtml(p) {
       return `${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-check po-qa">Mark check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : p.qa_doubt ? `<span class="po-check po-doubt">Mark check: ${escapeHtml(p.qa_doubt)}</span>` : ''}`;

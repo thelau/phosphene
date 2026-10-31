@@ -1078,9 +1078,10 @@ def test_a_project_with_several_marks_makes_each_image_with_its_own(live, srv, m
     plates = {p["filename"]: p for p in live("GET", "/api/state")[1]["plates"]}
     assert plates[bird["filename"]]["mark_name"] == "Bird" and plates[bird["filename"]]["box"]["size"] == 14
     assert plates[main["filename"]]["mark"] is None and plates[main["filename"]]["box"] is None, "a main-mark image: as before"
-    monkeypatch.setattr(srv.random, "random", lambda: 0.9)                    # Mix: the main mark about half the time; here, the other one
-    _, ideas = live("POST", "/api/invent-prompts", {"count": 2, "world": "Editorial Print", "mark": "mix"})
+    _, ideas = live("POST", "/api/invent-prompts", {"count": 2, "world": "Editorial Print", "mark": "bird"})
     assert all(i["mark"] == "bird" for i in ideas["ideas"]) and "which mark: the bird symbol (a flying bird)" in live.calls["kimi"][-1]
+    _, both = live("POST", "/api/invent-prompts", {"count": 2, "world": "Editorial Print", "mark": "main,bird"})
+    assert sorted(str(i["mark"]) for i in both["ideas"]) == ["None", "bird"], "two marks ticked: they take turns"
     _, one = live("POST", "/api/invent-prompts", {"count": 2, "world": "Editorial Print"})
     assert all(i["mark"] is None for i in one["ideas"]) and "which mark:" not in live.calls["kimi"][-1], "the main mark: as before"
     live("POST", "/api/projects", {"action": "remove_mark", "slug": "Kestrel", "mark_id": "bird"})

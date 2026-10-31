@@ -303,3 +303,20 @@ def test_saving_and_reading_the_curation_at_once_never_loses_it(srv):
     stop.set()
     for t in ws: t.join()
     assert bad == [] and not list(srv.CURATION_FILE.parent.glob("*.damaged-*")), "never read half-written, never reset"
+
+
+def test_ticked_marks_take_turns_evenly_through_a_batch(srv, monkeypatch):
+    """Mix drew each shot's mark at random, the main one half the time: 20 images over 4 marks once had none of the fourth.
+    The ticked marks now take turns: every one in each round, so a batch splits evenly whatever the dice."""
+    monkeypatch.setattr(srv, "PROJECT", {"marks": [{"id": "a"}, {"id": "b"}, {"id": "c"}]})
+    assert srv.mark_set("mix") == [None, "a", "b", "c"], "a menu saved before the ticks: all of them"
+    assert srv.mark_set("main,c,zz") == [None, "c"] and srv.mark_set(["b"]) == ["b"] and srv.mark_set("") == [None]
+    for _ in range(50):
+        deck = srv.MarkDeck("mix")
+        dealt = []
+        for _chunk in range(2):                                   # a batch of 20 in chunks of 10, Kimi asked for 12 each time
+            ahead = deck.peek(12)
+            for m in ahead[:10]:
+                deck.take(m)
+            dealt += ahead[:10]
+        assert sorted(dealt.count(m) for m in [None, "a", "b", "c"]) == [5, 5, 5, 5]

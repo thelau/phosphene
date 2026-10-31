@@ -1375,7 +1375,7 @@ test('the Selection: picked images go to the Trash from the floating bar, in one
 });
 
 test('several marks: added in Project settings, then the generation row offers which one a batch uses; a single-mark project shows nothing new', { skip }, async () => {
-  const ctx = await fresh({ setup: st => { st.projects[0].fixed = false; st.plates[1].mark = 'bird'; st.plates[1].mark_name = 'Bird'; st.plates[1].box = { x: 50, y: 50, size: 12, ar: 1 }; } });
+  const ctx = await fresh({ setup: st => { st.projects[0].fixed = false; st.plates[1].mark = 'n1'; st.plates[1].mark_name = 'Bar'; st.plates[1].box = { x: 50, y: 50, size: 12, ar: 1 }; } });
   assert.equal(await text('#placeName'), 'On target', 'one mark: the menu speaks of where only');
   await page.click('#placeBtn');
   assert.deepEqual(await page.locator('#placeMenu .tm-head').allTextContents(), ['Position'], 'no Mark section with one mark');
@@ -1401,23 +1401,31 @@ test('several marks: added in Project settings, then the generation row offers w
   const w0 = await btnW();
   await page.click('#placeBtn');
   assert.deepEqual(await page.locator('#placeMenu .tm-head').allTextContents(), ['Mark', 'Position']);
-  assert.deepEqual(await page.locator('#placeMenu .tm-item[data-list="mark"]').allTextContents(), ['Main mark', 'Bar', 'Mix switches between your marks']);
+  assert.deepEqual(await page.locator('#placeMenu .tm-item[data-list="mark"]').allTextContents(), ['Main mark', 'Bar'], 'each mark a tick, no Mix');
+  assert.deepEqual(await page.locator('#placeMenu .tm-item[data-list="mark"]').evaluateAll(els => els.map(e => e.getAttribute('aria-checked'))), ['true', 'false']);
+  assert.equal(await text('#placeMenu .pm-share'), 'Tick more marks to take turns between them');
   assert.equal(await page.locator('#placeMenu .tm-item[data-list="mark"] img.pm-thumb').first().isVisible(), true, 'each mark previewed');
   assert.equal(await page.locator('#keepCheck').evaluate(e => getComputedStyle(e).opacity), '0', 'its source of truth stays out of sight');
   await shot('27-mark-menu');
-  assert.equal(await page.locator(`.card[data-filename="${api.state.plates[1].filename}"] .card-model-badge.mark`).textContent(), 'Bird', 'each card says which mark');
-  await page.click('#placeMenu .tm-item[data-v="mix"]');
+  assert.equal(await page.locator(`.card[data-filename="${api.state.plates[1].filename}"] .card-mark`).getAttribute('title'), 'Made with Bar', 'each card shows which mark, as an icon');
+  assert.equal(await page.locator(`.card[data-filename="${api.state.plates[0].filename}"] .card-mark`).getAttribute('title'), 'Made with Main mark', 'the main one too');
+  assert.equal(await page.locator('#placeMenu .tm-item[data-v="main"]').getAttribute('aria-disabled'), 'true', 'the last tick stays: one mark at least');
+  await page.click('#placeMenu .tm-item[data-v="n1"]');
+  assert.match(await text('#placeMenu .pm-share'), /^They take turns: \d+ images?, /);
   await page.click('#placeMenu .pm-keep');
-  assert.equal(await text('#placeName'), 'Mix · On target · As designed');
+  assert.equal(await text('#placeName'), 'All 2 marks · On target · As designed');
   assert.equal(await btnW(), w0, 'the button keeps the width of its widest choice whatever is chosen');
-  assert.equal(await page.locator('#placeMix').isVisible(), true, 'Mix shows two of the marks in the button, as in its menu');
+  assert.equal(await page.locator('#placeMix').isVisible(), true, 'several ticked: two of them in the button');
+  await page.click('#placeMenu .tm-item[data-v="main"]');
+  assert.equal(await text('#placeName'), 'Bar · On target · As designed', 'the other mark alone');
+  await page.click('#placeMenu .tm-item[data-v="main"]');
   await page.click('#placeMenu .tm-item[data-v="scattered"]');
   assert.equal(await btnW(), w0);
   await page.mouse.click(10, 600);
   await page.click('#generateBtn');
   await page.waitForFunction(() => /Done/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   const inv = api.state.calls.find(c => c.path === '/api/invent-prompts').body;
-  assert.deepEqual([inv.mark, inv.keep], ['mix', true]);
+  assert.deepEqual([inv.mark, inv.keep], ['main,n1', true]);
   assert.ok(api.state.calls.filter(c => c.path === '/api/generate-image').every(c => c.body.keep === true), 'each image kept as designed');
   await ctx.close();
 });

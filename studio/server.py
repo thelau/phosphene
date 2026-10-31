@@ -270,13 +270,43 @@ def mark_images(marks: list) -> dict:
     return out
 
 
-def pick_mark(choice: str | None) -> str | None:
-    """Which of the project's marks a shot uses: the main one (None), the one chosen, or for Mix the main one about half the time and
-    the others in turn the rest. A project with one mark: always the main one."""
+def mark_set(choice) -> list:
+    """The marks a batch uses: the main one (None) and / or others by id, as ticked in the Mark menu ("main,bird", or a list). "mix"
+    (before the ticks) is all of them. Nothing known: the main one."""
     ids = [m["id"] for m in (PROJECT or {}).get("marks") or []]
-    if choice == "mix" and ids:
-        return None if random.random() < 0.5 else random.choice(ids)
-    return choice if choice in ids else None
+    if choice == "mix":
+        return [None] + ids
+    out = []
+    for c in choice if isinstance(choice, list) else str(choice or "").split(","):
+        c = str(c or "").strip()
+        m = None if c in ("", "main") else c if c in ids else "?"
+        if m != "?" and m not in out:
+            out.append(m)
+    return out or [None]
+
+
+def pick_mark(choice) -> str | None:
+    """One shot's mark: the one chosen, or one of those ticked. A project with one mark: always the main one."""
+    return random.choice(mark_set(choice))
+
+
+class MarkDeck:
+    """The ticked marks taking turns through a batch: rounds of every mark once, each round shuffled, so 20 images over 4 marks are 5
+    each (Mix drew them at random, the main one half the time: a batch of 20 once had none of its fourth mark, 2026-10-31). A chunk
+    peeks at what comes next and takes only the marks of the scenes it kept (the spares Kimi writes would skew the turns)."""
+    def __init__(self, choice):
+        self.marks, self.queue = mark_set(choice), []
+
+    def peek(self, n: int) -> list:
+        while len(self.queue) < n:
+            r = self.marks[:]
+            random.shuffle(r)
+            self.queue += r
+        return self.queue[:n]
+
+    def take(self, m) -> None:
+        if m in self.queue:
+            self.queue.remove(m)
 
 
 def world_examples(w: dict, n: int = 2) -> list[str]:
@@ -613,7 +643,7 @@ def match_world(st: dict, api_key: str, kimi_model: str, direction: str) -> dict
 BIG_MARK = 30   # % of the width from which Kimi is told the mark is large and needs a subject that big (DEMO, 18%, keeps its words)
 
 
-def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list, target: str = "exact", mark: str | None = None, keep: bool = False) -> tuple[list, dict]:
+def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list, target: str = "exact", mark=None, keep: bool = False) -> tuple[list, dict]:
     """One Kimi request for up to `count` scenes in territory `w`; `batch` = scenes already collected for this batch (never repeated)."""
     titles = st.get("titles", {})
     prompts = st.get("prompts", {})
@@ -622,7 +652,8 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
 
     n_ask = count + 2  # a little spare: some scenes come back as near-copies of past images and are dropped
     shots = diversity.sample_shots(n_ask, st.get("recent_axes"))
-    mids = [pick_mark(mark) for _ in range(n_ask)]                      # which of the project's marks each shot uses (the main one: None)
+    deck = mark if isinstance(mark, MarkDeck) else MarkDeck(mark)
+    mids = deck.peek(n_ask)                                              # which of the project's marks each shot uses (the main one: None), in turns
     projs = [projects.with_mark(PROJECT, m) for m in mids]
     places = [placement.choose(target, pj) for pj in projs]             # Loose: each shot's own place and size, known before it is written
     seen_subjects = st.get("recent_subjects", {}).get(w["name"], [])[-60:]
@@ -697,7 +728,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     ideas = parse_llm_json(out, "[")
     for i, idea in enumerate(ideas):
         if isinstance(idea, dict):
-            idea["_mark"] = mids[i] if i < len(mids) else pick_mark(mark)
+            idea["_mark"] = mids[i] if i < len(mids) else random.choice(deck.marks)
             idea["_place"] = places[i] if i < len(places) else placement.choose(target, projects.with_mark(PROJECT, idea["_mark"]))   # the shot it was written for
 
     past = list(prompts.values()) + [b["prompt"] for b in batch]
@@ -718,6 +749,8 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
         spare = sorted((d for d in dropped if d[2] >= 0.25), key=lambda x: -x[0])
         kept += [idea for _, idea, _ in spare[: count - len(kept)]]
     kept = kept[:count]
+    for i in kept:
+        deck.take(i.get("_mark"))
     info = {"asked_kimi": n_ask, "from_kimi": len(ideas), "dropped_duplicates": len(dropped), "topped_up": max(0, len(kept) - fresh)}
 
     flat = [{"title": i.get("title", "Untitled"), "guide": i.get("guide", "dark"), "prompt": i["prompt"], "idea": i.get("idea", ""), "world": w["name"], "subject": str(i.get("subject", "")).strip(), "placement": i.get("_place"), "mark": i.get("_mark")} for i in kept]
@@ -755,6 +788,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
 
     out: list = []
     totals = {"asked_kimi": 0, "from_kimi": 0, "dropped_duplicates": 0, "topped_up": 0, "kimi_calls": 0}
+    mark = MarkDeck(mark)                                 # one set of turns for the whole batch, across its chunks
     for _ in range(4):                                    # chunks plus at most a couple of follow-ups
         need = count - len(out)
         if need <= 0:
@@ -779,24 +813,26 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     return out[:count]
 
 
-def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direction: str = "", stats: dict | None = None, target: str = "exact", mark: str | None = None, keep: bool = False) -> list[dict]:
+def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direction: str = "", stats: dict | None = None, target: str = "exact", mark=None, keep: bool = False) -> list[dict]:
     """The Sampler: one scene from each of `count` territories, the ones tried least first (to explore at large). Each territory's
     scene is written by its own Kimi request, 6 at a time, each on a copy of the state; their memory (subjects, territories, axes
     used) is merged back into `st` after, so later batches still avoid repeating them."""
     from concurrent.futures import ThreadPoolExecutor
     made = chapters.world_stats(st)
     worlds = sorted(chapters.all_worlds(st), key=lambda w: (made.get(w["name"], {}).get("n", 0), random.random()))[:max(1, count)]
+    marks = MarkDeck(mark).peek(len(worlds))              # each territory's scene its turn of the ticked marks, dealt before they run at once
 
-    def one(w):
+    def one(job):
+        w, m = job
         mine = json.loads(json.dumps(st))
         try:
-            got, info = _ask_chunk(mine, api_key, kimi_model, w, 1, direction, [], target, mark, keep)
+            got, info = _ask_chunk(mine, api_key, kimi_model, w, 1, direction, [], target, m or "main", keep)
             return w, mine, got[:1], info
         except Exception as e:
             print(f"[KIMI] sampler: {w['name']} failed ({str(e)[:120]})", flush=True)
             return w, None, [], {}
     with ThreadPoolExecutor(max_workers=6) as pool:
-        done = list(pool.map(one, worlds))
+        done = list(pool.map(one, zip(worlds, marks)))
     out, totals, errors = [], {"asked_kimi": 0, "from_kimi": 0, "dropped_duplicates": 0, "topped_up": 0, "kimi_calls": 0}, 0
     for w, mine, got, info in done:
         if mine is None:
