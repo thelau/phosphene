@@ -108,15 +108,9 @@
     .mm-countrow { align-items: center; }
     .mm-countrow .mm-label { padding-top: 0; }
     .mm-countc { display: flex; align-items: center; gap: 12px; min-width: 0; }
-    .mm-stepper { height: 32px; box-sizing: border-box; display: inline-flex; align-items: stretch; border-radius: 8px; border: 1px solid #3A3732; overflow: hidden; }
-    .mm-pm { width: 30px; padding: 0; border: 0; border-radius: 0; background: transparent; color: #C9C4B0; font-size: 15px; }
-    .mm-pm:first-child { border-right: 1px solid #2E2C28; }
-    .mm-pm:last-child { border-left: 1px solid #2E2C28; }
-    .mm-pm:hover { background: #1E1D1B; color: var(--text); }
-    .vfield.mm-count { width: 44px; height: 100%; justify-content: center; padding: 0; gap: 0; border: 0; border-radius: 0; background: transparent; }
-    .vfield.mm-count:hover { background: #1E1D1B; }
-    .vfield.mm-count > svg { display: none; }
-    .vfield.mm-count .vf-val { min-width: 0; text-align: center; font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--text); }
+    .vfield.mm-count { width: 76px; height: 32px; box-sizing: border-box; justify-content: space-between; gap: 6px; padding: 0 8px 0 12px; border-radius: 8px; }   /* the Film's Tempo field: drag, arrows, double-click to type */
+    .vfield.mm-count .vf-val { min-width: 0; text-align: left; font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--text); }
+    .vfield.mm-count .vf-input { width: 34px; text-align: left; font-size: 14px; }
     .mm-steps-n { font-family: var(--mono); font-size: 14px; font-weight: 600; }
     .mm-sharec { display: flex; flex-direction: column; gap: 8px; padding-left: 96px; }   /* under the control column */
     #countHome[hidden] { display: none; }
@@ -403,6 +397,7 @@
     .vfield:hover svg, .vfield.dragging svg { color: var(--text); }
     .vf-input { width: 64px; height: 22px; border: 0; outline: none; background: transparent; color: var(--text); font-family: var(--mono); font-size: 13px; font-weight: 600; text-align: right; padding: 0; }
     .vfield.typing { border-color: var(--orange); background: #121110; cursor: text; }
+    .vfield .vf-input:focus-visible { outline: none; }   /* typing: the field's own orange border is the focus (the page's ring drew a second box inside it) */
     .rs-grid { display: grid; grid-template-columns: 100px minmax(0, 1fr); column-gap: 12px; }   /* room for "Speed" beside the ms values */
     .rs-labels { display: flex; flex-direction: column; gap: 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .06em; color: var(--faint); }
     .rs-labels > span { display: flex; align-items: center; text-transform: uppercase; }

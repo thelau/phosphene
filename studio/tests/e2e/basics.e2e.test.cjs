@@ -1520,7 +1520,7 @@ test('several marks: added in Project settings, then the generation row offers w
   await page.click('#placeMenu [data-list="mark"][data-v="n1"]');
   assert.deepEqual([await page.locator('#placeStack').isVisible(), await page.locator('#placeLabel').count()], [true, 0], 'two ticked: their thumbnails and count, no label above (the summary stays on the row\'s line)');
   assert.equal(await text('#placeMenu .mm-sharet'), '2 marks, 2 each');
-  assert.match(await text('#placeMenu .mm-countrow'), /^Images\s*−\s*4\s*\+\s*1 to 40$/i, 'the count: its own row, IMAGES, − 4 +');
+  assert.match(await text('#placeMenu .mm-countrow'), /^Images\s*4\s*1 to 40$/i, 'the count: its own row, IMAGES, the field (⌃⌄), 1 to 40');
   assert.equal(await page.locator('#placeMenu .mm-cell').count(), 4, 'one cell per image');
   await shot('27-mark-menu');
   assert.match(await page.locator('#placeBtn').getAttribute('title'), /^2 marks: Main mark, Bar · 4 images · On target$/);

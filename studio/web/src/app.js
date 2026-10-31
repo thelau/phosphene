@@ -548,7 +548,7 @@
       // the share box: how many (the count lives here, the user's call: not another control in the row; a Path's steps are set in its panel)
       const countRow = st.t === 'path'
         ? `<span class="mm-steps-n">${n} steps</span><span class="mm-help">one per step · set by Steps above</span>`
-        : '<span class="mm-stepper"><button type="button" class="mm-pm" data-count="-1" aria-label="One fewer">−</button><span class="mm-countslot"></span><button type="button" class="mm-pm" data-count="1" aria-label="One more">+</button></span><span class="mm-help">1 to 40</span>';
+        : '<span class="mm-countslot"></span><span class="mm-help">1 to 40</span>';   // one value field, ⌃⌄ as the Film's Tempo (the user preferred it to − and +)
       html += `<div class="mm-share"><div class="mm-grid mm-countrow"><div class="mm-label"><span>Images</span></div><div class="mm-countc">${countRow}</div></div>
         <div class="mm-sharec"><span class="mm-sharet mm-sharer">${sh.text}</span><div class="mm-strip" role="img" aria-label="How the images take turns">${sh.cells}</div><span class="mm-sitw">${sh.sit}</span></div></div>`;
       return html;
@@ -600,7 +600,7 @@
       const m = document.getElementById('placeMenu');
       if (!m || !m.addEventListener) return;
       m.addEventListener('mousedown', e => e.preventDefault());
-      m.addEventListener('click', e => { e.stopPropagation(); const pm = e.target.closest('[data-count]'); if (pm) { vfStep('countField', +pm.dataset.count); VFIELDS.countField.commit(); return; } const it = e.target.closest('[data-list]'); if (it) choosePlace(it.dataset.list, it.dataset.v); });
+      m.addEventListener('click', e => { e.stopPropagation(); const it = e.target.closest('[data-list]'); if (it) choosePlace(it.dataset.list, it.dataset.v); });
       document.addEventListener('click', () => { if (!m.hidden) togglePlaceMenu(null, false); });
     })();
     async function openProjectMenu(e) {

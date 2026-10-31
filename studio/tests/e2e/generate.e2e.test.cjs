@@ -246,10 +246,20 @@ test('the count: any number from 1 to 40, a value field in the Mark menu; the Ma
   const ctx = await fresh({ delays: { invent: 50, generate: 20 } });
   await page.click('#placeBtn');                                                 // the count: in the Mark menu's share box
   assert.equal(await text('#placeMenu .mm-sharet'), 'All the same: same mark, place, angle and size');
-  assert.equal(await page.locator('#placeMenu .mm-countrow .mm-stepper #countField').count(), 1, 'how many: its own row at the top of the share box');
-  await page.click('#placeMenu .mm-pm[data-count="1"]');
-  await page.click('#placeMenu .mm-pm[data-count="-1"]');
-  assert.equal(await page.inputValue('#batchCountSelect'), '4', '− and + step it');
+  assert.equal(await page.locator('#placeMenu .mm-countrow #countField').count(), 1, 'how many: its own row at the top of the share box, one value field');
+  assert.equal(await page.locator('#placeMenu .mm-countrow #countField svg').isVisible(), true, 'with its ⌃⌄, as the Film\'s Tempo (no − and +)');
+  await page.dblclick('#countField');                                          // double-click to type: the number fits its box
+  await page.keyboard.type('39');
+  assert.ok(await page.locator('#countField .vf-input').evaluate(i => i.scrollWidth <= i.clientWidth + 1), 'two digits fit while typing');
+  await page.keyboard.press('Escape');
+  const cf = await page.locator('#countField').boundingBox();                  // a drag up adds
+  await page.mouse.move(cf.x + cf.width / 2, cf.y + cf.height / 2); await page.mouse.down();
+  await page.mouse.move(cf.x + cf.width / 2, cf.y + cf.height / 2 - 30, { steps: 5 });
+  assert.ok(await page.locator('#countField.dragging').count() === 1 && +(await page.inputValue('#batchCountSelect')) > 4, 'dragging up adds images');
+  assert.deepEqual(await page.locator('#countField').boundingBox(), cf, 'the field does not move or grow while dragged');
+  await page.mouse.up();
+  await setCount(4);
+  await page.click('#placeBtn');
   await page.focus('#countField');
   await page.keyboard.press('ArrowUp');
   assert.equal(await page.inputValue('#batchCountSelect'), '5', 'arrows step by one: no set list');
