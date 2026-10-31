@@ -46,3 +46,19 @@ def test_each_of_your_groups_keeps_its_own_order():
     assert G.find(st, gid)["files"] == ["b", "c", "a"], "only its own images; the ones not given keep their order after"
     G.act(st, {"action": "add", "id": gid, "files": ["d"]})
     assert G.find(st, gid)["files"][-1] == "d", "new images join at its end"
+
+
+def test_a_smart_group_holds_a_rule_not_files_and_only_its_choices_change():
+    import groups
+    st = {}
+    res = groups.act(st, {"action": "create", "name": "Turned", "rule": {"rot": ["90", "-90"], "bogus": ["x"], "pos": []}})
+    g = res["group"]
+    assert g["rule"] == {"rot": ["90", "-90"]} and g["files"] == []
+    assert groups.act(st, {"action": "create", "name": "Empty", "rule": {"pos": []}})["ok"] is False, "at least one choice"
+    assert groups.act(st, {"action": "add", "id": g["id"], "files": ["a.jpg"]})["ok"] is False, "it fills itself"
+    assert groups.act(st, {"action": "rule", "id": g["id"], "rule": {"size": ["1.25"]}})["ok"] and st["groups"][0]["rule"] == {"size": ["1.25"]}
+    assert groups.public(st, set())[0]["rule"] == {"size": ["1.25"]}
+    deleted = groups.act(st, {"action": "delete", "id": g["id"]})["group"]
+    assert groups.act(st, {"action": "restore", "group": deleted})["ok"] and st["groups"][0]["rule"] == {"size": ["1.25"]}, "undo brings its rule back"
+    manual = groups.act(st, {"action": "create", "name": "Mine", "files": ["a.jpg"]})["group"]
+    assert "rule" not in manual and groups.public(st, {"a.jpg"})[1]["files"] == ["a.jpg"], "manual groups as before"

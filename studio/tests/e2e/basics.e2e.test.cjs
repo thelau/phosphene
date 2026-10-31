@@ -1407,6 +1407,17 @@ test('several marks: added in Project settings, then the generation row offers w
   await page.click('#placeMenu .tm-item[data-list="size"][data-v="1.25"]');
   await page.click('#placeMenu .pm-more');
   assert.deepEqual(await page.locator('#placeMenu .tm-head').allTextContents(), ['Position'], 'closed again');
+  await page.click('#placeMenu .tm-item[data-list="position"][data-v="path"]');
+  assert.deepEqual(await page.locator('#placeMenu .tm-head').allTextContents(), ['Position', 'Path'], 'a Path: its shape, direction and length');
+  assert.equal(await text('#placeName'), 'Path →');
+  await page.click('#placeMenu .tm-item[data-list="pdir"][data-v="90"]');
+  await page.click('#placeMenu .tm-item[data-list="plen"][data-v="70"]');
+  assert.equal(await text('#placeName'), 'Path ↓');
+  assert.equal(await page.locator('#pathSelect').inputValue(), 'line:90:70');
+  await shot('27c-path');
+  const menuBox = await page.locator('#placeMenu').boundingBox();
+  assert.ok(menuBox.x + menuBox.width <= page.viewportSize().width, 'the menu stays inside the window');
+  await page.click('#placeMenu .tm-item[data-list="position"][data-v="exact"]');
   await page.mouse.click(10, 600);
   await page.evaluate(() => openProjectForm('edit'));
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAHklEQVR4nGNgYGD4z0AEYBxVSF2Fo6EwGgqjoTA4AAD2dQf5kV0x5AAAAABJRU5ErkJggg==', 'base64');
@@ -1424,7 +1435,7 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.deepEqual([upd.marks.length, upd.marks[0].name, upd.marks[0].y], [1, 'Bar', 70]);
   assert.match(upd.marks[0].image, /^data:image\/png;base64,/, 'a new mark brings its image');
   await page.waitForSelector('#loader', { state: 'detached' });
-  assert.equal(await text('#placeName'), 'Main · On target', 'two marks: the menu names the mark too');
+  await page.waitForFunction(() => document.getElementById('placeName').textContent === 'Main · On target', null, { timeout: 5000 });   // two marks: the menu names the mark too (once the saved project is read back)
   const btnW = async () => Math.round((await page.locator('#placeBtn').boundingBox()).width);
   const w0 = await btnW();
   await page.click('#placeBtn');
@@ -1475,9 +1486,11 @@ test('a new project takes several marks in one drop: in order of their file name
   const ctx = await fresh();
   await page.evaluate(() => { kimiConfigured = true; openProjectForm('new'); });
   assert.match(await text('.ps-drop'), /Drop your marks/);
+  await shot('32b-drop-marks');
   const mk = (w, h) => page.evaluate(([w, h]) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.fillStyle = '#f0a020'; x.fillRect(0, 0, w, h); return c.toDataURL('image/png').split(',')[1]; }, [w, h]);
   const file = async (name, w, h) => ({ name, mimeType: 'image/png', buffer: Buffer.from(await mk(w, h), 'base64') });
   await page.setInputFiles('#psFile', [await file('c-dot.png', 30, 30), await file('a-bar.png', 120, 40), await file('b-tall.png', 40, 90)]);
+  await page.waitForSelector('.ps-mark.reading', { timeout: 2000 }).catch(() => {}); await shot('32c-reading-marks');   // (the fake Kimi may already be done)
   await page.waitForFunction(() => document.querySelectorAll('.ps-mark').length === 3 && !document.querySelector('.ps-mark.reading'), null, { timeout: 10000 });
   const widths = await page.locator('.ps-mark img').evaluateAll(els => els.map(e => e.naturalWidth));
   assert.deepEqual(widths, [120, 40, 30], 'in order of their names');

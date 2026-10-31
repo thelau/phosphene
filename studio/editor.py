@@ -15,7 +15,10 @@ or that it has none (an upload). Then the edit can move: small steps of the mark
 one direction as a sweep (sweep), the end coming back to the project's place (land); two marks in one spot cut as a match (swap); the
 uploads, which have no mark, are spread out (spread). These weigh nothing when every image is the main mark on target (as before).
 A mark may also be turned (`rot`, degrees clockwise, 2026-10-31): a small turn between cuts reads as the mark spinning, steps that keep
-turning one way as a continuous spin (turn), and the end lands upright with land.
+turning one way as a continuous spin (turn), and the end lands upright with land. A Path batch's images follow their steps (path), and
+a size that keeps growing or shrinking a little from cut to cut reads as a zoom (grow).
+Two modes (the user, 2026-10-31): Look (the default) cuts on light, shape and colour as before, the motion terms weighing as above;
+Motion cuts for the mark's movement first, its terms doubled and the look's damped.
 """
 
 import io
@@ -27,7 +30,9 @@ from PIL import Image, ImageDraw, ImageFont
 import features as F
 
 DEFAULT_WEIGHTS = {"flip": 1.0, "echo": 1.0, "hue": 0.6, "variety": 0.8, "arc": 1.0}
-MOVE_WEIGHTS = {"move": 0.6, "sweep": 0.4, "land": 0.5, "swap": 0.6, "spread": 0.8, "turn": 0.6}   # used only when the set has what they weigh
+MOVE_WEIGHTS = {"move": 0.6, "sweep": 0.4, "land": 0.5, "swap": 0.6, "spread": 0.8, "turn": 0.6, "path": 0.8, "grow": 0.5}   # used only when the set has what they weigh
+LOOK_KEYS = ("flip", "echo", "hue", "variety")                          # what Motion mode damps
+MOTION_KEYS = ("move", "sweep", "land", "turn", "path", "grow")         # and what it doubles
 
 
 def mark_step(ma: dict | None, mb: dict | None) -> float | None:
@@ -65,6 +70,30 @@ def turn_score(r: float) -> float:
     return 0.2 if r < 180 else -0.3
 
 
+def path_score(ma: dict | None, mb: dict | None) -> float:
+    """The next step of the same Path batch reads as the mark travelling on; a step back is half that; anything else nothing."""
+    pa, pb = (ma or {}).get("path"), (mb or {}).get("path")
+    if not pa or not pb or pa.get("run") != pb.get("run"):
+        return 0.0
+    d = pb["i"] - pa["i"]
+    return 1.0 if d == 1 else 0.5 if d == -1 else 0.0
+
+
+def size_step(ma: dict | None, mb: dict | None) -> float | None:
+    """How much the mark grows across a cut (log of the ratio of its sizes); None when either has no mark."""
+    if not ma or not mb or not ma.get("size") or not mb.get("size"):
+        return None
+    return math.log(mb["size"] / ma["size"])
+
+
+def grow_score(g: float) -> float:
+    """A small change of size reads as a zoom (5-40%); the same size is fine; a jump is a jolt."""
+    g = abs(g)
+    if g < 0.03:
+        return 0.3
+    return 1.0 if g <= 0.35 else 0.2 if g <= 0.7 else -0.3
+
+
 def move_words(ma: dict | None, mb: dict | None) -> str:
     d, r = mark_step(ma, mb), turn_step(ma, mb)
     said = []
@@ -72,6 +101,8 @@ def move_words(ma: dict | None, mb: dict | None) -> str:
         dx, dy = mb["x"] - ma["x"], mb["y"] - ma["y"]
         way = ("right" if dx > 0 else "left") if abs(dx) >= abs(dy) else ("down" if dy > 0 else "up")
         said.append(f"the mark moves {way} {d:.0f}%")
+    if path_score(ma, mb) == 1.0:
+        said.insert(0, f"step {mb['path']['i'] + 1} of its path")
     if r is not None and abs(r) >= 1:
         said.append(f"it turns {abs(r):.0f}° {'clockwise' if r > 0 else 'anticlockwise'}" if said else f"the mark turns {abs(r):.0f}° {'clockwise' if r > 0 else 'anticlockwise'}")
     return ", ".join(said)
@@ -143,16 +174,29 @@ def order_images(items: list, brief: dict | None = None, length: int | None = No
     places = {(round(m["x"], 1), round(m["y"], 1)) for m in marks if m}
     has = {"move": len(places) > 1, "sweep": len(places) > 1, "land": len(places) > 1,
            "swap": len({m.get("id") for m in marks if m}) > 1, "spread": any(m is None for m in marks) and any(marks),
-           "turn": len({m.get("rot", 0) for m in marks if m}) > 1}
+           "turn": len({m.get("rot", 0) for m in marks if m}) > 1, "path": any((m or {}).get("path") for m in marks),
+           "grow": len({round(m["size"], 1) for m in marks if m}) > 1}
     w = {**DEFAULT_WEIGHTS, **{k: v if has[k] else 0.0 for k, v in MOVE_WEIGHTS.items()}}
     w.update({k: float(v) for k, v in (brief.get("weights") or {}).items() if k in DEFAULT_WEIGHTS or (k in MOVE_WEIGHTS and has[k])})
+    if brief.get("mode") == "motion":                                      # Motion: the mark's movement first, the look after
+        w.update({k: w[k] * 0.35 for k in LOOK_KEYS})
+        w.update({k: w[k] * 2.0 for k in MOTION_KEYS})
     index = {it["name"]: i for i, it in enumerate(items)}
     near_home = lambda i: marks[i] is not None and math.hypot(marks[i]["x"] - home["x"], marks[i]["y"] - home["y"]) < 1 and not marks[i].get("rot")
     by_impact = sorted(range(len(items)), key=lambda i: (-F.impact(items[i]["f"]), i))
-    first = index.get(brief.get("opener"))
+    first, last = index.get(brief.get("opener")), index.get(brief.get("closer"))
+    if brief.get("mode") == "motion" and has["path"]:                      # Motion with a Path: it opens on its first step, ends on its last
+        runs: dict = {}
+        for i, m in enumerate(marks):
+            if m and m.get("path"):
+                runs.setdefault(m["path"].get("run"), []).append(i)
+        walk = sorted(max(runs.values(), key=len), key=lambda i: marks[i]["path"]["i"])
+        if first is None:
+            first = walk[0]
+        if last is None and walk[-1] != first:
+            last = walk[-1]
     if first is None:
         first = by_impact[0]
-    last = index.get(brief.get("closer"))
     if (last is None or last == first) and w["land"] > 0:                   # it lands: on the project's place
         last = next((i for i in by_impact if i != first and near_home(i)), None)
     if last is None or last == first:
@@ -182,6 +226,10 @@ def order_images(items: list, brief: dict | None = None, length: int | None = No
                         base[i, j] += w["swap"] * 0.6                    # another mark in the same spot: a match cut
                     if w["turn"]:
                         base[i, j] += w["turn"] * 0.6 * turn_score(turn_step(marks[i], marks[j]))
+                    if w["path"]:
+                        base[i, j] += w["path"] * 1.2 * path_score(marks[i], marks[j])   # the next step of its path
+                    if w["grow"]:
+                        base[i, j] += w["grow"] * 0.5 * grow_score(size_step(marks[i], marks[j]))
                 elif marks[i] is None and marks[j] is None and (w["spread"] > 0):
                     base[i, j] -= w["spread"] * 0.6                      # two uploads side by side
 
@@ -212,6 +260,10 @@ def order_images(items: list, brief: dict | None = None, length: int | None = No
                     na, nb = math.hypot(ax, ay), math.hypot(bx, by)
                     if na > 1 and nb > 1:
                         s += w["sweep"] * 0.6 * max(0.0, (ax * bx + ay * by) / (na * nb))   # the same way again: a sweep
+                if w["grow"] and len(seq) >= 2 and marks[seq[-2]] and marks[prev] and marks[j]:
+                    ga, gb = size_step(marks[seq[-2]], marks[prev]), size_step(marks[prev], marks[j])
+                    if abs(ga) >= 0.03 and abs(gb) >= 0.03 and ga * gb > 0:
+                        s += w["grow"] * 0.5                    # still growing (or shrinking): a zoom
                 if w["turn"] and len(seq) >= 2 and marks[seq[-2]] and marks[prev] and marks[j]:
                     ra, rb = turn_step(marks[seq[-2]], marks[prev]), turn_step(marks[prev], marks[j])
                     if abs(ra) >= 1 and abs(rb) >= 1 and ra * rb > 0:
@@ -300,20 +352,23 @@ def frames_note(marks: list, home: dict, names: dict | None = None) -> str:
             lines.append(f"{i}: an uploaded photo, no mark")
         elif m.get("id") or m.get("rot") or math.hypot(m["x"] - home["x"], m["y"] - home["y"]) >= 1 or abs(m["size"] - home.get("size", m["size"])) >= 1:
             turned = f", turned {abs(m['rot'])}° {'clockwise' if m['rot'] > 0 else 'anticlockwise'}" if m.get("rot") else ""
-            lines.append(f"{i}: " + (f"the {names.get(m['id'], m['id'])} mark, " if m.get("id") else "") + f"at {m['x']:g}% across, {m['y']:g}% down, {m['size']:g}% wide{turned}")
+            walk = f", step {m['path']['i'] + 1} of {m['path']['n']} of a path" if m.get("path") else ""
+            lines.append(f"{i}: " + (f"the {names.get(m['id'], m['id'])} mark, " if m.get("id") else "") + f"at {m['x']:g}% across, {m['y']:g}% down, {m['size']:g}% wide{turned}{walk}")
     if not lines:
         return ""
     return ("Where the mark sits (and how far it is turned), for the frames where it is not the main mark upright at its usual place "
             f"({home['x']:g}% across, {home['y']:g}% down, {home.get('size', 18):g}% wide); every other frame has it there:\n" + "\n".join(lines) + "\n")
 
 
-def ask_brief(call_llm, api_key: str, model: str, sheet: bytes, count: int, direction: str = "", length: int | None = None, where: str = "") -> dict:
+def ask_brief(call_llm, api_key: str, model: str, sheet: bytes, count: int, direction: str = "", length: int | None = None, where: str = "", mode: str = "look") -> dict:
     """Returns {opener, closer, peaks, weights, summary} with image numbers (0-based), or raises. `where`: frames_note()."""
     ask = (
         (f"The picture is a contact sheet of {count} frames numbered 0 to {count - 1}. Each frame has a small circular mark at its exact centre; "
          f"the film is a rapid sequence of hard cuts between them.\n" if not where else
          f"The picture is a contact sheet of {count} frames numbered 0 to {count - 1}; the film is a rapid sequence of hard cuts between them.\n{where}")
         + (f"Director's note: {direction}\n" if direction else "")
+        + ("This edit is about MOTION: order the frames so the mark moves as one continuous movement (it follows its path steps, keeps "
+           "spinning one way, grows or shrinks steadily, then lands); the look of each frame matters less.\n" if mode == "motion" else "")
         + (f"The edit must use only the best {length} frames.\n" if length else "")
         + "Write the editing brief. Return ONLY JSON: {\"opener\": n, \"closer\": n, \"peaks\": [up to 4 numbers], "
         "\"weights\": {\"flip\": 0-2, \"echo\": 0-2, \"hue\": 0-2, \"variety\": 0-2, \"arc\": 0-2}, \"summary\": \"one sentence, under 30 words, on the shape of the edit\"}.\n"
@@ -322,7 +377,8 @@ def ask_brief(call_llm, api_key: str, model: str, sheet: bytes, count: int, dire
         "hue = colour hand-offs, variety = avoid neighbouring frames from the same kind of scene, arc = follow hook, settle, build, peak, land."
         + ("" if not where else " Because the mark moves between frames you may also weigh (0-2): move = small steps of the mark from cut to cut read as motion, "
            "sweep = keep those steps going one way, land = end with the mark back at its usual place, swap = cut between different marks in the same spot, "
-           "spread = keep the uploaded photos apart, turn = small turns of the mark from cut to cut, kept going one way, read as the mark spinning. "
+           "spread = keep the uploaded photos apart, turn = small turns of the mark from cut to cut, kept going one way, read as the mark spinning, "
+           "path = follow a path's steps in order, grow = small changes of the mark's size kept going one way, read as a zoom. "
            "Follow the director's note when it asks for a movement.")
     )
     out = call_llm(ask, api_key, model, images=[sheet], system=BRIEF_SYSTEM)

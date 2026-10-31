@@ -325,7 +325,17 @@
     }
     // the Mark menu: which of the project's marks (with several), where it goes, how far it is turned, and Keep it as designed; one
     // button, a row a section (the user, 2026-10-31: more sections are coming, size next, so rows of choices rather than one long list)
-    const POSITIONS = [['exact', 'On target', 'same spot and size in every image'], ['loose', 'Loose', 'a little off, a little bigger or smaller'], ['scattered', 'Scattered', 'anywhere, much bigger or smaller']];
+    const POSITIONS = [['exact', 'On target', 'same spot and size in every image'], ['loose', 'Loose', 'a little off, a little bigger or smaller'], ['scattered', 'Scattered', 'anywhere, much bigger or smaller'],
+      ['path', 'Path', 'the batch at even steps along a line through the target, for an edit where the mark travels']];
+    // a Path's settings (kept as "line:0:40" in #pathSelect): its shape (a line for now: more shapes are one entry each, placement.PATHS),
+    // its direction (degrees clockwise from left-to-right) and its length (% of the frame)
+    const PATH_SHAPES = [['line', 'Line']];
+    const PATH_DIRS = [[0, '→', 'Across, left to right'], [90, '↓', 'Down, top to bottom'], [45, '↘', 'Diagonal, down to the right'], [-45, '↗', 'Diagonal, up to the right']];
+    const PATH_LENS = [[20, 'Short'], [40, 'Medium'], [70, 'Long']];
+    function pathSet() {
+      const [shape, dir, len] = String(document.getElementById('pathSelect').value || '').split(':');
+      return { shape: PATH_SHAPES.some(s => s[0] === shape) ? shape : 'line', dir: PATH_DIRS.some(d => d[0] === +dir) ? +dir : 0, len: PATH_LENS.some(l => l[0] === +len) ? +len : 40 };
+    }
     const ROTATIONS = [-135, -90, -45, 0, 45, 90, 135, 180];                // degrees clockwise, as a dial from left to right
     const rotLabel = r => (r === 180 || r === -180 ? '180°' : r < 0 ? `−${-r}°` : `${r}°`);
     // the angles ticked (kept as "0,45" in #rotSelect): one or more, they take turns as the marks do; none known: upright
@@ -349,9 +359,9 @@
       return marks.length ? [['main', 'Main mark', project.mark_url], ...marks.map(m => [m.id, m.name, m.url])] : [];
     }
     function renderPlace() {
-      const t = document.getElementById('targetSelect').value || 'exact', ticks = markTicks(), rots = rotTicks(), zs = sizeTicks(), sized = t === 'exact';
+      const t = document.getElementById('targetSelect').value || 'exact', ticks = markTicks(), rots = rotTicks(), zs = sizeTicks(), sized = t === 'exact' || t === 'path';
       const keep = document.getElementById('keepCheck').checked, choices = markChoices(), on = choices.filter(c => ticks.includes(c[0]));
-      const pos = (POSITIONS.find(p => p[0] === t) || POSITIONS[0])[1];
+      const ps = pathSet(), pos = t === 'path' ? `Path ${(PATH_DIRS.find(d => d[0] === ps.dir) || PATH_DIRS[0])[1]}` : (POSITIONS.find(p => p[0] === t) || POSITIONS[0])[1];
       const markWord = k => (k === choices.length ? `All ${k} marks` : `${k} marks`);   // several ticked: how many, "All 4 marks" when every one is
       const rotWord = rs => (rs.length > 1 ? `${rs.length} angles` : rs[0] ? rotLabel(rs[0]) : '');   // upright: nothing to say
       const sizeWord = list => (!sized ? '' : list.length > 1 ? `${list.length} sizes` : list[0] !== 1 ? sizeLabel(list[0]) : '');   // its own size: nothing to say
@@ -370,7 +380,7 @@
         mixIcon.querySelectorAll('img').forEach(fitMarkTone);
       }
       const words = choices.length ? [...choices.map(c => (c[0] === 'main' ? 'Main' : c[1])), ...choices.slice(1).map((c, i) => markWord(i + 2))] : [''];
-      name.style.minWidth = name.style.maxWidth = placeLabelWidth(name, words.flatMap(w => POSITIONS.flatMap(([, p]) => ['', '8 angles'].flatMap(r => ['', '5 sizes'].flatMap(z => [label(w, p, false, r, z), label(w, p, true, r, z)]))))) + 'px';   // as wide as its widest choice, never wider (past 260 px it ends in …, the whole on hover: the Describe field beside it keeps its room): the row never moves
+      name.style.minWidth = name.style.maxWidth = placeLabelWidth(name, words.flatMap(w => POSITIONS.map(([v, p]) => (v === 'path' ? 'Path →' : p)).flatMap(p => ['', '8 angles'].flatMap(r => ['', '5 sizes'].flatMap(z => [label(w, p, false, r, z), label(w, p, true, r, z)]))))) + 'px';   // as wide as its widest choice, never wider (past 260 px it ends in …, the whole on hover: the Describe field beside it keeps its room): the row never moves
       const m = document.getElementById('placeMenu');
       if (m.hidden) return;
       const img = (url, r = 0, z = 0) => `<img class="pm-thumb" src="${escapeHtml(url)}" alt=""${r || z ? ` style="${r ? `transform:rotate(${r}deg);` : ''}${z ? `width:${Math.round(20 * z)}px;height:${Math.round(20 * z)}px` : ''}"` : ''} />`;
@@ -390,6 +400,9 @@
       const turnTip = r => (r ? `The mark turned ${Math.abs(r)}° ${r === 180 ? '(upside down)' : r > 0 ? 'clockwise' : 'anticlockwise'}` : 'Upright, as designed');
       m.innerHTML = (choices.length ? row('Mark', choices.map(([v, name, url]) => chip('mark', v, `${url ? img(url) : ''}<span>${escapeHtml(name)}</span>`, ticks.includes(v), true, ticks.length === 1 && ticks[0] === v, name)).join('')) : '')
         + row('Position', POSITIONS.map(([v, name, sub]) => chip('position', v, `<span>${name}</span>`, v === t, false, false, sub)).join(''))
+        + (t === 'path' ? row('Path', PATH_SHAPES.map(([v, nm]) => chip('pshape', v, `<span>${nm}</span>`, ps.shape === v, false, false, 'More shapes to come')).join('')
+            + '<span class="pm-gap"></span>' + PATH_DIRS.map(([v, arrow, tip]) => chip('pdir', String(v), `<span class="pm-arrow">${arrow}</span>`, ps.dir === v, false, false, tip)).join('')
+            + '<span class="pm-gap"></span>' + PATH_LENS.map(([v, nm]) => chip('plen', String(v), `<span>${nm}</span>`, ps.len === v, false, false, `${v}% of the frame`)).join(''), ' pm-path') : '')
         + `<div class="tm-item pm-more" role="menuitem" data-list="more" data-v="more" aria-expanded="${open}"${moreSet ? ' aria-disabled="true" title="Open while an angle or a size is set"' : ''}><span>Angle and size</span><span class="tm-sub">${escapeHtml(moreSays)}</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></div>`
         + (open ? row('Angle', ROTATIONS.map(r => chip('angle', String(r), `${glyph ? img(glyph, r) : ''}<span>${rotLabel(r)}</span>`, rots.includes(r), true, rots.length === 1 && rots[0] === r, turnTip(r))).join(''), ' pm-angles')
           + row('Size', SIZES.map(z => chip('size', String(z), `<span class="pm-zbox">${glyph ? img(glyph, 0, z) : ''}</span><span>${sizeLabel(z)}</span>`, sized && zs.includes(z), true,
@@ -421,6 +434,11 @@
         const t = markTicks(), on = t.includes(v) ? t.filter(x => x !== v) : [...t, v];
         if (!on.length) return;                                              // one mark at least
         setv('markSelect', markChoices().map(c => c[0]).filter(x => on.includes(x)).join(','));
+      }
+      else if (list === 'pshape' || list === 'pdir' || list === 'plen') {
+        const p = pathSet();
+        p[{ pshape: 'shape', pdir: 'dir', plen: 'len' }[list]] = list === 'pshape' ? v : +v;
+        setv('pathSelect', `${p.shape}:${p.dir}:${p.len}`);
       }
       else if (list === 'more') {
         placeMore = !placeMore;
@@ -898,10 +916,10 @@
     let currentGroup = (() => { try { return localStorage.getItem('studioGroup') || 'all'; } catch (e) { return 'all'; } })();
     const LOOKS = [['warm', 'Warm'], ['cold', 'Cold'], ['mono', 'Mono'], ['dark', 'Dark'], ['bright', 'Bright']];
     // how each image was made, for the automatic groups Mark, Position and Source (an upload has no mark and no position)
-    const POSITION_NAMES = { exact: 'On target', loose: 'Loose', scattered: 'Scattered' };
+    const POSITION_NAMES = { exact: 'On target', loose: 'Loose', scattered: 'Scattered', path: 'Path' };
     const MADE_BY = {
       mark: p => (p.uploaded ? null : p.mark || 'main'),
-      pos: p => (p.uploaded ? null : ['loose', 'scattered'].includes(p.placement && p.placement.kind) ? p.placement.kind : 'exact'),   // Angled's few images read as on target
+      pos: p => (p.uploaded ? null : ['loose', 'scattered', 'path'].includes(p.placement && p.placement.kind) ? p.placement.kind : 'exact'),   // Angled's few images read as on target
       rot: p => (p.uploaded ? null : String(cardRot(p))),                  // how far its mark was turned
       size: p => (p.uploaded ? null : String(cardScale(p))),               // and at what size
       src: p => (p.uploaded ? 'uploaded' : 'generated'),
@@ -1174,14 +1192,29 @@
 
     // ---- trash: select, delete selected, empty ----
     // ---- AI order ----
+    // two ways to order (the user, 2026-10-31): Look (light, shape, colour, as before) or Motion (the mark's movement first: its path,
+    // its turns, its size); Motion only when the images shown have a mark that moves, turns or changes size
+    let aiMode = (() => { try { return localStorage.getItem('studioAiMode') === 'motion' ? 'motion' : 'look'; } catch (e) { return 'look'; } })();
+    function marksMove() {
+      return new Set(activePlates().filter(p => !p.trashed && !p.uploaded).map(p => (p.box ? `${p.box.x},${p.box.y},${p.box.size},${p.box.rot || 0}` : 'home'))).size > 1;
+    }
+    function setAiMode(m) {
+      const moves = marksMove();
+      aiMode = m === 'motion' && moves ? 'motion' : 'look';
+      try { localStorage.setItem('studioAiMode', m === 'motion' ? 'motion' : 'look'); } catch (e) {}
+      document.querySelectorAll('#aiPanel .ai-mode button').forEach(b => {
+        const on = b.dataset.mode === aiMode, off = b.dataset.mode === 'motion' && !moves;
+        b.setAttribute('aria-checked', String(on)); b.disabled = off;
+        b.title = off ? 'The images shown all have their mark in one place, upright, at one size: nothing to move' : '';
+      });
+      document.getElementById('aiDirection').placeholder = aiMode === 'motion' ? 'e.g. the mark sweeps left to right, spinning, then lands on target'
+        : moves ? 'e.g. the mark sweeps left to right, then lands on target' : 'e.g. open on the cap, end on the container';
+    }
     function toggleAiPanel(e) {
       if (e) e.stopPropagation();
       const panel = document.getElementById('aiPanel');
       panel.hidden = !panel.hidden;
-      if (!panel.hidden) {                                                   // where the marks move (Loose, Scattered, other marks in their places), the note can ask for a movement
-        const moves = new Set(activePlates().filter(p => !p.trashed && !p.uploaded).map(p => p.box ? `${p.box.x},${p.box.y}` : 'home')).size > 1;
-        document.getElementById('aiDirection').placeholder = moves ? 'e.g. the mark sweeps left to right, then lands on target' : 'e.g. open on the cap, end on the container';
-      }
+      if (!panel.hidden) setAiMode((() => { try { return localStorage.getItem('studioAiMode') || aiMode; } catch (err) { return aiMode; } })());   // the mode last chosen, when it applies
     }
     document.addEventListener('click', () => { const p = document.getElementById('aiPanel'); if (p) p.hidden = true; });
 
@@ -1196,6 +1229,7 @@
       const before = own ? { group: own.id, files: [...own.files] } : { order: plates.filter(p => !p.trashed).map(p => p.filename) };   // for Undo
       const body = {
         direction: document.getElementById('aiDirection').value.trim(),
+        mode: aiMode,
         ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // an automatic group: its images change places among themselves in All
         ...(own ? { group: own.id } : {}),
       };
@@ -1430,7 +1464,7 @@
     // an image with its own placement (a Loose batch): the logo target draws its box there (the project's otherwise)
     function placeVars(pl) { return pl ? `--mark-x:${pl.x}%;--mark-y:${pl.y}%;--mark-w:${pl.size}%${pl.ar ? `;--mark-ar:${pl.ar}` : ''}${pl.rot ? `;--mark-rot:${pl.rot}deg` : ''}` : ''; }   // (box: also another mark's shape, and its angle)
     // why this image's mark is not on target: its batch asked for it (Loose / Scattered), and where
-    function targetTip(pl) { return `${pl.kind === 'scattered' ? 'Scattered' : 'Loose'}: made with the mark at ${pl.x}% across, ${pl.y}% down, ${pl.size}% wide (on purpose: its batch asked for it)`; }
+    function targetTip(pl) { return `${POSITION_NAMES[pl.kind] || 'Loose'}${pl.path ? ` (step ${pl.path.i + 1} of ${pl.path.n})` : ''}: made with the mark at ${pl.x}% across, ${pl.y}% down, ${pl.size}% wide (on purpose: its batch asked for it)`; }
     function cardHtml(p) {
       return `
         <div class="card"
@@ -1467,7 +1501,7 @@
             ${p.uploaded ? '<span class="card-model-badge uploaded" title="One of your own images: it is not checked for the mark">Uploaded</span>' : `<span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>`}
             ${p.as_designed ? '<span class="card-model-badge designed" title="Kept exactly as designed: its colours, lettering and details">As designed</span>' : ''}
             ${cardMark(p)}${cardTurn(p)}
-            ${p.placement && p.placement.kind !== 'exact' ? `<span class="card-model-badge target" title="${escapeHtml(targetTip(p.placement))}">${p.placement.kind === 'scattered' ? 'Scattered' : 'Loose'}</span>` : ''}
+            ${p.placement && p.placement.kind !== 'exact' ? `<span class="card-model-badge target" title="${escapeHtml(targetTip(p.placement))}">${p.placement.path ? `Path ${p.placement.path.i + 1}/${p.placement.path.n}` : POSITION_NAMES[p.placement.kind] || 'Loose'}</span>` : ''}
             ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(!p.qa_passed && (p.qa_issues || []).length && p.trash_reason === 'Mark check' ? p.qa_issues.join(', ') : p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
             ${!p.qa_passed ? (p.trash_reason === 'Mark check' ? '' : `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>`) : p.qa_doubt ? `<span class="card-model-badge doubt" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : ''}
           </div>
@@ -2294,7 +2328,7 @@
     // Not in it: permanent deletes and generation (they say so when you start them), the mode and the views.
     const history = [], future = [];
     let applyingHistory = false;
-    const NOT_UNDONE = ['targetSelect', 'markSelect', 'rotSelect', 'sizeSelect', 'keepCheck', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
+    const NOT_UNDONE = ['targetSelect', 'markSelect', 'rotSelect', 'sizeSelect', 'pathSelect', 'keepCheck', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
     function pushStep(step) { if (!step.settings) commitSettings(); history.push(step); if (history.length > 100) history.shift(); future.length = 0; showUndo(); return step; }
     function showUndo() {
       const b = document.getElementById('undoRandomBtn');
@@ -3361,7 +3395,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'rotSelect', 'sizeSelect', 'keepCheck'];
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'rotSelect', 'sizeSelect', 'pathSelect', 'keepCheck'];
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
     // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved
@@ -4031,7 +4065,7 @@
         const invRes = await fetch('/api/invent-prompts', {
           method: 'POST',
           headers: forProject({'Content-Type': 'application/json'}),
-          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main', rot: rotTicks().join(','), scale: sizeTicks().join(','), keep: document.getElementById('keepCheck').checked })
+          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main', rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), keep: document.getElementById('keepCheck').checked })
         });
         const invData = await invRes.json();
         if (invData.needs_kimi_key) {
@@ -4362,6 +4396,7 @@ Object.assign(window, {
   toggleViewerInfo,
   viewerTrash,
   viewerRestore,
+  setAiMode,
   copyPromptText,
   tasteMark,
   tasteCopy,

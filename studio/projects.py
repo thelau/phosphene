@@ -762,6 +762,11 @@ def _clean_state(f: Path) -> None:
     for g in st.get("groups") or []:
         if isinstance(g, dict) and isinstance(g.get("files"), list):
             g["files"] = [n for n in g["files"] if isinstance(n, str) and _bare(n)]
+        if isinstance(g, dict) and "rule" in g:                 # a smart group: its rule checked, or it reads as a manual one
+            import groups as _groups
+            g["rule"] = _groups.clean_rule(g["rule"])
+            if not g["rule"]:
+                del g["rule"]
     if isinstance(st.get("uploads"), list):           # the user's own images (no mark check)
         st["uploads"] = [n for n in st["uploads"] if isinstance(n, str) and _bare(n)]
     if isinstance(st.get("as_designed"), list):        # images made with Keep it as designed

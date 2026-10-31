@@ -185,3 +185,27 @@ def test_older_placements_and_images_read_as_they_always_did(srv):
     old = {"kind": "loose", "x": 30.0, "y": 40.0, "size": 20.0}
     assert placement.clean(old) == old and placement.as_project(demo(srv), old)["mark_file"] == demo(srv)["mark_file"]
     assert placement.clean({"kind": "exact", "x": 50, "y": 50, "size": 18, "angle": 30}) is None, "Angled's few: on target, as before"
+
+
+def test_a_path_puts_a_batchs_images_at_even_steps_along_a_line_through_the_target(srv):
+    p = demo(srv)
+    steps = [placement.choose("path", p, path={"shape": "line", "dir": 0, "len": 40, "i": i, "n": 5}) for i in range(5)]
+    xs = [s["x"] for s in steps]
+    assert xs == sorted(xs) and abs(xs[0] - 30) < 0.2 and abs(xs[-1] - 70) < 0.2 and abs(xs[2] - 50) < 0.2, xs
+    assert all(s["y"] == 50 and s["kind"] == "path" and s["size"] == p["mark_size"] for s in steps), "across: the same height and size"
+    down = [placement.choose("path", p, path={"shape": "line", "dir": 90, "len": 70, "i": i, "n": 3}) for i in range(3)]
+    assert down[0]["x"] == 50 and down[0]["y"] < 50 < down[2]["y"], "down the frame"
+    long = [placement.choose("path", p, scale=1.6, path={"shape": "line", "dir": 0, "len": 70, "i": i, "n": 2}) for i in range(2)]
+    half = long[0]["size"] / 2
+    assert long[0]["x"] - half >= placement.MARGIN - 0.2 and long[1]["x"] + half <= 100 - placement.MARGIN + 0.2, "shrunk so both ends stay inside"
+    assert placement.clean(steps[1]) == steps[1], "kept with the image as it is"
+    assert placement.clean({**steps[1], "path": {"shape": "spiral"}}) is None and placement.clean({**steps[1], "path": None}) is None
+
+
+def test_path_steps_go_in_order_across_chunks_and_fill_dropped_scenes(srv):
+    steps = srv.PathSteps({"shape": "line", "dir": 45, "len": 20}, 6)
+    first = steps.peek(4)
+    assert [s["i"] for s in first] == [0, 1, 2, 3] and all(s["n"] == 6 and s["run"] for s in first)
+    steps.take(first[0]); steps.take(first[2])                          # a chunk kept two of its scenes
+    assert [s["i"] for s in steps.peek(3)] == [1, 3, 4], "the next chunk fills the step a dropped scene left"
+    assert srv.PathSteps(None, 4).peek(2) == [None, None] and srv.path_for("exact", {"shape": "line"}) is None

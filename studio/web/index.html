@@ -173,11 +173,12 @@
           <span class="gen-sep place-sep"></span>
           <span class="place">
             <button type="button" class="place-btn" id="placeBtn" onclick="togglePlaceMenu(event)" aria-haspopup="menu" aria-expanded="false" title="The mark in this batch: which one, where it goes, and whether it is kept exactly as designed"><img class="place-thumb" id="placeThumb" alt="" hidden /><span class="pm-mix" id="placeMix" hidden></span><span id="placeName">On target</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
-            <input type="hidden" id="markSelect" value="main" /><input type="hidden" id="rotSelect" value="0" /><input type="hidden" id="sizeSelect" value="1" />
+            <input type="hidden" id="markSelect" value="main" /><input type="hidden" id="rotSelect" value="0" /><input type="hidden" id="sizeSelect" value="1" /><input type="hidden" id="pathSelect" value="line:0:40" />
             <select id="targetSelect" class="src-only" aria-hidden="true" tabindex="-1">
               <option value="exact" selected>On target</option>
               <option value="loose">Loose</option>
               <option value="scattered">Scattered</option>
+              <option value="path">Path</option>
             </select>
             <input type="checkbox" id="keepCheck" class="src-only" aria-hidden="true" tabindex="-1" />
             <div class="place-menu terr-menu" id="placeMenu" role="menu" hidden></div>
@@ -211,6 +212,10 @@
             <div class="ai-panel" id="aiPanel" hidden onclick="event.stopPropagation()">
               <h4>AI order</h4>
               <p class="ai-panel-note">The AI rearranges your order. ⌘Z or Undo puts it back.</p>
+              <div class="ai-mode" role="radiogroup" aria-label="Order by">
+                <button type="button" role="radio" data-mode="look" onclick="setAiMode('look')"><b>Look</b><small>light and dark, shapes, colours</small></button>
+                <button type="button" role="radio" data-mode="motion" onclick="setAiMode('motion')"><b>Motion</b><small>the mark travels, spins, grows</small></button>
+              </div>
               <label>Note (optional)
                 <input id="aiDirection" type="text" maxlength="300" placeholder="e.g. open on the cap, end on the container" />
               </label>

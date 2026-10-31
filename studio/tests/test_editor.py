@@ -462,3 +462,32 @@ def test_plate_marks_reads_placements_marks_and_uploads(srv, monkeypatch):
     assert m["b.jpg"] == {"x": 20.0, "y": 30.0, "size": 25.0, "id": None, "rot": 0}
     assert m["c.jpg"] == {"x": 40.0, "y": 70.0, "size": 12.0, "id": "bird", "rot": 0}
     assert m["d.jpg"]["id"] is None and m["e.jpg"]["x"] == 50.0 and m["u.jpg"] is None
+
+
+def test_motion_mode_walks_a_path_in_order_and_turns_one_way():
+    """A Path batch shuffled among frames that look alike: Motion orders it step by step; a set turning by 45° steps spins one way."""
+    items = flat_lib(8, seed=11)
+    order = list(range(8)); random.Random(4).shuffle(order)
+    for it, i in zip(items, order):
+        it["mark"] = {"x": 20.0 + i * 8, "y": 50.0, "size": 18.0, "id": None, "rot": 0, "path": {"shape": "line", "dir": 0, "len": 60, "i": i, "n": 8, "run": "r1"}}
+    r = E.order_images(items, {"home": {"x": 50.0, "y": 50.0, "size": 18.0}, "mode": "motion"})
+    steps = [next(it["mark"]["path"]["i"] for it in items if it["name"] == n) for n in r["names"]]
+    nexts = sum(1 for a, b in zip(steps, steps[1:]) if b == a + 1)
+    assert nexts >= 5, f"step after step: {steps}"
+    assert any("of its path" in c["reason"] for c in r["cuts"]), "the cuts say so"
+    spin = flat_lib(8, seed=12)
+    for it, k in zip(spin, [3, 0, 6, 1, 4, 7, 2, 5]):
+        it["mark"] = {"x": 50.0, "y": 50.0, "size": 18.0, "id": None, "rot": [0, 45, 90, 135, 180, -135, -90, -45][k]}
+    r = E.order_images(spin, {"home": {"x": 50.0, "y": 50.0, "size": 18.0}, "mode": "motion"})
+    rots = [next(it["mark"]["rot"] for it in spin if it["name"] == n) for n in r["names"]]
+    turns = [E.turn_step({"rot": a}, {"rot": b}) for a, b in zip(rots, rots[1:])]
+    assert sum(1 for t in turns if 1 <= abs(t) <= 90) >= 6 and abs(sum(1 if t > 0 else -1 for t in turns)) >= 5, f"a steady spin, one way: {rots}"
+
+
+def test_look_mode_is_as_before_when_nothing_moves():
+    items = flat_lib(10, seed=3)
+    for it in items:
+        it["mark"] = {"x": 50.0, "y": 50.0, "size": 18.0, "id": None, "rot": 0}
+    a = E.order_images(items, {"home": {"x": 50.0, "y": 50.0, "size": 18.0}})
+    b = E.order_images(items, {"home": {"x": 50.0, "y": 50.0, "size": 18.0}, "mode": "look"})
+    assert a["names"] == b["names"]

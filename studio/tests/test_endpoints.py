@@ -1054,6 +1054,21 @@ def test_an_image_is_made_at_the_place_its_scene_was_written_for(live, srv, monk
     assert bad["placement"]["kind"] == "loose" and bad["placement"]["x"] < 100, "an odd one from outside: a fresh place instead"
 
 
+def test_a_path_batch_walks_its_images_along_the_line_and_an_angled_size_batch_takes_turns(live, srv, monkeypatch, tmp_path):
+    monkeypatch.setattr(srv.placement, "GUIDE_DIR", tmp_path / "guides")
+    _, ideas = live("POST", "/api/invent-prompts", {"count": 3, "world": "Editorial Print", "target": "path", "path": {"shape": "line", "dir": 0, "len": 40}})
+    pls = [i["placement"] for i in ideas["ideas"]]
+    assert [p["path"]["i"] for p in pls] == [0, 1, 2] and pls[0]["x"] < pls[1]["x"] < pls[2]["x"], "in order, left to right"
+    assert len({p["path"]["run"] for p in pls}) == 1, "one batch, one run"
+    assert "| the mark: " in live.calls["kimi"][-1], "Kimi is told where each shot's mark is"
+    _, res = live("POST", "/api/generate-image", {"title": "Step", "prompt": "p", "model": "m", "target": "path", "placement": pls[2]})
+    assert res["placement"] == pls[2] and srv.load_state()["placements"][res["filename"]] == pls[2]
+    _, turned = live("POST", "/api/invent-prompts", {"count": 4, "world": "Editorial Print", "rot": "0,90", "scale": "1,1.25"})
+    pls = [i["placement"] or {} for i in turned["ideas"]]
+    assert sorted(p.get("rot", 0) for p in pls) == [0, 0, 90, 90] and sorted(p.get("scale", 1) for p in pls) == [1, 1, 1.25, 1.25]
+    assert "| the mark turned 90° clockwise" in live.calls["kimi"][-1]
+
+
 def test_a_project_with_several_marks_makes_each_image_with_its_own(live, srv, monkeypatch, tmp_path):
     """Other marks besides the main one: a batch uses the main one, one chosen, or a Mix; each image remembers its mark, and its
     guide, prompt, logo check and box follow it. Images without one are the main mark's, as before."""

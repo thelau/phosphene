@@ -113,3 +113,21 @@ test('AI order: a failure is reported and everything unlocks', { skip }, async (
   await ctx.close();
 });
 
+
+test('AI order: Look or Motion; Motion only when the marks move, turn or change size, and it is sent with the order', { skip }, async () => {
+  let ctx = await fresh();
+  await page.click('#aiBtn');
+  assert.equal(await page.locator('#aiPanel .ai-mode button[data-mode="motion"]').isDisabled(), true, 'all on target: nothing to move');
+  assert.equal(await page.locator('#aiPanel .ai-mode button[data-mode="look"]').getAttribute('aria-checked'), 'true');
+  await ctx.close();
+  ctx = await fresh({ setup: st => { st.plates[1].placement = { kind: 'exact', x: 50, y: 50, size: 18, rot: 90 }; st.plates[1].box = { x: 50, y: 50, size: 18, ar: 1, rot: 90 }; } });
+  await page.click('#aiBtn');
+  await page.click('#aiPanel .ai-mode button[data-mode="motion"]');
+  assert.equal(await page.locator('#aiPanel .ai-mode button[data-mode="motion"]').getAttribute('aria-checked'), 'true');
+  assert.match(await page.locator('#aiDirection').getAttribute('placeholder'), /spinning/);
+  await page.waitForTimeout(300); await shot('15b-ai-motion');
+  await page.click('#aiGo');
+  for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/order-ai'); i++) await page.waitForTimeout(100);
+  assert.equal(api.state.calls.find(c => c.path === '/api/order-ai').body.mode, 'motion');
+  await ctx.close();
+});

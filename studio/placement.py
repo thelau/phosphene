@@ -5,6 +5,7 @@ image its own place and size, chosen here (Loose drifts around the project's pla
 check and the logo target know exactly where its mark should be."""
 
 import hashlib
+import math
 import random
 import tempfile
 from pathlib import Path
@@ -13,7 +14,15 @@ from PIL import Image
 
 import projects
 
-KINDS = ("exact", "loose", "scattered")
+KINDS = ("exact", "loose", "scattered", "path")
+# Path (2026-10-31): a batch's images at even steps along a shape through the project's place, so an edit can play the mark travelling.
+# Each shape maps t (0 to 1 along it) to a point of a unit figure centred on (0, 0), before it is turned to its direction and scaled to its
+# length; another shape (an arc, a circle, a broken line) is one more entry here, everything else reads `path` as it is.
+PATHS = {
+    "line": lambda t: (t - 0.5, 0.0),
+}
+PATH_DIRS = (0, 90, 45, -45)          # degrees clockwise from left-to-right: across, down, down-right, up-right
+PATH_LENS = (20, 40, 70)              # % of the frame: short, medium, long
 LEVELS = {                    # per level, bands that never overlap, so each reads as itself (never as On target):
     # how far from the project's place (% of the frame, the larger of across and down; None: as far as the frame goes),
     # and its size, times the project's (one of two bands: smaller or bigger, never about the same)
@@ -30,11 +39,49 @@ def _ratio(project: dict) -> float:
     return a.height / a.width
 
 
-def choose(kind: str, project: dict, rng: random.Random | None = None, rot=0, scale=1) -> dict | None:
+def clean_path(path) -> dict | None:
+    """A path's settings, checked: {shape, dir, len, i, n, run} (step i of n of one batch, `run`), or None."""
+    if not isinstance(path, dict) or path.get("shape") not in PATHS:
+        return None
+    try:
+        d, ln, i, n = int(path.get("dir", 0)), int(path.get("len", 40)), int(path.get("i", 0)), int(path.get("n", 1))
+    except (TypeError, ValueError):
+        return None
+    if d not in PATH_DIRS or ln not in PATH_LENS or not (1 <= n <= 200 and 0 <= i < n):
+        return None
+    return {"shape": path["shape"], "dir": d, "len": ln, "i": i, "n": n, "run": str(path.get("run") or "")[:16]}
+
+
+def path_place(project: dict, path: dict, size: float, ratio: float) -> tuple[float, float]:
+    """Where step i of n of a path puts the mark: along its shape through the project's place, its length shrunk if an end would leave
+    the frame (the box kept clear of the edges)."""
+    t = path["i"] / max(1, path["n"] - 1) if path["n"] > 1 else 0.5
+    u, v = PATHS[path["shape"]](t)
+    a = math.radians(path["dir"])
+    dx, dy = u * math.cos(a) - v * math.sin(a), u * math.sin(a) + v * math.cos(a)    # % of a square frame: y scaled to the 9:16 below
+    hx, hy = project["mark_x"], project["mark_y"]
+    hw, hh = size / 2, size * ratio * projects.FRAME_W / projects.FRAME_H / 2
+    ln = float(path["len"])
+    for e in (-0.5, 0.5):                                       # both ends of the line inside: shrink it until they are
+        ex, ey = e * math.cos(a), e * math.sin(a) * projects.FRAME_W / projects.FRAME_H
+        for c, h, d in ((hx, hw, ex), (hy, hh, ey)):
+            if abs(d) > 1e-9:
+                room = ((100 - MARGIN - h - c) if d > 0 else (c - MARGIN - h)) / abs(d)
+                ln = max(0.0, min(ln, room))
+    return round(hx + dx * ln, 1), round(hy + dy * ln * projects.FRAME_W / projects.FRAME_H, 1)
+
+
+def choose(kind: str, project: dict, rng: random.Random | None = None, rot=0, scale=1, path: dict | None = None) -> dict | None:
     """A placement for one image: None on target; for Loose or Scattered, a place and size inside its level's reach (its box clear of
     the frame's edges). rot: the mark turned that many degrees clockwise; scale: on target, its size times this (Loose and Scattered
     choose their own sizes). On target, turned or resized: the project's place, kept with the image."""
     rot, scale = projects.clean_rot(rot), projects.clean_scale(scale)
+    path = clean_path(path) if kind == "path" else None
+    if path:                                                                    # a step along a path: its place, the size as on target
+        size = round(project["mark_size"] * scale, 1)
+        turned = projects.rotated({**project, "mark_size": size}, rot)
+        x, y = path_place(project, path, turned["mark_size"], _ratio(turned))
+        return {"kind": "path", "x": x, "y": y, "size": size, **({"rot": rot} if rot else {}), **({"scale": scale} if scale != 1 else {}), "path": path}
     level = LEVELS.get(kind)
     if not level:
         if not rot and scale == 1:
@@ -65,15 +112,18 @@ def clean(pl) -> dict | None:
     rot, scale = projects.clean_rot(pl.get("rot")), projects.clean_scale(pl.get("scale"))
     if pl["kind"] == "exact" and not rot and scale == 1:
         return None
+    path = clean_path(pl.get("path")) if pl["kind"] == "path" else None
+    if pl["kind"] == "path" and not path:
+        return None
     try:
         x, y, size = (float(pl[k]) for k in ("x", "y", "size"))
     except (KeyError, TypeError, ValueError):
         return None
-    lo, hi = (2.4, 96.0) if pl["kind"] == "exact" else SIZE_PCT              # on target: the project's own size (up to 60%), times 0.6 to 1.6
+    lo, hi = (2.4, 96.0) if pl["kind"] in ("exact", "path") else SIZE_PCT   # on target or a path: the project's own size (up to 60%), times 0.6 to 1.6
     if not (0 < x < 100 and 0 < y < 100 and lo <= size <= hi):
         return None
     return {"kind": pl["kind"], "x": round(x, 1), "y": round(y, 1), "size": round(size, 1), **({"rot": rot} if rot else {}),
-            **({"scale": scale} if scale != 1 and pl["kind"] == "exact" else {})}
+            **({"scale": scale} if scale != 1 and pl["kind"] in ("exact", "path") else {}), **({"path": path} if path else {})}
 
 
 def as_project(project: dict, pl: dict | None) -> dict:
