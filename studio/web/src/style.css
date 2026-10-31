@@ -122,6 +122,14 @@
     .pm-chip .pm-thumb { width: 18px; height: 18px; }
     .pm-angles .pm-chip { flex: 1 1 0; min-width: 52px; justify-content: center; padding: 0 6px; flex-direction: column; gap: 2px; min-height: 48px; }   /* a dial: the mark as it will be turned */
     .pm-angles .pm-chip span { font-family: var(--mono); font-size: 11px; }
+    .pm-sizes .pm-chip { min-height: 56px; }
+    .pm-zbox { height: 32px; display: flex; align-items: center; justify-content: center; }   /* the mark drawn at each size */
+    .pm-sizes.off .pm-chip { opacity: .4; }
+    .place-menu .pm-more { min-height: 34px; margin-top: 2px; color: var(--text-2); }
+    .pm-more .tm-sub { margin-left: 4px; }
+    .pm-more svg { margin-left: auto; color: var(--muted); transition: transform .15s; }
+    .pm-more[aria-expanded="true"] svg { transform: rotate(180deg); }
+    .pm-more[aria-disabled="true"] { cursor: default; }
     .place-menu .pm-box { width: 16px; height: 16px; flex: none; border-radius: 4px; border: 1.5px solid var(--line-3); display: flex; align-items: center; justify-content: center; }
     .place-menu [aria-checked="true"] > .pm-box { background: var(--orange); border-color: var(--orange); }
     .place-menu [aria-checked="true"] > .pm-box::after { content: "✓"; color: #1A1A1A; font-size: 11px; font-weight: 800; }

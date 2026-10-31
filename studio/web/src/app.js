@@ -334,19 +334,30 @@
       const out = ROTATIONS.filter(r => on.includes(r));
       return out.length ? out : [0];
     }
+    const SIZES = [0.6, 0.8, 1, 1.25, 1.6];                                 // times the mark's own size, on target
+    const sizeLabel = z => `×${z}`;
+    function sizeTicks() {
+      const on = String(document.getElementById('sizeSelect').value || '1').split(',').map(Number);
+      const out = SIZES.filter(z => on.includes(z));
+      return out.length ? out : [1];
+    }
+    // Angle and Size sit under "More" (the user: someone who just wants images should not meet every option); it opens by itself
+    // whenever one of them is set, and stays as it was left
+    let placeMore = (() => { try { return localStorage.getItem('studioPlaceMore') === '1'; } catch (e) { return false; } })();
     function markChoices() {
       const marks = (project && project.marks) || [];
       return marks.length ? [['main', 'Main mark', project.mark_url], ...marks.map(m => [m.id, m.name, m.url])] : [];
     }
     function renderPlace() {
-      const t = document.getElementById('targetSelect').value || 'exact', ticks = markTicks(), rots = rotTicks();
+      const t = document.getElementById('targetSelect').value || 'exact', ticks = markTicks(), rots = rotTicks(), zs = sizeTicks(), sized = t === 'exact';
       const keep = document.getElementById('keepCheck').checked, choices = markChoices(), on = choices.filter(c => ticks.includes(c[0]));
       const pos = (POSITIONS.find(p => p[0] === t) || POSITIONS[0])[1];
       const markWord = k => (k === choices.length ? `All ${k} marks` : `${k} marks`);   // several ticked: how many, "All 4 marks" when every one is
       const rotWord = rs => (rs.length > 1 ? `${rs.length} angles` : rs[0] ? rotLabel(rs[0]) : '');   // upright: nothing to say
-      const label = (m, p, k, r = '') => [m, p, r, k ? 'As designed' : ''].filter(Boolean).join(' · ');
+      const sizeWord = list => (!sized ? '' : list.length > 1 ? `${list.length} sizes` : list[0] !== 1 ? sizeLabel(list[0]) : '');   // its own size: nothing to say
+      const label = (m, p, k, r = '', z = '') => [m, p, r, z, k ? 'As designed' : ''].filter(Boolean).join(' · ');
       const name = document.getElementById('placeName'), one = on.length === 1 ? on[0] : null;
-      name.textContent = label(!choices.length ? '' : one ? (one[0] === 'main' ? 'Main' : one[1]) : markWord(on.length), pos, keep, rotWord(rots));
+      name.textContent = label(!choices.length ? '' : one ? (one[0] === 'main' ? 'Main' : one[1]) : markWord(on.length), pos, keep, rotWord(rots), sizeWord(zs));
       const thumb = document.getElementById('placeThumb'), mixIcon = document.getElementById('placeMix');
       thumb.hidden = !(one && one[2]);
       if (one && one[2] && thumb.getAttribute('src') !== one[2]) { thumb.src = one[2]; fitMarkTone(thumb); }   // as the top bar shows it: a dark mark as a light silhouette
@@ -358,24 +369,30 @@
         mixIcon.querySelectorAll('img').forEach(fitMarkTone);
       }
       const words = choices.length ? [...choices.map(c => (c[0] === 'main' ? 'Main' : c[1])), ...choices.slice(1).map((c, i) => markWord(i + 2))] : [''];
-      name.style.minWidth = name.style.maxWidth = placeLabelWidth(name, words.flatMap(w => POSITIONS.flatMap(([, p]) => ['', '−135°', '8 angles'].flatMap(r => [label(w, p, false, r), label(w, p, true, r)])))) + 'px';   // as wide as its widest choice, never wider (past 300 px it ends in …): the row never moves
+      name.style.minWidth = name.style.maxWidth = placeLabelWidth(name, words.flatMap(w => POSITIONS.flatMap(([, p]) => ['', '8 angles'].flatMap(r => ['', '5 sizes'].flatMap(z => [label(w, p, false, r, z), label(w, p, true, r, z)]))))) + 'px';   // as wide as its widest choice, never wider (past 360 px it ends in …): the row never moves
       const m = document.getElementById('placeMenu');
       if (m.hidden) return;
-      const img = (url, r = 0) => `<img class="pm-thumb" src="${escapeHtml(url)}" alt=""${r ? ` style="transform:rotate(${r}deg)"` : ''} />`;
-      // each section a row of choices: Mark and Angle are ticks, one or more, taking turns evenly through the batch (the user,
+      const img = (url, r = 0, z = 0) => `<img class="pm-thumb" src="${escapeHtml(url)}" alt=""${r || z ? ` style="${r ? `transform:rotate(${r}deg);` : ''}${z ? `width:${Math.round(20 * z)}px;height:${Math.round(20 * z)}px` : ''}"` : ''} />`;
+      // each section a row of choices: Mark, Angle and Size are ticks, one or more, taking turns evenly through the batch (the user,
       // 2026-10-31: Mix said too little, and gave the main mark half the batch); Position is one of three; the line under them says how
-      const chip = (list, v, inner, on, multi, only, tip = '') => `<div class="tm-item pm-chip${multi ? ' multi' : ''}" role="${multi ? 'menuitemcheckbox' : 'menuitemradio'}" data-list="${list}" data-v="${escapeHtml(v)}" aria-checked="${on}" aria-selected="${on}"${only ? ' aria-disabled="true"' : ''} title="${escapeHtml(only ? `${tip}${tip ? ' · ' : ''}At least one` : tip)}">${inner}</div>`;
+      const chip = (list, v, inner, on, multi, off, tip = '') => `<div class="tm-item pm-chip${multi ? ' multi' : ''}" role="${multi ? 'menuitemcheckbox' : 'menuitemradio'}" data-list="${list}" data-v="${escapeHtml(v)}" aria-checked="${on}" aria-selected="${on}"${off ? ' aria-disabled="true"' : ''} title="${escapeHtml(off === true ? `${tip}${tip ? ' · ' : ''}At least one` : off || tip)}">${inner}</div>`;
       const row = (head, inner, cls = '') => `<div class="pm-row${cls}"><div class="tm-head pm-label"><span>${head}</span></div><div class="pm-chips">${inner}</div></div>`;
-      const glyph = (one && one[2]) || (on[0] && on[0][2]) || (project && project.mark_url) || '';   // the angles shown on the mark the batch uses
+      const glyph = (one && one[2]) || (on[0] && on[0][2]) || (project && project.mark_url) || '';   // the angles and sizes shown on the mark the batch uses
       const n = Math.max(1, +document.getElementById('batchCountSelect').value || 1);
-      const each = k => { const lo = Math.floor(n / k); return lo < 1 ? 'one each' : `${lo}${n % k ? ` or ${lo + 1}` : ''} each`; };
-      const turns = [ticks.length > 1 && choices.length ? `${ticks.length} marks, ${each(ticks.length)}` : '', rots.length > 1 ? `${rots.length} angles, ${each(rots.length)}` : ''].filter(Boolean);
+      const each = k => { const lo = Math.floor(n / k); return lo < 1 ? `only ${n} of them used: raise the count` : `${lo}${n % k ? ` or ${lo + 1}` : ''} each`; };   // fewer images than ticks: said, never hidden
+      const turns = [ticks.length > 1 && choices.length ? `${ticks.length} marks, ${each(ticks.length)}` : '', rots.length > 1 ? `${rots.length} angles, ${each(rots.length)}` : '',
+        sized && zs.length > 1 ? `${zs.length} sizes, ${each(zs.length)}` : ''].filter(Boolean);
       const desc = (POSITIONS.find(p => p[0] === t) || POSITIONS[0])[2];
-      const share = turns.length ? `${n} image${n > 1 ? 's' : ''}: ${turns.join(' · ')}, taking turns` : `${desc[0].toUpperCase()}${desc.slice(1)}. Tick several ${choices.length ? 'marks or angles' : 'angles'} and they take turns.`;
+      const share = turns.length ? `${n} image${n > 1 ? 's' : ''}: ${turns.join(' · ')}, taking turns` : `${desc[0].toUpperCase()}${desc.slice(1)}.${choices.length ? ' Tick several marks and they take turns.' : ''}`;
+      const moreSet = rots.some(r => r) || (zs.length > 1 || zs[0] !== 1), open = placeMore || moreSet;
+      const moreSays = [rotWord(rots) || 'Upright', sized ? (sizeWord(zs) || 'its own size') : 'size by position'].join(' · ');
+      const turnTip = r => (r ? `The mark turned ${Math.abs(r)}° ${r === 180 ? '(upside down)' : r > 0 ? 'clockwise' : 'anticlockwise'}` : 'Upright, as designed');
       m.innerHTML = (choices.length ? row('Mark', choices.map(([v, name, url]) => chip('mark', v, `${url ? img(url) : ''}<span>${escapeHtml(name)}</span>`, ticks.includes(v), true, ticks.length === 1 && ticks[0] === v, name)).join('')) : '')
         + row('Position', POSITIONS.map(([v, name, sub]) => chip('position', v, `<span>${name}</span>`, v === t, false, false, sub)).join(''))
-        + row('Angle', ROTATIONS.map(r => chip('angle', String(r), `${glyph ? img(glyph, r) : ''}<span>${rotLabel(r)}</span>`, rots.includes(r), true, rots.length === 1 && rots[0] === r,
-            r ? `The mark turned ${Math.abs(r)}° ${r === 180 ? '(upside down)' : r > 0 ? 'clockwise' : 'anticlockwise'}` : 'Upright, as designed')).join(''), ' pm-angles')
+        + `<div class="tm-item pm-more" role="menuitem" data-list="more" data-v="more" aria-expanded="${open}"${moreSet ? ' aria-disabled="true" title="Open while an angle or a size is set"' : ''}><span>Angle and size</span><span class="tm-sub">${escapeHtml(moreSays)}</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></div>`
+        + (open ? row('Angle', ROTATIONS.map(r => chip('angle', String(r), `${glyph ? img(glyph, r) : ''}<span>${rotLabel(r)}</span>`, rots.includes(r), true, rots.length === 1 && rots[0] === r, turnTip(r))).join(''), ' pm-angles')
+          + row('Size', SIZES.map(z => chip('size', String(z), `<span class="pm-zbox">${glyph ? img(glyph, 0, z) : ''}</span><span>${sizeLabel(z)}</span>`, sized && zs.includes(z), true,
+              !sized ? 'Loose and Scattered choose their own sizes' : zs.length === 1 && zs[0] === z, z === 1 ? 'Its own size, as set in the project' : `${Math.round(z * 100)}% of its own size`)).join(''), ` pm-angles pm-sizes${sized ? '' : ' off'}`) : '')
         + `<div class="pm-share">${share}</div><div class="tm-sep"></div>`
         + `<div class="tm-item pm-keep" role="menuitemcheckbox" data-list="keep" data-v="keep" aria-checked="${keep}"><span class="pm-box"></span><span>Keep it as designed <span class="tm-sub">same colours and lettering as your file</span></span></div>`;
       m.querySelectorAll('img.pm-thumb').forEach(fitMarkTone);
@@ -386,7 +403,7 @@
       if (!cx) return 0;
       if (!placeCanvas.fontsAsked && document.fonts && document.fonts.ready) { placeCanvas.fontsAsked = true; document.fonts.ready.then(() => renderPlace()); }   // measured again in the bundled font once it has loaded
       cx.font = getComputedStyle(el).font || '600 14px sans-serif';
-      return Math.min(300, Math.ceil(Math.max(0, ...labels.map(t => cx.measureText(t).width))));   // past 300 px (long mark names) it ends in …
+      return Math.min(360, Math.ceil(Math.max(0, ...labels.map(t => cx.measureText(t).width))));   // past 360 px (long mark names) it ends in …
     }
     function togglePlaceMenu(e, open) {
       if (e && e.stopPropagation) e.stopPropagation();
@@ -403,6 +420,15 @@
         const t = markTicks(), on = t.includes(v) ? t.filter(x => x !== v) : [...t, v];
         if (!on.length) return;                                              // one mark at least
         setv('markSelect', markChoices().map(c => c[0]).filter(x => on.includes(x)).join(','));
+      }
+      else if (list === 'more') {
+        placeMore = !placeMore;
+        try { localStorage.setItem('studioPlaceMore', placeMore ? '1' : '0'); } catch (e) {}
+      }
+      else if (list === 'size') {
+        const z = +v, t = sizeTicks(), on = t.includes(z) ? t.filter(x => x !== z) : [...t, z];
+        if (!on.length) return;                                              // one size at least
+        setv('sizeSelect', SIZES.filter(x => on.includes(x)).join(','));
       }
       else if (list === 'angle') {
         const r = +v, t = rotTicks(), on = t.includes(r) ? t.filter(x => x !== r) : [...t, r];
@@ -470,7 +496,7 @@
     // ---- the project form (New project…, Project settings…): the project (name, brand, colours) and its marks, every mark with the
     // same settings; a list on the left, one item's details in the middle, a 9:16 preview on the right. Nothing is saved until Save
     // (Cancel or Esc drops every change). A new project starts from its first mark: Kimi reads it and fills in the rest ----
-    const PS_MAX = 9;
+    const PS_MAX = 6;                                                        // marks a project can be given (projects.ADD_MARKS + its main one)
     let psTimer = 0, psSeq = 0;
     const psMark = key => projectForm && projectForm.marks.find(m => m.key === key);
     const psDefault = () => projectForm && (projectForm.marks.find(m => m.key === projectForm.def) || projectForm.marks[0]);
@@ -876,6 +902,7 @@
       mark: p => (p.uploaded ? null : p.mark || 'main'),
       pos: p => (p.uploaded ? null : ['loose', 'scattered'].includes(p.placement && p.placement.kind) ? p.placement.kind : 'exact'),   // Angled's few images read as on target
       rot: p => (p.uploaded ? null : String(cardRot(p))),                  // how far its mark was turned
+      size: p => (p.uploaded ? null : String(cardScale(p))),               // and at what size
       src: p => (p.uploaded ? 'uploaded' : 'generated'),
     };
     // the members of a group key ('all', 'g:<id>', 'look:<tag>', 'world:<name>', 'mark:<id>', 'pos:<kind>', 'src:<kind>'), or null when there is no such group
@@ -909,8 +936,8 @@
       Object.entries(worlds).filter(([, n]) => n >= 6).sort((a, b) => b[1] - a[1]).forEach(([w, n]) => auto.push({ key: `world:${w}`, name: w, n }));
       // Mark, Position and Source: each only when the selection holds two kinds or more (one mark only: nothing to choose between)
       const marks = new Map(markChoices().map(c => [c[0], c]));
-      const names = { mark: v => (marks.get(v) || [v, v === 'main' ? 'Main mark' : v])[1], pos: v => POSITION_NAMES[v], rot: v => (v === '0' ? 'Upright' : `Turned ${rotLabel(+v)}`), src: v => (v === 'uploaded' ? 'Uploaded' : 'Generated') };
-      const order = { mark: [...marks.keys()], pos: Object.keys(POSITION_NAMES), rot: ['0', ...ROTATIONS.filter(r => r).map(String)], src: ['generated', 'uploaded'] };
+      const names = { mark: v => (marks.get(v) || [v, v === 'main' ? 'Main mark' : v])[1], pos: v => POSITION_NAMES[v], rot: v => (v === '0' ? 'Upright' : `Turned ${rotLabel(+v)}`), size: v => (v === '1' ? 'Its own size' : sizeLabel(+v)), src: v => (v === 'uploaded' ? 'Uploaded' : 'Generated') };
+      const order = { mark: [...marks.keys()], pos: Object.keys(POSITION_NAMES), rot: ['0', ...ROTATIONS.filter(r => r).map(String)], size: SIZES.map(String), src: ['generated', 'uploaded'] };
       Object.entries(MADE_BY).forEach(([kind, by]) => {
         const n = {};
         shown.forEach(p => { const v = by(p); if (v) n[v] = (n[v] || 0) + 1; });
@@ -921,14 +948,14 @@
     }
     // Curate's group row: All and your own groups as chips (those that do not fit behind "+N more", never the chosen one), then on
     // the right the automatic groups in two menus, Look and Territory (a chosen one shows in its button: "Look: Warm ×")
-    const AUTO_MENUS = [['look', 'Look'], ['terr', 'Territory'], ['mark', 'Mark'], ['pos', 'Position'], ['rot', 'Angle'], ['src', 'Source']];
+    const AUTO_MENUS = [['look', 'Look'], ['terr', 'Territory'], ['mark', 'Mark'], ['pos', 'Position'], ['rot', 'Angle'], ['size', 'Size'], ['src', 'Source']];
     const AUTO_TIPS = { look: 'Automatic groups by look', terr: 'Automatic groups, one per territory with 6+ images', mark: 'Automatic groups: the images made with each of your marks',
-      pos: 'Automatic groups: On target, Loose, Scattered', rot: 'Automatic groups: how far each image\'s mark was turned', src: 'Automatic groups: the images made here and the ones you added' };
+      pos: 'Automatic groups: On target, Loose, Scattered', rot: 'Automatic groups: how far each image\'s mark was turned', size: 'Automatic groups: the size each image\'s mark was made at', src: 'Automatic groups: the images made here and the ones you added' };
     const LOOK_SWATCH = { warm: '#C8743A', cold: '#4C7BD1', mono: '#8A877C', dark: '#1A1A1A', bright: '#F3EFD9' };
     function autoKinds() {
       const { auto } = groupChips();
       const of = prefix => auto.filter(c => c.key.startsWith(prefix));
-      return { look: of('look:'), terr: of('world:'), mark: of('mark:'), pos: of('pos:'), rot: of('rot:'), src: of('src:') };
+      return { look: of('look:'), terr: of('world:'), mark: of('mark:'), pos: of('pos:'), rot: of('rot:'), size: of('size:'), src: of('src:') };
     }
     function renderGroups() {
       const bar = document.getElementById('groupBar');
@@ -1456,9 +1483,11 @@
     }
     const cardRot = p => (p.uploaded ? 0 : +((p.placement && p.placement.rot) || 0));
     // a turned mark says so on its card, with its angle (the user: the curation should show how each image was made)
+    const cardScale = p => (p.uploaded ? 1 : +((p.placement && p.placement.scale) || 1));
     function cardTurn(p) {
-      const r = cardRot(p);
-      return r ? `<span class="card-model-badge turn" title="Made with the mark turned ${Math.abs(r)}° ${r === 180 ? '(upside down)' : r > 0 ? 'clockwise' : 'anticlockwise'}">${r > 0 && r !== 180 ? '↻' : r < 0 ? '↺' : '↻'} ${rotLabel(r)}</span>` : '';
+      const r = cardRot(p), z = cardScale(p);
+      return (r ? `<span class="card-model-badge turn" title="Made with the mark turned ${Math.abs(r)}° ${r === 180 ? '(upside down)' : r > 0 ? 'clockwise' : 'anticlockwise'}">${r > 0 && r !== 180 ? '↻' : r < 0 ? '↺' : '↻'} ${rotLabel(r)}</span>` : '')
+        + (z !== 1 ? `<span class="card-model-badge turn" title="Made with the mark at ${Math.round(z * 100)}% of its own size">${sizeLabel(z)}</span>` : '');
     }
     function promptInfoHtml(p) {
       return `${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-check po-qa">Mark check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : p.qa_doubt ? `<span class="po-check po-doubt">Mark check: ${escapeHtml(p.qa_doubt)}</span>` : ''}`;
@@ -1468,7 +1497,7 @@
     // (in a group, only those that will belong to it: a territory's own; your groups and the looks get images only once they are made)
     function pendingCards() {
       if (!generating || prog.stage !== 'render') return [];
-      const made = { world: prog.worlds, mark: prog.marks, pos: prog.positions, rot: prog.rots || [], src: prog.slots.map(() => 'generated') }, kind = currentGroup.slice(0, currentGroup.indexOf(':'));
+      const made = { world: prog.worlds, mark: prog.marks, pos: prog.positions, rot: prog.rots || [], size: prog.sizes || [], src: prog.slots.map(() => 'generated') }, kind = currentGroup.slice(0, currentGroup.indexOf(':'));
       const belongs = i => currentGroup === 'all' || (kind in made && (made[kind] || [])[i] === currentGroup.slice(kind.length + 1));
       return prog.slots.map((st, i) => ((st === 'wait' || st === 'run') && belongs(i)
         ? `<div class="card pending-card" aria-hidden="true"><div class="card-thumb"><div class="pending-ring"></div><span class="pending-label">${st === 'run' ? 'Rendering' : 'Queued'}</span><div class="pending-bar ${st}"><i></i></div></div><div class="card-title">${escapeHtml(prog.titles[i] || '')}</div><div class="card-meta"><span class="card-model-badge">generating…</span></div></div>`
@@ -2264,7 +2293,7 @@
     // Not in it: permanent deletes and generation (they say so when you start them), the mode and the views.
     const history = [], future = [];
     let applyingHistory = false;
-    const NOT_UNDONE = ['targetSelect', 'markSelect', 'rotSelect', 'keepCheck', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
+    const NOT_UNDONE = ['targetSelect', 'markSelect', 'rotSelect', 'sizeSelect', 'keepCheck', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
     function pushStep(step) { if (!step.settings) commitSettings(); history.push(step); if (history.length > 100) history.shift(); future.length = 0; showUndo(); return step; }
     function showUndo() {
       const b = document.getElementById('undoRandomBtn');
@@ -3331,7 +3360,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'rotSelect', 'keepCheck'];
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'rotSelect', 'sizeSelect', 'keepCheck'];
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
     // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved
@@ -3866,7 +3895,7 @@
       prog.slots = ideas.map(() => 'wait');
       prog.titles = ideas.map(i => i.title);
       prog.worlds = ideas.map(i => i.world || prog.world);
-      prog.marks = ideas.map(i => i.mark || 'main'); prog.positions = ideas.map(i => (i.placement && i.placement.kind) || 'exact'); prog.rots = ideas.map(i => String((i.placement && i.placement.rot) || 0));
+      prog.marks = ideas.map(i => i.mark || 'main'); prog.positions = ideas.map(i => (i.placement && i.placement.kind) || 'exact'); prog.rots = ideas.map(i => String((i.placement && i.placement.rot) || 0)); prog.sizes = ideas.map(i => String((i.placement && i.placement.scale) || 1));
       prog.why = ideas.map(() => '');
       prog.note = `${formatModelShort(model)} · 3 at a time`;
       const keep = () => savePending([...failedItems, ...left.values()], model);
@@ -3968,7 +3997,7 @@
       const items = p.items.filter(it => !made.has(it.title));
       if (!items.length) { savePending([], p.model); return; }
       document.getElementById('statusText').dataset.idle = '';
-      prog.stage = 'render'; prog.world = items[0].world || 'Unfinished batch'; prog.slots = items.map(() => 'wait'); prog.titles = items.map(i => i.title); prog.worlds = items.map(i => i.world || prog.world); prog.marks = items.map(i => i.mark || 'main'); prog.positions = items.map(i => (i.placement && i.placement.kind) || 'exact'); prog.rots = items.map(i => String((i.placement && i.placement.rot) || 0)); prog.why = items.map(() => '');
+      prog.stage = 'render'; prog.world = items[0].world || 'Unfinished batch'; prog.slots = items.map(() => 'wait'); prog.titles = items.map(i => i.title); prog.worlds = items.map(i => i.world || prog.world); prog.marks = items.map(i => i.mark || 'main'); prog.positions = items.map(i => (i.placement && i.placement.kind) || 'exact'); prog.rots = items.map(i => String((i.placement && i.placement.rot) || 0)); prog.sizes = items.map(i => String((i.placement && i.placement.scale) || 1)); prog.why = items.map(() => '');
       prog.total = items.length; prog.summary = `${items.length} image${items.length === 1 ? '' : 's'} of the last batch ${items.length === 1 ? 'wasn\'t' : 'weren\'t'} made`;
       batchActions([
         { label: 'Resume', run: () => retryBatch(items, p.model) },
@@ -4000,7 +4029,7 @@
         const invRes = await fetch('/api/invent-prompts', {
           method: 'POST',
           headers: forProject({'Content-Type': 'application/json'}),
-          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main', rot: rotTicks().join(','), keep: document.getElementById('keepCheck').checked })
+          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main', rot: rotTicks().join(','), scale: sizeTicks().join(','), keep: document.getElementById('keepCheck').checked })
         });
         const invData = await invRes.json();
         if (invData.needs_kimi_key) {

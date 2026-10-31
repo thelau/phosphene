@@ -142,13 +142,13 @@ test('closing or reloading the page during a batch asks first (and not when idle
 });
 
 
-test('the count: any number from 1 to 20, as a value field (×N); it sends the number chosen and is remembered', { skip }, async () => {
+test('the count: any number from 1 to 40, as a value field (×N); it sends the number chosen and is remembered', { skip }, async () => {
   const ctx = await fresh({ delays: { invent: 50, generate: 20 } });
   await page.focus('#countField');
   await page.keyboard.press('ArrowUp');
   assert.equal(await text('#countVal'), '×5', 'arrows step by one: no set list');
-  for (let i = 0; i < 30; i++) await page.keyboard.press('ArrowUp');
-  assert.equal(await text('#countVal'), '×20', 'never past 20');
+  for (let i = 0; i < 50; i++) await page.keyboard.press('ArrowUp');
+  assert.equal(await text('#countVal'), '×40', 'never past 40');
   await setCount(0);
   assert.equal(await text('#countVal'), '×1', 'nor under 1');
   await setCount(13);

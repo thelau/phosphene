@@ -30,7 +30,9 @@ GUIDE_DARK, GUIDE_LIGHT = "#141416", "#FEFFE7"    # the guide images: the mark i
 DEMO_PALETTE = ["#EC540C", "#F64570", "#5D8FF4", "#381313", "#1A1A1A", "#FEFFE7"]
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 MARK_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,29}$")   # an extra mark's id: its file is mark-<id>.png in the project's folder
-MAX_MARKS = 8                                      # extra marks besides the main one
+MAX_MARKS = 8                                      # extra marks besides the main one that a project can hold (read and kept: older projects)
+ADD_MARKS = 5                                      # extra marks a project can be given (2026-10-31: 6 in all; the Mark menu's row and a batch
+                                                   # of 20 sharing them, 3+ each, stay readable). A project made before with more keeps them
 
 
 def _project_file(slug: str) -> Path:
@@ -419,8 +421,8 @@ def add_mark(slug: str, body: dict, mark_png: bytes) -> dict:
     """Another mark for this project (at the main mark's place, its own size and words). Returns the project."""
     raw = json.loads(_project_file(slug).read_text())               # (Demo too: its main mark, words and check stay as they are)
     marks = [m for m in raw.get("marks") or [] if isinstance(m, dict)]
-    if len(marks) >= MAX_MARKS:
-        raise ValueError(f"A project holds up to {MAX_MARKS + 1} marks.")
+    if len(marks) >= ADD_MARKS:
+        raise ValueError(f"A project holds up to {ADD_MARKS + 1} marks.")
     img = _mark_image(mark_png)
     name = re.sub(r"\s+", " ", str(body.get("name") or "")).strip()[:30] or f"Mark {len(marks) + 2}"
     base, mid, n = slugify(name)[:26] or "mark", None, 2
@@ -470,8 +472,8 @@ def save_marks(slug: str, marks: list, images: dict) -> dict:
             continue
         if mid in have:
             m = _mark_fields(item, dict(have[mid]))
-        else:                                          # a new one: its image is required
-            if i not in images:
+        else:                                          # a new one: its image is required, and room for it
+            if i not in images or len(out) >= ADD_MARKS:
                 continue
             name = re.sub(r"\s+", " ", str(item.get("name") or "")).strip()[:30] or f"Mark {len(out) + 2}"
             base, mid, n = slugify(name)[:26] or "mark", None, 2

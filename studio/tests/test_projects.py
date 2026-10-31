@@ -363,6 +363,27 @@ def test_a_project_holds_other_marks_besides_its_main_one(pdir):
     assert [m["id"] for m in demo["marks"]] == ["other"] and demo["qa"] == "demo-tuned" and demo["mark_size"] == 18
 
 
+def test_a_project_takes_six_marks_and_one_made_before_with_more_keeps_them(pdir):
+    import json
+    import pytest
+    projects.create({"name": "Six"}, star_png())
+    for i in range(5):
+        projects.add_mark("six", {"name": f"M{i}"}, ring_png())
+    with pytest.raises(ValueError, match="up to 6 marks"):
+        projects.add_mark("six", {"name": "One more"}, ring_png())
+    p = projects.save_marks("six", [{"id": m["id"], "name": m["name"]} for m in projects.load("six")["marks"]] + [{"name": "Extra"}], {5: ring_png()})
+    assert len(p["marks"]) == 5, "the form cannot add a seventh either"
+    f = pdir / "six" / "project.json"                                    # a project from before the limit, with eight others
+    raw = json.loads(f.read_text())
+    for i in range(5, 8):
+        (pdir / "six" / f"mark-x{i}.png").write_bytes((pdir / "six" / "mark-m0.png").read_bytes())
+        raw["marks"].append({"id": f"x{i}", "name": f"X{i}", "size": 18})
+    f.write_text(json.dumps(raw))
+    assert len(projects.load("six")["marks"]) == 8, "it opens with all of them"
+    p = projects.save_marks("six", [{"id": m["id"], "name": m["name"]} for m in projects.load("six")["marks"]], {})
+    assert len(p["marks"]) == 8, "and a Save keeps them all"
+
+
 def test_a_project_from_before_marks_still_opens_as_it_was(pdir):
     import json
     projects.create({"name": "Old"}, star_png())
