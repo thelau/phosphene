@@ -470,6 +470,7 @@
     .refine.open.required .refine-edit { background: #221A15; }
     .refine.open.tall .refine-edit { border-radius: 0 0 10px 10px; box-shadow: 0 0 0 1px var(--line-3), 0 18px 44px rgba(0,0,0,.5); }   /* a brief: it drops below the row, edged like it */
     .refine.open .refine-edit textarea { white-space: pre-wrap; overflow-y: auto; max-height: 280px; }
+    .refine.open .refine-edit textarea:placeholder-shown { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* empty: one line, its hint cut short; only what is typed or pasted grows it */
     .refine-set { flex: 1; min-width: 0; align-items: baseline; align-self: center; gap: 6px; padding: 0 4px 0 12px; border: 0; background: transparent; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-align: left; }
     .refine-k { color: var(--orange-soft); flex: none; }
     .refine-v { color: var(--text); overflow: hidden; text-overflow: ellipsis; }

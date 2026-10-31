@@ -30,6 +30,13 @@ test('generate: a custom territory waits for its description; controls lock, pro
   assert.equal(await page.locator('#generateBtn').isDisabled(), true, 'Generate waits for the description');
   await setCount(4);
   const oneLine = (await page.locator('#directionInput').boundingBox()).height;
+  const size = page.viewportSize();
+  await page.setViewportSize({ width: 1200, height: size.height });               // a narrow window: the hint is longer than the field
+  await page.locator('#directionInput').focus();
+  assert.equal((await page.locator('#directionInput').boundingBox()).height, oneLine, 'empty, it stays one line: the hint never grows it');
+  assert.equal(await page.locator('#refine.tall').count(), 0);
+  await page.locator('#directionInput').blur();
+  await page.setViewportSize(size);
   const edit = () => page.locator('.refine-edit').evaluate(e => { const r = e.getBoundingClientRect(), t = e.querySelector('textarea').getBoundingClientRect(); const mid = q => { const b = e.querySelector(q).getBoundingClientRect(); return Math.round((b.y + b.height / 2) * 2) / 2; }; return { label: mid('.refine-label'), tag: mid('.refine-req'), x: r.x, y: r.y, w: r.width, tx: t.x, ty: t.y, radius: getComputedStyle(e).borderTopLeftRadius, shadow: getComputedStyle(e).boxShadow }; });
   await page.locator('#directionInput').blur();
   const resting = await edit();

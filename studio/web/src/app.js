@@ -358,6 +358,7 @@
       const label = (m, p, k, r = '', z = '') => [m, p, r, z, k ? 'As designed' : ''].filter(Boolean).join(' · ');
       const name = document.getElementById('placeName'), one = on.length === 1 ? on[0] : null;
       name.textContent = label(!choices.length ? '' : one ? (one[0] === 'main' ? 'Main' : one[1]) : markWord(on.length), pos, keep, rotWord(rots), sizeWord(zs));
+      document.getElementById('placeBtn').title = name.textContent;
       const thumb = document.getElementById('placeThumb'), mixIcon = document.getElementById('placeMix');
       thumb.hidden = !(one && one[2]);
       if (one && one[2] && thumb.getAttribute('src') !== one[2]) { thumb.src = one[2]; fitMarkTone(thumb); }   // as the top bar shows it: a dark mark as a light silhouette
@@ -369,7 +370,7 @@
         mixIcon.querySelectorAll('img').forEach(fitMarkTone);
       }
       const words = choices.length ? [...choices.map(c => (c[0] === 'main' ? 'Main' : c[1])), ...choices.slice(1).map((c, i) => markWord(i + 2))] : [''];
-      name.style.minWidth = name.style.maxWidth = placeLabelWidth(name, words.flatMap(w => POSITIONS.flatMap(([, p]) => ['', '8 angles'].flatMap(r => ['', '5 sizes'].flatMap(z => [label(w, p, false, r, z), label(w, p, true, r, z)]))))) + 'px';   // as wide as its widest choice, never wider (past 360 px it ends in …): the row never moves
+      name.style.minWidth = name.style.maxWidth = placeLabelWidth(name, words.flatMap(w => POSITIONS.flatMap(([, p]) => ['', '8 angles'].flatMap(r => ['', '5 sizes'].flatMap(z => [label(w, p, false, r, z), label(w, p, true, r, z)]))))) + 'px';   // as wide as its widest choice, never wider (past 260 px it ends in …, the whole on hover: the Describe field beside it keeps its room): the row never moves
       const m = document.getElementById('placeMenu');
       if (m.hidden) return;
       const img = (url, r = 0, z = 0) => `<img class="pm-thumb" src="${escapeHtml(url)}" alt=""${r || z ? ` style="${r ? `transform:rotate(${r}deg);` : ''}${z ? `width:${Math.round(20 * z)}px;height:${Math.round(20 * z)}px` : ''}"` : ''} />`;
@@ -403,7 +404,7 @@
       if (!cx) return 0;
       if (!placeCanvas.fontsAsked && document.fonts && document.fonts.ready) { placeCanvas.fontsAsked = true; document.fonts.ready.then(() => renderPlace()); }   // measured again in the bundled font once it has loaded
       cx.font = getComputedStyle(el).font || '600 14px sans-serif';
-      return Math.min(360, Math.ceil(Math.max(0, ...labels.map(t => cx.measureText(t).width))));   // past 360 px (long mark names) it ends in …
+      return Math.min(260, Math.ceil(Math.max(0, ...labels.map(t => cx.measureText(t).width))));   // past 260 px (long mark names) it ends in …
     }
     function togglePlaceMenu(e, open) {
       if (e && e.stopPropagation) e.stopPropagation();
@@ -3581,6 +3582,7 @@
       if (!input.addEventListener) return;
       const r = document.getElementById('refine');
       const fit = () => {                                                       // grows with the text, then scrolls
+        if (!input.value) { input.style.height = ''; r.classList.remove('tall'); return; }   // empty: one line, whatever the hint's length
         input.style.height = 'auto'; input.style.height = `${Math.min(280, input.scrollHeight)}px`;
         r.classList.toggle('tall', input.scrollHeight > 26);                     // past one line it drops below the row
       };
