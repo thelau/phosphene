@@ -3463,7 +3463,6 @@
         g.disabled = aiRunning || (custom && !text && !noMark);
         g.title = noMark ? 'This project has no mark yet: add one to generate images around it' : custom && !text ? 'Describe your territory first' : '';   // a tooltip only to say why it is off
       }
-      document.getElementById('genHint').hidden = !(project && !plates.length && !generating);   // a new project, until its first batch
     }
     function editRefine() {
       if (generating || aiRunning) return;
