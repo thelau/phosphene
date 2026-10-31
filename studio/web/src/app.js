@@ -323,7 +323,7 @@
       const out = ids.filter(x => on.includes(x));
       return out.length ? out : ['main'];
     }
-    // the Mark menu: which of the project's marks (with several), where it goes, how far it is turned, and Keep it as designed; one
+    // the Mark menu: which of the project's marks (with several), where it goes, how far it is turned, and Keep the mark exact; one
     // button, a row a section (the user, 2026-10-31: more sections are coming, size next, so rows of choices rather than one long list)
     const POSITIONS = [['exact', 'On target', 'same spot and size in every image'], ['loose', 'Loose', 'a little off, a little bigger or smaller'], ['scattered', 'Scattered', 'anywhere, much bigger or smaller'],
       ['path', 'Path', 'the batch at even steps along a line through the target, for an edit where the mark travels']];
@@ -361,7 +361,7 @@
     // the Mark button and menu (Claude Design's 31 Oct pass, MM-States / MarkMenu): the button a fixed 260 × 46, the ticked marks'
     // thumbnails and "N marks · take turns" only when 2+ are ticked, then the summary (position, angles, sizes) and a glyph for As
     // designed, cut with an ellipsis and whole on hover; the menu in rows (Mark, Position with its Path panel, More: angle and size),
-    // a share box whose strip draws the batch one cell per image in the order the server makes it (BatchPlan), and Keep it as designed
+    // a share box whose strip draws the batch one cell per image in the order the server makes it (BatchPlan), and Keep the mark exact
     const PATH_GLYPH = { 0: '→', 90: '↓', 45: '↘', '-45': '↗' };
     let pathShapeOpen = false;
     function placeState() {
@@ -398,7 +398,7 @@
       const st = placeState(), m = st.on.length, multi = st.choices.length > 0 && m > 1;
       const summary = placeSummary(st);
       document.getElementById('placeName').textContent = summary;
-      document.getElementById('placeBtn').title = `${multi ? `${m} marks: ${st.on.map(c => c[1]).join(', ')}` : st.on[0][1]} · ${summary}${st.keep ? ' · Kept as designed' : ''}`;
+      document.getElementById('placeBtn').title = `${multi ? `${m} marks: ${st.on.map(c => c[1]).join(', ')}` : st.on[0][1]} · ${summary}${st.keep ? ' · Exact mark' : ''}`;
       document.getElementById('placeDesigned').hidden = !st.keep;
       const stack = document.getElementById('placeStack'), label = document.getElementById('placeLabel');
       stack.hidden = label.hidden = !multi;                                   // one mark ticked (or one in the project): the summary only
@@ -417,6 +417,8 @@
       menu.innerHTML = placeMenuHtml(st);
       menu.querySelectorAll('img.pm-thumb').forEach(fitMarkTone);
     }
+    // a tick-several row's tooltip says what a click does; its only ticked value stays (Claude Design's hover states)
+    const tickTip = (name, on, n, what) => (on && n === 1 ? `Keep at least one ${what}` : `${name} · click to ${on ? 'remove' : 'add'}`);
     function placeMenuHtml(st) {
       const m = st.on.length, a = st.rots.length, z = st.zs.length, n = st.n;
       const img = (url, style = '') => (url ? `<img class="pm-thumb" src="${escapeHtml(url)}" alt=""${style ? ` style="${style}"` : ''} />` : '');
@@ -425,7 +427,7 @@
       let html = '';
       if (st.choices.length) {                                              // the Mark row: only with 2+ marks
         html += `<div class="mm-sec mm-grid">${head('Mark', m)}<div class="mm-tiles">${st.choices.map(([v, name, url], i) => { const on = st.ticks.includes(v);
-          return `<button type="button" class="mm-tile" data-list="mark" data-v="${escapeHtml(v)}" aria-pressed="${on}" title="${escapeHtml(name)}">${i === 0 ? '<span class="mm-main">MAIN</span>' : ''}${on ? '<span class="mm-tick"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>' : ''}<span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span></button>`; }).join('')}</div></div>`;
+          return `<button type="button" class="mm-tile${on && m === 1 ? ' last' : ''}" data-list="mark" data-v="${escapeHtml(v)}" aria-pressed="${on}" title="${escapeHtml(tickTip(name, on, m, 'mark'))}">${i === 0 ? '<span class="mm-main">MAIN</span>' : ''}${on ? '<span class="mm-tick"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>' : ''}<span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span></button>`; }).join('')}</div></div>`;
       }
       const dots = { exact: [[8, 13, 2.2]], loose: [[9.5, 11.5, 2.2]], scattered: [[5, 6, 1.6], [11, 12, 1.6], [6, 19, 1.6]], path: [[8, 5, 1.2], [8, 10, 1.2], [8, 15, 1.2], [8, 20, 2]] };
       html += `<div class="mm-sec mm-grid"><div class="mm-label mm-pad"><span>Position</span></div><div class="mm-col"><div class="mm-seg" role="radiogroup" aria-label="Position">${POSITIONS.map(([v, name, sub]) =>
@@ -449,14 +451,12 @@
       const sizeSum = st.sizeOff ? `size by ${st.t === 'loose' ? 'Loose' : 'Scattered'}` : z > 1 ? `${z} sizes` : st.zs[0] === 1 ? 'its own size' : sizeLabel(st.zs[0]);
       html += `<div class="mm-more"><button type="button" class="mm-morebtn${moreSet ? ' set' : ''}" data-list="more" data-v="more" aria-expanded="${open}"${moreSet ? ' aria-disabled="true" title="Open while an angle or a size is set"' : ''}><span class="mm-mprev">${img(glyph, `width:${pv}px;height:${pv}px;transform:rotate(${st.rots[0]}deg)`)}</span><span class="mm-moret">More: angle and size</span><span class="mm-mores">${angSum} · ${sizeSum}</span><span class="mm-fill"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#A8A390" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>`;
       if (open) {
-        const turn = r => (r ? `The mark turned ${Math.abs(r)}° ${r === 180 ? '(upside down)' : r > 0 ? 'clockwise' : 'anticlockwise'}` : 'Upright, as designed');
         // Angle and Size (Claude Design's "angle and size rows", B): each row one segmented strip as wide as Position, the cells sharing it;
         // a glyph says only what changes (a level line with an up notch, a dot), the mark itself once, in the header
-        const cells = (list, vals, on, glyphOf, label, tip, off) => `<div class="mm-strip2${off ? ' off' : ''}" role="group" aria-label="${list === 'angle' ? 'Angle' : 'Size'}">${vals.map(v =>
-          `<button type="button" class="mm-cell2" data-list="${list}" data-v="${v}" aria-pressed="${on(v)}"${off ? ' aria-disabled="true"' : ''} title="${tip(v)}"><span class="mm-g">${glyphOf(v)}</span><span>${label(v)}</span></button>`).join('')}</div>`;
-        const angles = cells('angle', ROTATIONS, v => st.rots.includes(v), v => `<span class="mm-level" style="transform:rotate(${v}deg)"><i></i></span>`, rotLabel, turn, false);
-        const sizes = cells('size', SIZES, v => st.zs.includes(v) && !st.sizeOff, v => `<span class="mm-dot" style="width:${Math.round(10 * v)}px;height:${Math.round(10 * v)}px"></span>`, sizeLabel,
-          v => (v === 1 ? 'Its own size, as set in the project' : `${Math.round(v * 100)}% of its own size`), st.sizeOff);
+        const cells = (list, vals, on, glyphOf, label, name, off) => { const n = vals.filter(on).length; return `<div class="mm-strip2${off ? ' off' : ''}" role="group" aria-label="${list === 'angle' ? 'Angle' : 'Size'}">${vals.map(v =>
+          `<button type="button" class="mm-cell2${on(v) && n === 1 ? ' last' : ''}" data-list="${list}" data-v="${v}" aria-pressed="${on(v)}"${off ? ' aria-disabled="true"' : ''} title="${off ? `${st.t === 'loose' ? 'Loose' : 'Scattered'} picks its own sizes` : tickTip(name(v), on(v), n, list)}"><span class="mm-g">${glyphOf(v)}</span><span>${label(v)}</span></button>`).join('')}</div>`; };
+        const angles = cells('angle', ROTATIONS, v => st.rots.includes(v), v => `<span class="mm-level" style="transform:rotate(${v}deg)"><i></i></span>`, rotLabel, v => (v ? rotLabel(v) : 'Upright'), false);
+        const sizes = cells('size', SIZES, v => st.zs.includes(v) && !st.sizeOff, v => `<span class="mm-dot" style="width:${Math.round(10 * v)}px;height:${Math.round(10 * v)}px"></span>`, sizeLabel, sizeLabel, st.sizeOff);
         html += `<div class="mm-moreb"><div class="mm-grid">${head('Angle', a)}${angles}</div>
           <div class="mm-grid">${head('Size', st.sizeOff ? 1 : z)}<div class="mm-col">${sizes}${st.sizeOff ? `<span class="mm-help">${st.t === 'loose' ? 'Loose' : 'Scattered'} picks its own sizes.</span>` : ''}</div></div></div>`;
       }
@@ -489,7 +489,7 @@
       }
       const sitOut = n < m ? st.on.slice(n).map(c => c[1]) : [];
       html += `<div class="mm-share"><span class="mm-sharet"><b>${n} image${n > 1 ? 's' : ''}</b> · ${parts.join(' · ')}</span><div class="mm-strip" role="img" aria-label="How the images take turns">${cells}</div>${sitOut.length ? `<span class="mm-sit">${escapeHtml(sitOut.join(', '))} ${sitOut.length > 1 ? 'sit' : 'sits'} out this batch: fewer images than marks.</span>` : ''}</div>`;
-      html += `<div class="mm-keep" role="checkbox" data-list="keep" data-v="keep" aria-checked="${st.keep}" tabindex="0"><span class="pm-box"></span><span class="mm-keept">Keep it as designed</span><span class="mm-help">same colours and lettering as your file</span></div>`;
+      html += `<div class="mm-keep" role="checkbox" data-list="keep" data-v="keep" aria-checked="${st.keep}" tabindex="0"><span class="pm-box"></span><span class="mm-keept">Keep the mark exact</span><span class="mm-help">its own colours and lettering, not restyled to each scene</span></div>`;
       return html;
     }
     function togglePlaceMenu(e, open) {
@@ -1836,7 +1836,7 @@
           </div>
           <div class="card-title" title="${escapeHtml(p.title)}"><span class="ct-text">${escapeHtml(p.title)}</span>${made ? `<span class="ct-frame" title="${escapeHtml(made.tip)}">${made.frame}</span>` : ''}</div>
           <div class="card-meta">
-            <span class="card-model${p.uploaded ? ' uploaded" title="One of your own images: it is not checked for the mark' : ''}">${p.uploaded ? 'Uploaded' : escapeHtml(formatModelShort(p.model))}</span>${made ? `<span class="card-made" title="${escapeHtml(made.tip)}">${made.frame}${made.vals ? `<span class="cm-vals">${escapeHtml(made.vals)}</span>` : ''}${p.as_designed ? '<span class="cm-designed" aria-label="as designed"><i></i></span>' : ''}</span>` : ''}
+            <span class="card-model${p.uploaded ? ' uploaded" title="One of your own images: it is not checked for the mark' : ''}">${p.uploaded ? 'Uploaded' : escapeHtml(formatModelShort(p.model))}</span>${made ? `<span class="card-made" title="${escapeHtml(made.tip)}">${made.frame}${made.vals ? `<span class="cm-vals">${escapeHtml(made.vals)}</span>` : ''}${p.as_designed ? '<span class="cm-designed" aria-label="Exact mark" title="Exact mark"><i></i></span>' : ''}</span>` : ''}
           </div>
         </div>`;
     }
@@ -1858,7 +1858,7 @@
       const dx = ((x - 50) / 100 * 8).toFixed(1), dy = ((y - 50) / 100 * 14).toFixed(1);
       const frame = `<span class="cm-frame">${c[2] ? `<img class="pm-thumb" src="${escapeHtml(c[2])}" alt="" style="transform:translate(-50%,-50%) translate(${dx}px,${dy}px) rotate(${rot}deg) scale(${k})" />` : ''}</span>`;
       const where = pl.path ? `Path ${PATH_GLYPH[pl.path.dir] || '→'} ${pl.path.i + 1}/${pl.path.n}` : POSITION_NAMES[pl.kind || 'exact'] || 'On target';
-      const tip = [name, where, rot ? rotLabel(rot) : 'upright', k !== 1 ? sizeLabel(k) : 'own size', p.as_designed ? 'as designed' : ''].filter(Boolean).join(' · ');
+      const tip = [name, where, rot ? rotLabel(rot) : 'upright', k !== 1 ? sizeLabel(k) : 'own size', p.as_designed ? 'exact mark' : ''].filter(Boolean).join(' · ');
       const words = [choices.length ? name : '', where, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
       return { frame, vals, tip, words };
     }
@@ -1950,7 +1950,7 @@
       // the card's cluster spelled out, since there is room (Claude Design's ViewerFilm): which mark, where, the angle, the size, as designed
       const made = cardMade(p), mEl = document.getElementById('viewerMade');
       mEl.hidden = !made;
-      if (made) { mEl.innerHTML = `${made.frame}<span>${escapeHtml(made.words)}</span>${p.as_designed ? '<span class="cm-designed"><i></i></span><span class="viewer-faint">as designed</span>' : ''}`; mEl.querySelectorAll('img').forEach(fitMarkTone); }
+      if (made) { mEl.innerHTML = `${made.frame}<span>${escapeHtml(made.words)}</span>${p.as_designed ? '<span class="cm-designed"><i></i></span><span class="viewer-faint">Exact mark</span>' : ''}`; mEl.querySelectorAll('img').forEach(fitMarkTone); }
       document.getElementById('viewerModel').textContent = p.uploaded ? 'Uploaded' : formatModelShort(p.model);
       const qa = qaPill(p);
       document.getElementById('viewerQa').innerHTML = qa ? `<span class="viewer-qa ${qa.cls}" title="${escapeHtml(qa.tip)}">${qa.label}</span>` : '';

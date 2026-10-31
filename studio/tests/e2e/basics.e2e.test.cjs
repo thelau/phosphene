@@ -1432,6 +1432,24 @@ test('several marks: added in Project settings, then the generation row offers w
   const tops = await page.locator('#placeMenu [data-list="angle"]').evaluateAll(els => new Set(els.map(e => Math.round(e.getBoundingClientRect().width))).size);
   assert.equal(tops, 1, 'the cells share the width equally');
   assert.match(await page.locator('#placeMenu .mm-mprev img').getAttribute('style'), /rotate\(0deg\)/, 'the mark once, in the header');
+  // hover: the border keeps the state, the inside previews the click; the tooltip says it
+  const ang = v => page.locator(`#placeMenu [data-list="angle"][data-v="${v}"]`);
+  const look = async loc => loc.evaluate(e => { const c = getComputedStyle(e), b = e.getBoundingClientRect(); return { border: c.borderTopColor, bg: c.backgroundColor, cursor: c.cursor, box: [b.left, b.top, b.width, b.height].map(Math.round) }; });
+  assert.deepEqual([await ang(0).getAttribute('title'), await ang(90).getAttribute('title')], ['Keep at least one angle', '90° · click to add']);
+  const still = await look(ang(90));
+  await ang(90).hover();
+  const over = await look(ang(90));
+  assert.deepEqual([over.border, over.bg, over.box], ['rgb(111, 107, 95)', 'rgb(30, 29, 27)', still.box], 'unticked + hover: a grey outline, nothing moves');
+  await ang(0).hover();
+  assert.equal((await look(ang(0))).cursor, 'default', 'the only one ticked: no change, an arrow');
+  await ang(90).click();
+  await ang(90).hover();
+  const off = await look(ang(90));
+  assert.deepEqual([await ang(90).getAttribute('title'), off.border, off.bg], ['90° · click to remove', 'rgb(236, 84, 12)', 'rgba(0, 0, 0, 0)'], 'ticked + hover: the orange stays, the fill clears');
+  assert.equal(await ang(0).getAttribute('title'), 'Upright · click to remove');
+  await ang(90).click();
+  assert.equal(await page.locator('#placeMenu .mm-keept').textContent(), 'Keep the mark exact');
+  assert.match(await text('#placeMenu .mm-keep'), /its own colours and lettering, not restyled to each scene/);
   assert.equal(await page.locator('#placeMenu [data-list="angle"][aria-pressed="true"]').getAttribute('data-v'), '0', 'upright by default');
   assert.equal(await page.locator('#placeMenu [data-list="size"][aria-pressed="true"]').getAttribute('data-v'), '1', 'its own size by default');
   await page.click('#placeMenu [data-list="size"][data-v="1.25"]');
@@ -1502,8 +1520,8 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.equal(await page.locator('#placeMenu .mm-cell').count(), 4, 'one cell per image');
   await shot('27-mark-menu');
   await page.click('#placeMenu .mm-keep');
-  assert.equal(await page.locator('#placeDesigned').isVisible(), true, 'As designed: a glyph on the button');
-  assert.match(await page.locator('#placeBtn').getAttribute('title'), /^2 marks: Main mark, Bar · On target · Kept as designed$/);
+  assert.equal(await page.locator('#placeDesigned').isVisible(), true, 'Exact mark: a glyph on the button');
+  assert.match(await page.locator('#placeBtn').getAttribute('title'), /^2 marks: Main mark, Bar · On target · Exact mark$/);
   await page.click('#placeMenu .mm-morebtn');
   await page.click('#placeMenu [data-list="angle"][data-v="90"]');
   assert.equal(await text('#placeName'), 'On target · 2 angles');
