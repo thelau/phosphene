@@ -37,7 +37,7 @@ taste loop never reads it (it has no prompt). Groups, the order, AI order, Film,
 - `studio/chapters.py` (territories), `diversity.py` (random axes), `taste.py` (learning from kept/trashed), `web/src/drone.js` (the synthesized drone, WebAudio), `sequences.py` (Manual/AI orders), `editor.py` + `features.py` (AI ordering), `bench.py` (scripted generation runs, optional).
 - `studio/gen_log.py` — the written record of what the server did (the server's own output lines carry their time too) (`studio/generation_log.jsonl`, gitignored, rotates at 5 MB): server starts, Kimi batches, every image (all retries, logo check, seconds), AI orders, exports, deletions. Read it with `npm run log` (or `python3 studio/gen_log.py --failures`), or `GET /api/log`. An `image_start` with no result followed by a `server_start` means a restart cut the image short.
 - `studio/curation_state.json` — DEMO's approvals, trash, order, titles, prompts, per-plate model. Committed on purpose: it is the selection history (other projects keep theirs in `projects/<slug>/state.json`).
-- `assets/ai-plates/` — generated plates (committed). `outputs/*.mp4` is gitignored.
+- `assets/ai-plates/` — the repository's Demo plates, removed from the repo on 2026-10-31 (gitignored now; they are in its history and in ~/Documents/Phosphene/Demo, which the app opens, with more): the browser version (`npm run dev`) is not used any more, so its Demo opens empty. `outputs/*.mp4` is gitignored.
 
 ## Run
 `README.md` is the guide for someone setting it up on their own computer (a colleague): `npm run setup` (`scripts/setup.sh`: checks Python 3.10+, Node 20+, ffmpeg and git-lfs, offers `brew install` for what is missing, `git lfs pull`, `.venv` + pip, `npm install`; safe to run again), then Settings › Connect Krea and the Kimi key (Generate opens Settings on whichever is missing). ffmpeg is found on PATH or Homebrew's places (`find_tool`).
@@ -99,7 +99,7 @@ Caveat: the 223 plates trashed before `qa_failed` existed can't be told apart (m
 
 ## Git
 History was rewritten on 2026-10-25 to drop deleted plates and legacy assets (`.git` 744 MB -> 100 MB; all plates are Git LFS). A full backup of the old `.git` is in `~/Downloads/old-git-backup-20261025`. On a new machine: `git lfs install && git clone <repo>` (or `git lfs pull` after cloning) to get the images.
-Agents commit and push to `origin` after every change they make (not on a timer). Plates under `assets/ai-plates/*.jpg` go through Git LFS (`.gitattributes`). Never commit `studio/.secrets.json`.
+Agents commit and push to `origin` after every change they make (not on a timer). Plates under `assets/ai-plates/*.jpg` went through Git LFS (`.gitattributes`) until they left the repo on 2026-10-31. Never commit `studio/.secrets.json`.
 
 ## Tests
 ```fish

@@ -25,3 +25,6 @@ app/src-tauri/target/
 app/src-tauri/gen/
 studio/.no-project/
 studio/tests/.qa_shapes_passed
+
+# Demo lives in ~/Documents/Phosphene (the app); the repo no longer keeps its plates (2026-10-31)
+assets/ai-plates/
