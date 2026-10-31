@@ -174,24 +174,20 @@
     .mm-fill { flex: 1; }
     .mm-morebtn[aria-expanded="true"] svg { transform: rotate(180deg); }
     .mm-moreb { display: flex; flex-direction: column; gap: 14px; padding: 2px 16px 16px; }
-    .mm-dialrow { display: flex; align-items: center; gap: 18px; }
-    .mm-dial { position: relative; width: 140px; height: 140px; flex: none; }
-    .mm-ring { position: absolute; left: 22px; top: 22px; width: 96px; height: 96px; box-sizing: border-box; border-radius: 50%; border: 1px dashed var(--line-3); }
-    .mm-ang { position: absolute; width: 32px; height: 32px; box-sizing: border-box; padding: 6px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1.5px solid var(--line-3); background: #1A1918; }
-    .mm-ang .pm-thumb { width: 100%; height: 100%; opacity: .55; }
-    .mm-ang[aria-pressed="true"] { border-color: var(--orange); background: var(--ticked-bg); }
-    .mm-ang[aria-pressed="true"] .pm-thumb { opacity: 1; }
-    .mm-dialn { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
-    .mm-anglist { font-family: var(--mono); font-size: 12px; color: var(--text-2); line-height: 1.6; white-space: pre-wrap; }
-    .mm-sizes { display: flex; gap: 6px; }
-    .mm-sizes.off { opacity: .4; }
-    .mm-size { width: 62px; height: 62px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; padding: 6px 4px; border-radius: 8px; border: 1.5px solid var(--line-3); background: transparent; }
-    .mm-size > span:last-child { font-family: var(--mono); font-size: 10px; color: var(--faint); }
-    .mm-size[aria-pressed="true"] { border-color: var(--orange); background: var(--ticked-bg); }
-    .mm-size[aria-pressed="true"] > span:last-child { color: var(--text); }
-    .mm-size[aria-disabled="true"] { cursor: default; }
-    .mm-sw { flex: 1; display: flex; align-items: center; justify-content: center; }
-    .mm-sw .pm-thumb { flex: none; }
+    /* Angle and Size: one segmented strip a row, as wide as Position (Claude Design's "angle and size rows", B) */
+    .mm-strip2 { height: 52px; box-sizing: border-box; display: flex; gap: 2px; padding: 3px; border-radius: 10px; border: 1px solid #2E2C28; background: #121110; }
+    .mm-strip2.off { opacity: .4; }
+    .mm-cell2 { flex: 1; min-width: 0; box-sizing: border-box; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: #A8A390; }
+    .mm-cell2 > span:last-child { font-family: var(--mono); font-size: 10px; color: #8F8A7A; }
+    .mm-cell2[aria-pressed="true"] { border-color: var(--orange); background: #2A1F18; color: var(--text); }
+    .mm-cell2[aria-pressed="true"] > span:last-child { color: var(--text); }
+    .mm-cell2[aria-disabled="true"] { cursor: default; }
+    .mm-g { height: 16px; display: flex; align-items: center; justify-content: center; }
+    .mm-level { position: relative; width: 18px; height: 2px; border-radius: 1px; background: currentColor; }   /* level, its notch up */
+    .mm-level i { position: absolute; left: 8px; top: -4px; width: 2px; height: 4px; border-radius: 1px; background: currentColor; }
+    .mm-dot { border-radius: 50%; background: currentColor; }
+    .mm-mprev { width: 28px; height: 28px; flex: none; border-radius: 6px; background: #1E1D1B; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .mm-mprev .pm-thumb { flex: none; }
     .mm-share { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; background: #1A1918; border-bottom: 1px solid var(--line); }
     .mm-sharet { font-size: 12px; color: var(--text-2); }
     .mm-sharet b { color: var(--text); }

@@ -1069,6 +1069,29 @@ def test_a_path_batch_walks_its_images_along_the_line_and_an_angled_size_batch_t
     assert "| the mark turned 90° clockwise" in live.calls["kimi"][-1]
 
 
+def test_the_menus_strip_shows_the_places_a_scattered_batch_will_use(live, srv, monkeypatch, tmp_path):
+    """Loose and Scattered: the server picks each image's place from the page's seed before Generate, the strip draws them, and the
+    batch made with the same seed uses exactly those (the user: "is this exactly how they will be positioned?")."""
+    monkeypatch.setattr(srv.placement, "GUIDE_DIR", tmp_path / "guides")
+    for target in ("scattered", "loose"):
+        _, shown = live("GET", f"/api/placements?target={target}&mark=main&rot=0,90&n=4&seed=abc123")
+        places = shown["places"]
+        assert [p["i"] for p in places] == [0, 1, 2, 3] and all(p["kind"] == target for p in places)
+        assert [p.get("rot", 0) for p in places] == [0, 0, 90, 90] or [p.get("rot", 0) for p in places] == [0, 90, 0, 90]
+        _, again = live("GET", f"/api/placements?target={target}&mark=main&rot=0,90&n=6&seed=abc123")
+        assert again["places"][:4] == places, "a bigger count keeps the first images' places"
+        _, other = live("GET", f"/api/placements?target={target}&mark=main&rot=0,90&n=4&seed=zzz")
+        assert other["places"] != places, "another seed, other places"
+        _, made = live("POST", "/api/invent-prompts", {"count": 4, "world": "Editorial Print", "target": target, "rot": "0,90", "seed": "abc123"})
+        got = [{k: i["placement"][k] for k in ("x", "y", "size")} for i in made["ideas"]]
+        assert got == [{k: p[k] for k in ("x", "y", "size")} for p in places], "the batch is what the strip drew"
+    _, sampled = live("POST", "/api/invent-prompts", {"count": 2, "world": "__sampler__", "target": "scattered", "seed": "abc123"})
+    _, shown = live("GET", "/api/placements?target=scattered&mark=main&n=2&seed=abc123")
+    assert sorted((i["placement"]["x"], i["placement"]["y"]) for i in sampled["ideas"]) == sorted((p["x"], p["y"]) for p in shown["places"]), "the Sampler too"
+    _, none = live("GET", "/api/placements?target=scattered&n=4")
+    assert none["places"] == [], "no seed: nothing to show"
+
+
 def test_a_project_with_several_marks_makes_each_image_with_its_own(live, srv, monkeypatch, tmp_path):
     """Other marks besides the main one: a batch uses the main one, one chosen, or a Mix; each image remembers its mark, and its
     guide, prompt, logo check and box follow it. Images without one are the main mark's, as before."""

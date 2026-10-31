@@ -176,6 +176,11 @@ function start(state = makeState()) {
         for (const q of state.sequences) q.order = q.order.filter(n => !gone.has(n));
         return send({ ok: true, deleted: gone.size, freed_mb: gone.size * 1.5 });
       }
+      case '/api/placements': {                 // Loose / Scattered: each image's place from the seed (the server's is placement.choose)
+        const q = url.searchParams, seed = q.get('seed') || '', n = +q.get('n') || 1;
+        const h = k => { let x = [...`${seed}:${k}`].reduce((a, c) => Math.imul(a ^ c.charCodeAt(0), 2654435761) >>> 0, 2166136261); x ^= x >>> 15; return Math.imul(x, 2246822519) >>> 0; };
+        return send({ ok: true, places: seed ? Array.from({ length: n }, (_, i) => ({ i, mark: 'main', kind: q.get('target'), x: 12 + h(i) % 76, y: 12 + h(i + 50) % 76, size: 10 + h(i + 99) % 20 })) : [] });
+      }
       case '/api/invent-prompts': {
         await sleep(state.delays.invent);
         const n = body.count || 4;

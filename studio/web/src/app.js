@@ -363,7 +363,6 @@
     // designed, cut with an ellipsis and whole on hover; the menu in rows (Mark, Position with its Path panel, More: angle and size),
     // a share box whose strip draws the batch one cell per image in the order the server makes it (BatchPlan), and Keep it as designed
     const PATH_GLYPH = { 0: '→', 90: '↓', 45: '↘', '-45': '↗' };
-    const DIAL = [0, 45, 90, 135, 180, -135, -90, -45];                    // the dial's ticks clockwise from the top
     let pathShapeOpen = false;
     function placeState() {
       const t = document.getElementById('targetSelect').value || 'exact', ticks = markTicks(), rots = rotTicks(), zs = sizeTicks();
@@ -377,6 +376,23 @@
       const ang = st.rots.length > 1 ? `${st.rots.length} angles` : st.rots[0] ? rotLabel(st.rots[0]) : '';
       const siz = st.sizeOff ? '' : st.zs.length > 1 ? `${st.zs.length} sizes` : st.zs[0] !== 1 ? sizeLabel(st.zs[0]) : '';
       return [pos, ang, siz].filter(Boolean).join(' · ');
+    }
+    // Loose and Scattered: the places and sizes a batch will use, picked by the server from a seed before Generate (`/api/placements`):
+    // the strip draws them and Generate sends the same seed, so the strip is the batch; a new seed once a batch is written
+    const newSeed = () => Math.floor(Math.random() * 2 ** 40).toString(36);
+    let placeSeed = newSeed(), placePreview = { key: '', places: null };
+    function previewPlaces(st) {
+      if (!st.sizeOff || !project) return null;
+      const q = { target: st.t, mark: document.getElementById('markSelect').value || 'main', rot: st.rots.join(','), n: st.n, seed: placeSeed };
+      const key = `${project.slug}|${new URLSearchParams(q)}`;
+      if (placePreview.key === key) return placePreview.places;
+      placePreview = { key, places: null };
+      fetch(`/api/placements?${new URLSearchParams(q)}`).then(r => r.json()).then(d => {
+        if (placePreview.key !== key) return;
+        placePreview.places = d.places || [];
+        if (!document.getElementById('placeMenu').hidden) renderPlace();
+      }).catch(() => {});
+      return null;
     }
     function renderPlace() {
       const st = placeState(), m = st.on.length, multi = st.choices.length > 0 && m > 1;
@@ -428,16 +444,21 @@
       html += '</div></div>';
       // More: angle and size, folded until used (open by itself while either is set)
       const moreSet = a > 1 || st.rots[0] !== 0 || (!st.sizeOff && (z > 1 || st.zs[0] !== 1)), open = placeMore || moreSet;
+      const pv = Math.min(26, Math.round(16 * (st.sizeOff ? 1 : st.zs[0])));   // the mark once, at the first ticked angle and size
       const angSum = a > 1 ? `${a} angles` : st.rots[0] === 0 ? 'Upright' : rotLabel(st.rots[0]);
       const sizeSum = st.sizeOff ? `size by ${st.t === 'loose' ? 'Loose' : 'Scattered'}` : z > 1 ? `${z} sizes` : st.zs[0] === 1 ? 'its own size' : sizeLabel(st.zs[0]);
-      html += `<div class="mm-more"><button type="button" class="mm-morebtn${moreSet ? ' set' : ''}" data-list="more" data-v="more" aria-expanded="${open}"${moreSet ? ' aria-disabled="true" title="Open while an angle or a size is set"' : ''}><span class="mm-moret">More: angle and size</span><span class="mm-mores">${angSum} · ${sizeSum}</span><span class="mm-fill"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#A8A390" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>`;
+      html += `<div class="mm-more"><button type="button" class="mm-morebtn${moreSet ? ' set' : ''}" data-list="more" data-v="more" aria-expanded="${open}"${moreSet ? ' aria-disabled="true" title="Open while an angle or a size is set"' : ''}><span class="mm-mprev">${img(glyph, `width:${pv}px;height:${pv}px;transform:rotate(${st.rots[0]}deg)`)}</span><span class="mm-moret">More: angle and size</span><span class="mm-mores">${angSum} · ${sizeSum}</span><span class="mm-fill"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#A8A390" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>`;
       if (open) {
         const turn = r => (r ? `The mark turned ${Math.abs(r)}° ${r === 180 ? '(upside down)' : r > 0 ? 'clockwise' : 'anticlockwise'}` : 'Upright, as designed');
-        const dial = DIAL.map(deg => { const on = st.rots.includes(deg), rad = (deg - 90) * Math.PI / 180;
-          return `<button type="button" class="mm-ang" data-list="angle" data-v="${deg}" aria-pressed="${on}" aria-label="${rotLabel(deg)}" title="${turn(deg)}" style="left:${Math.round(70 + Math.cos(rad) * 54 - 16)}px;top:${Math.round(70 + Math.sin(rad) * 54 - 16)}px">${img(glyph, `transform:rotate(${deg}deg)`)}</button>`; }).join('');
-        html += `<div class="mm-moreb"><div class="mm-grid">${head('Angle', a)}<div class="mm-dialrow"><div class="mm-dial"><span class="mm-ring"></span>${dial}<span class="mm-dialn">${a} of 8</span></div><span class="mm-anglist">${st.rots.map(rotLabel).join('  ')}</span></div></div>
-          <div class="mm-grid">${head('Size', st.sizeOff ? 1 : z)}<div class="mm-col"><div class="mm-sizes${st.sizeOff ? ' off' : ''}">${SIZES.map(k => { const on = st.zs.includes(k);
-            return `<button type="button" class="mm-size" data-list="size" data-v="${k}" aria-pressed="${on && !st.sizeOff}"${st.sizeOff ? ' aria-disabled="true"' : ''} title="${k === 1 ? 'Its own size, as set in the project' : `${Math.round(k * 100)}% of its own size`}"><span class="mm-sw">${img(glyph, `width:${Math.round(18 * k)}px;height:${Math.round(18 * k)}px`)}</span><span>${sizeLabel(k)}</span></button>`; }).join('')}</div>${st.sizeOff ? `<span class="mm-help">${st.t === 'loose' ? 'Loose' : 'Scattered'} picks its own sizes.</span>` : ''}</div></div></div>`;
+        // Angle and Size (Claude Design's "angle and size rows", B): each row one segmented strip as wide as Position, the cells sharing it;
+        // a glyph says only what changes (a level line with an up notch, a dot), the mark itself once, in the header
+        const cells = (list, vals, on, glyphOf, label, tip, off) => `<div class="mm-strip2${off ? ' off' : ''}" role="group" aria-label="${list === 'angle' ? 'Angle' : 'Size'}">${vals.map(v =>
+          `<button type="button" class="mm-cell2" data-list="${list}" data-v="${v}" aria-pressed="${on(v)}"${off ? ' aria-disabled="true"' : ''} title="${tip(v)}"><span class="mm-g">${glyphOf(v)}</span><span>${label(v)}</span></button>`).join('')}</div>`;
+        const angles = cells('angle', ROTATIONS, v => st.rots.includes(v), v => `<span class="mm-level" style="transform:rotate(${v}deg)"><i></i></span>`, rotLabel, turn, false);
+        const sizes = cells('size', SIZES, v => st.zs.includes(v) && !st.sizeOff, v => `<span class="mm-dot" style="width:${Math.round(10 * v)}px;height:${Math.round(10 * v)}px"></span>`, sizeLabel,
+          v => (v === 1 ? 'Its own size, as set in the project' : `${Math.round(v * 100)}% of its own size`), st.sizeOff);
+        html += `<div class="mm-moreb"><div class="mm-grid">${head('Angle', a)}${angles}</div>
+          <div class="mm-grid">${head('Size', st.sizeOff ? 1 : z)}<div class="mm-col">${sizes}${st.sizeOff ? `<span class="mm-help">${st.t === 'loose' ? 'Loose' : 'Scattered'} picks its own sizes.</span>` : ''}</div></div></div>`;
       }
       html += '</div>';
       // the share box: what the batch will be, and a strip drawing it one cell per image (the server's order: BatchPlan)
@@ -447,16 +468,22 @@
       if (a > 1) parts.push(n >= a ? `${a} angles, ${each(a)} each` : `${n} of ${a} angles`);
       if (!st.sizeOff && z > 1) parts.push(n >= z ? `${z} sizes, ${each(z)} each` : `${n} of ${z} sizes`);
       if (st.t === 'path') parts.push('one step each along the path');
-      if (st.sizeOff) parts.push(st.t === 'loose' ? 'each a little off target' : 'each anywhere in the frame');
+      if (st.sizeOff) parts.push(st.t === 'loose' ? 'each a little off target, as drawn' : 'each anywhere in the frame, as drawn');
       if (!parts.length) parts.push('all the same: same mark, place, angle and size');
       const big = n > 20, cw = big ? 12 : 18, ch = big ? 21 : 32, es = st.effSizes, vec = [Math.cos(st.ps.dir * Math.PI / 180), Math.sin(st.ps.dir * Math.PI / 180)];
       let cells = '';
+      const places = previewPlaces(st);
       for (let i = 0; i < n; i++) {
         const mk = st.on[i % m], ang = st.rots[Math.floor(i / m) % a], sz = es[Math.floor(i / (m * a)) % es.length];
+        if (st.sizeOff) {                                                    // the place and size the server picked for image i, to scale (the mark twice as big, to read)
+          const pl = places && places[i];
+          if (!pl) { cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px"></span>`; continue; }
+          const px = Math.max(4, Math.round(cw * pl.size / 100 * 2.2)), dx = cw * (pl.x / 100 - 0.5), dy = ch * (pl.y / 100 - 0.5);
+          cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px" title="${Math.round(pl.x)}% across, ${Math.round(pl.y)}% down, ${pl.size}% wide">${img(mk[2], `width:${px}px;height:${px}px;transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px) rotate(${ang}deg)`)}</span>`;
+          continue;
+        }
         let dx = 0, dy = 0;
         if (st.t === 'path') { const u = n > 1 ? i / (n - 1) - 0.5 : 0, r = st.ps.len / 100; dx = vec[0] * u * r * cw; dy = vec[1] * u * r * ch; }   // its step in the cell, as in the frame
-        if (st.t === 'loose') { dx = ((i * 7) % 5 - 2) * 0.8; dy = ((i * 3) % 5 - 2) * 0.8; }
-        if (st.t === 'scattered') { dx = ((i * 7) % 9 - 4) * 1.4; dy = ((i * 5) % 9 - 4) * 2.4; }
         const px = Math.round((big ? 7 : 10) * sz);
         cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px">${img(mk[2], `width:${px}px;height:${px}px;transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px) rotate(${ang}deg)`)}</span>`;
       }
@@ -3764,11 +3791,19 @@
       renderEditBar();
     }
     // the project the server has open: its film in the controls (only when it is another than the one they hold)
+    // the Mark menu of a project with nothing saved for it (new, or saved before Angle and Size): on target, its main mark, upright, its
+    // own size; never the last project's ticks (opening Halo after Arc Resonance showed Arc's four angles)
+    const PLACE_DEFAULTS = { targetSelect: 'exact', markSelect: 'main', rotSelect: '0', sizeSelect: '1', pathSelect: 'line:0:40', keepCheck: false };
     function useProjectFilm(slug) {
       if (!slug || slug === filmSlug) return;
       filmSlug = slug;
       try { localStorage.setItem('studioProject', slug); currentEdit = localStorage.getItem(editKey()) || null; } catch (e) { currentEdit = null; }
       const saved = readJson(filmKey(slug));
+      if (!legacyFilm) for (const [id, v] of Object.entries(PLACE_DEFAULTS)) {
+        if (saved && saved[id] !== undefined) continue;                      // its own, put back below
+        const el = document.getElementById(id);
+        if (el.type === 'checkbox') el.checked = v; else el.value = v;
+      }
       if (saved) {
         applyingHistory = true;
         try { putSettings(saved, FILM_SETTINGS); updateTempo(); updateRhythm(); updateFx(); updateMusic(); syncSegs(); syncSelects(); updateDirectionHint(); } finally { applyingHistory = false; }
@@ -3779,6 +3814,7 @@
       }
       history.length = 0; future.length = 0; settled = settingsSnap(); showUndo();   // Undo never goes back into another project's film
       saveSettings();
+      renderPlace();                                                         // the Mark button says this project's choices
       if (isPlaying) musicChanged();
     }
 
@@ -4389,7 +4425,7 @@
         const invRes = await fetch('/api/invent-prompts', {
           method: 'POST',
           headers: forProject({'Content-Type': 'application/json'}),
-          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main', rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), keep: document.getElementById('keepCheck').checked })
+          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main', rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed, keep: document.getElementById('keepCheck').checked })
         });
         const invData = await invRes.json();
         if (invData.needs_kimi_key) {
@@ -4401,6 +4437,7 @@
         if (!invData.ok || !invData.ideas) {
           throw new Error(invData.error || 'Prompt generation failed');
         }
+        placeSeed = newSeed();                                               // the strip's places are this batch's now: the next one gets its own
 
         ran = true;
         const target = document.getElementById('targetSelect').value || 'exact', keep = document.getElementById('keepCheck').checked;   // each image keeps the batch's choices and the place its scene was written for (a Resume too)

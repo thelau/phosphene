@@ -2127,6 +2127,21 @@ test('each project keeps its own film and sound; one never opened here gets its 
   assert.equal(JSON.parse(h2.store['studioFilm:nike']).bpmInput, '144', 'and Nike keeps its own');
 });
 
+test('a project opens with its own Mark menu: a new one, or one saved before angles and sizes, starts on target, upright, its own size', async () => {
+  const demo = { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m' };
+  const plates = [mkPlate('a'), mkPlate('b')];
+  const turned = JSON.stringify({ targetSelect: 'loose', rotSelect: '-135,-90,-45,0', sizeSelect: '1,1.25', keepCheck: true });
+  for (const [slug, saved] of [['nike', undefined], ['halo', JSON.stringify({ markSelect: 'main', bpmInput: '120' })]]) {
+    const r = baseRoutes(); r['/api/state'] = { plates, project: { ...cos, slug, name: slug }, krea_connected: true, kimi_configured: true };
+    const h = load({ routes: r, storage: { studioProject: 'demo', 'studioFilm:demo': turned, ...(saved ? { [`studioFilm:${slug}`]: saved } : {}) } });
+    await settle(); await settle();
+    assert.deepEqual(['targetSelect', 'rotSelect', 'sizeSelect'].map(id => h.$(id).value), ['exact', '0', '1'], `${slug}: not Demo's four angles`);
+    assert.equal(h.$('keepCheck').checked, false);
+    assert.equal(h.$('placeName').textContent, 'On target');
+    assert.equal(JSON.parse(h.store[`studioFilm:${slug}`]).rotSelect, '0', 'and kept as its own');
+  }
+});
+
 test('settings saved before films were per project become the first project\'s, not a Random', async () => {
   const r = baseRoutes();
   r['/api/state'] = { plates: [mkPlate('a'), mkPlate('b')], project: { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m' }, krea_connected: true, kimi_configured: true };

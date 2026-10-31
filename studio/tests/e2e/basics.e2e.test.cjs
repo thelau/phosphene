@@ -1422,7 +1422,16 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.match(await text('#placeMenu .mm-sharet'), /all the same/);
   await page.click('#placeMenu .mm-morebtn');
   assert.deepEqual(await heads(), ['Position', 'Angle', 'Size']);
-  assert.equal(await page.locator('#placeMenu [data-list="angle"]').count(), 8, 'eight angles, as a dial');
+  assert.equal(await page.locator('#placeMenu [data-list="angle"]').count(), 8, 'eight angles in one strip');
+  assert.deepEqual(await page.locator('#placeMenu [data-list="angle"] > span:last-child').allTextContents(), ['−135°', '−90°', '−45°', '0°', '45°', '90°', '135°', '180°']);
+  assert.match(await page.locator('#placeMenu [data-list="angle"][data-v="90"] .mm-level').getAttribute('style'), /rotate\(90deg\)/, 'a level line turned, its notch up at 0°');
+  assert.equal(await page.locator('#placeMenu .mm-strip2 img').count(), 0, 'no mark images in the cells');
+  const boxOf = sel => page.locator(sel).evaluateAll(els => els.map(e => { const b = e.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.right), Math.round(b.height)]; }));
+  const [angStrip, sizeStrip] = await boxOf('#placeMenu .mm-strip2'), [posRow] = await boxOf('#placeMenu .mm-seg, #placeMenu [role="radiogroup"]');
+  assert.deepEqual([angStrip, sizeStrip.slice(0, 2)], [[posRow[0], posRow[1], 52], angStrip.slice(0, 2)], 'both strips 52 high, the width of Position');
+  const tops = await page.locator('#placeMenu [data-list="angle"]').evaluateAll(els => new Set(els.map(e => Math.round(e.getBoundingClientRect().width))).size);
+  assert.equal(tops, 1, 'the cells share the width equally');
+  assert.match(await page.locator('#placeMenu .mm-mprev img').getAttribute('style'), /rotate\(0deg\)/, 'the mark once, in the header');
   assert.equal(await page.locator('#placeMenu [data-list="angle"][aria-pressed="true"]').getAttribute('data-v'), '0', 'upright by default');
   assert.equal(await page.locator('#placeMenu [data-list="size"][aria-pressed="true"]').getAttribute('data-v'), '1', 'its own size by default');
   await page.click('#placeMenu [data-list="size"][data-v="1.25"]');
@@ -1434,6 +1443,13 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.equal(await text('#placeName'), 'Loose', 'Loose picks its own sizes');
   assert.equal(await page.locator('#placeMenu [data-list="size"][data-v="1.25"]').getAttribute('aria-disabled'), 'true');
   assert.match(await text('#placeMenu .mm-moreb'), /Loose picks its own sizes\./);
+  // the strip draws the places the server picked for this batch (the same seed goes with Generate)
+  await page.waitForFunction(() => document.querySelectorAll('#placeMenu .mm-cell[title]').length > 0);
+  const pq = new URLSearchParams(api.state.calls.filter(c => c.path === '/api/placements').pop().query);
+  assert.equal(pq.get('target'), 'loose');
+  const firstCell = await page.locator('#placeMenu .mm-cell').first().getAttribute('title');
+  assert.match(firstCell, /^\d+% across, \d+% down, \d+(\.\d)?% wide$/, 'each cell says its place');
+  assert.match(await text('#placeMenu .mm-sharet'), /as drawn/);
   await page.click('#placeMenu [data-list="position"][data-v="exact"]');
   await page.click('#placeMenu [data-list="size"][data-v="1.25"]');
   await page.click('#placeMenu .mm-morebtn');

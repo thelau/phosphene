@@ -60,7 +60,7 @@ function load({ routes = {}, storage = {}, globals = {} } = {}) {   // globals: 
     performance: { now: () => Date.now() },
     addEventListener(ev, fn) { (ctx.__listeners ||= {})[ev] = fn; },
     CSS: { escape: s => s },
-    Promise, JSON, Math, Date, parseInt, parseFloat, Number, String, Array, Object, Set, Map, Error,
+    Promise, JSON, Math, Date, parseInt, parseFloat, Number, String, Array, Object, Set, Map, Error, URLSearchParams,
     fetch: async (url, opts = {}) => {
       let body = opts.body;
       try { body = opts.body ? JSON.parse(opts.body) : undefined; } catch (e) { /* a file upload: keep it as it is */ }

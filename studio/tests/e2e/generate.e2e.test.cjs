@@ -119,6 +119,26 @@ test('generate: failed images are explained (hover) and counted, the rest still 
   await ctx.close();
 });
 
+test('Scattered: the batch is made with the places the strip drew (the same seed), and the next batch gets new ones', { skip }, async () => {
+  const ctx = await fresh({ delays: { invent: 100, generate: 100 } });
+  await setCount(4);
+  await page.click('#placeBtn');
+  await page.click('#placeMenu [data-list="position"][data-v="scattered"]');
+  await page.waitForFunction(() => document.querySelectorAll('#placeMenu .mm-cell[title]').length === 4);
+  const seedOf = c => new URLSearchParams(c.query).get('seed');
+  const shown = seedOf(api.state.calls.filter(c => c.path === '/api/placements').pop());
+  await page.mouse.click(10, 600);
+  await page.click('#generateBtn');
+  await page.waitForFunction(() => /Done/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  const inv = api.state.calls.find(c => c.path === '/api/invent-prompts').body;
+  assert.deepEqual([inv.target, inv.seed], ['scattered', shown], 'the seed the strip drew goes with the batch');
+  await page.click('#placeBtn');
+  await page.waitForFunction(() => document.querySelectorAll('#placeMenu .mm-cell[title]').length === 4);
+  assert.notEqual(seedOf(api.state.calls.filter(c => c.path === '/api/placements').pop()), shown, 'the next batch: new places');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('a server restart during a batch does not reload the page underneath it', { skip }, async () => {
   const ctx = await fresh({ delays: { invent: 100, generate: 5000 } });                // long enough for two version checks while it runs
   await setCount(2);
