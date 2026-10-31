@@ -2136,7 +2136,7 @@ test('a project opens with its own Mark menu: a new one, or one saved before ang
     const h = load({ routes: r, storage: { studioProject: 'demo', 'studioFilm:demo': turned, ...(saved ? { [`studioFilm:${slug}`]: saved } : {}) } });
     await settle(); await settle();
     assert.deepEqual(['targetSelect', 'rotSelect', 'sizeSelect'].map(id => h.$(id).value), ['exact', '0', '1'], `${slug}: not Demo's four angles`);
-    assert.equal(h.$('placeName').textContent, 'On target · 4 images', 'and how many, in the header');
+    assert.match(h.$('placeBtn').title, / · 4 images · On target$/, 'how many first, then where');
     assert.equal(JSON.parse(h.store[`studioFilm:${slug}`]).rotSelect, '0', 'and kept as its own');
   }
 });

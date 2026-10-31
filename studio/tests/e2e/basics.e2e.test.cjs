@@ -1,5 +1,6 @@
 const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, film, curate, choose, skip, api, page, consoleErrors, addAi, tempo, mult, change, noChange } = require('./harness.cjs');
 register();
+const summary = async () => (await page.locator('#placeName').textContent()).replace(/\u00a0/g, ' ');   // the Mark button: how many first, then where
 
 test('page loads without errors: Curate first, generation in one tidy row, no status bar while idle', { skip }, async () => {
   const ctx = await fresh();
@@ -1407,8 +1408,8 @@ async function setCount(n) {                                                   /
 test('several marks: added in Project settings, then the generation row offers which one a batch uses; a single-mark project shows nothing new', { skip }, async () => {
   const ctx = await fresh({ setup: st => { st.projects[0].fixed = false; st.plates[1].mark = 'n1'; st.plates[1].mark_name = 'Bar'; st.plates[2].placement = { kind: 'exact', x: 50, y: 50, size: 18, rot: 90 }; st.plates[2].box = { x: 50, y: 50, size: 18, ar: 1, rot: 90 }; st.plates[1].box = { x: 50, y: 50, size: 12, ar: 1 }; st.plates[0].qa_passed = false; st.plates[0].qa_issues = ['off']; st.plates[1].qa_doubt = 'faint'; } });
   const btnBox = async () => { const b = await page.locator('#placeBtn').boundingBox(); return [Math.round(b.width), Math.round(b.height)]; };
-  assert.deepEqual(await btnBox(), [345, 46], 'a fixed 345 × 46 (it took the count field\'s place)');
-  assert.equal(await text('#placeName'), 'On target · 4 images', 'one mark: the summary and how many');
+  assert.deepEqual(await btnBox(), [345, 44], 'a fixed 345 wide (it took the count field\'s place), the bar\'s inside high: hovered, the bar\'s borders stay');
+  assert.equal(await summary(), '4 images · On target', 'one mark: the summary and how many');
   assert.equal(await page.locator('#placeStack').isVisible(), false, 'no thumbnails');
   // cards: a plain image shows no cluster; QA sits on the image
   const card = i => page.locator(`.card[data-filename="${api.state.plates[i].filename}"]`);
@@ -1419,10 +1420,10 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.match(await card(2).locator('.card-made .cm-frame img').getAttribute('style'), /rotate\(90deg\)/, 'the mark turned in its frame');
   assert.match(await card(2).locator('.card-thumb').getAttribute('style'), /--mark-rot:90deg/, 'and its target box turns with it');
   await page.click('#placeBtn');
-  const heads = () => page.locator('#placeMenu .mm-label > span:first-child').allTextContents();
+  const heads = () => page.locator('#placeMenu .mm-grid:not(.mm-countrow) > .mm-label > span:first-child').allTextContents();   // the choices (the count's row apart)
   assert.deepEqual(await heads(), ['Position'], 'no Mark row with one mark; Angle and Size wait under More');
   assert.match(await text('#placeMenu .mm-morebtn'), /More: angle and size\s*Upright · its own size/);
-  assert.match(await text('#placeMenu .mm-sharet'), /all the same/);
+  assert.match(await text('#placeMenu .mm-sharet'), /^All the same/);
   await page.click('#placeMenu .mm-morebtn');
   assert.deepEqual(await heads(), ['Position', 'Angle', 'Size']);
   assert.equal(await page.locator('#placeMenu [data-list="angle"]').count(), 8, 'eight angles in one strip');
@@ -1455,12 +1456,12 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.equal(await page.locator('#placeMenu [data-list="angle"][aria-pressed="true"]').getAttribute('data-v'), '0', 'upright by default');
   assert.equal(await page.locator('#placeMenu [data-list="size"][aria-pressed="true"]').getAttribute('data-v'), '1', 'its own size by default');
   await page.click('#placeMenu [data-list="size"][data-v="1.25"]');
-  assert.equal(await text('#placeName'), 'On target · 2 sizes · 4 images');
+  assert.equal(await summary(), '4 images · On target · 2 sizes');
   assert.equal(await page.locator('#placeMenu .mm-morebtn').getAttribute('aria-disabled'), 'true', 'More stays open while a size is set');
   assert.match(await page.locator('#placeMenu .mm-morebtn').getAttribute('class'), /set/, 'its summary turns orange');
   assert.match(await text('#placeMenu .mm-turns'), /2 take turns/);
   await page.click('#placeMenu [data-list="position"][data-v="loose"]');
-  assert.equal(await text('#placeName'), 'Loose · 4 images', 'Loose picks its own sizes');
+  assert.equal(await summary(), '4 images · Loose', 'Loose picks its own sizes');
   assert.equal(await page.locator('#placeMenu [data-list="size"][data-v="1.25"]').getAttribute('aria-disabled'), 'true');
   assert.match(await text('#placeMenu .mm-moreb'), /Loose picks its own sizes\./);
   // the strip draws the places the server picked for this batch (the same seed goes with Generate)
@@ -1476,13 +1477,13 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.deepEqual(await heads(), ['Position'], 'closed again');
   await page.click('#placeMenu [data-list="position"][data-v="path"]');
   assert.equal(await page.locator('#placeMenu .mm-path svg[role="img"]').count(), 1, 'a Path: a frame drawing it');
-  assert.equal(await text('#placeName'), 'Path → 40% · 12 steps', 'a Path: its steps, not the count');
+  assert.equal(await summary(), '12 steps · Path → 40%', 'a Path: its steps, not the count');
   await page.click('#placeMenu [data-list="pshape-open"]');
   assert.match(await text('#placeMenu .mm-ddlist'), /Line\s*More shapes to come/);
   await page.click('#placeMenu [data-list="pshape"][data-v="line"]');
   await page.click('#placeMenu [data-list="pdir"][data-v="90"]');
   await page.click('#placeMenu [data-list="plen"][data-v="70"]');
-  assert.equal(await text('#placeName'), 'Path ↓ 70% · 12 steps');
+  assert.equal(await summary(), '12 steps · Path ↓ 70%');
   assert.equal(await page.locator('#pathSelect').inputValue(), 'line:90:70:12:through', 'shape, direction, reach, steps and where the target is');
   assert.doesNotMatch(await text('#placeMenu'), /Short|Medium|Long/, 'Reach in %, no words');
   await shot('27c-path');
@@ -1507,7 +1508,7 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.match(upd.marks[0].image, /^data:image\/png;base64,/, 'a new mark brings its image');
   await page.waitForSelector('#loader', { state: 'detached' });
   await page.waitForFunction(() => document.querySelector('#placeBtn').title.startsWith('Main mark · '), null, { timeout: 5000 });   // two marks: read back
-  assert.equal(await text('#placeName'), 'On target · 4 images', 'one of two ticked: still the summary only');
+  assert.equal(await summary(), '4 images · On target', 'one of two ticked: still the summary only');
   assert.equal(await card(1).locator('.card-made').count(), 1, 'several marks: each card shows which in its frame');
   await page.click('#placeBtn');
   assert.deepEqual(await heads(), ['Mark', 'Position']);
@@ -1518,13 +1519,14 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.equal(await page.locator('#placeMenu [data-list="mark"][data-v="main"]').getAttribute('aria-pressed'), 'true', 'the last tick stays: one mark at least');
   await page.click('#placeMenu [data-list="mark"][data-v="n1"]');
   assert.deepEqual([await page.locator('#placeStack').isVisible(), await page.locator('#placeLabel').count()], [true, 0], 'two ticked: their thumbnails and count, no label above (the summary stays on the row\'s line)');
-  assert.match(await text('#placeMenu .mm-sharet'), /^4\s*images\s*· 2 marks, 2 each$/);
+  assert.equal(await text('#placeMenu .mm-sharet'), '2 marks, 2 each');
+  assert.match(await text('#placeMenu .mm-countrow'), /^Images\s*−\s*4\s*\+\s*1 to 40$/i, 'the count: its own row, IMAGES, − 4 +');
   assert.equal(await page.locator('#placeMenu .mm-cell').count(), 4, 'one cell per image');
   await shot('27-mark-menu');
-  assert.match(await page.locator('#placeBtn').getAttribute('title'), /^2 marks: Main mark, Bar · On target · 4 images$/);
+  assert.match(await page.locator('#placeBtn').getAttribute('title'), /^2 marks: Main mark, Bar · 4 images · On target$/);
   await page.click('#placeMenu .mm-morebtn');
   await page.click('#placeMenu [data-list="angle"][data-v="90"]');
-  assert.equal(await text('#placeName'), 'On target · 2 angles · 4 images');
+  assert.equal(await summary(), '4 images · On target · 2 angles');
   const cells = await page.locator('#placeMenu .mm-cell img').evaluateAll(els => els.map(e => (e.getAttribute('src') !== els[0].getAttribute('src')) + '/' + (/rotate\(90deg\)/.test(e.getAttribute('style')))));
   assert.deepEqual(cells, ['false/false', 'true/false', 'false/true', 'true/true'], 'the strip: mark i % m, angle ⌊i/m⌋ % a, as the server makes it');
   await shot('27b-mark-menu-more');
@@ -1532,7 +1534,7 @@ test('several marks: added in Project settings, then the generation row offers w
   await page.click('#placeBtn');
   assert.match(await text('#placeMenu .mm-sit'), /Bar sits out this batch/, 'fewer images than marks: who sits out');
   await page.click('#placeMenu [data-list="angle"][data-v="0"]');
-  assert.deepEqual(await btnBox(), [345, 46], 'the button never resizes');
+  assert.deepEqual(await btnBox(), [345, 44], 'the button never resizes');
   await page.mouse.click(10, 600);
   await setCount(4);
   await page.click('#generateBtn');
@@ -1745,7 +1747,7 @@ test('the logo target: each image with its own placement (Loose) has its box the
   assert.equal(await page.locator(`.card[data-filename="${api.state.plates[1].filename}"] .card-made .cm-vals`).textContent(), 'Loose', 'labelled, so nobody wonders');
   assert.equal(await page.locator(`.card[data-filename="${api.state.plates[0].filename}"] .card-made`).count(), 0, 'on target: no cluster');
   await shot('23-loose-target');
-  assert.equal(await text('#placeName'), 'On target · 4 images');
+  assert.equal(await summary(), '4 images · On target');
   await ctx.close();
 });
 

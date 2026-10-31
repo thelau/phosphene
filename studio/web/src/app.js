@@ -336,7 +336,7 @@
     const PATH_LENS = [[20, 'Short'], [40, 'Medium'], [70, 'Long']];
     const PATH_STEPS = [8, 12, 16, 24, 32];
     // where the mark's own target sits on the path (the user's ask): its middle, its last step (the motion lands home) or its first
-    const PATH_ANCHORS = [['through', 'Through', 'The path runs through the target, centred on it'], ['lands', 'Lands', 'The last step is on the target: the mark arrives home'], ['leaves', 'Leaves', 'The first step is on the target: the mark sets off from home']];                                  // a path's own number of images, one per step (Claude Design's PathSteps)
+    const PATH_ANCHORS = [['leaves', 'Leaves', 'Starts on the target'], ['through', 'Through', 'Passes through it'], ['lands', 'Lands', 'Ends on it']];   // in the order a film plays                                  // a path's own number of images, one per step (Claude Design's PathSteps)
     function pathSet() {
       const [shape, dir, len, steps, anchor] = String(document.getElementById('pathSelect').value || '').split(':');
       return { shape: PATH_SHAPES.some(s => s[0] === shape) ? shape : 'line', dir: PATH_DIRS.some(d => d[0] === +dir) ? +dir : 0, len: PATH_LENS.some(l => l[0] === +len) ? +len : 40,
@@ -399,7 +399,13 @@
       const path = st.t === 'path';                                          // along a path the ticks are motion: the angles spin, the sizes pulse (Claude Design's PathSteps)
       const ang = st.rots.length > 1 ? (path ? 'spin' : `${st.rots.length} angles`) : st.rots[0] ? rotLabel(st.rots[0]) : '';
       const siz = st.sizeOff ? '' : st.zs.length > 1 ? (path ? 'pulse' : `${st.zs.length} sizes`) : st.zs[0] !== 1 ? sizeLabel(st.zs[0]) : '';
-      return [pos, ang, siz, path ? `${st.n} steps` : `${st.n} image${st.n === 1 ? '' : 's'}`].filter(Boolean).join(' · ');   // and how many (the count lives in the menu)
+      const count = path ? `${st.n} steps` : `${st.n} image${st.n === 1 ? '' : 's'}`;   // how many first (the count lives in the menu; Claude Design's review)
+      return { count, rest: [pos, ang, siz].filter(Boolean).join(' · '), text: [count, pos, ang, siz].filter(Boolean).join(' · ') };
+    }
+    function showSummary(st) {
+      const sm = placeSummary(st);
+      document.getElementById('placeName').innerHTML = `<b>${escapeHtml(sm.count)}</b><span class="pb-rest">\u00a0· ${escapeHtml(sm.rest)}</span>`;   // the end cuts, never the count
+      return sm.text;
     }
     // Loose and Scattered: the places and sizes a batch will use, picked by the server from a seed before Generate (`/api/placements`):
     // the strip draws them and Generate sends the same seed, so the strip is the batch; a new seed once a batch is written
@@ -420,8 +426,7 @@
     }
     function renderPlace() {
       const st = placeState(), m = st.on.length, multi = st.choices.length > 0 && m > 1;
-      const summary = placeSummary(st);
-      document.getElementById('placeName').textContent = summary;
+      const summary = showSummary(st);
       document.getElementById('placeBtn').title = `${multi ? `${m} marks: ${st.on.map(c => c[1]).join(', ')}` : st.on[0][1]} · ${summary}`;
       const stack = document.getElementById('placeStack');
       stack.hidden = !multi;                                                  // one mark ticked (or one in the project): the summary only
@@ -444,10 +449,10 @@
     // a new count: the header and the share box follow, the rest of the menu stays (rebuilding it would cut a drag on the count short)
     function placeLive() {
       const st = placeState(), menu = document.getElementById('placeMenu');
-      document.getElementById('placeName').textContent = placeSummary(st);
+      showSummary(st);
       if (menu.hidden || !menu.querySelector) return;
       const sh = shareParts(st), rest = menu.querySelector('.mm-sharer'), strip = menu.querySelector('.mm-strip'), sit = menu.querySelector('.mm-sitw');
-      if (rest) rest.innerHTML = ` · ${sh.text}`;
+      if (rest) rest.innerHTML = sh.text;
       if (strip) { strip.innerHTML = sh.cells; strip.querySelectorAll('img.pm-thumb').forEach(fitMarkTone); }
       if (sit) sit.innerHTML = sh.sit;
     }
@@ -460,7 +465,7 @@
       const each = k => (n % k === 0 ? String(n / k) : `${Math.floor(n / k)}–${Math.ceil(n / k)}`);
       const parts = [];
       if (st.t === 'path') {                                                 // along a path the ticks are motion (Claude Design's PathSteps)
-        parts.push('one per step');
+        parts.push(`The mark travels ${{ 0: 'across', 90: 'down', 45: 'down to the right', '-45': 'up to the right' }[st.ps.dir] || 'across'}${{ through: ' through its target', lands: ' and lands on its target', leaves: ' from its target' }[st.ps.anchor] || ''}`);
         if (m > 1) parts.push(`${m} marks take turns`);
         if (a > 1) parts.push(`${a} angles spin in order`);
         if (z > 1) parts.push(`${z} sizes take turns`);
@@ -470,7 +475,8 @@
         if (!st.sizeOff && z > 1) parts.push(n >= z ? `${z} sizes, ${each(z)} each` : `${n} of ${z} sizes`);
       }
       if (st.sizeOff) parts.push(st.t === 'loose' ? 'each a little off target, as drawn' : 'each anywhere in the frame, as drawn');
-      if (!parts.length) parts.push('all the same: same mark, place, angle and size');
+      if (!parts.length) parts.push('All the same: same mark, place, angle and size');
+      parts[0] = parts[0][0].toUpperCase() + parts[0].slice(1);              // the sentence under the count row starts it
       const big = n > 20, cw = big ? 12 : 18, ch = big ? 21 : 32, es = st.effSizes, L = st.t === 'path' ? pathLine(st.ps) : null;
       let cells = '';
       const places = previewPlaces(st);
@@ -514,10 +520,11 @@
         html += `<div class="mm-path"><svg width="70" height="124" viewBox="0 0 70 124" role="img" aria-label="Where the path runs in the frame"><rect x="1" y="1" width="68" height="122" rx="5" fill="#2A2825" stroke="#4A4740"></rect><rect x="${f(tx)}" y="${f(ty)}" width="14" height="14" fill="none" stroke="#EC540C" stroke-dasharray="2 2"></rect><line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="#FEFFE7" stroke-width="1.2" stroke-dasharray="1 3" stroke-linecap="round"></line>${pd}<circle cx="${f(x2)}" cy="${f(y2)}" r="3.4" fill="#EC540C"></circle></svg>
           <div class="mm-col"><div class="mm-prow"><span>Shape</span><span class="mm-dd"><button type="button" class="mm-ddbtn" data-list="pshape-open" data-v="1" aria-haspopup="listbox" aria-expanded="${pathShapeOpen}"><svg width="16" height="10" viewBox="0 0 16 10" aria-hidden="true"><line x1="1" y1="9" x2="15" y2="1" stroke="#FEFFE7" stroke-width="1.6" stroke-linecap="round"></line></svg>${(PATH_SHAPES.find(p => p[0] === st.ps.shape) || PATH_SHAPES[0])[1]}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#A8A390" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>${pathShapeOpen ? `<span class="mm-ddlist" role="listbox">${shapes}<span class="mm-ddnote">More shapes to come</span></span>` : ''}</span></div>
           <div class="mm-prow"><span>Direction</span><span class="mm-btns" role="radiogroup" aria-label="Direction">${PATH_DIRS.map(([v, arrow, tip]) => `<button type="button" class="mm-dir" role="radio" data-list="pdir" data-v="${v}" aria-checked="${st.ps.dir === v}" aria-label="${tip}" title="${tip}">${arrow}</button>`).join('')}</span></div>
-          <div class="mm-prow"><span>Reach</span><span class="mm-btns" role="radiogroup" aria-label="Reach">${PATH_LENS.map(([v]) => `<button type="button" class="mm-reach" role="radio" data-list="plen" data-v="${v}" aria-checked="${st.ps.len === v}" title="${v}% of the frame"><span class="mm-bar"><i style="left:${(100 - v) / 2}%;width:${v}%"></i></span><span>${v}%</span></button>`).join('')}</span></div>
           <div class="mm-prow"><span>Target</span><span class="mm-steps" role="radiogroup" aria-label="Where the target is on the path">${PATH_ANCHORS.map(([v, nm, tip]) => `<button type="button" class="mm-step mm-anchor" role="radio" data-list="panchor" data-v="${v}" aria-checked="${st.ps.anchor === v}" title="${tip}">${nm}</button>`).join('')}</span></div>
+          <div class="mm-prow"><span>Reach</span><span class="mm-btns" role="radiogroup" aria-label="Reach">${PATH_LENS.map(([v]) => { const real = Math.round(pathLine({ ...st.ps, len: v }).ln);   // what it really covers here: shortened to fit, it says so
+            return `<button type="button" class="mm-reach" role="radio" data-list="plen" data-v="${v}" aria-checked="${st.ps.len === v}" title="${real}% of the frame${real < v ? ` (${v}% would leave it)` : ''}"><span class="mm-bar"><i style="left:${(100 - real) / 2}%;width:${real}%"></i></span><span>${real}%</span></button>`; }).join('')}</span></div>
           <div class="mm-prow"><span class="mm-strong">Steps</span><span class="mm-steps" role="radiogroup" aria-label="Steps">${PATH_STEPS.map(v => `<button type="button" class="mm-step" role="radio" data-list="psteps" data-v="${v}" aria-checked="${st.ps.steps === v}" title="${v} images, one a step">${v}</button>`).join('')}</span></div>
-          <span class="mm-help">Reach is how much of the frame the path covers (70% as far as the frame allows). Steps is one image each: more steps, smoother motion.</span></div></div>`;
+          <span class="mm-help">Reach is how much of the frame the path covers. Steps is one image each: more steps, smoother motion.</span></div></div>`;
       }
       html += '</div></div>';
       // More: angle and size, folded until used (open by itself while either is set)
@@ -539,7 +546,11 @@
       html += '</div>';
       const sh = shareParts(st);
       // the share box: how many (the count lives here, the user's call: not another control in the row; a Path's steps are set in its panel)
-      html += `<div class="mm-share"><span class="mm-sharet">${st.t === 'path' ? `<b>${n} steps</b>` : '<span class="mm-countslot"></span>'}<span class="mm-sharer"> · ${sh.text}</span></span><div class="mm-strip" role="img" aria-label="How the images take turns">${sh.cells}</div><span class="mm-sitw">${sh.sit}</span></div>`;
+      const countRow = st.t === 'path'
+        ? `<span class="mm-steps-n">${n} steps</span><span class="mm-help">one per step · set by Steps above</span>`
+        : '<span class="mm-stepper"><button type="button" class="mm-pm" data-count="-1" aria-label="One fewer">−</button><span class="mm-countslot"></span><button type="button" class="mm-pm" data-count="1" aria-label="One more">+</button></span><span class="mm-help">1 to 40</span>';
+      html += `<div class="mm-share"><div class="mm-grid mm-countrow"><div class="mm-label"><span>Images</span></div><div class="mm-countc">${countRow}</div></div>
+        <div class="mm-sharec"><span class="mm-sharet mm-sharer">${sh.text}</span><div class="mm-strip" role="img" aria-label="How the images take turns">${sh.cells}</div><span class="mm-sitw">${sh.sit}</span></div></div>`;
       return html;
     }
     function togglePlaceMenu(e, open) {
@@ -589,7 +600,7 @@
       const m = document.getElementById('placeMenu');
       if (!m || !m.addEventListener) return;
       m.addEventListener('mousedown', e => e.preventDefault());
-      m.addEventListener('click', e => { e.stopPropagation(); const it = e.target.closest('[data-list]'); if (it) choosePlace(it.dataset.list, it.dataset.v); });
+      m.addEventListener('click', e => { e.stopPropagation(); const pm = e.target.closest('[data-count]'); if (pm) { vfStep('countField', +pm.dataset.count); VFIELDS.countField.commit(); return; } const it = e.target.closest('[data-list]'); if (it) choosePlace(it.dataset.list, it.dataset.v); });
       document.addEventListener('click', () => { if (!m.hidden) togglePlaceMenu(null, false); });
     })();
     async function openProjectMenu(e) {
@@ -1325,7 +1336,7 @@
       const kept = cells.filter(c => c === 'ok').length;
       return { r, cells, kept, missing: r.n - kept, gaps: cells.map((c, i) => (c === 'ok' ? -1 : i)).filter(i => i >= 0) };
     }
-    const runStrip = (v, w) => `<span class="run-strip">${v.cells.map((c, i) => `<i class="${c}" style="width:${w}px" title="Step ${i + 1}: ${{ ok: 'here', mark: 'in the Trash (mark check)', hand: 'in the Trash', none: 'never made', making: 'being made' }[c]}"></i>`).join('')}</span>`;
+    const runStrip = (v, w) => `<span class="run-strip${w ? '' : ' fill'}">${v.cells.map((c, i) => `<i class="${c}"${w ? ` style="width:${w}px"` : ''} title="Step ${i + 1}: ${{ ok: 'here', mark: 'in the Trash (mark check)', hand: 'in the Trash', none: 'never made', making: 'being made' }[c]}"></i>`).join('')}</span>`;
     function showRun(id) {                                                    // Made with on that run
       setGroup(filterKey({ pos: ['path'], run: [id] }));
       openMadeWith();
@@ -1380,7 +1391,7 @@
       const runsHtml = () => {                                                // Path ticked: its runs, newest first, each with its gaps and Make N
         const list = madeRunsAll ? views : views.slice(0, 4), on = rule.run || [];
         return `<div class="mw-runs">${list.map(v => `<div class="mw-run${on.includes(v.r.run) ? ' on' : ''}" data-run="${escapeHtml(v.r.run)}" role="button" tabindex="0" title="Show only this run">
-          <span class="mw-when">${escapeHtml(runWhen(v.r.at))}</span>${runStrip(v, v.r.n > 12 ? Math.max(3, Math.floor(200 / v.r.n) - 2) : 14)}<span class="mw-of">${v.kept} of ${v.r.n}</span>
+          <span class="mw-when">${escapeHtml(runWhen(v.r.at))}</span>${runStrip(v, 0)}<span class="mw-of${!v.missing ? ' full' : on.includes(v.r.run) ? ' short' : ''}">${v.kept} of ${v.r.n}</span><span class="mw-fill"></span>
           ${v.missing && !(makingRun && makingRun.run === v.r.run) ? `<button type="button" class="mw-make" data-make="${escapeHtml(v.r.run)}"${generating ? ' disabled title="Wait until the batch ends"' : ''}>Make ${v.missing}</button>` : ''}</div>`).join('')}
           ${views.length > 4 ? `<button type="button" class="mw-more-runs" data-runs-all="1">${madeRunsAll ? 'Fewer runs' : `+ ${views.length - 4} more run${views.length - 4 > 1 ? 's' : ''}`}</button>` : ''}</div>`;
       };
@@ -1684,7 +1695,7 @@
       if (short.length) {
         const v = short[0], at = v.gaps.map(i => i + 1), list = at.length > 4 ? `${at.length} steps` : at.length > 1 ? `steps ${at.slice(0, -1).join(', ')} and ${at[at.length - 1]}` : `step ${at[0]}`;
         gap.innerHTML = `<span><b>${escapeHtml(runName(v.r))}</b> has ${v.kept} of ${v.r.n} steps: the mark will jump at ${list}.${short.length > 1 ? ` ${short.length - 1} more run${short.length > 2 ? 's have' : ' has'} gaps too.` : ''}</span>
-          ${runStrip(v, v.r.n > 16 ? Math.max(3, Math.floor(300 / v.r.n) - 2) : 14)}<button type="button" class="link-btn" onclick="event.stopPropagation(); document.getElementById('aiPanel').hidden = true; showRun(this.dataset.run)" data-run="${escapeHtml(v.r.run)}">Show run in Made with</button>`;
+          ${runStrip(v, v.r.n > 16 ? Math.max(3, Math.floor(300 / v.r.n) - 2) : 14)}<button type="button" class="link-btn" onclick="event.stopPropagation(); document.getElementById('aiPanel').hidden = true; showRun(this.dataset.run)" data-run="${escapeHtml(v.r.run)}" title="Made with, on this run">Show run</button>`;
       }
     }
     function toggleAiPanel(e) {
@@ -4069,7 +4080,7 @@
     function namedWorlds() { return [...document.getElementById('worldSelect').options].filter(o => o.value && !o.value.startsWith('__')); }
     function showCount() {
       const n = VFIELDS.countField.get(), el = document.getElementById('countField');
-      document.getElementById('countVal').innerHTML = `${n}<span class="vf-unit">image${n === 1 ? '' : 's'}</span>`;
+      document.getElementById('countVal').textContent = String(n);
       el.setAttribute('aria-valuenow', String(n)); el.setAttribute('aria-valuetext', `${n} image${n === 1 ? '' : 's'}`);
       placeLive();
     }
@@ -4262,7 +4273,7 @@
       const count = prog.stage === 'invent' ? '' : `<b>${done}/${prog.total}</b>`;
       el.innerHTML = `<div class="prog">
         <span class="prog-world">${escapeHtml(prog.world || 'New batch')}</span>${bar}${count}
-        <span class="prog-note"${prog.summary && prog.detail ? ` title="${escapeHtml(prog.detail)}"` : ''}>${escapeHtml(prog.summary || prog.note)}</span>${prog.summary && prog.run ? `<span class="prog-run">${escapeHtml(prog.run.text)}</span>` : ''}
+        <span class="prog-note"${prog.summary && prog.detail ? ` title="${escapeHtml(prog.detail)}"` : ''}>${escapeHtml(prog.summary || prog.note)}</span>${prog.summary && prog.run ? `<button type="button" class="prog-run" onclick="event.stopPropagation(); showRun(this.dataset.run)" data-run="${escapeHtml(prog.run.id)}" title="Show the run in Made with">${escapeHtml(prog.run.text)}</button>` : ''}
         ${(prog.actions || []).map((x, i) => `<button type="button" class="small-btn prog-act" data-act="${i}">${escapeHtml(x.label)}</button>`).join('')}
         ${prog.timer ? `<span class="prog-time">${fmtElapsed(Date.now() - prog.t0)}${running ? ` · ${running} ${prog.world === 'AI order' ? 'working' : 'rendering'}` : ''}</span>` : ''}
       </div>`;
@@ -4510,10 +4521,11 @@
       if (notMade) parts.push(`${notMade} not made`);
       prog.detail = prog.titles.map((t, i) => (prog.why[i] ? `${t}: ${prog.why[i]}` : '')).filter(Boolean).join('\n');
       const pa = ideas.map(i => i.placement && i.placement.path).find(Boolean), pr = pa && pathRuns.find(r => r.run === pa.run), pv = pr && runView(pr);
-      prog.run = pv && pv.missing ? { id: pr.run, text: `Path ${PATH_GLYPH[pr.dir] || '→'} ${pr.len}%: ${pv.kept} of ${pr.n} steps` } : null;   // a path left with gaps: said once, here
+      const again = [...failedItems, ...left.values()], retrySteps = new Set(again.map(i => i.placement && i.placement.path && i.placement.path.i));
+      const lost = pv ? pv.gaps.filter(i => !retrySteps.has(i)) : [];        // gaps Retry can't fill: the mark check's, a dropped scene's (Claude Design's review)
+      prog.run = lost.length ? { id: pr.run, text: `Path ${PATH_GLYPH[pr.dir] || '→'} ${pr.len}%: ${pv.kept} of ${pr.n} steps` } : null;
       progStop(`${batchStop && notMade ? 'Stopped' : 'Done'} · ${parts.join(' · ')}`);
-      const again = [...failedItems, ...left.values()], show = prog.run ? [{ label: 'Show run', run: () => showRun(pa.run) }] : [];
-      batchActions([...show, ...(again.length ? [
+      batchActions([...(again.length ? [
         { label: `Retry ${again.length}`, run: () => retryBatch(again, model) },
         { label: 'Discard', run: () => { savePending([], model); batchActions([]); } },
       ] : [])]);

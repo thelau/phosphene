@@ -208,10 +208,10 @@ function start(state = makeState()) {
         await sleep(state.delays.generate);
         state.genAttempts = (state.genAttempts || 0) + 1;
         if (state.failGen && state.failGen(state.genAttempts, body)) return send({ ok: false, error: `Krea 429: too many requests (${body.title})` }, 500);
-        const name = `g${++state.genCount}`;
+        const name = `g${++state.genCount}`, qaOut = !!(state.qaFail && state.qaFail(state.genAttempts, body));   // qaFail: the mark check trashes it
         for (const q of state.sequences) q.order.push(name);
-        state.plates.push({ filename: name, url: `/assets/ai-plates/${name}.svg`, title: body.title, prompt: body.prompt, model: body.model, trashed: false, qa_passed: true, qa_score: 90, qa_issues: [], world: body.world, placement: body.placement || null, box: body.placement ? { x: body.placement.x, y: body.placement.y, size: body.placement.size, ar: 1, rot: body.placement.rot || 0 } : null });
-        return send({ ok: true, qa_passed: true, trashed: false, filename: name, title: body.title });
+        state.plates.push({ filename: name, url: `/assets/ai-plates/${name}.svg`, title: body.title, prompt: body.prompt, model: body.model, trashed: qaOut, trash_reason: qaOut ? 'Mark check' : null, qa_passed: true, qa_score: 90, qa_issues: [], world: body.world, placement: body.placement || null, box: body.placement ? { x: body.placement.x, y: body.placement.y, size: body.placement.size, ar: 1, rot: body.placement.rot || 0 } : null });
+        return send({ ok: true, qa_passed: !qaOut, trashed: qaOut, qa_issues: qaOut ? ['The mark is not at its place and size'] : [], filename: name, title: body.title });
       }
       case '/api/edits': {                     // the same rules as studio/edits.py
         const es = state.edits || (state.edits = []);

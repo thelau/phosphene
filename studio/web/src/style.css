@@ -104,14 +104,26 @@
     .row > .csel { width: 100%; }
     .vfield[aria-disabled="true"] { opacity: .5; pointer-events: none; }
     /* the count, in the Mark menu's share box (the user's call: one place for how many; a Path's steps are set in its panel) */
-    .vfield.mm-count { height: 24px; gap: 6px; padding: 0 6px 0 8px; margin-right: 2px; vertical-align: middle; }
-    .vfield.mm-count .vf-val { font-family: inherit; font-size: 13px; font-weight: 700; color: var(--text); }
-    .vfield.mm-count .vf-unit { margin-left: 4px; font-weight: 600; }
+    /* the count's row in the Mark menu's share box: IMAGES, then − n + (the value still drags and types), then "1 to 40" */
+    .mm-countrow { align-items: center; }
+    .mm-countrow .mm-label { padding-top: 0; }
+    .mm-countc { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .mm-stepper { height: 32px; box-sizing: border-box; display: inline-flex; align-items: stretch; border-radius: 8px; border: 1px solid #3A3732; overflow: hidden; }
+    .mm-pm { width: 30px; padding: 0; border: 0; border-radius: 0; background: transparent; color: #C9C4B0; font-size: 15px; }
+    .mm-pm:first-child { border-right: 1px solid #2E2C28; }
+    .mm-pm:last-child { border-left: 1px solid #2E2C28; }
+    .mm-pm:hover { background: #1E1D1B; color: var(--text); }
+    .vfield.mm-count { width: 44px; height: 100%; justify-content: center; padding: 0; gap: 0; border: 0; border-radius: 0; background: transparent; }
+    .vfield.mm-count:hover { background: #1E1D1B; }
+    .vfield.mm-count > svg { display: none; }
+    .vfield.mm-count .vf-val { min-width: 0; text-align: center; font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--text); }
+    .mm-steps-n { font-family: var(--mono); font-size: 14px; font-weight: 600; }
+    .mm-sharec { display: flex; flex-direction: column; gap: 8px; padding-left: 96px; }   /* under the control column */
     #countHome[hidden] { display: none; }
     /* the Mark menu: which mark (with several), where it goes, and Keep it as designed: one button, sections inside */
     /* the Mark button and menu (Claude Design's 31 Oct pass: MM-States, MarkMenu) */
     .place { position: relative; display: flex; }
-    .place-btn { flex: none; width: 345px; height: 46px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 0; border-radius: 0; background: transparent; color: var(--text); text-align: left; transition: none; }
+    .place-btn { flex: none; width: 345px; height: auto; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 0; border-radius: 0; background: transparent; color: var(--text); text-align: left; transition: none; }
     .place-btn[aria-expanded="true"], .place-btn:hover:not(:disabled) { background: #2A2825; }
     .pb-stack { position: relative; flex: none; height: 26px; }
     .pb-stack[hidden] { display: none; }
@@ -120,7 +132,9 @@
     .pb-n { position: absolute; right: -6px; bottom: -4px; min-width: 14px; height: 14px; box-sizing: border-box; padding: 0 3px; border-radius: 7px; background: var(--text); color: #1A1A1A; font-family: var(--mono); font-size: 9px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
     .pb-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
     .pb-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
-    .pb-sum { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pb-sum { display: flex; min-width: 0; font-size: 14px; white-space: nowrap; }
+    .pb-sum b { flex: none; font-weight: 700; }   /* how many, first: never cut */
+    .pb-rest { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; color: #C9C4B0; }
     .pb-caret { flex: none; color: var(--muted); }
     .pm-thumb { width: 22px; height: 22px; flex: none; object-fit: contain; }   /* a mark as the top bar shows it: a dark one as a light silhouette (fitMarkTone) */
     .place-menu { position: absolute; top: 52px; right: 0; z-index: 30; width: 560px; max-width: calc(100vw - 48px); max-height: calc(100vh - 150px); overflow-y: auto; box-sizing: border-box; border-radius: var(--r-menu); background: var(--raised); border: 1px solid var(--line-3); box-shadow: var(--menu-shadow); display: flex; flex-direction: column; color: var(--text); }
@@ -583,7 +597,7 @@
     .tm-sep { height: 1px; background: var(--line-2); margin: 6px 4px; }
     @media (max-width: 1400px) { .refine { min-width: 250px; } .gen-row { padding: 12px 20px; } }
     @media (max-width: 1240px) { .refine { min-width: 220px; } .gen-row { padding: 10px 16px; } }
-    #generateBtn { height: 36px; padding: 0 22px; border-radius: 8px; }
+    #generateBtn { height: auto; margin: 0; padding: 0 22px; border-radius: 0 10px 10px 0; }   /* it fills its end of the bar, square against the divider, round with the bar (the user's call) */
     .gallery-col { flex: 1; min-height: 0; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
     .gallery-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 24px 12px; flex-shrink: 0; }
     .seg { display: inline-flex; padding: 2px; background: var(--field); border: 1px solid var(--line-2); border-radius: 8px; }
@@ -907,7 +921,7 @@
     .prog-world { color: var(--text); font-weight: 600; white-space: nowrap; }
     .prog b { color: var(--text); font-variant-numeric: tabular-nums; }
     .prog-note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .prog-run { flex: none; color: var(--amber); white-space: nowrap; }   /* a path run left with gaps, after its batch */
+    .prog-run { flex: none; padding: 0; border: 0; background: none; color: var(--amber); font-size: inherit; white-space: nowrap; text-decoration: underline; text-underline-offset: 3px; }   /* a path left with gaps Retry can't fill: the link to its run */
     .prog-time { font-family: var(--mono); font-size: 12px; opacity: .7; white-space: nowrap; }
     .slots { display: inline-flex; gap: 4px; align-items: center; }
     .slot { width: 22px; height: 6px; border-radius: 3px; background: var(--line-3); display: inline-block; transition: background .25s; }
@@ -1165,16 +1179,20 @@ body.no-mark .place, body.no-mark .place-sep { display: none; }
 /* Path runs (Claude Design's PathMissing): a strip a run, one cell a step; hollow = missing */
 .run-strip { display: inline-flex; gap: 2px; flex: none; }
 .run-strip i { height: 14px; box-sizing: border-box; border-radius: 2px; background: #C9C4B0; }
+.run-strip.fill { width: 168px; }   /* Made with: the cells share one width, whatever the steps */
+.run-strip.fill i { flex: 1; min-width: 3px; height: 12px; border-radius: 1.5px; }
 .run-strip i.none { background: transparent; border: 1px dashed #8F8A7A; }
 .run-strip i.mark { background: transparent; border: 1px dashed #8F8A7A; }
 .run-strip i.hand { background: transparent; border: 1px dashed #6F6B5F; }
 .run-strip i.making { background: transparent; border: 1px dashed var(--orange); }
-.mw-runs { display: flex; flex-direction: column; margin: -4px 0 2px; border-left: 1px solid #2E2C28; }
-.mw-run { height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 12px; border-radius: 0 6px 6px 0; cursor: pointer; }
-.mw-run:hover { background: #1E1D1B; }
-.mw-run.on { background: var(--ticked-bg); }
-.mw-when { width: 104px; flex: none; font-size: 12px; color: #C9C4B0; white-space: nowrap; }
-.mw-of { width: 64px; flex: none; font-family: var(--mono); font-size: 11px; color: #C9C4B0; }
+.mw-runs { display: flex; flex-direction: column; margin: -4px 0 2px; }
+.mw-run { height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 10px; border-radius: 7px; cursor: pointer; }
+.mw-run.on { background: var(--ticked-bg); }   /* only the chosen run is highlighted */
+.mw-fill { flex: 1; }
+.mw-when { width: 96px; flex: none; font-size: 12px; color: #C9C4B0; white-space: nowrap; }
+.mw-of { width: 56px; flex: none; font-family: var(--mono); font-size: 11px; color: #C9C4B0; }
+.mw-of.full { color: #8F8A7A; }
+.mw-of.short { color: var(--amber); }
 .mw-make { height: 26px; padding: 0 12px; border-radius: 7px; border: 1px solid #5E5A50; background: transparent; font-size: 12px; font-weight: 600; color: var(--text); }
 .mw-make:hover:not(:disabled) { border-color: var(--text-2); background: #24221F; }
 .mw-more-runs { align-self: flex-start; height: 28px; padding: 0 12px; border: 0; background: transparent; font-size: 12px; color: #8F8A7A; }
