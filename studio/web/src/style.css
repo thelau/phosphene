@@ -984,9 +984,28 @@
 .ps-row-text small { font-family: var(--mono); font-size: 10px; color: #8F8A7A; white-space: nowrap; }
 .ps-row-text small.kimi { color: #F29466; }
 .ps-row > svg { flex: none; color: #8F8A7A; }
-.ps-add { margin-top: 6px; height: 36px; border-radius: 9px; border: 1px dashed #4A4740; background: transparent; color: #C9C4B0; font-size: 13px; font-weight: 600; }
+.ps-grip { flex: none; width: 10px; color: #6F6B5F; font-size: 11px; line-height: 1; cursor: grab; opacity: 0; }
+.ps-mark:hover .ps-grip { opacity: 1; }
+.ps-mark[draggable="false"] .ps-grip { visibility: hidden; }
+.ps-star { flex: none; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: #6F6B5F; cursor: pointer; }
+.ps-star svg { fill: none; }
+.ps-star.on { color: var(--orange); }
+.ps-star.on svg { fill: var(--orange); }
+.ps-star:hover { color: var(--text-2); }
+.ps-mark.error .ps-row-text b, .ps-mark.error .ps-row-text small { color: var(--qa-red); }
+.ps-mark.error .ps-thumb { background: #2A1A1E; }
+.ps-mark.warn .ps-row-text small { color: var(--amber); }
+.ps-mark.reading .ps-row-text small { color: var(--orange-soft); }
+.ps-mark.reading .ps-thumb img { opacity: .45; }
+.ps-count.full { color: var(--amber); }
+.ps-full { margin-top: 8px; padding: 0 10px; font-size: 12px; color: var(--faint); }
+.ps-main-note { font-size: 12px; color: var(--faint); }
+.ps-add { margin-top: 6px; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 8px; box-sizing: border-box; border-radius: 9px; border: 1px dashed #4A4740; background: transparent; color: #C9C4B0; font-size: 13px; font-weight: 600; }
 .ps-add:hover { color: var(--text); border-color: var(--muted); }
-.ps-detail { min-height: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; }
+.ps-add > span { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.ps-add small { font-size: 11px; color: var(--faint); }
+.ps-add.over { border: 1.5px solid var(--text); background: rgba(254, 255, 231, .08); color: var(--text); }
+.ps-detail { position: relative; min-height: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; }
 .ps-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #A8A390; }
 .ps-field > span { display: flex; align-items: center; gap: 8px; }
 .ps-field input[type="text"] { height: 34px; box-sizing: border-box; width: 100%; border-radius: 7px; border: 1px solid #34312C; background: #161514; color: var(--text); font: inherit; font-size: 14px; padding: 0 10px; outline: none; }
@@ -1026,17 +1045,54 @@
 .ps-reading .link-btn { align-self: flex-start; }
 @keyframes ps-sh { 0%, 100% { opacity: .45; } 50% { opacity: .9; } }
 .ps-skel { display: block; height: 34px; border-radius: 7px; background: #24221F; border: 1px solid #2A2824; animation: ps-sh 1.4s ease-in-out infinite; }
-.ps-drop { flex: 1; min-height: 300px; border-radius: 14px; border: 1.5px dashed #5E5A50; background: #181715; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; color: #A8A390; font-size: 13px; }
-.ps-drop.over { border-color: var(--orange); background: #221A15; }
-.ps-drop svg { color: #C9C4B0; }
-.ps-drop b { font-size: 18px; color: var(--text); }
-.ps-drop button { margin-top: 6px; }
+/* New project's drop area (Claude Design's NewMarks): the six places a project has, the first MAIN; while dragging, a cream edge and
+   the places filling with the files arriving */
+.ps-drop { flex: 1; min-height: 300px; box-sizing: border-box; border-radius: 14px; border: 1.5px dashed #4A4740; background: #181715; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; text-align: center; padding: 24px; color: var(--muted); font-size: 13px; }
+.ps-drop.over { border: 2px solid var(--text); background: rgba(254, 255, 231, .04); }
+.ps-drop b { font-size: 22px; font-weight: 700; color: var(--text); }
+.ps-places { display: flex; gap: 10px; align-items: flex-end; }
+.ps-place { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.ps-place > span { width: 56px; height: 56px; box-sizing: border-box; border-radius: 10px; border: 1.5px dashed #4A4740; display: flex; align-items: center; justify-content: center; }
+.ps-place.main > span { width: 72px; height: 72px; border-color: var(--faint); }
+.ps-place.filled > span { border: 1.5px solid var(--text); background: rgba(254, 255, 231, .08); }
+.ps-place small { font-family: var(--mono); font-size: 10px; color: #6F6B5F; }
+.ps-place.main small { color: var(--orange); }
+.ps-drop-line { max-width: 420px; line-height: 1.5; }
+.ps-drop-mono { font-family: var(--mono); font-size: 11px; color: var(--model); }
+.ps-detail > .ps-nomark { align-self: center; margin-top: 12px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+/* the marks as Kimi reads them, side by side; red for a file that can't be used, amber for words to type */
+.ps-tiles-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ps-tiles-head b { font-size: 15px; }
+.ps-tiles-head small { font-size: 12px; color: var(--faint); }
+.ps-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.ps-tile { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px; border: 1px solid var(--line-2); background: #1A1918; min-width: 0; }
+.ps-tile.error { border-color: #6B2B37; }
+.ps-tile.warn { border-color: #5A4620; }
+.ps-tile > b { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ps-tile.error > b, .ps-tile.error > small { color: var(--qa-red); }
+.ps-tile > small { font-size: 11px; color: var(--faint); min-height: 15px; }
+.ps-tile.warn > small { color: var(--amber); }
+.ps-tile input { height: 28px; box-sizing: border-box; padding: 0 8px; border-radius: 6px; border: 1px solid #5A4620; background: var(--panel); color: var(--text); font-size: 12px; }
+.ps-well { position: relative; height: 104px; border-radius: 8px; background: #2A2825; display: flex; align-items: center; justify-content: center; }
+.ps-tile.error .ps-well { background: #2A1A1E; }
+.ps-well img { max-width: 56%; max-height: 64%; }
+.ps-mainb { position: absolute; left: 6px; top: 6px; display: flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 10px; background: var(--text); color: #1A1A1A; font-size: 10px; font-weight: 700; }
+.ps-mainb svg { width: 9px; height: 9px; fill: var(--orange); stroke: none; }
+.ps-secsb { position: absolute; right: 6px; bottom: 6px; display: flex; align-items: center; gap: 5px; padding: 2px 7px; border-radius: 10px; background: rgba(18, 17, 16, .85); font-family: var(--mono); font-size: 10px; color: var(--orange-soft); }
+.ps-secsb .spin { width: 10px; height: 10px; border-width: 2px; }
+.ps-tile-x { position: absolute; right: 16px; top: 16px; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: var(--line-3); color: var(--text); }
+.ps-notice { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; margin-bottom: 14px; border-radius: 9px; background: #2A2312; border: 1px solid #5A4620; font-size: 13px; line-height: 1.45; color: #F2D9A0; }
+.ps-notice svg { flex: none; margin-top: 2px; }
+.ps-tray { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; background: var(--raised); border: 1.5px solid var(--text); box-shadow: var(--menu-shadow); pointer-events: none; }
+.ps-tray span { display: flex; flex-direction: column; gap: 2px; }
+.ps-tray b { font-size: 15px; }
+.ps-tray small { font-size: 12px; color: var(--muted); }
 .ps-prev { min-height: 0; padding: 18px 18px 14px; border-left: 1px solid #2A2824; background: #191816; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .ps-frame { position: relative; width: 200px; aspect-ratio: 9 / 16; border-radius: 8px; overflow: hidden; background: #7A7873; box-shadow: 0 0 0 1px #34312C; }
 .ps-pv { position: absolute; transform: translate(-50%, -50%); box-sizing: border-box; }
 .ps-pv img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .ps-pv.on i { position: absolute; inset: -5px; border: 1.5px dashed var(--orange); border-radius: 3px; }
-.ps-pv.other { border: 1px dashed rgba(26, 26, 26, .55); border-radius: 2px; }
+.ps-pv.other { opacity: .25; }   /* the other marks ghosted (Claude Design): the selected one solid */
 .ps-pv.empty { border: 1.5px dashed rgba(26, 26, 26, .45); border-radius: 3px; }
 .ps-cross-v, .ps-cross-h { position: absolute; background: rgba(236, 84, 12, .55); }
 .ps-cross-v { top: 0; bottom: 0; width: 1px; }
@@ -1044,7 +1100,7 @@
 .ps-cap { font-size: 12px; color: #8F8A7A; text-align: center; }
 .ps-foot { flex: none; height: 62px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 20px; border-top: 1px solid #2A2824; }
 .ps-foot .pf-error { flex: 1; margin: 0; }
-.ps-foot button, .ps-drop button { height: 34px; padding: 0 16px; border-radius: 8px; border: 1px solid #3A3732; background: transparent; font-size: 13px; font-weight: 600; }
+.ps-foot button, .ps-drop button { transition: none; height: 34px; padding: 0 16px; border-radius: 8px; border: 1px solid #3A3732; background: transparent; font-size: 13px; font-weight: 600; }
 .ps-foot button.solid, .ps-drop button.solid { background: var(--text); color: #1A1A1A; border-color: var(--text); font-weight: 700; }
 .ps-foot button.solid:disabled { background: #2E2C28; color: #7E796C; border-color: #2E2C28; }
 

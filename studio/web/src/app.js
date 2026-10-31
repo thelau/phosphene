@@ -570,7 +570,8 @@
     const PS_MAX = 6;                                                        // marks a project can be given (projects.ADD_MARKS + its main one)
     let psTimer = 0, psSeq = 0;
     const psMark = key => projectForm && projectForm.marks.find(m => m.key === key);
-    const psDefault = () => projectForm && (projectForm.marks.find(m => m.key === projectForm.def) || projectForm.marks[0]);
+    const psDefault = () => projectForm && (projectForm.marks.find(m => m.key === projectForm.def && !m.error) || projectForm.marks.find(m => !m.error));
+    let psDrag = 0;                                                          // files being dragged over the form: how many
     function openProjectForm(kind) {
       closeProjectMenu();
       const edit = kind === 'edit' && project;
@@ -592,13 +593,42 @@
       document.getElementById('projectModal').classList.add('open');
       renderPS();
     }
+    (() => {
+      const modal = document.getElementById('projectModal'), rail = document.getElementById('psRail');
+      if (!modal || !modal.addEventListener) return;
+      let depth = 0;
+      const files = e => !!(e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files'));
+      const count = e => (e.dataTransfer && e.dataTransfer.items ? [...e.dataTransfer.items].filter(i => i.kind === 'file').length : 0) || 1;
+      const show = n => { if (psDrag === n || !projectForm) return; psDrag = n; renderPS(); };
+      modal.addEventListener('dragenter', e => { if (!files(e) || !projectForm) return; e.preventDefault(); depth++; show(count(e)); });
+      modal.addEventListener('dragover', e => { if (files(e) && projectForm) e.preventDefault(); });
+      modal.addEventListener('dragleave', e => { if (!files(e)) return; depth = Math.max(0, depth - 1); if (!depth) show(0); });
+      modal.addEventListener('drop', e => {
+        if (!files(e) || !projectForm) return;
+        e.preventDefault(); depth = 0; show(0);
+        if (e.dataTransfer.files.length) psFilesChosen(e.dataTransfer.files, projectForm.marks.length ? 'add' : 'new');
+      });
+      let moving = null;                                                     // the grip: a row dragged among the rows
+      rail.addEventListener('dragstart', e => { const row = e.target.closest && e.target.closest('.ps-mark'); if (!row) return; moving = row.dataset.key; if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', moving); } });
+      rail.addEventListener('dragover', e => { if (moving) { e.preventDefault(); e.stopPropagation(); } });
+      rail.addEventListener('drop', e => {
+        if (!moving) return;
+        e.preventDefault(); e.stopPropagation();
+        const row = e.target.closest && e.target.closest('.ps-mark'), key = moving; moving = null;
+        if (!row) { psMove(key, null); return; }
+        const r = row.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2;
+        const list = projectForm.marks, i = list.findIndex(m => m.key === row.dataset.key);
+        psMove(key, after ? (list[i + 1] ? list[i + 1].key : null) : row.dataset.key);
+      });
+      rail.addEventListener('dragend', () => { moving = null; });
+    })();
     function closeProjectForm() { clearInterval(psTimer); document.getElementById('projectModal').classList.remove('open'); projectForm = null; }   // also while Kimi reads: its answer is dropped
     function psReading() { return !!(projectForm && projectForm.marks.some(m => m.reading)); }
-    function psFirstPending() { return projectForm.kind === 'new' && !projectForm.noMark && (!projectForm.marks.length || projectForm.marks[0].reading); }
+    function psFirstPending() { const u = projectForm.marks.filter(m => !m.error); return projectForm.kind === 'new' && !projectForm.noMark && (!u.length || u[0].reading); }
     function renderPS() {
       if (!projectForm) return;
       const f = projectForm;
-      document.getElementById('psSub').textContent = f.kind === 'new' && psFirstPending() ? 'Start with your marks' : '';
+      document.getElementById('psSub').textContent = '';
       renderPSRail(); renderPSDetail(); renderPSPreview();
       psSyncSave();
     }
@@ -607,34 +637,71 @@
       if (f) document.getElementById('pfSave').disabled = psFirstPending() || psReading() || (f.kind === 'new' && f.noMark && !f.marks.length && !f.name.trim());
     }
     function psSecs(m) { return Math.round((Date.now() - m.readFrom) / 1000); }
+    // the rail (Claude Design's NewMarks): the project, then the marks, the main one first with a filled star; a star on each makes it the
+    // main one (it moves to the top), a grip reorders; while Kimi reads, the file's name and its seconds; then "Add marks · N of 6", both
+    // the file picker and a drop target, until six ("Remove one to add another.")
+    const STAR = '<svg width="13" height="13" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 16.9 6.4 20l1.3-6.2L3 9.5l6.3-.7z"></path></svg>';
+    const psUsable = () => projectForm.marks.filter(m => !m.error);         // a file that isn't an image is shown, never saved or counted
     function renderPSRail() {
       const f = projectForm, pending = psFirstPending(), lock = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-label="Locked"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>';
       const swatches = f.palette.length ? `<span class="ps-swatches">${f.palette.map(c => `<i style="background:${escapeHtml(c)}"></i>`).join('')}</span>` : '';
       const projRow = `<button type="button" class="ps-row ps-proj${f.sel === 'project' ? ' on' : ''}" onclick="psSelect('project')"${pending ? ' disabled' : ''}>
-          <b>${escapeHtml(f.name || (pending ? 'New project' : 'Untitled'))}</b>${pending ? '<span class="ps-wait">Filled in from your marks</span>' : swatches}</button>`;
+          <b>${escapeHtml(f.name || (pending ? 'New project' : 'Untitled'))}</b>${pending ? '<span class="ps-wait">Filled in from the main mark</span>' : swatches}</button>`;
+      const n = psUsable().length, full = n >= PS_MAX;
       const rows = f.marks.map(m => {
-        const def = m.key === f.def, sub = m.reading ? `Kimi · ${psSecs(m)} s` : def ? `Default · ${+m.size}%` : `${+m.size}% · ${+m.x === 50 && +m.y === 50 ? 'centre' : `${+m.x} / ${+m.y}`}`;
-        return `<button type="button" class="ps-row ps-mark${f.sel === m.key ? ' on' : ''}${m.reading ? ' reading' : ''}" onclick="psSelect(this.dataset.key)" data-key="${escapeHtml(m.key)}">
-          <span class="ps-thumb"><img src="${escapeHtml(m.url)}" alt="" />${m.reading ? '<span class="spin"></span>' : ''}</span>
-          <span class="ps-row-text"><b>${escapeHtml(m.reading ? 'Reading…' : m.name)}</b><small${m.reading ? ' class="kimi"' : ''}>${escapeHtml(sub)}</small></span>${m.locked ? lock : ''}</button>`;
+        const def = m.key === f.def;
+        const sub = m.error ? m.error : m.reading ? `Reading · ${psSecs(m)} s` : m.needsWords ? 'Type its words' : def ? `Main · ${+m.size}%` : `${+m.size}% · ${+m.x === 50 && +m.y === 50 ? 'centre' : `${+m.x} / ${+m.y}`}`;
+        const cls = m.error ? ' error' : m.reading ? ' reading' : m.needsWords ? ' warn' : '';
+        const star = m.error ? '' : `<span class="ps-star${def ? ' on' : ''}" role="button" tabindex="0" data-key="${escapeHtml(m.key)}" onclick="psStar(event, this.dataset.key)" aria-pressed="${def}" aria-label="${def ? 'The main mark' : 'Make this the main mark'}" title="${def ? 'The main mark' : 'Make this the main mark'}">${STAR}</span>`;
+        return `<div class="ps-row ps-mark${f.sel === m.key ? ' on' : ''}${cls}" role="button" tabindex="0" onclick="psSelect(this.dataset.key)" data-key="${escapeHtml(m.key)}" draggable="${m.locked || m.error ? 'false' : 'true'}">
+          <span class="ps-grip" aria-hidden="true">⋮⋮</span>
+          <span class="ps-thumb">${m.error ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F7A3B6" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"></path><path d="M10 12l4 4M14 12l-4 4"></path></svg>' : `<img src="${escapeHtml(m.url)}" alt="" />`}${m.reading ? '<span class="spin"></span>' : ''}</span>
+          <span class="ps-row-text"><b>${escapeHtml(m.reading || m.error || m.needsWords ? (m.file || m.name || 'Mark') : m.name)}</b><small>${escapeHtml(sub)}</small></span>${m.locked ? lock : ''}${star}</div>`;
       }).join('');
-      document.getElementById('psRail').innerHTML = `<span class="ps-rail-head">Project</span>${projRow}<span class="ps-rail-head"><span>Marks</span><span>${f.marks.length || ''}</span></span>${rows}`
-        + (!pending && f.marks.length < PS_MAX ? '<button type="button" class="ps-add" onclick="psPick(\'add\')">+ Add a mark</button>' : '');
+      const add = pending ? '' : full ? '<span class="ps-full">Remove one to add another.</span>'
+        : `<button type="button" class="ps-add" id="psAdd" onclick="psPick('add')"><span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>${psDrag ? `Drop ${psDrag} mark${psDrag > 1 ? 's' : ''} here` : 'Add marks'}</span><small>${psDrag ? `${n} → ${Math.min(PS_MAX, n + psDrag)} of ${PS_MAX}` : `${n} of ${PS_MAX} · drop here or choose`}</small></button>`;
+      const rail = document.getElementById('psRail');
+      rail.innerHTML = `<span class="ps-rail-head">Project</span>${projRow}<span class="ps-rail-head"><span>Marks</span><span class="${n >= PS_MAX ? 'ps-count full' : 'ps-count'}">${n ? `${n} of ${PS_MAX}` : `up to ${PS_MAX}`}</span></span>${rows}${add}`;
+      const tile = document.getElementById('psAdd');
+      if (tile) tile.classList.toggle('over', !!psDrag);
+    }
+    // the middle: the drop area (empty), the tiles while marks are read or need you, else the selected item's details
+    function psTilesView() { return projectForm.marks.some(m => m.reading || m.error || m.needsWords); }
+    function renderPSDrop(d, f) {
+      const n = psDrag, places = [0, 1, 2, 3, 4, 5].map(i => `<span class="ps-place${i === 0 ? ' main' : ''}${i < n ? ' filled' : ''}"><span>${i < n ? '<svg width="22" height="26" viewBox="0 0 22 26" fill="none" stroke="#FEFFE7" stroke-width="1.5" aria-hidden="true"><path d="M2 1h12l6 6v18H2z"></path><path d="M14 1v6h6"></path></svg>' : ''}</span><small>${i === 0 ? 'MAIN' : i + 1}</small></span>`).join('');
+      d.innerHTML = `<div class="ps-drop${n ? ' over' : ''}" id="psDrop"><b>${n ? `${n} mark${n > 1 ? 's' : ''}` : 'Drop your marks'}</b><div class="ps-places">${places}</div>
+          <span class="ps-drop-line">${n ? 'Release to add them. The first by file name becomes the main mark.' : 'One mark, or a few at once. The first by file name leads; you can change that after.'}</span>
+          ${n ? '' : `<button type="button" class="solid" onclick="psPick('new')">Choose files…</button><span class="ps-drop-mono">Up to ${PS_MAX} · PNG or SVG · a transparent background is best</span>`}</div>
+        ${n ? '' : '<button type="button" class="link-btn ps-nomark" onclick="psNoMark()">No mark? Start with your own images</button>'}`;
+    }
+    function renderPSTiles(d, f) {
+      const reading = f.marks.filter(m => m.reading).length, need = f.marks.filter(m => m.error || m.needsWords).length;
+      const title = reading ? `Kimi is reading ${reading} mark${reading > 1 ? 's' : ''}` : `${psUsable().length} mark${psUsable().length === 1 ? '' : 's'}, ${need} need${need === 1 ? 's' : ''} you`;
+      const tiles = f.marks.map(m => {
+        const def = m.key === f.def, first = f.kind === 'new' && m === psUsable()[0];
+        const sub = m.error ? `${m.error}: PNG or SVG only` : m.reading ? (first ? 'Fills in the project too' : 'Name, shape and words') : m.needsWords ? 'Kimi couldn’t read it. Type its words:' : 'Read';
+        return `<div class="ps-tile${m.error ? ' error' : m.needsWords ? ' warn' : ''}" data-key="${escapeHtml(m.key)}">
+          <span class="ps-well">${m.error ? '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#F7A3B6" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"></path><path d="M10 12l4 4M14 12l-4 4"></path></svg>' : `<img src="${escapeHtml(m.url)}" alt="" />`}
+            ${def && !m.error ? `<span class="ps-mainb">${STAR}Main</span>` : ''}${m.reading ? `<span class="ps-secsb"><span class="spin"></span><span class="ps-secs" data-key="${escapeHtml(m.key)}">${psSecs(m)} s</span></span>` : ''}</span>
+          <b>${escapeHtml(m.file || m.name || 'Mark')}</b><small>${escapeHtml(sub)}</small>
+          ${m.needsWords ? `<input type="text" maxlength="80" placeholder="Its shape, e.g. thick white ring" value="${escapeHtml(m.shape || '')}" data-key="${escapeHtml(m.key)}" oninput="psSetWords(this.dataset.key, 'shape', this.value)" autocomplete="off" /><input type="text" maxlength="40" placeholder="Called, e.g. ring mark" value="${escapeHtml(m.noun || '')}" data-key="${escapeHtml(m.key)}" oninput="psSetWords(this.dataset.key, 'noun', this.value)" autocomplete="off" />` : ''}
+          ${m.error || m.reading ? `<button type="button" class="ps-tile-x" aria-label="Remove" data-key="${escapeHtml(m.key)}" onclick="psDrop1(this.dataset.key)"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>` : ''}</div>`;
+      }).join('');
+      d.innerHTML = `<div class="ps-tiles-head"><b>${title}</b><small>Drag to reorder · ★ makes a mark the main one</small></div><div class="ps-tiles">${tiles}</div>`;
     }
     function renderPSDetail() {
-      const f = projectForm, d = document.getElementById('psDetail'), m = psMark(f.sel);
-      if (f.kind === 'new' && !f.marks.length && !f.noMark) {                 // the first mark comes first (or none: your own images)
-        d.innerHTML = `<div class="ps-drop" id="psDrop"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"></rect><circle cx="12" cy="12" r="3"></circle></svg>
-          <b>Drop your marks</b><span>One or several, up to ${PS_MAX}: PNG or SVG, ideally on a transparent background.<br>The first by file name is the main mark (you can change it after).</span><button type="button" class="solid" onclick="psPick('new')">Choose files…</button>
-          <button type="button" class="link-btn ps-nomark" onclick="psNoMark()">No mark, just my own images</button></div>`;
-        const drop = document.getElementById('psDrop');
-        if (drop && drop.addEventListener) {
-          drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
-          drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-          drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer && e.dataTransfer.files.length) psFilesChosen(e.dataTransfer.files, 'new'); });
-        }
-        return;
+      renderPSMiddle();
+      const f = projectForm, d = document.getElementById('psDetail');
+      if (f.notice && d.insertAdjacentHTML) d.insertAdjacentHTML('afterbegin', `<div class="ps-notice" role="status"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#E8B04A" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3l10 18H2z"></path><path d="M12 10v5M12 18v.5"></path></svg><span>${escapeHtml(f.notice)}</span></div>`);   // one notice, never cut silently
+      if (psDrag && f.marks.length && d.insertAdjacentHTML) {                // a drop in Project settings: where the marks will go
+        const n = psUsable().length, def = psDefault(), last = psUsable()[n - 1];
+        d.insertAdjacentHTML('beforeend', `<div class="ps-tray"><svg width="28" height="24" viewBox="0 0 26 22" fill="none" stroke="#FEFFE7" stroke-width="1.4" aria-hidden="true"><path d="M3 5h8l3 3v12H3z"></path><path d="M12 2h8l3 3v12h-11z" fill="#1E1D1B"></path></svg><span><b>Add ${psDrag} mark${psDrag > 1 ? 's' : ''}</b><small>They join after ${escapeHtml(last ? last.name || 'the last' : 'the last')}: ${Math.min(PS_MAX, n + psDrag)} of ${PS_MAX}. ${escapeHtml(def ? def.name || 'The main mark' : 'The main mark')} stays the main mark.</small></span></div>`);
       }
+    }
+    function renderPSMiddle() {
+      const f = projectForm, d = document.getElementById('psDetail'), m = psMark(f.sel);
+      if (f.kind === 'new' && !f.marks.length && !f.noMark) { renderPSDrop(d, f); return; }   // the first marks come first (or none: your own images)
+      if (f.marks.some(m => m.reading) || f.sel === 'tiles') { renderPSTiles(d, f); return; }   // read side by side, or some need you
       if (f.sel === 'project') {
         const tag = t => f.fromKimi ? ` <span class="ps-tag">${t}</span>` : '';
         d.innerHTML = `<label class="ps-field"><span>Name</span><input type="text" id="psName" maxlength="60" value="${escapeHtml(f.name)}" oninput="psSetProject('name', this.value)" autocomplete="off" /></label>
@@ -659,7 +726,7 @@
       d.innerHTML = (m.locked ? `<div class="ps-locked"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>This mark of ${escapeHtml(project ? project.name : '')}'s is fixed: its image, size, place and words, and its own mark check, wherever it sits.</div>` : '')
         + `<div class="ps-mark-head"><div class="ps-big"><span class="ps-big-thumb"><img src="${escapeHtml(m.url)}" alt="${escapeHtml(m.name)}" /></span>${m.locked ? '' : `<button type="button" class="link-btn" onclick="psPick('replace')">Replace…</button>`}</div>
           <div class="ps-mark-name"><label class="ps-field"><span>Name</span><input type="text" id="psMarkName" maxlength="30" value="${escapeHtml(m.name)}" oninput="psSetMark('name', this.value)" autocomplete="off"${dis} /></label>
-          ${def ? '<span class="ps-default">★ Default mark</span>' : '<button type="button" class="ps-make-default" onclick="psMakeDefault()">Make default</button>'}</div></div>
+          <span class="ps-main-note">${def ? '<span class="ps-default">★ The main mark</span>: used unless a batch picks others.' : 'The star in the list makes a mark the main one.'}</span></div></div>
         <div class="ps-group"><span class="ps-group-head">Place in the frame</span>${slider('Width', 'size', 4, 60)}${slider('Across', 'x', 10, 90)}${slider('Down', 'y', 10, 90)}</div>
         <div class="ps-group"><span class="ps-group-head">In the prompts <small>the words Kimi uses for this mark</small></span>
           <div class="ps-two"><label class="ps-field"><span>Its shape</span><input type="text" maxlength="80" value="${escapeHtml(m.shape || '')}" oninput="psSetMark('shape', this.value)" autocomplete="off"${dis} /></label>
@@ -672,16 +739,23 @@
       const f = projectForm, frame = document.getElementById('psFrame'), cap = document.getElementById('psCap');
       const focus = f.sel === 'project' ? psDefault() : psMark(f.sel);
       const cross = focus ? `<i class="ps-cross-v" style="left:${+focus.x}%"></i><i class="ps-cross-h" style="top:${+focus.y}%"></i>` : '<i class="ps-cross-v" style="left:50%"></i><i class="ps-cross-h" style="top:50%"></i>';   // the crosshair, as the mark target draws it
-      frame.innerHTML = cross + f.marks.filter(m => !m.reading || m === focus).map(m => {
+      const marks = psUsable();                                              // the selected mark solid with its target box, the others ghosted
+      frame.innerHTML = cross + marks.filter(m => !m.reading || m === focus).map(m => {
         const on = m === focus, style = `left:${+m.x}%;top:${+m.y}%;width:${+m.size}%;aspect-ratio:1 / ${m.ar || 1}`;
-        return on ? `<span class="ps-pv on" style="${style}"><img src="${escapeHtml(m.url)}" alt="" />${m.reading ? '' : '<i></i>'}</span>` : `<span class="ps-pv other" style="${style}"></span>`;
-      }).join('') + (f.marks.length ? '' : '<span class="ps-pv empty" style="left:50%;top:50%;width:18%;aspect-ratio:1"></span>');
-      cap.textContent = !f.marks.length ? 'The mark appears here once it\'s read' : focus && focus.reading ? 'Placing it once Kimi has read it'
-        : f.sel === 'project' ? 'The default mark, as every image will place it' : f.marks.length > 1 ? 'The selected mark; the others as boxes' : 'As every image will place it';
+        return `<span class="ps-pv ${on ? 'on' : 'other'}" style="${style}"><img src="${escapeHtml(m.url)}" alt="" />${on && !m.reading ? '<i></i>' : ''}</span>`;
+      }).join('') + (marks.length ? '' : '<span class="ps-pv empty" style="left:50%;top:50%;width:18%;aspect-ratio:1"></span>');
+      cap.textContent = !marks.length ? 'Your main mark appears here once it\'s read' : focus && focus.reading ? 'Placing it once it\'s read'
+        : marks.length > 1 ? 'Selected mark solid, others ghosted' : 'As every image will place it';
     }
     function psKey(e) { if (e.key === 'Escape') { e.preventDefault(); closeProjectForm(); } }   // Esc: as Cancel
     function psNoMark() { projectForm.noMark = true; projectForm.sel = 'project'; renderPS(); const n = document.getElementById('psName'); if (n) n.focus(); }   // a project of your own images: named by hand
-    function psSelect(key) { if (!projectForm) return; projectForm.sel = key; renderPS(); }
+    function psSelect(key) {
+      if (!projectForm) return;
+      const m = psMark(key);
+      if (m && m.error) { projectForm.sel = 'tiles'; renderPS(); return; }    // a file that isn't an image: its red tile
+      if (m) m.needsWords = false;                                           // its words: in its details now
+      projectForm.sel = key; renderPS();
+    }
     function psSetProject(field, v) { projectForm[field] = v; projectForm.typed.add(field); renderPSRail(); psSyncSave(); }
     function psSetMark(field, v) {
       const m = psMark(projectForm.sel);
@@ -700,7 +774,36 @@
       const next = document.getElementById('psColourNew'); if (next) next.focus();
     }
     function psColourKey(e, input) { if (e.key === 'Enter') { e.preventDefault(); psColourAdd(input); } }
-    function psMakeDefault() { const m = psMark(projectForm.sel); if (m) { projectForm.def = m.key; renderPS(); } }   // Demo's too: its orbital mark keeps its check and words wherever it sits
+    // the star: that mark becomes the main one and moves to the top (Demo's orbital mark keeps its check and words wherever it sits)
+    function psStar(e, key) {
+      if (e && e.stopPropagation) e.stopPropagation();
+      const f = projectForm, m = psMark(key);
+      if (!m || m.error) return;
+      f.marks = [m, ...f.marks.filter(x => x !== m)];
+      f.def = m.key;
+      renderPS();
+    }
+    // the grip: the rail's order is the marks' order, the first the main one
+    function psMove(key, beforeKey) {
+      const f = projectForm, m = psMark(key);
+      if (!m || key === beforeKey) return;
+      const rest = f.marks.filter(x => x !== m), at = beforeKey ? rest.findIndex(x => x.key === beforeKey) : rest.length;
+      rest.splice(at < 0 ? rest.length : at, 0, m);
+      f.marks = rest;
+      const first = psUsable()[0];
+      if (first) f.def = first.key;
+      renderPS();
+    }
+    function psDrop1(key) {                                                    // a tile's ×: a file that isn't an image, or a mark still being read
+      const f = projectForm, m = psMark(key);
+      if (!m) return;
+      if (m.reading && m.id) { m.reading = false; renderPS(); return; }       // a replaced image: kept, its words as they were
+      f.marks = f.marks.filter(x => x !== m);
+      if (f.def === m.key) f.def = psUsable()[0] ? psUsable()[0].key : (f.kind === 'edit' ? 'main' : null);
+      if (!f.marks.some(x => x.reading || x.error || x.needsWords) && f.sel === 'tiles') f.sel = f.marks.length ? 'project' : null;
+      renderPS();
+    }
+    function psSetWords(key, field, v) { const m = psMark(key); if (!m) return; m[field] = v; m.typed = (m.typed || new Set()).add(field); }
     function psRemove() {
       const f = projectForm, m = psMark(f.sel);
       if (!m || m.locked || m.key === f.def) return;
@@ -717,34 +820,47 @@
       const list = [...(files || [])].filter(Boolean);
       if (forWhat === 'replace') return psFileChosen(list[0], forWhat);
       list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' }));
-      const room = PS_MAX - ((projectForm && projectForm.marks.length) || 0);
-      if (list.length > room) document.getElementById('pfError').textContent = `A project holds ${PS_MAX} marks: the first ${room} were added.`;
-      for (const file of list.slice(0, Math.max(0, room))) await psFileChosen(file, forWhat);
+      if (!projectForm) return;
+      const room = Math.max(0, PS_MAX - psUsable().length), left = list.slice(room).map(f => f.name);
+      projectForm.notice = left.length ? `${left.length} file${left.length > 1 ? 's' : ''} weren’t added: a project holds ${PS_MAX} marks. ${left.join(', ')}. Remove a mark here, then drop ${left.length > 1 ? 'them' : 'it'} again.` : '';
+      for (const file of list.slice(0, room)) await psFileChosen(file, forWhat);
+      if (projectForm && left.length) renderPS();
     }
     async function psFileChosen(file, forWhat = psFileFor) {
       if (!file || !projectForm) return;
       let png;
       try { png = await markToPng(file); }
-      catch (err) { document.getElementById('pfError').textContent = err.message === 'empty' ? 'That image is empty: the mark needs to show on a transparent or plain background.' : 'That file could not be read as an image.'; return; }
+      catch (err) {
+        const why = err.message === 'empty' ? 'An empty image' : 'Not an image';
+        if (forWhat === 'replace') { document.getElementById('pfError').textContent = err.message === 'empty' ? 'That image is empty: the mark needs to show on a transparent or plain background.' : 'That file could not be read as an image.'; return; }
+        projectForm.marks.push({ key: `bad-${++psSeq}`, error: why, file: file.name || 'A file' });   // shown as a red tile, removable; never saved
+        projectForm.sel = 'tiles';
+        renderPS();
+        return;
+      }
       document.getElementById('pfError').textContent = '';
       const f = projectForm, ar = await new Promise(res => { const im = new Image(); im.onload = () => res(im.naturalHeight / im.naturalWidth || 1); im.onerror = () => res(1); im.src = png; });
       let m = forWhat === 'replace' ? psMark(f.sel) : null;
       if (m) { m.image = png; m.url = png; m.ar = ar; }                       // a new image for a mark: read again, never over what was typed
       else {
-        if (f.marks.length >= PS_MAX) return;
+        if (psUsable().length >= PS_MAX) return;
         const base = f.marks.length ? psDefault() : null;
-        m = { key: `new-${++psSeq}`, id: null, name: '', size: base ? base.size : 18, x: base ? base.x : 50, y: base ? base.y : 50, shape: '', noun: '', url: png, image: png, ar, typed: new Set() };
+        m = { key: `new-${++psSeq}`, id: null, name: '', file: file.name || '', size: base ? base.size : 18, x: base ? base.x : 50, y: base ? base.y : 50, shape: '', noun: '', url: png, image: png, ar, typed: new Set() };
         f.marks.push(m);
-        if (f.marks.length === 1) { f.def = m.key; }
+        if (psUsable().length === 1) { f.def = m.key; }
       }
       f.sel = m.key;
       psRead(m);
     }
     async function psRead(m) {
-      const f = projectForm, first = f.kind === 'new' && m === f.marks[0];
+      const f = projectForm, first = f.kind === 'new' && m === psUsable()[0];
       m.reading = true; m.readFrom = Date.now();
       clearInterval(psTimer);
-      psTimer = setInterval(() => { if (!psReading()) { clearInterval(psTimer); return; } renderPSRail(); const s = document.querySelector('#psDetail .ps-secs'); const cur = psMark(projectForm.sel); if (s && cur && cur.reading) s.textContent = `${psSecs(cur)} s`; }, 1000);
+      psTimer = setInterval(() => {                                          // each mark's seconds, in its row and its tile
+        if (!psReading()) { clearInterval(psTimer); return; }
+        renderPSRail();
+        document.querySelectorAll('#psDetail .ps-secs[data-key]').forEach(el => { const x = psMark(el.dataset.key); if (x && x.reading) el.textContent = `${psSecs(x)} s`; });
+      }, 1000);
       renderPS();
       let r = null;
       try { r = await (await fetch('/api/describe-mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mark: m.image }) })).json(); } catch (e) {}
@@ -762,10 +878,11 @@
           f.fromKimi = true;
           f.sel = 'project';
         }
-      } else {
-        if (!m.name) m.name = 'Mark';
-        document.getElementById('pfError').textContent = (r && (r.error || r.note)) || 'Kimi could not read the mark: fill in its words yourself.';
+      } else {                                                                 // an amber tile asks for its words, typed by hand
+        if (!m.name) m.name = cap(String(m.file || '').replace(/\.[a-z0-9]+$/i, '').replace(/^[\d\s._-]+/, '').replace(/[-_]+/g, ' ').trim()) || 'Mark';
+        m.needsWords = true;
       }
+      if (!f.marks.some(x => x.reading)) f.sel = f.marks.some(x => x.error || x.needsWords) ? 'tiles' : (f.sel === 'tiles' || psMark(f.sel) && psMark(f.sel).reading ? 'project' : f.sel);
       renderPS();
     }
     function psCancelRead(key) {
@@ -804,7 +921,8 @@
       const err = document.getElementById('pfError');
       if (isBusy()) { err.textContent = 'Wait until the running job ends (images, an AI order or an export), then save.'; return; }
       if (psFirstPending() || psReading()) return;
-      if (!f.marks.length) {                                                  // no mark (yet): the project and its own images
+      const usable = psUsable();                                              // a file that wasn't an image stays out
+      if (!usable.length) {                                                   // no mark (yet): the project and its own images
         if (!f.name.trim()) { err.textContent = 'Give the project a name.'; return; }
         const body = f.kind === 'new' ? { action: 'create', no_mark: true, name: f.name, brief: f.brief, palette: f.palette } : { action: 'update', slug: project.slug, name: f.name, brief: f.brief, palette: f.palette, marks: [] };
         if (body.action === 'create') cover(`Making ${body.name}…`);
@@ -812,15 +930,15 @@
         if (r.ok) { reopen(r.project && r.project.name); return; }
         cover(null); err.textContent = r.error || 'Could not save the project.'; return;
       }
-      const def = psDefault(), others = f.marks.filter(m => m !== def);
+      const def = psDefault(), others = usable.filter(m => m !== def);
       const fields = m => ({ name: m.name, size: +m.size, x: +m.x, y: +m.y, shape: m.shape || '', noun: m.noun || '' });
       const body = { action: f.kind === 'new' ? 'create' : 'update', slug: project && f.kind === 'edit' ? project.slug : undefined, name: f.name, brief: f.brief, palette: f.palette,
         mark_name: def.name, mark_size: +def.size, mark_x: +def.x, mark_y: +def.y, mark_shape: def.shape || '', mark_noun: def.noun || '',
         ...(def.image ? { mark: def.image } : {}),
         marks: others.map(m => ({ ...(m.id && m.id !== 'main' ? { id: m.id } : {}), ...fields(m), ...(m.image ? { image: m.image } : {}) })) };
-      if (f.kind === 'edit' && def.key !== 'main' && f.marks.some(m => m.key === 'main')) {   // another mark made default: its changes go with the list, then it swaps in
-        const main = f.marks.find(m => m.key === 'main');
-        const rest = f.marks.filter(m => m !== main);
+      if (f.kind === 'edit' && def.key !== 'main' && usable.some(m => m.key === 'main')) {   // another mark made the main one: its changes go with the list, then it swaps in
+        const main = usable.find(m => m.key === 'main');
+        const rest = usable.filter(m => m !== main);
         Object.assign(body, { mark_name: main.name, mark_size: +main.size, mark_x: +main.x, mark_y: +main.y, mark_shape: main.shape || '', mark_noun: main.noun || '', default_index: rest.indexOf(def) });
         delete body.mark; if (main.image) body.mark = main.image;
         body.marks = rest.map(m => ({ ...(m.id ? { id: m.id } : {}), ...fields(m), ...(m.image ? { image: m.image } : {}) }));
@@ -4558,7 +4676,7 @@ Object.assign(window, {
   isBusy, setStatus,
   exportProject, importProject, importProjectPath, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
   downloadShown, setThumbSizeAt, openViewer, closeViewer, viewerStep, toggleTerrMenu, editRefine, clearRefine, closeGroupMenu, showNewGroupForm,
-  openProjectMenu, switchProject, openProjectForm, closeProjectForm, saveProject, psKey, psSelect, psSetProject, psSetMark, psColour, psColourAdd, psColourKey, psMakeDefault, psRemove, psPick, psFileChosen, psFilesChosen, psCancelRead,
+  openProjectMenu, switchProject, openProjectForm, closeProjectForm, saveProject, psKey, psSelect, psSetProject, psSetMark, psColour, psColourAdd, psColourKey, psStar, psDrop1, psSetWords, psRemove, psPick, psFileChosen, psFilesChosen, psCancelRead,
   removeChange,
   startAiOrder,
   toggleAiPanel,

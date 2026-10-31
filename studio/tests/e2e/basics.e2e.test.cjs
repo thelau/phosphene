@@ -543,7 +543,7 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   await page.locator('#projectMenu .gm-item', { hasText: 'Project settings' }).click();       // DEMO: name, brand and colours; its main mark locked
   assert.equal(await page.locator('#projectModal').isVisible(), true);
   assert.equal(await text('#projectTitle'), 'Demo · Settings');
-  assert.deepEqual(await page.locator('.ps-rail-head').allTextContents(), ['Project', 'Marks1']);
+  assert.deepEqual(await page.locator('.ps-rail-head').allTextContents(), ['Project', 'Marks1 of 6']);
   assert.equal(await page.locator('.ps-proj.on').count(), 1, 'the project first');
   await page.click('.ps-mark[data-key="main"]');
   assert.match(await text('.ps-locked'), /mark of Demo.s is fixed/);
@@ -569,8 +569,9 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   });
   await page.setInputFiles('#psFile', { name: 'owl.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
   await page.waitForSelector('.ps-mark.reading .spin');                              // Kimi at work: a spinner in its row, the seconds, the fields to come
-  assert.match(await text('#psDetail'), /Kimi is reading the mark/);
-  assert.equal(await page.locator('.ps-skel').count(), 4, 'name, brand, shape, called on their way');
+  assert.match(await text('#psDetail'), /Kimi is reading 1 mark/);
+  assert.match(await text('.ps-tile'), /owl\.png\s*Fills in the project too/, 'a tile with its file name, the main one filling in the project');
+  assert.equal(await page.locator('.ps-tile .ps-mainb').count(), 1, '★ Main');
   assert.equal(await page.locator('#pfSave').isDisabled(), true, 'Save waits for it');
   await page.waitForFunction(() => /1 s/.test(document.querySelector('.ps-mark small').textContent));
   await page.waitForSelector('.ps-proj.on', { timeout: 5000 });                       // read: the project, filled in
@@ -584,7 +585,7 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   assert.deepEqual(await page.locator('.ps-chip').allTextContents(), ['#1A1A1A×', '#223344×']);
   await page.click('.ps-mark');
   assert.equal(await page.locator('#psMarkName').inputValue(), 'Bar', 'the mark named from what Kimi calls it');
-  assert.equal(await text('.ps-default'), '★ Default mark');
+  assert.equal(await text('.ps-default'), '★ The main mark');
   const slide = async (i, v) => page.locator('.ps-slider input').nth(i).evaluate((el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
   await slide(0, 30); await slide(2, 40);
   assert.equal(await text('#psv-size'), '30%');
@@ -1454,7 +1455,7 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.equal(await page.locator('#psMarkName').inputValue(), 'Bar', 'named from Kimi\'s reading');
   const slide = async (i, v) => page.locator('.ps-slider input').nth(i).evaluate((el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
   await slide(2, 70);                                                                  // its own place
-  assert.equal(await page.locator('.ps-pv.other').count(), 1, 'the other mark as a box, not a second image');
+  assert.equal(await page.locator('.ps-pv.other img').count(), 1, 'the other mark ghosted');
   await shot('26-other-marks');
   await page.click('#pfSave');
   for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/projects' && c.body.action === 'update'); i++) await page.waitForTimeout(100);
@@ -1513,7 +1514,8 @@ test('a new project takes several marks in one drop: in order of their file name
   await page.waitForFunction(() => document.querySelectorAll('.ps-mark').length === 3 && !document.querySelector('.ps-mark.reading'), null, { timeout: 10000 });
   const widths = await page.locator('.ps-mark img').evaluateAll(els => els.map(e => e.naturalWidth));
   assert.deepEqual(widths, [120, 40, 30], 'in order of their names');
-  assert.match(await page.locator('.ps-mark').first().textContent(), /Default/, 'the first by name is the main mark');
+  assert.match(await page.locator('.ps-mark').first().textContent(), /Main · /, 'the first by name is the main mark');
+  assert.equal(await page.locator('.ps-mark').first().locator('.ps-star.on').count(), 1, 'its star filled');
   await page.click('#pfSave');
   for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/projects' && c.body && c.body.action === 'create'); i++) await page.waitForTimeout(100);
   const sent = api.state.calls.filter(c => c.path === '/api/projects' && c.body && c.body.action === 'create').pop().body;
@@ -1521,7 +1523,73 @@ test('a new project takes several marks in one drop: in order of their file name
   await ctx.close();
 });
 
-test('a new project can bring its other marks: added in the form after the main one, made with it; Make default picks which one leads', { skip }, async () => {
+test('New project, several marks: dragging shows how many and fills the places; past six, the files left out are named; a file that is not an image and a mark Kimi could not read each say so', { skip }, async () => {
+  const ctx = await fresh();
+  await page.evaluate(() => { kimiConfigured = true; openProjectForm('new'); });
+  assert.equal(await page.locator('.ps-place').count(), 6, 'six places drawn');
+  assert.equal(await text('.ps-place.main small'), 'MAIN');
+  assert.match(await text('.ps-drop-mono'), /Up to 6 · PNG or SVG/);
+  assert.match(await text('.ps-detail > .ps-nomark'), /No mark\? Start with your own images/);
+  const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); for (const n of ['a.png', 'b.png', 'c.png']) d.items.add(new File(['x'], n, { type: 'image/png' })); return d; });
+  await page.dispatchEvent('#projectModal', 'dragenter', { dataTransfer: dt });
+  assert.equal(await text('.ps-drop b'), '3 marks', 'how many, while dragging');
+  assert.equal(await page.locator('.ps-place.filled').count(), 3, 'the first three places filled');
+  await shot('32d-drag-marks');
+  await page.dispatchEvent('#projectModal', 'dragleave', { dataTransfer: dt });
+  assert.equal(await text('.ps-drop b'), 'Drop your marks');
+  const mk = (w, h) => page.evaluate(([w, h]) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.fillStyle = '#f0a020'; x.fillRect(0, 0, w, h); return c.toDataURL('image/png').split(',')[1]; }, [w, h]);
+  const png = Buffer.from(await mk(40, 40), 'base64');
+  const files = ['01-ring', '02-bar', '03-dual', '04-tri', '05-mono', '06-badge', '07-sticker', '08-seal'].map(n => ({ name: `${n}.png`, mimeType: 'image/png', buffer: png }));
+  api.state.describeFails = true;                                                 // Kimi can't read: each mark asks for its words
+  await page.setInputFiles('#psFile', files);
+  await page.waitForFunction(() => document.querySelectorAll('.ps-mark').length === 6 && !document.querySelector('.ps-mark.reading'), null, { timeout: 10000 });
+  assert.match(await text('.ps-notice'), /2 files weren’t added: a project holds 6 marks\. 07-sticker\.png, 08-seal\.png\./, 'never cut silently');
+  assert.equal(await page.locator('.ps-count').textContent(), '6 of 6');
+  assert.match(await page.locator('.ps-count').getAttribute('class'), /full/, 'the count turns amber');
+  assert.match(await text('#psRail'), /Remove one to add another\./);
+  assert.equal(await page.locator('.ps-add').count(), 0, 'no room: no drop tile');
+  assert.equal(await page.locator('.ps-tile.warn').count(), 6, 'amber tiles: their words to type');
+  await page.locator('.ps-tile.warn input').first().fill('thick ring');
+  await shot('32e-limit-words');
+  assert.equal(await page.locator('#pfSave').isDisabled(), false, 'words typed or not, the marks can make the project');
+  await page.locator('.ps-mark[data-key]').nth(5).locator('.ps-star').click();   // the star: the main one, to the top
+  assert.match(await page.locator('.ps-mark').first().textContent(), /06-badge|Badge/);
+  await page.evaluate(() => closeProjectForm());
+  api.state.describeFails = false;
+  await page.evaluate(() => openProjectForm('new'));
+  await page.setInputFiles('#psFile', [{ name: 'brief.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') }, { name: 'logo.png', mimeType: 'image/png', buffer: png }]);
+  await page.waitForFunction(() => document.querySelectorAll('.ps-mark').length === 2 && !document.querySelector('.ps-mark.reading'), null, { timeout: 10000 });
+  assert.equal(await page.locator('.ps-tile.error').count(), 1, 'a red tile for the file that isn\'t an image');
+  assert.match(await text('.ps-tile.error'), /brief\.pdf\s*Not an image/);
+  assert.equal(await page.locator('.ps-mark.error .ps-star').count(), 0, 'it can\'t be the main mark');
+  await page.click('.ps-tile.error .ps-tile-x');
+  assert.equal(await page.locator('.ps-mark').count(), 1, 'removed');
+  assert.equal(await page.locator('#pfSave').isDisabled(), false, 'the image left can make the project');
+  await ctx.close();
+});
+
+test('Project settings: marks dropped anywhere in the window go to the rail, a tray saying where; the grip reorders, the first leads', { skip }, async () => {
+  const ctx = await fresh({ setup: st => { st.projects[0].fixed = false; } });
+  await page.evaluate(() => openProjectForm('edit'));
+  const dt = await page.evaluateHandle(() => { const d = new DataTransfer(); for (const n of ['a.png', 'b.png']) d.items.add(new File(['x'], n, { type: 'image/png' })); return d; });
+  await page.dispatchEvent('#projectModal', 'dragenter', { dataTransfer: dt });
+  assert.match(await text('.ps-tray'), /Add 2 marks\s*They join after .*: 3 of 6\. .* stays the main mark\./);
+  assert.match(await text('.ps-add'), /Drop 2 marks here\s*1 → 3 of 6/);
+  await shot('32f-settings-drop');
+  await page.dispatchEvent('#projectModal', 'dragleave', { dataTransfer: dt });
+  assert.equal(await page.locator('.ps-tray').count(), 0);
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAHklEQVR4nGNgYGD4z0AEYBxVSF2Fo6EwGgqjoTA4AAD2dQf5kV0x5AAAAABJRU5ErkJggg==', 'base64');
+  await page.click('.ps-add');
+  await page.setInputFiles('#psFile', { name: 'bird.png', mimeType: 'image/png', buffer: png });
+  await page.waitForFunction(() => document.querySelectorAll('.ps-mark').length === 2 && !document.querySelector('.ps-mark.reading'));
+  const rows = page.locator('.ps-mark');
+  await rows.nth(1).dragTo(rows.nth(0), { targetPosition: { x: 20, y: 4 } });       // the grip: the new mark first, so the main one
+  assert.equal(await rows.first().locator('.ps-star.on').count(), 1, 'the first row leads');
+  assert.notEqual(await rows.first().getAttribute('data-key'), 'main');
+  await ctx.close();
+});
+
+test('a new project can bring its other marks: added in the form after the main one, made with it; the star picks which one leads', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(() => { kimiConfigured = true; openProjectForm('new'); });
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAHklEQVR4nGNgYGD4z0AEYBxVSF2Fo6EwGgqjoTA4AAD2dQf5kV0x5AAAAABJRU5ErkJggg==', 'base64');
@@ -1530,9 +1598,11 @@ test('a new project can bring its other marks: added in the form after the main 
   await page.click('.ps-add');
   await page.setInputFiles('#psFile', { name: 'bird.png', mimeType: 'image/png', buffer: png });
   await page.waitForFunction(() => document.querySelectorAll('.ps-mark').length === 2 && !document.querySelector('.ps-mark.reading'));
+  await page.click('.ps-mark >> nth=1');
   await page.fill('#psMarkName', 'Bird');
-  await page.click('.ps-make-default');
-  assert.equal(await text('.ps-default'), '★ Default mark');
+  await page.click('.ps-mark.on .ps-star');                                        // the star makes it the main one: to the top
+  assert.equal(await text('.ps-default'), '★ The main mark');
+  assert.equal(await page.locator('.ps-mark').first().getAttribute('data-key'), await page.locator('.ps-mark.on').getAttribute('data-key'));
   assert.equal(await page.locator('.ps-remove').count(), 0, 'the default is never removed');
   await page.click('#pfSave');
   for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/projects' && c.body.action === 'create'); i++) await page.waitForTimeout(100);
