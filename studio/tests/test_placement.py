@@ -167,3 +167,21 @@ def test_ticked_angles_take_turns_evenly(srv):
     deck = srv.RotDeck("0,45,90,135")
     got = deck.peek(20)
     assert sorted(got.count(r) for r in (0, 45, 90, 135)) == [5, 5, 5, 5]
+
+
+def test_a_size_is_one_of_the_menus_and_kept_with_the_image(srv):
+    size = demo(srv)["mark_size"]
+    assert [projects.clean_scale(v) for v in (0.6, "1.25", 1.6, 1.3, None, "x")] == [0.6, 1.25, 1.6, 1.0, 1.0, 1.0]
+    assert placement.choose("exact", demo(srv), scale=1.25) == {"kind": "exact", "x": 50.0, "y": 50.0, "size": round(size * 1.25, 1), "scale": 1.25}
+    assert placement.choose("exact", demo(srv), scale=1) is None, "its own size on target: as before"
+    pl = placement.clean({"kind": "exact", "x": 50, "y": 50, "size": 28.8, "scale": 1.6, "rot": 90})
+    assert pl == {"kind": "exact", "x": 50.0, "y": 50.0, "size": 28.8, "rot": 90, "scale": 1.6}
+    assert "scale" not in placement.clean({"kind": "loose", "x": 30, "y": 40, "size": 20, "scale": 1.6}), "Loose chooses its own size"
+    assert srv.scale_set("0.8,1,7,1.25") == [0.8, 1.0, 1.25] and srv.scale_set(None) == [1.0]
+
+
+def test_older_placements_and_images_read_as_they_always_did(srv):
+    """Past projects: placements from before angles and sizes, and images with none, mean what they meant."""
+    old = {"kind": "loose", "x": 30.0, "y": 40.0, "size": 20.0}
+    assert placement.clean(old) == old and placement.as_project(demo(srv), old)["mark_file"] == demo(srv)["mark_file"]
+    assert placement.clean({"kind": "exact", "x": 50, "y": 50, "size": 18, "angle": 30}) is None, "Angled's few: on target, as before"

@@ -741,7 +741,7 @@
         <aside class="ps-prev" aria-label="Preview"><div class="ps-frame" id="psFrame" role="img" aria-label="Where the marks sit in a 9:16 frame"></div><span class="ps-cap" id="psCap"></span></aside>
       </div>
       <footer class="ps-foot"><p class="pf-error" id="pfError" role="alert"></p><button type="button" onclick="closeProjectForm()">Cancel</button><button type="submit" class="solid" id="pfSave">Create project</button></footer>
-      <input type="file" id="psFile" accept="image/png,image/svg+xml,image/jpeg,image/webp" hidden onchange="psFileChosen(this.files[0])" />
+      <input type="file" id="psFile" accept="image/png,image/svg+xml,image/jpeg,image/webp" hidden multiple onchange="psFilesChosen(this.files)" />
     </form>
   </div>
 

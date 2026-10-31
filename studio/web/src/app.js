@@ -501,7 +501,7 @@
     function renderPS() {
       if (!projectForm) return;
       const f = projectForm;
-      document.getElementById('psSub').textContent = f.kind === 'new' && psFirstPending() ? 'Start with the main mark' : '';
+      document.getElementById('psSub').textContent = f.kind === 'new' && psFirstPending() ? 'Start with your marks' : '';
       renderPSRail(); renderPSDetail(); renderPSPreview();
       psSyncSave();
     }
@@ -514,7 +514,7 @@
       const f = projectForm, pending = psFirstPending(), lock = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-label="Locked"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>';
       const swatches = f.palette.length ? `<span class="ps-swatches">${f.palette.map(c => `<i style="background:${escapeHtml(c)}"></i>`).join('')}</span>` : '';
       const projRow = `<button type="button" class="ps-row ps-proj${f.sel === 'project' ? ' on' : ''}" onclick="psSelect('project')"${pending ? ' disabled' : ''}>
-          <b>${escapeHtml(f.name || (pending ? 'New project' : 'Untitled'))}</b>${pending ? '<span class="ps-wait">Filled in from the main mark</span>' : swatches}</button>`;
+          <b>${escapeHtml(f.name || (pending ? 'New project' : 'Untitled'))}</b>${pending ? '<span class="ps-wait">Filled in from your marks</span>' : swatches}</button>`;
       const rows = f.marks.map(m => {
         const def = m.key === f.def, sub = m.reading ? `Kimi · ${psSecs(m)} s` : def ? `Default · ${+m.size}%` : `${+m.size}% · ${+m.x === 50 && +m.y === 50 ? 'centre' : `${+m.x} / ${+m.y}`}`;
         return `<button type="button" class="ps-row ps-mark${f.sel === m.key ? ' on' : ''}${m.reading ? ' reading' : ''}" onclick="psSelect(this.dataset.key)" data-key="${escapeHtml(m.key)}">
@@ -528,13 +528,13 @@
       const f = projectForm, d = document.getElementById('psDetail'), m = psMark(f.sel);
       if (f.kind === 'new' && !f.marks.length && !f.noMark) {                 // the first mark comes first (or none: your own images)
         d.innerHTML = `<div class="ps-drop" id="psDrop"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"></rect><circle cx="12" cy="12" r="3"></circle></svg>
-          <b>Drop the main mark</b><span>PNG or SVG, ideally on a transparent background</span><button type="button" class="solid" onclick="psPick('new')">Choose file…</button>
+          <b>Drop your marks</b><span>One or several, up to ${PS_MAX}: PNG or SVG, ideally on a transparent background.<br>The first by file name is the main mark (you can change it after).</span><button type="button" class="solid" onclick="psPick('new')">Choose files…</button>
           <button type="button" class="link-btn ps-nomark" onclick="psNoMark()">No mark, just my own images</button></div>`;
         const drop = document.getElementById('psDrop');
         if (drop && drop.addEventListener) {
           drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
           drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-          drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); const file = e.dataTransfer && e.dataTransfer.files[0]; if (file) psFileChosen(file, 'new'); });
+          drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer && e.dataTransfer.files.length) psFilesChosen(e.dataTransfer.files, 'new'); });
         }
         return;
       }
@@ -613,7 +613,17 @@
     }
     // a file for the form: the first mark of a new project, another mark, or a new image for one
     let psFileFor = null;
-    function psPick(forWhat) { psFileFor = forWhat; const i = document.getElementById('psFile'); i.value = ''; i.click(); }
+    function psPick(forWhat) { psFileFor = forWhat; const i = document.getElementById('psFile'); i.value = ''; i.multiple = forWhat !== 'replace'; i.click(); }
+    // several files at once (the user, 2026-10-31: a new project's four marks in one go): in order of their names, the first the main
+    // mark, as many as the project still has room for; each read by Kimi side by side
+    async function psFilesChosen(files, forWhat = psFileFor) {
+      const list = [...(files || [])].filter(Boolean);
+      if (forWhat === 'replace') return psFileChosen(list[0], forWhat);
+      list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' }));
+      const room = PS_MAX - ((projectForm && projectForm.marks.length) || 0);
+      if (list.length > room) document.getElementById('pfError').textContent = `A project holds ${PS_MAX} marks: the first ${room} were added.`;
+      for (const file of list.slice(0, Math.max(0, room))) await psFileChosen(file, forWhat);
+    }
     async function psFileChosen(file, forWhat = psFileFor) {
       if (!file || !projectForm) return;
       let png;
@@ -624,6 +634,7 @@
       let m = forWhat === 'replace' ? psMark(f.sel) : null;
       if (m) { m.image = png; m.url = png; m.ar = ar; }                       // a new image for a mark: read again, never over what was typed
       else {
+        if (f.marks.length >= PS_MAX) return;
         const base = f.marks.length ? psDefault() : null;
         m = { key: `new-${++psSeq}`, id: null, name: '', size: base ? base.size : 18, x: base ? base.x : 50, y: base ? base.y : 50, shape: '', noun: '', url: png, image: png, ar, typed: new Set() };
         f.marks.push(m);
@@ -4308,7 +4319,7 @@ Object.assign(window, {
   isBusy, setStatus,
   exportProject, importProject, importProjectPath, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
   downloadShown, setThumbSizeAt, openViewer, closeViewer, viewerStep, toggleTerrMenu, editRefine, clearRefine, closeGroupMenu, showNewGroupForm,
-  openProjectMenu, switchProject, openProjectForm, closeProjectForm, saveProject, psKey, psSelect, psSetProject, psSetMark, psColour, psColourAdd, psColourKey, psMakeDefault, psRemove, psPick, psFileChosen, psCancelRead,
+  openProjectMenu, switchProject, openProjectForm, closeProjectForm, saveProject, psKey, psSelect, psSetProject, psSetMark, psColour, psColourAdd, psColourKey, psMakeDefault, psRemove, psPick, psFileChosen, psFilesChosen, psCancelRead,
   removeChange,
   startAiOrder,
   toggleAiPanel,

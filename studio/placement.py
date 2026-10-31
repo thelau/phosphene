@@ -30,13 +30,17 @@ def _ratio(project: dict) -> float:
     return a.height / a.width
 
 
-def choose(kind: str, project: dict, rng: random.Random | None = None, rot=0) -> dict | None:
+def choose(kind: str, project: dict, rng: random.Random | None = None, rot=0, scale=1) -> dict | None:
     """A placement for one image: None on target; for Loose or Scattered, a place and size inside its level's reach (its box clear of
-    the frame's edges). rot: the mark turned that many degrees clockwise (on target too: the project's place and size, turned)."""
-    rot = projects.clean_rot(rot)
+    the frame's edges). rot: the mark turned that many degrees clockwise; scale: on target, its size times this (Loose and Scattered
+    choose their own sizes). On target, turned or resized: the project's place, kept with the image."""
+    rot, scale = projects.clean_rot(rot), projects.clean_scale(scale)
     level = LEVELS.get(kind)
     if not level:
-        return {"kind": "exact", "x": project["mark_x"], "y": project["mark_y"], "size": project["mark_size"], "rot": rot} if rot else None
+        if not rot and scale == 1:
+            return None
+        return {"kind": "exact", "x": project["mark_x"], "y": project["mark_y"], "size": round(project["mark_size"] * scale, 1),
+                **({"rot": rot} if rot else {}), **({"scale": scale} if scale != 1 else {})}
     rng = rng or random.Random()
     turned = projects.rotated(project, rot)                                     # a turned mark's box is wider or taller
     grow, ratio = turned["mark_size"] / project["mark_size"], _ratio(turned)
@@ -55,20 +59,21 @@ def choose(kind: str, project: dict, rng: random.Random | None = None, rot=0) ->
 
 def clean(pl) -> dict | None:
     """A placement from the page or a received project, checked: numbers inside the frame, or None. On target it is kept only for a
-    turned mark (its angle, `rot`, degrees clockwise)."""
+    turned mark (its angle, `rot`, degrees clockwise) or a resized one (`scale`, times the mark's size)."""
     if not isinstance(pl, dict) or pl.get("kind") not in KINDS:
         return None
-    rot = projects.clean_rot(pl.get("rot"))
-    if pl["kind"] == "exact" and not rot:
+    rot, scale = projects.clean_rot(pl.get("rot")), projects.clean_scale(pl.get("scale"))
+    if pl["kind"] == "exact" and not rot and scale == 1:
         return None
     try:
         x, y, size = (float(pl[k]) for k in ("x", "y", "size"))
     except (KeyError, TypeError, ValueError):
         return None
-    lo, hi = (4.0, 60.0) if pl["kind"] == "exact" else SIZE_PCT              # on target: the project's own size, which may be up to 60%
+    lo, hi = (2.4, 96.0) if pl["kind"] == "exact" else SIZE_PCT              # on target: the project's own size (up to 60%), times 0.6 to 1.6
     if not (0 < x < 100 and 0 < y < 100 and lo <= size <= hi):
         return None
-    return {"kind": pl["kind"], "x": round(x, 1), "y": round(y, 1), "size": round(size, 1), **({"rot": rot} if rot else {})}
+    return {"kind": pl["kind"], "x": round(x, 1), "y": round(y, 1), "size": round(size, 1), **({"rot": rot} if rot else {}),
+            **({"scale": scale} if scale != 1 and pl["kind"] == "exact" else {})}
 
 
 def as_project(project: dict, pl: dict | None) -> dict:

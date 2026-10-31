@@ -1455,6 +1455,24 @@ test('several marks: added in Project settings, then the generation row offers w
   await ctx.close();
 });
 
+test('a new project takes several marks in one drop: in order of their file names, the first the main one', { skip }, async () => {
+  const ctx = await fresh();
+  await page.evaluate(() => { kimiConfigured = true; openProjectForm('new'); });
+  assert.match(await text('.ps-drop'), /Drop your marks/);
+  const mk = (w, h) => page.evaluate(([w, h]) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.fillStyle = '#f0a020'; x.fillRect(0, 0, w, h); return c.toDataURL('image/png').split(',')[1]; }, [w, h]);
+  const file = async (name, w, h) => ({ name, mimeType: 'image/png', buffer: Buffer.from(await mk(w, h), 'base64') });
+  await page.setInputFiles('#psFile', [await file('c-dot.png', 30, 30), await file('a-bar.png', 120, 40), await file('b-tall.png', 40, 90)]);
+  await page.waitForFunction(() => document.querySelectorAll('.ps-mark').length === 3 && !document.querySelector('.ps-mark.reading'), null, { timeout: 10000 });
+  const widths = await page.locator('.ps-mark img').evaluateAll(els => els.map(e => e.naturalWidth));
+  assert.deepEqual(widths, [120, 40, 30], 'in order of their names');
+  assert.match(await page.locator('.ps-mark').first().textContent(), /Default/, 'the first by name is the main mark');
+  await page.click('#pfSave');
+  for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/projects' && c.body && c.body.action === 'create'); i++) await page.waitForTimeout(100);
+  const sent = api.state.calls.filter(c => c.path === '/api/projects' && c.body && c.body.action === 'create').pop().body;
+  assert.equal(sent.marks.length, 2, 'the other two come with it');
+  await ctx.close();
+});
+
 test('a new project can bring its other marks: added in the form after the main one, made with it; Make default picks which one leads', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(() => { kimiConfigured = true; openProjectForm('new'); });

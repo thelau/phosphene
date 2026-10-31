@@ -263,6 +263,18 @@ def clean_rot(v) -> int:
     return r if r in ROTATIONS else 0
 
 
+SCALES = (0.6, 0.8, 1.0, 1.25, 1.6)                 # the sizes the Mark menu offers, times the mark's own
+
+
+def clean_scale(v) -> float:
+    """A size as one of SCALES, or 1 for anything else."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 1.0
+    return next((s for s in SCALES if abs(s - f) < 1e-6), 1.0)
+
+
 def rotated(p: dict, rot) -> dict:
     """The project as an image with its mark turned `rot` degrees clockwise sees it: the mark's file turned (cut out of its background
     first, so the corners a turn opens are empty), and its size the width of the turned mark's box, so the mark itself keeps its size.
