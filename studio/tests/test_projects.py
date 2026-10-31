@@ -425,6 +425,15 @@ def test_an_imported_curation_keeps_only_sound_mark_records(pdir, tmp_path):
     assert json.loads(f.read_text())["marks_used"] == {"a.jpg": "bird"}
 
 
+def test_an_imported_curation_keeps_only_sound_path_run_records(pdir, tmp_path):
+    import json
+    f = tmp_path / "state.json"
+    f.write_text(json.dumps({"path_runs": {"a1f": {"at": 5, "world": "Fog", "mark": "main", "rot": "0,90", "scale": "1", "keep": True, "x": "y"},
+                                           "../evil": {"at": 1}, "b2": "nope"}}))
+    projects._clean_state(f)
+    assert json.loads(f.read_text())["path_runs"] == {"a1f": {"at": 5.0, "keep": True, "world": "Fog", "mark": "main", "rot": "0,90", "scale": "1"}}
+
+
 def test_the_settings_form_saves_every_mark_at_once_each_with_its_own_place(pdir):
     projects.create({"name": "Kestrel", "mark_name": "Badge"}, star_png())
     assert projects.load("Kestrel")["mark_name"] == "Badge"

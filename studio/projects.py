@@ -780,6 +780,15 @@ def _clean_state(f: Path) -> None:
         st["placements"] = {k: c for k, v in st["placements"].items() if _bare(k) and (c := placement.clean(v))}
     elif "placements" in st:
         del st["placements"]
+    if isinstance(st.get("path_runs"), dict):          # how each Path run was made (Make N fills it alike): short text and numbers only
+        runs = {}
+        for k, v in list(st["path_runs"].items())[:500]:
+            if isinstance(k, str) and re.fullmatch(r"[0-9a-f]{1,16}", k) and isinstance(v, dict):
+                runs[k] = {"at": float(v["at"]) if isinstance(v.get("at"), (int, float)) else 0.0, "keep": v.get("keep") is True,
+                           **{x: str(v.get(x) or "")[:200] for x in ("world", "mark", "rot", "scale")}}
+        st["path_runs"] = runs
+    elif "path_runs" in st:
+        del st["path_runs"]
     f.write_text(json.dumps(st, indent=1))
 
 

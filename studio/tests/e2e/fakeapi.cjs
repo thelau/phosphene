@@ -78,7 +78,7 @@ function start(state = makeState()) {
     switch (url.pathname) {
       case '/api/state': {
         const visible = new Set(state.plates.filter(p => !p.trashed).map(p => p.filename));
-        return send({ plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, groups: (state.groups || []).map(g => ({ ...g, files: g.files.filter(f => state.plates.some(p => p.filename === f)) })), edits: state.edits || [], project: projectOf(state), krea_connected: true, kimi_configured: state.kimiConfigured !== false, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3' });
+        return send({ plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, groups: (state.groups || []).map(g => ({ ...g, files: g.files.filter(f => state.plates.some(p => p.filename === f)) })), edits: state.edits || [], path_runs: state.pathRuns || [], project: projectOf(state), krea_connected: true, kimi_configured: state.kimiConfigured !== false, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3' });
       }
       case '/api/projects': {    // the projects (projects.py): list, switch, make one (the mark arrives as a PNG data URL), change one
         if (req.method === 'GET') return send({ ok: true, active: state.project, projects: state.projects });
@@ -183,10 +183,19 @@ function start(state = makeState()) {
       }
       case '/api/invent-prompts': {
         await sleep(state.delays.invent);
+        if (body.fill) {                         // Make N: the run's missing steps (the server's run_fill), in the same run
+          const r = (state.pathRuns || []).find(x => x.run === body.fill), have = new Set(state.plates.filter(p => !p.trashed && p.placement && p.placement.path && p.placement.path.run === body.fill).map(p => p.placement.path.i));
+          const steps = r ? Array.from({ length: r.n }, (_, i) => i).filter(i => !have.has(i)) : [];
+          if (!steps.length) return send({ ok: false, error: 'That path has all its steps.' }, 400);
+          return send({ ok: true, keep: false, ideas: steps.map(i => ({ title: `Step ${i + 1}`, prompt: `step ${i}`, guide: 'dark', world: r.world, idea: 'idea', subject: `step ${i}`, placement: { kind: 'path', x: 50, y: 20 + i * 10, size: 18, path: { shape: 'line', dir: r.dir, len: r.len, i, n: r.n, run: r.run } } })) });
+        }
         const n = body.count || 4;
         if (body.world === '__custom__' && !(state.moreWorlds || []).some(w => w.name === 'Fog & Vapor'))   // Describe your own: a territory of yours, your words kept
           (state.moreWorlds || (state.moreWorlds = [])).push({ name: 'Fog & Vapor', brief: 'Weather.', n: 4, kept: 4, wildcard: true, origin: 'custom', prompt: body.direction });
-        return send({ ok: true, world: body.world && !body.world.startsWith('__') ? body.world : 'Fog & Vapor', ideas: Array.from({ length: n }, (_, i) => ({ title: `Fog ${i + 1}`, prompt: `fog scene ${i}`, guide: i % 2 ? 'light' : 'dark', world: body.world && !body.world.startsWith('__') ? body.world : 'Fog & Vapor', idea: 'idea', subject: `fog ${i}` })) });
+        const run = body.target === 'path' ? `f${(state.runCount = (state.runCount || 0) + 1)}` : null, pa = body.path || {};
+        if (run) (state.pathRuns || (state.pathRuns = [])).push({ run, n, shape: 'line', dir: pa.dir || 0, len: pa.len || 40, at: Date.now() / 1000, world: 'Fog & Vapor' });   // the server records a new run
+        return send({ ok: true, world: body.world && !body.world.startsWith('__') ? body.world : 'Fog & Vapor', ideas: Array.from({ length: n }, (_, i) => ({ title: `Fog ${i + 1}`, prompt: `fog scene ${i}`, guide: i % 2 ? 'light' : 'dark', world: body.world && !body.world.startsWith('__') ? body.world : 'Fog & Vapor', idea: 'idea', subject: `fog ${i}`,
+          placement: run ? { kind: 'path', x: 50, y: 20 + i * 5, size: 18, path: { shape: 'line', dir: pa.dir || 0, len: pa.len || 40, i, n, run } } : null })) });
       }
       case '/api/upload-image': {               // your own image: the page sends it framed (a JPEG); it joins the end, uploaded
         const name = `u${(state.uploads = (state.uploads || 0) + 1)}`;
@@ -201,7 +210,7 @@ function start(state = makeState()) {
         if (state.failGen && state.failGen(state.genAttempts, body)) return send({ ok: false, error: `Krea 429: too many requests (${body.title})` }, 500);
         const name = `g${++state.genCount}`;
         for (const q of state.sequences) q.order.push(name);
-        state.plates.push({ filename: name, url: `/assets/ai-plates/${name}.svg`, title: body.title, prompt: body.prompt, model: body.model, trashed: false, qa_passed: true, qa_score: 90, qa_issues: [], world: body.world });
+        state.plates.push({ filename: name, url: `/assets/ai-plates/${name}.svg`, title: body.title, prompt: body.prompt, model: body.model, trashed: false, qa_passed: true, qa_score: 90, qa_issues: [], world: body.world, placement: body.placement || null, box: body.placement ? { x: body.placement.x, y: body.placement.y, size: body.placement.size, ar: 1, rot: body.placement.rot || 0 } : null });
         return send({ ok: true, qa_passed: true, trashed: false, filename: name, title: body.title });
       }
       case '/api/edits': {                     // the same rules as studio/edits.py

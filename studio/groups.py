@@ -24,7 +24,7 @@ def _files(value) -> list:
     return list(dict.fromkeys(str(f) for f in value)) if isinstance(value, list) else []
 
 
-RULE_KINDS = ("mark", "pos", "rot", "size", "src")
+RULE_KINDS = ("mark", "pos", "rot", "size", "src", "run")   # run: one Path run (Made with › Path)
 
 
 def clean_rule(rule) -> dict | None:

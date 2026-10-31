@@ -7,10 +7,10 @@ test('page loads without errors: Curate first, generation in one tidy row, no st
   assert.equal(await page.evaluate(() => document.body.dataset.mode), 'curate');
   assert.equal(await page.locator('#statusText').isVisible(), false, 'the status bar only shows while something runs');
   const box = async sel => page.locator(sel).first().boundingBox();
-  const [world, dir, count, gen, settings] = await Promise.all(['#terrBtn', '#refineOpen', '#countField', '#generateBtn', '#settingsBtn'].map(box));
+  const [world, dir, count, gen, settings] = await Promise.all(['#terrBtn', '#refineOpen', '#placeBtn', '#generateBtn', '#settingsBtn'].map(box));
   const header = await box('header');
   assert.ok(header.height <= 57, `header is ${header.height}px tall`);
-  assert.ok(world.x + world.width <= dir.x + 1 && dir.x + dir.width <= count.x + 1 && count.x + count.width <= gen.x + 1, 'territory, Refine, count, Generate: left to right');
+  assert.ok(world.x + world.width <= dir.x + 1 && dir.x + dir.width <= count.x + 1 && count.x + count.width <= gen.x + 1, 'territory, Refine, the Mark menu (the count inside it), Generate: left to right');
   await page.click('#refineOpen');
   const field = await box('#directionInput');
   assert.ok(field.width > 400, `the refinement has room to be read in full (${field.width} px)`);
@@ -18,12 +18,13 @@ test('page loads without errors: Curate first, generation in one tidy row, no st
   assert.equal(await text('#terrName'), 'Editorial Print', 'no Mix it up: the first territory');
   const clip = await page.locator('#terrName').evaluate(b => b.scrollHeight - b.clientHeight);
   assert.ok(clip <= 0, `the name is not clipped (descenders: g, p, y): ${clip}`);
-  const mids = await page.evaluate(() => ['#terrIcon svg', '#terrName', '#terrBtn > svg', '#refineOpen', '#countVal', '#generateBtn'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return Math.round((r.top + r.height / 2) * 10) / 10; }));
+  const mids = await page.evaluate(() => ['#terrIcon svg', '#terrName', '#terrBtn > svg', '#refineOpen', '#placeName', '#generateBtn'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return Math.round((r.top + r.height / 2) * 10) / 10; }));
   assert.ok(Math.max(...mids) - Math.min(...mids) <= 1.5, `everything in the bar on one centre line: ${mids}`);
   const [bar, tools] = [await box('#genGroup'), await box('.size-ctl')];
   assert.ok(Math.abs(bar.x + bar.width - (tools.x + tools.width)) <= 1, 'the bar runs the full width: its right edge lines up with the tools below');
   for (const b of [dir, count, gen]) assert.ok(Math.abs(b.y + b.height / 2 - (world.y + world.height / 2)) < 4, 'one row');
   assert.ok(settings.y < world.y, 'Settings stays in the header');
+  assert.equal(await page.locator('#countField').isVisible(), false, 'no count of its own in the row');
   assert.equal(await text('#tabSelection'), 'Selection 3');
   assert.equal(await text('#tabTrash'), 'Trash 4');
   await shot('01-loaded');
@@ -1182,7 +1183,7 @@ test('Curate: thumbnail sizes, trash from the grid with Undo, restore picked ima
   assert.deepEqual([await targetShown(), await page.locator('#gridTargetBtn').getAttribute('aria-pressed')], ['dashed', 'true']);
   await page.click('#viewerTargetBtn');
   assert.equal(await page.locator('#viewer').isVisible(), true, 'the header\'s buttons never close the viewer');
-  assert.equal(await text('.viewer-esc'), 'esc', 'Esc as a quiet key hint, no × button');
+  assert.equal(await page.locator('#viewerClose').getAttribute('title'), 'Close (esc)', 'a × to close, Esc its shortcut');
   assert.match(await text('#viewerModel'), /nano-banana/, 'the model, no score');
   await page.click('#viewerInfoBtn');                                            // the card's Info and Trash, in the viewer too
   assert.equal(await page.locator('#viewerInfo').isVisible(), true, 'Info opens beside the image, the viewer stays');
@@ -1197,7 +1198,7 @@ test('Curate: thumbnail sizes, trash from the grid with Undo, restore picked ima
   await page.waitForFunction(b => document.getElementById('viewerCount').textContent !== b, before);
   assert.equal(api.state.plates.find(x => x.filename === nextNow.filename).trashed, true, 'trashed from the viewer');
   assert.notEqual(await text('#viewerTitle'), nextNow.title, 'the next image takes its place; the viewer stays open');
-  await page.keyboard.press('Escape');
+  await page.click('#viewerClose');
   await page.waitForSelector('#viewer[hidden]', { state: 'attached' });
   await page.keyboard.press('Meta+z');                                            // one undo step, as a trash from the card
   await page.waitForFunction(f => !!document.querySelector(`.card[data-filename="${f}"]`), nextNow.filename);
@@ -1394,19 +1395,21 @@ test('the Selection: picked images go to the Trash from the floating bar, in one
   await ctx.close();
 });
 
-async function setCount(n) {
+async function setCount(n) {                                                   // the count lives in the Mark menu's share box
+  if (await page.locator('#placeMenu').isHidden()) await page.click('#placeBtn');
   await page.dblclick('#countField');
   await page.keyboard.press('Meta+a');
   await page.keyboard.type(String(n));
   await page.keyboard.press('Enter');
+  await page.evaluate(() => togglePlaceMenu(null, false));
 }
 
 test('several marks: added in Project settings, then the generation row offers which one a batch uses; a single-mark project shows nothing new', { skip }, async () => {
   const ctx = await fresh({ setup: st => { st.projects[0].fixed = false; st.plates[1].mark = 'n1'; st.plates[1].mark_name = 'Bar'; st.plates[2].placement = { kind: 'exact', x: 50, y: 50, size: 18, rot: 90 }; st.plates[2].box = { x: 50, y: 50, size: 18, ar: 1, rot: 90 }; st.plates[1].box = { x: 50, y: 50, size: 12, ar: 1 }; st.plates[0].qa_passed = false; st.plates[0].qa_issues = ['off']; st.plates[1].qa_doubt = 'faint'; } });
   const btnBox = async () => { const b = await page.locator('#placeBtn').boundingBox(); return [Math.round(b.width), Math.round(b.height)]; };
-  assert.deepEqual(await btnBox(), [260, 46], 'a fixed 260 × 46');
-  assert.equal(await text('#placeName'), 'On target', 'one mark: the summary only');
-  assert.deepEqual([await page.locator('#placeStack').isVisible(), await page.locator('#placeLabel').isVisible()], [false, false], 'no thumbnails, no label');
+  assert.deepEqual(await btnBox(), [345, 46], 'a fixed 345 × 46 (it took the count field\'s place)');
+  assert.equal(await text('#placeName'), 'On target · 4 images', 'one mark: the summary and how many');
+  assert.equal(await page.locator('#placeStack').isVisible(), false, 'no thumbnails');
   // cards: a plain image shows no cluster; QA sits on the image
   const card = i => page.locator(`.card[data-filename="${api.state.plates[i].filename}"]`);
   assert.equal(await card(0).locator('.card-made').count(), 0, 'one mark, on target: no cluster, as before');
@@ -1448,17 +1451,16 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.deepEqual([await ang(90).getAttribute('title'), off.border, off.bg], ['90° · click to remove', 'rgb(236, 84, 12)', 'rgba(0, 0, 0, 0)'], 'ticked + hover: the orange stays, the fill clears');
   assert.equal(await ang(0).getAttribute('title'), 'Upright · click to remove');
   await ang(90).click();
-  assert.equal(await page.locator('#placeMenu .mm-keept').textContent(), 'Keep the mark exact');
-  assert.match(await text('#placeMenu .mm-keep'), /its own colours and lettering, not restyled to each scene/);
+  assert.equal(await page.locator('#placeMenu .mm-keep').count(), 0, 'no Keep the mark exact (removed: the user never used it)');
   assert.equal(await page.locator('#placeMenu [data-list="angle"][aria-pressed="true"]').getAttribute('data-v'), '0', 'upright by default');
   assert.equal(await page.locator('#placeMenu [data-list="size"][aria-pressed="true"]').getAttribute('data-v'), '1', 'its own size by default');
   await page.click('#placeMenu [data-list="size"][data-v="1.25"]');
-  assert.equal(await text('#placeName'), 'On target · 2 sizes');
+  assert.equal(await text('#placeName'), 'On target · 2 sizes · 4 images');
   assert.equal(await page.locator('#placeMenu .mm-morebtn').getAttribute('aria-disabled'), 'true', 'More stays open while a size is set');
   assert.match(await page.locator('#placeMenu .mm-morebtn').getAttribute('class'), /set/, 'its summary turns orange');
   assert.match(await text('#placeMenu .mm-turns'), /2 take turns/);
   await page.click('#placeMenu [data-list="position"][data-v="loose"]');
-  assert.equal(await text('#placeName'), 'Loose', 'Loose picks its own sizes');
+  assert.equal(await text('#placeName'), 'Loose · 4 images', 'Loose picks its own sizes');
   assert.equal(await page.locator('#placeMenu [data-list="size"][data-v="1.25"]').getAttribute('aria-disabled'), 'true');
   assert.match(await text('#placeMenu .mm-moreb'), /Loose picks its own sizes\./);
   // the strip draws the places the server picked for this batch (the same seed goes with Generate)
@@ -1474,14 +1476,14 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.deepEqual(await heads(), ['Position'], 'closed again');
   await page.click('#placeMenu [data-list="position"][data-v="path"]');
   assert.equal(await page.locator('#placeMenu .mm-path svg[role="img"]').count(), 1, 'a Path: a frame drawing it');
-  assert.equal(await text('#placeName'), 'Path → 40%');
+  assert.equal(await text('#placeName'), 'Path → 40% · 12 steps', 'a Path: its steps, not the count');
   await page.click('#placeMenu [data-list="pshape-open"]');
   assert.match(await text('#placeMenu .mm-ddlist'), /Line\s*More shapes to come/);
   await page.click('#placeMenu [data-list="pshape"][data-v="line"]');
   await page.click('#placeMenu [data-list="pdir"][data-v="90"]');
   await page.click('#placeMenu [data-list="plen"][data-v="70"]');
-  assert.equal(await text('#placeName'), 'Path ↓ 70%');
-  assert.equal(await page.locator('#pathSelect').inputValue(), 'line:90:70');
+  assert.equal(await text('#placeName'), 'Path ↓ 70% · 12 steps');
+  assert.equal(await page.locator('#pathSelect').inputValue(), 'line:90:70:12:through', 'shape, direction, reach, steps and where the target is');
   assert.doesNotMatch(await text('#placeMenu'), /Short|Medium|Long/, 'Reach in %, no words');
   await shot('27c-path');
   const menuBox = await page.locator('#placeMenu').boundingBox();
@@ -1505,7 +1507,7 @@ test('several marks: added in Project settings, then the generation row offers w
   assert.match(upd.marks[0].image, /^data:image\/png;base64,/, 'a new mark brings its image');
   await page.waitForSelector('#loader', { state: 'detached' });
   await page.waitForFunction(() => document.querySelector('#placeBtn').title.startsWith('Main mark · '), null, { timeout: 5000 });   // two marks: read back
-  assert.equal(await text('#placeName'), 'On target', 'one of two ticked: still the summary only');
+  assert.equal(await text('#placeName'), 'On target · 4 images', 'one of two ticked: still the summary only');
   assert.equal(await card(1).locator('.card-made').count(), 1, 'several marks: each card shows which in its frame');
   await page.click('#placeBtn');
   assert.deepEqual(await heads(), ['Mark', 'Position']);
@@ -1515,16 +1517,14 @@ test('several marks: added in Project settings, then the generation row offers w
   await page.click('#placeMenu [data-list="mark"][data-v="main"]');
   assert.equal(await page.locator('#placeMenu [data-list="mark"][data-v="main"]').getAttribute('aria-pressed'), 'true', 'the last tick stays: one mark at least');
   await page.click('#placeMenu [data-list="mark"][data-v="n1"]');
-  assert.deepEqual([await page.locator('#placeStack').isVisible(), await page.locator('#placeLabel').textContent()], [true, '2 marks · take turns'], 'two ticked: thumbnails and the label');
-  assert.match(await text('#placeMenu .mm-sharet'), /^4 images · 2 marks, 2 each$/);
+  assert.deepEqual([await page.locator('#placeStack').isVisible(), await page.locator('#placeLabel').count()], [true, 0], 'two ticked: their thumbnails and count, no label above (the summary stays on the row\'s line)');
+  assert.match(await text('#placeMenu .mm-sharet'), /^4\s*images\s*· 2 marks, 2 each$/);
   assert.equal(await page.locator('#placeMenu .mm-cell').count(), 4, 'one cell per image');
   await shot('27-mark-menu');
-  await page.click('#placeMenu .mm-keep');
-  assert.equal(await page.locator('#placeDesigned').isVisible(), true, 'Exact mark: a glyph on the button');
-  assert.match(await page.locator('#placeBtn').getAttribute('title'), /^2 marks: Main mark, Bar · On target · Exact mark$/);
+  assert.match(await page.locator('#placeBtn').getAttribute('title'), /^2 marks: Main mark, Bar · On target · 4 images$/);
   await page.click('#placeMenu .mm-morebtn');
   await page.click('#placeMenu [data-list="angle"][data-v="90"]');
-  assert.equal(await text('#placeName'), 'On target · 2 angles');
+  assert.equal(await text('#placeName'), 'On target · 2 angles · 4 images');
   const cells = await page.locator('#placeMenu .mm-cell img').evaluateAll(els => els.map(e => (e.getAttribute('src') !== els[0].getAttribute('src')) + '/' + (/rotate\(90deg\)/.test(e.getAttribute('style')))));
   assert.deepEqual(cells, ['false/false', 'true/false', 'false/true', 'true/true'], 'the strip: mark i % m, angle ⌊i/m⌋ % a, as the server makes it');
   await shot('27b-mark-menu-more');
@@ -1532,14 +1532,13 @@ test('several marks: added in Project settings, then the generation row offers w
   await page.click('#placeBtn');
   assert.match(await text('#placeMenu .mm-sit'), /Bar sits out this batch/, 'fewer images than marks: who sits out');
   await page.click('#placeMenu [data-list="angle"][data-v="0"]');
-  assert.deepEqual(await btnBox(), [260, 46], 'the button never resizes');
+  assert.deepEqual(await btnBox(), [345, 46], 'the button never resizes');
   await page.mouse.click(10, 600);
   await setCount(4);
   await page.click('#generateBtn');
   await page.waitForFunction(() => /Done/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   const inv = api.state.calls.find(c => c.path === '/api/invent-prompts').body;
-  assert.deepEqual([inv.mark, inv.rot, inv.scale, inv.keep], ['main,n1', '90', '1', true]);
-  assert.ok(api.state.calls.filter(c => c.path === '/api/generate-image').every(c => c.body.keep === true), 'each image kept as designed');
+  assert.deepEqual([inv.mark, inv.rot, inv.scale, inv.keep], ['main,n1', '90', '1', undefined]);
   await ctx.close();
 });
 
@@ -1653,13 +1652,14 @@ test('a new project can bring its other marks: added in the form after the main 
   await ctx.close();
 });
 
-test('your own images: Add images or a drop on the grid; each framed to 9:16 here, joins the end with an Uploaded badge', { skip }, async () => {
+test('your own images: a drop on the grid; each framed to 9:16 here, joins the end with an Uploaded badge', { skip }, async () => {
   const ctx = await fresh();
   const png = await page.evaluate(async () => {                               // a landscape photo
     const c = document.createElement('canvas'); c.width = 400; c.height = 200; const x = c.getContext('2d');
     x.fillStyle = '#3366cc'; x.fillRect(0, 0, 400, 200); return c.toDataURL('image/png').split(',')[1];
   });
-  await page.setInputFiles('#uploadInput', [{ name: 'IMG_1.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') }, { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('x') }]);
+  assert.equal(await page.locator('#uploadBtn').count(), 0, 'no Add images button: a drop is the way (the user\'s call)');
+  await page.evaluate(png => uploadImages([new File([Uint8Array.from(atob(png), c => c.charCodeAt(0))], 'IMG_1.png', { type: 'image/png' }), new File(['x'], 'notes.txt', { type: 'text/plain' })]), png);   // what a drop hands over
   await page.waitForFunction(() => /1 image added/.test(document.getElementById('toast').textContent));
   const card = page.locator('.card').last();
   assert.equal(await card.locator('.card-model').textContent(), 'Uploaded', 'labelled in the model\'s place, so nobody wonders');
@@ -1745,7 +1745,7 @@ test('the logo target: each image with its own placement (Loose) has its box the
   assert.equal(await page.locator(`.card[data-filename="${api.state.plates[1].filename}"] .card-made .cm-vals`).textContent(), 'Loose', 'labelled, so nobody wonders');
   assert.equal(await page.locator(`.card[data-filename="${api.state.plates[0].filename}"] .card-made`).count(), 0, 'on target: no cluster');
   await shot('23-loose-target');
-  assert.equal(await text('#placeName'), 'On target');
+  assert.equal(await text('#placeName'), 'On target · 4 images');
   await ctx.close();
 });
 

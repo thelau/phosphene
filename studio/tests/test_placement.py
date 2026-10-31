@@ -221,3 +221,31 @@ def test_path_steps_go_in_order_across_chunks_and_fill_dropped_scenes(srv):
     assert [t["path"]["i"] for t in plan.peek(3)] == [1, 3, 4], "the next chunk fills the step a dropped scene left"
     assert [t["path"]["i"] for t in plan.peek(8)][-2:] == [5, 5], "spares past the end: its last step"
     assert srv.BatchPlan("exact", count=4).peek(2)[0]["path"] is None and srv.path_for("exact", {"shape": "line"}) is None
+
+
+def test_a_fill_makes_only_a_runs_missing_steps_each_with_the_turn_it_had(srv, monkeypatch):
+    """Make N: the steps a run is missing, at their places in the same run, each with the mark, angle and size its turn gave it."""
+    monkeypatch.setattr(srv, "PROJECT", {**demo(srv), "marks": [{"id": "b"}]})
+    full = srv.BatchPlan("path", "main,b", "0,90", path={"shape": "line", "dir": 90, "len": 40}, count=8).peek(8)
+    fill = srv.BatchPlan("path", "main,b", "0,90", path={"shape": "line", "dir": 90, "len": 40}, count=8, steps=[2, 5], run="abc")
+    got = fill.peek(4)
+    assert [(t["i"], t["mark"], t["rot"], t["path"]["i"], t["path"]["n"], t["path"]["run"]) for t in got[:2]] == [
+        (2, full[2]["mark"], full[2]["rot"], 2, 8, "abc"), (5, full[5]["mark"], full[5]["rot"], 5, 8, "abc")]
+    assert {t["i"] for t in got} == {2, 5}, "spares: the missing steps again, never another step"
+    fill.take(2)
+    assert [t["i"] for t in fill.peek(1)] == [5]
+
+
+def test_a_path_can_land_on_the_target_or_leave_it(srv):
+    """Through (as every path before), Lands (the last step on the target: the motion arrives home) or Leaves (the first on it)."""
+    p = demo(srv)
+    step = lambda anchor, i: placement.choose("path", p, path={"shape": "line", "dir": 90, "len": 40, "i": i, "n": 5, **({"anchor": anchor} if anchor else {})})
+    assert (step(None, 2)["y"], step(None, 0)["y"] < 50 < step(None, 4)["y"]) == (50.0, True), "through: centred, as before"
+    lands = [step("lands", i)["y"] for i in range(5)]
+    assert lands[-1] == 50.0 and lands == sorted(lands) and lands[0] < 50 - 30, "lands: from above, down onto the target"
+    leaves = [step("leaves", i)["y"] for i in range(5)]
+    assert leaves[0] == 50.0 and leaves == sorted(leaves) and leaves[-1] > 50 + 30, "leaves: from the target, down"
+    assert step("lands", 4)["path"]["anchor"] == "lands" and "anchor" not in step(None, 1)["path"], "kept with the image; a through path unchanged"
+    assert placement.clean_path({"shape": "line", "dir": 0, "len": 40, "i": 0, "n": 2, "anchor": "sideways"}).get("anchor") is None
+    far = [placement.choose("path", {**p, "mark_y": 80}, path={"shape": "line", "dir": 90, "len": 70, "i": i, "n": 2, "anchor": "leaves"}) for i in range(2)]
+    assert far[0]["y"] == 80.0 and far[1]["y"] + far[1]["size"] * 1080 / 1920 / 2 <= 100 - placement.MARGIN + 0.2, "shrunk so its far end stays inside"

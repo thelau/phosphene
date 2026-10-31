@@ -1760,7 +1760,7 @@ test('Export says how long it will take once it has seen one: the median of the 
 test('menu labels in the page are what they should be (a bulk edit once renamed the batch sizes)', () => {
   const html = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'web', 'index.html'), 'utf8');
   const opts = id => { const m = html.match(new RegExp(`<select id="${id}"[\\s\\S]*?</select>`)); return [...m[0].matchAll(/<option value="([^"]*)"[^>]*>([^<]*)</g)].map(x => `${x[1]}=${x[2]}`); };
-  assert.match(html, /id="countField" role="spinbutton"[^>]*aria-valuemin="1" aria-valuemax="20"/, 'the count: a number, 1 to 20');
+  assert.match(html, /id="countField" role="spinbutton"[^>]*aria-valuemin="1" aria-valuemax="40"/, 'the count: a number, 1 to 40');
   assert.deepEqual(opts('multSelect'), ['0.25=×¼', '0.5=×½', '1=×1', '1.3333333=×1⅓', '2=×2', '3=×3', '4=×4', '6=×6', '8=×8', '9=×9']);
   assert.deepEqual(opts('rhythmSelect'), ['flat=One speed', 'variable=A change']);
 });
@@ -2136,8 +2136,7 @@ test('a project opens with its own Mark menu: a new one, or one saved before ang
     const h = load({ routes: r, storage: { studioProject: 'demo', 'studioFilm:demo': turned, ...(saved ? { [`studioFilm:${slug}`]: saved } : {}) } });
     await settle(); await settle();
     assert.deepEqual(['targetSelect', 'rotSelect', 'sizeSelect'].map(id => h.$(id).value), ['exact', '0', '1'], `${slug}: not Demo's four angles`);
-    assert.equal(h.$('keepCheck').checked, false);
-    assert.equal(h.$('placeName').textContent, 'On target');
+    assert.equal(h.$('placeName').textContent, 'On target · 4 images', 'and how many, in the header');
     assert.equal(JSON.parse(h.store[`studioFilm:${slug}`]).rotSelect, '0', 'and kept as its own');
   }
 });

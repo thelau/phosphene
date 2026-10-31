@@ -1069,6 +1069,37 @@ def test_a_path_batch_walks_its_images_along_the_line_and_an_angled_size_batch_t
     assert "| the mark turned 90° clockwise" in live.calls["kimi"][-1]
 
 
+def test_a_path_run_knows_its_missing_steps_and_make_n_fills_just_those(live, srv, monkeypatch, tmp_path):
+    """Claude Design's PathMissing: a run's steps not in the Selection (never made, or trashed) are made again at their own places,
+    in the same run, with the turns they had; a run from before (no record) is read off its images."""
+    monkeypatch.setattr(srv.placement, "GUIDE_DIR", tmp_path / "guides")
+    path = {"shape": "line", "dir": 90, "len": 40}
+    _, made = live("POST", "/api/invent-prompts", {"count": 4, "world": "Editorial Print", "target": "path", "path": path, "rot": "0,90"})
+    ideas = made["ideas"]
+    run = ideas[0]["placement"]["path"]["run"]
+    names = {}
+    for k in (0, 1, 3):                                                  # step 2 never made (a failure nobody retried)
+        _, res = live("POST", "/api/generate-image", {"title": ideas[k]["title"], "prompt": ideas[k]["prompt"], "model": "m", "target": "path", "placement": ideas[k]["placement"], "world": ideas[k]["world"]})
+        names[k] = res["filename"]
+    live("POST", "/api/trash", {"filename": names[3], "trashed": True})  # step 3 trashed
+    _, st = live("GET", "/api/state")
+    [r] = [r for r in st["path_runs"] if r["run"] == run]
+    assert (r["n"], r["dir"], r["len"], r["world"]) == (4, 90, 40, "Editorial Print") and r["at"] > 0
+    _, filled = live("POST", "/api/invent-prompts", {"fill": run})
+    pls = [i["placement"] for i in filled["ideas"]]
+    assert sorted(p["path"]["i"] for p in pls) == [2, 3] and {p["path"]["run"] for p in pls} == {run} and {p["path"]["n"] for p in pls} == {4}
+    want = {i["placement"]["path"]["i"]: i["placement"] for i in ideas}
+    assert all((p["x"], p["y"], p.get("rot", 0)) == (want[p["path"]["i"]]["x"], want[p["path"]["i"]]["y"], want[p["path"]["i"]].get("rot", 0)) for p in pls), "the same places and angles"
+    assert all(i["world"] == "Editorial Print" for i in filled["ideas"]), "the run's own territory"
+    live("POST", "/api/trash", {"filename": names[3], "trashed": False})   # restoring fills its step
+    assert [p["path"]["i"] for p in [i["placement"] for i in live("POST", "/api/invent-prompts", {"fill": run})[1]["ideas"]]] == [2]
+    st = srv.load_state(); st.pop("path_runs"); srv.save_state(st)          # a run from before: read off its images
+    again = live("POST", "/api/invent-prompts", {"fill": run})[1]["ideas"]
+    assert [(i["placement"]["path"]["i"], i["placement"].get("rot", 0)) for i in again] == [(2, want[2].get("rot", 0))]
+    status, none = live("POST", "/api/invent-prompts", {"fill": "fff"})
+    assert status == 400 and none["ok"] is False
+
+
 def test_the_menus_strip_shows_the_places_a_scattered_batch_will_use(live, srv, monkeypatch, tmp_path):
     """Loose and Scattered: the server picks each image's place from the page's seed before Generate, the strip draws them, and the
     batch made with the same seed uses exactly those (the user: "is this exactly how they will be positioned?")."""

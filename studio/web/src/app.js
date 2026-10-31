@@ -134,6 +134,7 @@
       sequences = data.sequences || [];
       groups = data.groups || [];
       editsList = data.edits || [];
+      pathRuns = data.path_runs || [];
       if (data.project) useProjectFilm(data.project.slug);                  // each project its own film and sound
       if (currentEdit && !editsList.some(x => x.id === currentEdit)) setCurrentEdit(null);   // deleted elsewhere
       renderEditBar();
@@ -211,6 +212,7 @@
     // ---- edits: named ways of cutting this curation (Film only). An edit keeps the group it plays and every Film setting, never images or
     // an order, so it follows the curation. Stored on the server with the groups (/api/edits). ----
     let editsList = [], currentEdit = null;
+    let pathRuns = [], makingRun = null;                                    // the project's Path runs (one per batch); the one Make N is filling
     // the snapshot open, per project (snapshots are a project's own)
     const editKey = () => `studioEdit:${filmSlug || ''}`;
     function setCurrentEdit(id) { currentEdit = id; try { if (id) localStorage.setItem(editKey(), id); else localStorage.removeItem(editKey()); } catch (e) {} }
@@ -332,10 +334,30 @@
     const PATH_SHAPES = [['line', 'Line']];
     const PATH_DIRS = [[0, '→', 'Across, left to right'], [90, '↓', 'Down, top to bottom'], [45, '↘', 'Diagonal, down to the right'], [-45, '↗', 'Diagonal, up to the right']];
     const PATH_LENS = [[20, 'Short'], [40, 'Medium'], [70, 'Long']];
+    const PATH_STEPS = [8, 12, 16, 24, 32];
+    // where the mark's own target sits on the path (the user's ask): its middle, its last step (the motion lands home) or its first
+    const PATH_ANCHORS = [['through', 'Through', 'The path runs through the target, centred on it'], ['lands', 'Lands', 'The last step is on the target: the mark arrives home'], ['leaves', 'Leaves', 'The first step is on the target: the mark sets off from home']];                                  // a path's own number of images, one per step (Claude Design's PathSteps)
     function pathSet() {
-      const [shape, dir, len] = String(document.getElementById('pathSelect').value || '').split(':');
-      return { shape: PATH_SHAPES.some(s => s[0] === shape) ? shape : 'line', dir: PATH_DIRS.some(d => d[0] === +dir) ? +dir : 0, len: PATH_LENS.some(l => l[0] === +len) ? +len : 40 };
+      const [shape, dir, len, steps, anchor] = String(document.getElementById('pathSelect').value || '').split(':');
+      return { shape: PATH_SHAPES.some(s => s[0] === shape) ? shape : 'line', dir: PATH_DIRS.some(d => d[0] === +dir) ? +dir : 0, len: PATH_LENS.some(l => l[0] === +len) ? +len : 40,
+        steps: PATH_STEPS.includes(+steps) ? +steps : 12,     // a path saved before Steps: 12
+        anchor: PATH_ANCHORS.some(a => a[0] === anchor) ? anchor : 'through' };
     }
+    // a path as the server places it (placement.path_place): from the mark's own place, its reach shrunk so both ends stay inside the
+    // frame; the drawing and the strip use it, so neither runs off the frame
+    function pathLine(ps) {
+      const home = project || { mark_x: 50, mark_y: 50, mark_size: 18 }, a = ps.dir * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+      const sh = { through: 0, lands: -0.5, leaves: 0.5 }[ps.anchor] || 0, ends = [sh - 0.5, sh + 0.5];
+      const hw = home.mark_size / 2, hh = home.mark_size * (1080 / 1920) / 2, M = 6;
+      let ln = ps.len;
+      for (const e of ends) for (const [c, h, d] of [[home.mark_x, hw, e * ca], [home.mark_y, hh, e * sa]]) {
+        if (Math.abs(d) > 1e-9) ln = Math.max(0, Math.min(ln, ((d > 0 ? 100 - M - h - c : c - M - h) / Math.abs(d))));
+      }
+      return { x: home.mark_x, y: home.mark_y, ca, sa, ln, ends };            // a point at u (from ends[0] to ends[1]): x + ca·u·ln, y + sa·u·ln (% of the frame)
+    }
+    const pathOn = () => document.getElementById('targetSelect').value === 'path';
+    // how many images Generate makes: the count's (in the Mark menu's share box), or with a Path its steps
+    function batchCount() { return pathOn() ? pathSet().steps : Math.min(40, Math.max(1, parseInt(document.getElementById('batchCountSelect').value, 10) || 4)); }
     const ROTATIONS = [-135, -90, -45, 0, 45, 90, 135, 180];                // degrees clockwise, as a dial from left to right
     const rotLabel = r => (r === 180 || r === -180 ? '180°' : r < 0 ? `−${-r}°` : `${r}°`);
     // the angles ticked (kept as "0,45" in #rotSelect): one or more, they take turns as the marks do; none known: upright
@@ -368,14 +390,15 @@
       const t = document.getElementById('targetSelect').value || 'exact', ticks = markTicks(), rots = rotTicks(), zs = sizeTicks();
       const choices = markChoices(), sizeOff = t === 'loose' || t === 'scattered';
       const on = choices.length ? choices.filter(c => ticks.includes(c[0])) : [['main', (project && project.mark_name) || 'Mark', project && project.mark_url]];
-      return { t, ticks, rots, zs, choices, sizeOff, on, effSizes: sizeOff ? [1] : zs, ps: pathSet(), keep: document.getElementById('keepCheck').checked,
-        n: Math.max(1, +document.getElementById('batchCountSelect').value || 1) };
+      return { t, ticks, rots, zs, choices, sizeOff, on, effSizes: sizeOff ? [1] : zs, ps: pathSet(),
+        n: batchCount() };
     }
     function placeSummary(st) {
-      const pos = st.t === 'path' ? `Path ${PATH_GLYPH[st.ps.dir]} ${st.ps.len}%` : (POSITIONS.find(p => p[0] === st.t) || POSITIONS[0])[1];
-      const ang = st.rots.length > 1 ? `${st.rots.length} angles` : st.rots[0] ? rotLabel(st.rots[0]) : '';
-      const siz = st.sizeOff ? '' : st.zs.length > 1 ? `${st.zs.length} sizes` : st.zs[0] !== 1 ? sizeLabel(st.zs[0]) : '';
-      return [pos, ang, siz].filter(Boolean).join(' · ');
+      const pos = st.t === 'path' ? `Path ${PATH_GLYPH[st.ps.dir]} ${st.ps.len}%${st.ps.anchor === 'through' ? '' : ` · ${st.ps.anchor}`}` : (POSITIONS.find(p => p[0] === st.t) || POSITIONS[0])[1];
+      const path = st.t === 'path';                                          // along a path the ticks are motion: the angles spin, the sizes pulse (Claude Design's PathSteps)
+      const ang = st.rots.length > 1 ? (path ? 'spin' : `${st.rots.length} angles`) : st.rots[0] ? rotLabel(st.rots[0]) : '';
+      const siz = st.sizeOff ? '' : st.zs.length > 1 ? (path ? 'pulse' : `${st.zs.length} sizes`) : st.zs[0] !== 1 ? sizeLabel(st.zs[0]) : '';
+      return [pos, ang, siz, path ? `${st.n} steps` : `${st.n} image${st.n === 1 ? '' : 's'}`].filter(Boolean).join(' · ');   // and how many (the count lives in the menu)
     }
     // Loose and Scattered: the places and sizes a batch will use, picked by the server from a seed before Generate (`/api/placements`):
     // the strip draws them and Generate sends the same seed, so the strip is the batch; a new seed once a batch is written
@@ -390,7 +413,7 @@
       fetch(`/api/placements?${new URLSearchParams(q)}`).then(r => r.json()).then(d => {
         if (placePreview.key !== key) return;
         placePreview.places = d.places || [];
-        if (!document.getElementById('placeMenu').hidden) renderPlace();
+        placeLive();
       }).catch(() => {});
       return null;
     }
@@ -398,12 +421,10 @@
       const st = placeState(), m = st.on.length, multi = st.choices.length > 0 && m > 1;
       const summary = placeSummary(st);
       document.getElementById('placeName').textContent = summary;
-      document.getElementById('placeBtn').title = `${multi ? `${m} marks: ${st.on.map(c => c[1]).join(', ')}` : st.on[0][1]} · ${summary}${st.keep ? ' · Exact mark' : ''}`;
-      document.getElementById('placeDesigned').hidden = !st.keep;
-      const stack = document.getElementById('placeStack'), label = document.getElementById('placeLabel');
-      stack.hidden = label.hidden = !multi;                                   // one mark ticked (or one in the project): the summary only
-      if (multi) {
-        label.textContent = `${m} marks · take turns`;
+      document.getElementById('placeBtn').title = `${multi ? `${m} marks: ${st.on.map(c => c[1]).join(', ')}` : st.on[0][1]} · ${summary}`;
+      const stack = document.getElementById('placeStack');
+      stack.hidden = !multi;                                                  // one mark ticked (or one in the project): the summary only
+      if (multi) {                                                           // their thumbnails and count say it; the summary stays on the row's line
         const urls = st.on.slice(0, 3).map(c => c[2]).filter(Boolean), key = urls.join(' ') + `|${m}`;
         if (stack.dataset.key !== key) {
           stack.dataset.key = key;
@@ -412,13 +433,64 @@
           stack.querySelectorAll('img').forEach(fitMarkTone);
         }
       }
-      const menu = document.getElementById('placeMenu');
-      if (menu.hidden) return;
+      const menu = document.getElementById('placeMenu'), cf = document.getElementById('countField'), home = document.getElementById('countHome');
+      if (menu.hidden) { if (home && home.appendChild && cf.parentNode !== home) home.appendChild(cf); return; }
       menu.innerHTML = placeMenuHtml(st);
       menu.querySelectorAll('img.pm-thumb').forEach(fitMarkTone);
+      const slot = menu.querySelector && menu.querySelector('.mm-countslot');   // the one count field (its drag and typing set up once), moved in
+      if (slot && slot.appendChild) slot.appendChild(cf); else if (home && home.appendChild) home.appendChild(cf);
+    }
+    // a new count: the header and the share box follow, the rest of the menu stays (rebuilding it would cut a drag on the count short)
+    function placeLive() {
+      const st = placeState(), menu = document.getElementById('placeMenu');
+      document.getElementById('placeName').textContent = placeSummary(st);
+      if (menu.hidden || !menu.querySelector) return;
+      const sh = shareParts(st), rest = menu.querySelector('.mm-sharer'), strip = menu.querySelector('.mm-strip'), sit = menu.querySelector('.mm-sitw');
+      if (rest) rest.innerHTML = ` · ${sh.text}`;
+      if (strip) { strip.innerHTML = sh.cells; strip.querySelectorAll('img.pm-thumb').forEach(fitMarkTone); }
+      if (sit) sit.innerHTML = sh.sit;
     }
     // a tick-several row's tooltip says what a click does; its only ticked value stays (Claude Design's hover states)
     const tickTip = (name, on, n, what) => (on && n === 1 ? `Keep at least one ${what}` : `${name} · click to ${on ? 'remove' : 'add'}`);
+    // the share box's words, strip and sitting-out line: what the batch will be, a strip drawing it one cell per image (BatchPlan's order)
+    function shareParts(st) {
+      const m = st.on.length, a = st.rots.length, z = st.zs.length, n = st.n;
+      const img = (url, style = '') => (url ? `<img class="pm-thumb" src="${escapeHtml(url)}" alt=""${style ? ` style="${style}"` : ''} />` : '');
+      const each = k => (n % k === 0 ? String(n / k) : `${Math.floor(n / k)}–${Math.ceil(n / k)}`);
+      const parts = [];
+      if (st.t === 'path') {                                                 // along a path the ticks are motion (Claude Design's PathSteps)
+        parts.push('one per step');
+        if (m > 1) parts.push(`${m} marks take turns`);
+        if (a > 1) parts.push(`${a} angles spin in order`);
+        if (z > 1) parts.push(`${z} sizes take turns`);
+      } else {
+        if (m > 1) parts.push(n >= m ? `${m} marks, ${each(m)} each` : `${n} of ${m} marks, one each`);
+        if (a > 1) parts.push(n >= a ? `${a} angles, ${each(a)} each` : `${n} of ${a} angles`);
+        if (!st.sizeOff && z > 1) parts.push(n >= z ? `${z} sizes, ${each(z)} each` : `${n} of ${z} sizes`);
+      }
+      if (st.sizeOff) parts.push(st.t === 'loose' ? 'each a little off target, as drawn' : 'each anywhere in the frame, as drawn');
+      if (!parts.length) parts.push('all the same: same mark, place, angle and size');
+      const big = n > 20, cw = big ? 12 : 18, ch = big ? 21 : 32, es = st.effSizes, L = st.t === 'path' ? pathLine(st.ps) : null;
+      let cells = '';
+      const places = previewPlaces(st);
+      for (let i = 0; i < n; i++) {
+        const mk = st.on[i % m], ang = st.rots[Math.floor(i / m) % a], sz = es[Math.floor(i / (m * a)) % es.length];
+        if (st.sizeOff) {                                                    // the place and size the server picked for image i, to scale (the mark twice as big, to read)
+          const pl = places && places[i];
+          if (!pl) { cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px"></span>`; continue; }
+          const px = Math.max(4, Math.round(cw * pl.size / 100 * 2.2)), dx = cw * (pl.x / 100 - 0.5), dy = ch * (pl.y / 100 - 0.5);
+          cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px" title="${Math.round(pl.x)}% across, ${Math.round(pl.y)}% down, ${pl.size}% wide">${img(mk[2], `width:${px}px;height:${px}px;transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px) rotate(${ang}deg)`)}</span>`;
+          continue;
+        }
+        let dx = 0, dy = 0;
+        if (L) { const u = L.ends[0] + (n > 1 ? i / (n - 1) : 0.5); dx = cw * ((L.x + L.ca * u * L.ln) / 100 - 0.5); dy = ch * ((L.y + L.sa * u * L.ln) / 100 - 0.5); }   // its step in the cell, where the server puts it
+        const px = Math.round((big ? 7 : 10) * sz);
+        if (L) { dx = Math.max(-(cw - px) / 2, Math.min((cw - px) / 2, dx)); dy = Math.max(-(ch - px) / 2, Math.min((ch - px) / 2, dy)); }   // drawn bigger than life to read: kept whole in its cell
+        cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px">${img(mk[2], `width:${px}px;height:${px}px;transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px) rotate(${ang}deg)`)}</span>`;
+      }
+      const sitOut = n < m ? st.on.slice(n).map(c => c[1]) : [];
+      return { text: parts.join(' · '), cells, sit: sitOut.length ? `<span class="mm-sit">${escapeHtml(sitOut.join(', '))} ${sitOut.length > 1 ? 'sit' : 'sits'} out this batch: fewer images than marks.</span>` : '' };
+    }
     function placeMenuHtml(st) {
       const m = st.on.length, a = st.rots.length, z = st.zs.length, n = st.n;
       const img = (url, style = '') => (url ? `<img class="pm-thumb" src="${escapeHtml(url)}" alt=""${style ? ` style="${style}"` : ''} />` : '');
@@ -433,15 +505,18 @@
       html += `<div class="mm-sec mm-grid"><div class="mm-label mm-pad"><span>Position</span></div><div class="mm-col"><div class="mm-seg" role="radiogroup" aria-label="Position">${POSITIONS.map(([v, name, sub]) =>
         `<button type="button" role="radio" data-list="position" data-v="${v}" aria-checked="${st.t === v}" title="${escapeHtml(sub)}"><svg width="16" height="26" viewBox="0 0 16 26" fill="none" aria-hidden="true"><rect x="0.75" y="0.75" width="14.5" height="24.5" rx="2" stroke="currentColor" stroke-width="1.2" opacity="0.6"></rect>${dots[v].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="currentColor"></circle>`).join('')}</svg><span>${name}</span></button>`).join('')}</div>`;
       if (st.t === 'path') {                                                // the Path panel: a frame drawing it, its shape, direction and reach
-        const rad = st.ps.dir * Math.PI / 180, half = st.ps.len / 100 / 2, f = v => v.toFixed(1);   // its reach along each axis of the frame, as the server places it
-        const x1 = 35 - Math.cos(rad) * half * 68, y1 = 62 - Math.sin(rad) * half * 122, x2 = 35 + Math.cos(rad) * half * 68, y2 = 62 + Math.sin(rad) * half * 122;
-        const pd = [0, 1, 2, 3, 4, 5].map(k => `<circle cx="${f(x1 + (x2 - x1) * k / 5)}" cy="${f(y1 + (y2 - y1) * k / 5)}" r="2.2" fill="#FEFFE7"></circle>`).join('');
+        const L = pathLine(st.ps), f = v => v.toFixed(1), fx = pc => 1 + 68 * pc / 100, fy = pc => 1 + 122 * pc / 100;   // as the server places it, in the 70 × 124 frame
+        const x1 = fx(L.x + L.ca * L.ends[0] * L.ln), y1 = fy(L.y + L.sa * L.ends[0] * L.ln), x2 = fx(L.x + L.ca * L.ends[1] * L.ln), y2 = fy(L.y + L.sa * L.ends[1] * L.ln);
+        const tx = fx(L.x) - 7, ty = fy(L.y) - 7;                             // the target's box, at the mark's own place
+        const ns = st.ps.steps, pd = Array.from({ length: ns - 1 }, (_, k) => `<circle cx="${f(x1 + (x2 - x1) * k / (ns - 1))}" cy="${f(y1 + (y2 - y1) * k / (ns - 1))}" r="${ns > 16 ? 1.3 : 1.8}" fill="#FEFFE7"></circle>`).join('');   // one dot a step
         const shapes = PATH_SHAPES.map(([v, nm]) => `<button type="button" class="mm-opt" data-list="pshape" data-v="${v}" aria-selected="${st.ps.shape === v}">${nm}</button>`).join('');
-        html += `<div class="mm-path"><svg width="70" height="124" viewBox="0 0 70 124" role="img" aria-label="Where the path runs in the frame"><rect x="1" y="1" width="68" height="122" rx="5" fill="#2A2825" stroke="#4A4740"></rect><rect x="28" y="55" width="14" height="14" fill="none" stroke="#EC540C" stroke-dasharray="2 2"></rect><line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="#FEFFE7" stroke-width="1.2" stroke-dasharray="1 3" stroke-linecap="round"></line>${pd}<circle cx="${f(x2)}" cy="${f(y2)}" r="3.4" fill="#EC540C"></circle></svg>
+        html += `<div class="mm-path"><svg width="70" height="124" viewBox="0 0 70 124" role="img" aria-label="Where the path runs in the frame"><rect x="1" y="1" width="68" height="122" rx="5" fill="#2A2825" stroke="#4A4740"></rect><rect x="${f(tx)}" y="${f(ty)}" width="14" height="14" fill="none" stroke="#EC540C" stroke-dasharray="2 2"></rect><line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="#FEFFE7" stroke-width="1.2" stroke-dasharray="1 3" stroke-linecap="round"></line>${pd}<circle cx="${f(x2)}" cy="${f(y2)}" r="3.4" fill="#EC540C"></circle></svg>
           <div class="mm-col"><div class="mm-prow"><span>Shape</span><span class="mm-dd"><button type="button" class="mm-ddbtn" data-list="pshape-open" data-v="1" aria-haspopup="listbox" aria-expanded="${pathShapeOpen}"><svg width="16" height="10" viewBox="0 0 16 10" aria-hidden="true"><line x1="1" y1="9" x2="15" y2="1" stroke="#FEFFE7" stroke-width="1.6" stroke-linecap="round"></line></svg>${(PATH_SHAPES.find(p => p[0] === st.ps.shape) || PATH_SHAPES[0])[1]}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#A8A390" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>${pathShapeOpen ? `<span class="mm-ddlist" role="listbox">${shapes}<span class="mm-ddnote">More shapes to come</span></span>` : ''}</span></div>
           <div class="mm-prow"><span>Direction</span><span class="mm-btns" role="radiogroup" aria-label="Direction">${PATH_DIRS.map(([v, arrow, tip]) => `<button type="button" class="mm-dir" role="radio" data-list="pdir" data-v="${v}" aria-checked="${st.ps.dir === v}" aria-label="${tip}" title="${tip}">${arrow}</button>`).join('')}</span></div>
           <div class="mm-prow"><span>Reach</span><span class="mm-btns" role="radiogroup" aria-label="Reach">${PATH_LENS.map(([v]) => `<button type="button" class="mm-reach" role="radio" data-list="plen" data-v="${v}" aria-checked="${st.ps.len === v}" title="${v}% of the frame"><span class="mm-bar"><i style="left:${(100 - v) / 2}%;width:${v}%"></i></span><span>${v}%</span></button>`).join('')}</span></div>
-          <span class="mm-help">Reach is how much of the frame the path covers.</span></div></div>`;
+          <div class="mm-prow"><span>Target</span><span class="mm-steps" role="radiogroup" aria-label="Where the target is on the path">${PATH_ANCHORS.map(([v, nm, tip]) => `<button type="button" class="mm-step mm-anchor" role="radio" data-list="panchor" data-v="${v}" aria-checked="${st.ps.anchor === v}" title="${tip}">${nm}</button>`).join('')}</span></div>
+          <div class="mm-prow"><span class="mm-strong">Steps</span><span class="mm-steps" role="radiogroup" aria-label="Steps">${PATH_STEPS.map(v => `<button type="button" class="mm-step" role="radio" data-list="psteps" data-v="${v}" aria-checked="${st.ps.steps === v}" title="${v} images, one a step">${v}</button>`).join('')}</span></div>
+          <span class="mm-help">Reach is how much of the frame the path covers. Steps is one image each: more steps, smoother motion.</span></div></div>`;
       }
       html += '</div></div>';
       // More: angle and size, folded until used (open by itself while either is set)
@@ -461,35 +536,9 @@
           <div class="mm-grid">${head('Size', st.sizeOff ? 1 : z)}<div class="mm-col">${sizes}${st.sizeOff ? `<span class="mm-help">${st.t === 'loose' ? 'Loose' : 'Scattered'} picks its own sizes.</span>` : ''}</div></div></div>`;
       }
       html += '</div>';
-      // the share box: what the batch will be, and a strip drawing it one cell per image (the server's order: BatchPlan)
-      const each = k => (n % k === 0 ? String(n / k) : `${Math.floor(n / k)}–${Math.ceil(n / k)}`);
-      const parts = [];
-      if (m > 1) parts.push(n >= m ? `${m} marks, ${each(m)} each` : `${n} of ${m} marks, one each`);
-      if (a > 1) parts.push(n >= a ? `${a} angles, ${each(a)} each` : `${n} of ${a} angles`);
-      if (!st.sizeOff && z > 1) parts.push(n >= z ? `${z} sizes, ${each(z)} each` : `${n} of ${z} sizes`);
-      if (st.t === 'path') parts.push('one step each along the path');
-      if (st.sizeOff) parts.push(st.t === 'loose' ? 'each a little off target, as drawn' : 'each anywhere in the frame, as drawn');
-      if (!parts.length) parts.push('all the same: same mark, place, angle and size');
-      const big = n > 20, cw = big ? 12 : 18, ch = big ? 21 : 32, es = st.effSizes, vec = [Math.cos(st.ps.dir * Math.PI / 180), Math.sin(st.ps.dir * Math.PI / 180)];
-      let cells = '';
-      const places = previewPlaces(st);
-      for (let i = 0; i < n; i++) {
-        const mk = st.on[i % m], ang = st.rots[Math.floor(i / m) % a], sz = es[Math.floor(i / (m * a)) % es.length];
-        if (st.sizeOff) {                                                    // the place and size the server picked for image i, to scale (the mark twice as big, to read)
-          const pl = places && places[i];
-          if (!pl) { cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px"></span>`; continue; }
-          const px = Math.max(4, Math.round(cw * pl.size / 100 * 2.2)), dx = cw * (pl.x / 100 - 0.5), dy = ch * (pl.y / 100 - 0.5);
-          cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px" title="${Math.round(pl.x)}% across, ${Math.round(pl.y)}% down, ${pl.size}% wide">${img(mk[2], `width:${px}px;height:${px}px;transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px) rotate(${ang}deg)`)}</span>`;
-          continue;
-        }
-        let dx = 0, dy = 0;
-        if (st.t === 'path') { const u = n > 1 ? i / (n - 1) - 0.5 : 0, r = st.ps.len / 100; dx = vec[0] * u * r * cw; dy = vec[1] * u * r * ch; }   // its step in the cell, as in the frame
-        const px = Math.round((big ? 7 : 10) * sz);
-        cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px">${img(mk[2], `width:${px}px;height:${px}px;transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px) rotate(${ang}deg)`)}</span>`;
-      }
-      const sitOut = n < m ? st.on.slice(n).map(c => c[1]) : [];
-      html += `<div class="mm-share"><span class="mm-sharet"><b>${n} image${n > 1 ? 's' : ''}</b> · ${parts.join(' · ')}</span><div class="mm-strip" role="img" aria-label="How the images take turns">${cells}</div>${sitOut.length ? `<span class="mm-sit">${escapeHtml(sitOut.join(', '))} ${sitOut.length > 1 ? 'sit' : 'sits'} out this batch: fewer images than marks.</span>` : ''}</div>`;
-      html += `<div class="mm-keep" role="checkbox" data-list="keep" data-v="keep" aria-checked="${st.keep}" tabindex="0"><span class="pm-box"></span><span class="mm-keept">Keep the mark exact</span><span class="mm-help">its own colours and lettering, not restyled to each scene</span></div>`;
+      const sh = shareParts(st);
+      // the share box: how many (the count lives here, the user's call: not another control in the row; a Path's steps are set in its panel)
+      html += `<div class="mm-share"><span class="mm-sharet">${st.t === 'path' ? `<b>${n} steps</b>` : '<span class="mm-countslot"></span>'}<span class="mm-sharer"> · ${sh.text}</span></span><div class="mm-strip" role="img" aria-label="How the images take turns">${sh.cells}</div><span class="mm-sitw">${sh.sit}</span></div>`;
       return html;
     }
     function togglePlaceMenu(e, open) {
@@ -502,18 +551,17 @@
       renderPlace();
     }
     function choosePlace(list, v) {
-      if (list === 'keep') { const k = document.getElementById('keepCheck'); k.checked = !k.checked; }
-      else if (list === 'mark') {
+      if (list === 'mark') {
         const t = markTicks(), on = t.includes(v) ? t.filter(x => x !== v) : [...t, v];
         if (!on.length) return;                                              // one mark at least
         setv('markSelect', markChoices().map(c => c[0]).filter(x => on.includes(x)).join(','));
       }
       else if (list === 'pshape-open') pathShapeOpen = !pathShapeOpen;
-      else if (list === 'pshape' || list === 'pdir' || list === 'plen') {
+      else if (list === 'pshape' || list === 'pdir' || list === 'plen' || list === 'psteps' || list === 'panchor') {
         pathShapeOpen = false;
         const p = pathSet();
-        p[{ pshape: 'shape', pdir: 'dir', plen: 'len' }[list]] = list === 'pshape' ? v : +v;
-        setv('pathSelect', `${p.shape}:${p.dir}:${p.len}`);
+        p[{ pshape: 'shape', pdir: 'dir', plen: 'len', psteps: 'steps', panchor: 'anchor' }[list]] = list === 'pshape' || list === 'panchor' ? v : +v;
+        setv('pathSelect', `${p.shape}:${p.dir}:${p.len}:${p.steps}:${p.anchor}`);
       }
       else if (list === 'more') {
         const st = placeState();
@@ -541,7 +589,6 @@
       if (!m || !m.addEventListener) return;
       m.addEventListener('mousedown', e => e.preventDefault());
       m.addEventListener('click', e => { e.stopPropagation(); const it = e.target.closest('[data-list]'); if (it) choosePlace(it.dataset.list, it.dataset.v); });
-      m.addEventListener('keydown', e => { const it = e.target.closest('.mm-keep'); if (it && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); choosePlace('keep', 'keep'); } });
       document.addEventListener('click', () => { if (!m.hidden) togglePlaceMenu(null, false); });
     })();
     async function openProjectMenu(e) {
@@ -1120,6 +1167,7 @@
       rot: p => (p.uploaded ? null : String(cardRot(p))),                  // how far its mark was turned
       size: p => (p.uploaded ? null : String(cardScale(p))),               // and at what size
       src: p => (p.uploaded ? 'uploaded' : 'generated'),
+      run: p => (p.placement && p.placement.path && p.placement.path.run) || null,   // one Path run (Made with › Path lists them)
     };
     // the members of a group key ('all', 'g:<id>', 'look:<tag>', 'world:<name>', 'mark:<id>', 'pos:<kind>', 'src:<kind>'), or null when there is no such group
     function groupMembers(key) {
@@ -1251,7 +1299,62 @@
         return { kind, label, chips: list.map(v => ({ v, name: madeName(kind, v), n: base.filter(p => by(p) === v).length, on: ticked.includes(v), img: kind === 'mark' ? (markChoices().find(c => c[0] === v) || [])[2] : null })) };
       }).filter(Boolean);
     }
-    function madeSummary(rule) { return MADE_KINDS.flatMap(([k]) => (rule[k] || []).map(v => madeName(k, v))).join(', '); }
+    function madeSummary(rule) {
+      const run = (rule.run || []).map(id => pathRuns.find(r => r.run === id)).filter(Boolean).map(runName);
+      return [...MADE_KINDS.filter(([k]) => !(k === 'pos' && run.length)).flatMap(([k]) => (rule[k] || []).map(v => madeName(k, v))), ...run].join(', ');
+    }
+    // ---- Path runs (Claude Design's PathMissing): each batch on a Path is a run of steps; a step with no image in the Selection (never
+    // made, or in the Trash) is missing, and Make N writes new scenes for just those, at their places, in the same run ----
+    function runWhen(at) {
+      const d = new Date(at * 1000), now = new Date(), hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      const day = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(), diff = Math.round((day(now) - day(d)) / 864e5);
+      return diff === 0 ? `Today ${hm}` : diff === 1 ? `Yesterday ${hm}` : `${d.getDate()} ${d.toLocaleString('en', { month: 'short' })}`;
+    }
+    const runName = r => `Path ${PATH_GLYPH[r.dir] || '→'} ${r.len}% · ${runWhen(r.at)}`;
+    // a run's steps: 'ok' in the Selection, 'mark' trashed by the mark check, 'hand' trashed by hand, 'none' never made, 'making' being made
+    function runView(r) {
+      const cells = Array(r.n).fill('none');
+      for (const p of plates) {
+        const pa = p.placement && p.placement.path;
+        if (!pa || pa.run !== r.run || pa.i >= r.n) continue;
+        if (!p.trashed) cells[pa.i] = 'ok';
+        else if (cells[pa.i] !== 'ok') cells[pa.i] = p.trash_reason === 'Mark check' ? 'mark' : 'hand';
+      }
+      if (makingRun && makingRun.run === r.run) makingRun.steps.forEach(i => { if (cells[i] !== 'ok') cells[i] = 'making'; });
+      const kept = cells.filter(c => c === 'ok').length;
+      return { r, cells, kept, missing: r.n - kept, gaps: cells.map((c, i) => (c === 'ok' ? -1 : i)).filter(i => i >= 0) };
+    }
+    const runStrip = (v, w) => `<span class="run-strip">${v.cells.map((c, i) => `<i class="${c}" style="width:${w}px" title="Step ${i + 1}: ${{ ok: 'here', mark: 'in the Trash (mark check)', hand: 'in the Trash', none: 'never made', making: 'being made' }[c]}"></i>`).join('')}</span>`;
+    function showRun(id) {                                                    // Made with on that run
+      setGroup(filterKey({ pos: ['path'], run: [id] }));
+      openMadeWith();
+    }
+    async function makeMissing(id) {
+      const r = pathRuns.find(x => x.run === id);
+      if (!r || blockedByAi()) return;
+      if (isBusy()) { setStatus('Wait until the running job ends.'); return; }
+      if (!ensureKimiReady() || !ensureKreaReady()) return;
+      const v = runView(r);
+      if (!v.missing) return;
+      const model = document.getElementById('modelSelect').value;
+      setGenerating(true);
+      progStart(v.missing);
+      makingRun = { run: id, steps: v.gaps };
+      if (madeOpen()) renderMadeWith();
+      try {
+        const inv = await (await fetch('/api/invent-prompts', { method: 'POST', headers: forProject({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ fill: id, kimi_model: document.getElementById('kimiModelSelect').value }) })).json();
+        if (inv.needs_kimi_key) { progStop(''); ensureKimiReady(); return; }
+        if (!inv.ok || !inv.ideas) throw new Error(inv.error || 'Prompt generation failed');
+        await runBatch(inv.ideas.map(i => ({ ...i, target: 'path', keep: !!inv.keep })), model);
+      } catch (e) {
+        progStop(plainError(e));
+      } finally {
+        makingRun = null;
+        setGenerating(false);
+        if (madeOpen()) renderMadeWith();
+      }
+    }
     function openMadeWith(e, edit) {
       if (e && e.stopPropagation) e.stopPropagation();
       const panel = document.getElementById('madePanel');
@@ -1272,7 +1375,15 @@
       const panel = document.getElementById('madePanel'), rule = madeRule(), rows = madeRows(rule), g = madeEditing && groups.find(x => x.id === madeEditing);
       const n = Object.keys(rule).length ? plates.filter(p => !p.trashed).filter(madeMatch(rule)).length : plates.filter(p => !p.trashed).length;
       const head = g ? `<div class="mw-head"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EC540C" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"></path></svg><span class="mw-kind">Smart group</span><input id="madeName" type="text" maxlength="40" value="${escapeHtml(g.name)}" autocomplete="off" aria-label="Its name" /></div>` : '';
-      const body = rows.map(r => `<div class="mw-row"><span class="mw-label">${r.label}</span><div class="mw-chips">${r.chips.map(c => `<button type="button" class="mw-chip" data-kind="${r.kind}" data-v="${escapeHtml(c.v)}" aria-pressed="${c.on}">${c.img ? `<img class="pm-thumb" src="${escapeHtml(c.img)}" alt="" />` : ''}${escapeHtml(c.name)}<span class="mw-n">${c.n}</span></button>`).join('')}</div></div>`).join('')
+      const views = pathRuns.map(runView).sort((a, b) => b.r.at - a.r.at), short = views.some(v => v.missing);
+      const runsHtml = () => {                                                // Path ticked: its runs, newest first, each with its gaps and Make N
+        const list = madeRunsAll ? views : views.slice(0, 4), on = rule.run || [];
+        return `<div class="mw-runs">${list.map(v => `<div class="mw-run${on.includes(v.r.run) ? ' on' : ''}" data-run="${escapeHtml(v.r.run)}" role="button" tabindex="0" title="Show only this run">
+          <span class="mw-when">${escapeHtml(runWhen(v.r.at))}</span>${runStrip(v, v.r.n > 12 ? Math.max(3, Math.floor(200 / v.r.n) - 2) : 14)}<span class="mw-of">${v.kept} of ${v.r.n}</span>
+          ${v.missing && !(makingRun && makingRun.run === v.r.run) ? `<button type="button" class="mw-make" data-make="${escapeHtml(v.r.run)}"${generating ? ' disabled title="Wait until the batch ends"' : ''}>Make ${v.missing}</button>` : ''}</div>`).join('')}
+          ${views.length > 4 ? `<button type="button" class="mw-more-runs" data-runs-all="1">${madeRunsAll ? 'Fewer runs' : `+ ${views.length - 4} more run${views.length - 4 > 1 ? 's' : ''}`}</button>` : ''}</div>`;
+      };
+      const body = rows.map(r => `<div class="mw-row"><span class="mw-label">${r.label}</span><div class="mw-chips">${r.chips.map(c => `<button type="button" class="mw-chip" data-kind="${r.kind}" data-v="${escapeHtml(c.v)}" aria-pressed="${c.on}">${c.img ? `<img class="pm-thumb" src="${escapeHtml(c.img)}" alt="" />` : ''}${escapeHtml(c.name)}<span class="mw-n">${c.n}</span>${r.kind === 'pos' && c.v === 'path' && short ? '<span class="mw-short" title="A path run is missing steps"></span>' : ''}</button>`).join('')}</div></div>${r.kind === 'pos' && (rule.pos || []).includes('path') && views.length ? runsHtml() : ''}`).join('')
         || '<p class="mw-empty">All the images here were made the same way: nothing to filter by yet.</p>';
       const empty = !Object.keys(rule).length;
       const foot = g ? `<button type="button" class="mw-del" onclick="madeDelete()">Delete group</button><button type="button" class="mw-done" onclick="closeMadeWith()">Done</button>`
@@ -1283,14 +1394,26 @@
       const name = document.getElementById('madeName');
       if (name && name.addEventListener) name.addEventListener('change', () => { if (name.value.trim() && name.value.trim() !== g.name) renameSmart(g.id, name.value); });
     }
+    let madeRunsAll = false;
+    function madeRun(id) {                                                   // one run only, or back to every Path image
+      const rule = JSON.parse(JSON.stringify(madeRule()));
+      if ((rule.run || []).includes(id)) delete rule.run; else rule.run = [id];
+      if (madeEditing) { madeTickRule(rule); return; }
+      setGroup(filterKey(rule));
+      renderMadeWith();
+    }
+    async function madeTickRule(rule) {
+      const id = madeEditing, before = madeRule();
+      if (await groupsCall({ action: 'rule', id, rule })) pushStep({ label: 'Change a smart group', undo: () => groupsCall({ action: 'rule', id, rule: before }), redo: () => groupsCall({ action: 'rule', id, rule }) });
+    }
     async function madeTick(kind, v) {
       const rule = JSON.parse(JSON.stringify(madeRule())), list = rule[kind] || [];
       rule[kind] = list.includes(v) ? list.filter(x => x !== v) : [...list, v];
       if (!rule[kind].length) delete rule[kind];
+      if (kind === 'pos' && !(rule.pos || []).includes('path')) delete rule.run;   // a run is a Path's
       if (madeEditing) {                                                     // a smart group: its rule changes as you tick (one choice at least)
         if (!Object.keys(rule).length) { setStatus('A smart group needs at least one choice.'); return; }
-        const id = madeEditing, before = madeRule();
-        if (await groupsCall({ action: 'rule', id, rule })) pushStep({ label: 'Change a smart group', undo: () => groupsCall({ action: 'rule', id, rule: before }), redo: () => groupsCall({ action: 'rule', id, rule }) });
+        await madeTickRule(rule);
         return;
       }
       setGroup(filterKey(rule));                                             // the grid filters live
@@ -1319,7 +1442,14 @@
     (() => {
       const panel = document.getElementById('madePanel');
       if (!panel || !panel.addEventListener) return;
-      panel.addEventListener('click', e => { e.stopPropagation(); const c = e.target.closest('.mw-chip'); if (c) madeTick(c.dataset.kind, c.dataset.v); });
+      panel.addEventListener('click', e => {
+        e.stopPropagation();
+        const make = e.target.closest('[data-make]'), all = e.target.closest('[data-runs-all]'), run = e.target.closest('.mw-run'), c = e.target.closest('.mw-chip');
+        if (make) makeMissing(make.dataset.make);
+        else if (all) { madeRunsAll = !madeRunsAll; renderMadeWith(); }
+        else if (run) madeRun(run.dataset.run);
+        else if (c) madeTick(c.dataset.kind, c.dataset.v);
+      });
       document.addEventListener('click', e => { if (madeOpen() && !(e.target.closest && e.target.closest('#madePanel'))) closeMadeWith(); });
     })();
     function setGroup(key) {
@@ -1523,7 +1653,7 @@
       const angles = new Set(shown.map(cardRot)).size, sizes = new Set(shown.map(p => markAt(p).size)).size;
       const way = { 0: 'left to right', 90: 'top to bottom', 45: 'diagonally down', '-45': 'diagonally up' };
       const parts = [], verbs = [];
-      if (run) { parts.push(`A path of ${run.length} step${run.length > 1 ? 's' : ''}, ${way[run[0].dir] || 'across'}`); verbs.push('along the path'); }
+      if (run) { const n = run[0].n || run.length; parts.push(`A path of ${n} step${n > 1 ? 's' : ''}, ${way[run[0].dir] || 'across'}`); verbs.push('along the path'); }   // its own steps, gaps or not (the gap note says what is missing)
       else if (marksMove()) { const loose = shown.filter(p => p.placement && ['loose', 'scattered'].includes(p.placement.kind)).length; if (loose) { parts.push(`${loose} image${loose > 1 ? 's' : ''} off target`); verbs.push('across the frame'); } }
       if (angles > 1) { parts.push(`${angles} angles`); verbs.push('turning'); }
       if (sizes > 1) { parts.push(`${sizes} sizes`); verbs.push('growing'); }
@@ -1546,6 +1676,15 @@
         : !moves ? `Motion needs images that differ in place, angle or size. These ${n} share all three: try Path or more angles in the Mark menu.`   // why, in the panel, not only in a tooltip
         : 'From light to dark, by shape and colour, with an arc from the hook to the landing.';
       document.getElementById('aiDirection').placeholder = aiMode === 'motion' ? 'e.g. slow at the start, spin at the end' : 'e.g. light to dark, then a burst of colour';
+      // a path run being ordered with gaps: said here, in Motion, where a gap becomes a jump (Claude Design's PathMissing); it never blocks
+      const gap = document.getElementById('aiGap'), shownRuns = new Set(activePlates().filter(p => !p.trashed).map(MADE_BY.run).filter(Boolean));
+      const short = aiMode === 'motion' ? pathRuns.filter(r => shownRuns.has(r.run)).map(runView).filter(v => v.missing).sort((a, b) => b.r.at - a.r.at) : [];
+      gap.hidden = !short.length;
+      if (short.length) {
+        const v = short[0], at = v.gaps.map(i => i + 1), list = at.length > 4 ? `${at.length} steps` : at.length > 1 ? `steps ${at.slice(0, -1).join(', ')} and ${at[at.length - 1]}` : `step ${at[0]}`;
+        gap.innerHTML = `<span><b>${escapeHtml(runName(v.r))}</b> has ${v.kept} of ${v.r.n} steps: the mark will jump at ${list}.${short.length > 1 ? ` ${short.length - 1} more run${short.length > 2 ? 's have' : ' has'} gaps too.` : ''}</span>
+          ${runStrip(v, v.r.n > 16 ? Math.max(3, Math.floor(300 / v.r.n) - 2) : 14)}<button type="button" class="link-btn" onclick="event.stopPropagation(); document.getElementById('aiPanel').hidden = true; showRun(this.dataset.run)" data-run="${escapeHtml(v.r.run)}">Show run in Made with</button>`;
+      }
     }
     function toggleAiPanel(e) {
       if (e) e.stopPropagation();
@@ -2679,7 +2818,7 @@
     // Not in it: permanent deletes and generation (they say so when you start them), the mode and the views.
     const history = [], future = [];
     let applyingHistory = false;
-    const NOT_UNDONE = ['targetSelect', 'markSelect', 'rotSelect', 'sizeSelect', 'pathSelect', 'keepCheck', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
+    const NOT_UNDONE = ['targetSelect', 'markSelect', 'rotSelect', 'sizeSelect', 'pathSelect', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
     function pushStep(step) { if (!step.settings) commitSettings(); history.push(step); if (history.length > 100) history.shift(); future.length = 0; showUndo(); return step; }
     function showUndo() {
       const b = document.getElementById('undoRandomBtn');
@@ -3746,7 +3885,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'rotSelect', 'sizeSelect', 'pathSelect', 'keepCheck'];
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'rotSelect', 'sizeSelect', 'pathSelect'];   // keepCheck (Keep the mark exact) was removed on 2026-10-31: the user never used it
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
     // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved
@@ -3793,7 +3932,7 @@
     // the project the server has open: its film in the controls (only when it is another than the one they hold)
     // the Mark menu of a project with nothing saved for it (new, or saved before Angle and Size): on target, its main mark, upright, its
     // own size; never the last project's ticks (opening Halo after Arc Resonance showed Arc's four angles)
-    const PLACE_DEFAULTS = { targetSelect: 'exact', markSelect: 'main', rotSelect: '0', sizeSelect: '1', pathSelect: 'line:0:40', keepCheck: false };
+    const PLACE_DEFAULTS = { targetSelect: 'exact', markSelect: 'main', rotSelect: '0', sizeSelect: '1', pathSelect: 'line:0:40:12' };
     function useProjectFilm(slug) {
       if (!slug || slug === filmSlug) return;
       filmSlug = slug;
@@ -3929,8 +4068,9 @@
     function namedWorlds() { return [...document.getElementById('worldSelect').options].filter(o => o.value && !o.value.startsWith('__')); }
     function showCount() {
       const n = VFIELDS.countField.get(), el = document.getElementById('countField');
-      document.getElementById('countVal').textContent = `×${n}`;
+      document.getElementById('countVal').innerHTML = `${n}<span class="vf-unit">image${n === 1 ? '' : 's'}</span>`;
       el.setAttribute('aria-valuenow', String(n)); el.setAttribute('aria-valuetext', `${n} image${n === 1 ? '' : 's'}`);
+      placeLive();
     }
     function renderGen() {
       showCount();
@@ -4013,7 +4153,7 @@
       let html = '';
       if (custom) html += item('__custom__', `${ICON_PLUS}<span>Describe your own <span class="tm-sub">in your own words</span></span>${check}`);
       if (wild) html += item('__wildcard__', `${ICON_SPARK}<span>Surprise me <span class="tm-sub">Kimi invents a territory</span></span>${check}`);
-      const n = Math.min(parseInt(document.getElementById('batchCountSelect').value, 10) || 4, worlds.length);   // the count picks how many territories
+      const n = Math.min(batchCount(), worlds.length);                       // the count picks how many territories
       const which = `${n} image${n === 1 ? '' : 's'} from your least tried territories`;   // one each; not random: least tried first
       if (sampler && worlds.length > 1) html += item('__sampler__', `${ICON_SAMPLER}<span>Sampler <span class="tm-sub">${which}</span></span>${check}`);
       if (custom || wild || sampler) html += '<div class="tm-sep"></div>';
@@ -4121,14 +4261,14 @@
       const count = prog.stage === 'invent' ? '' : `<b>${done}/${prog.total}</b>`;
       el.innerHTML = `<div class="prog">
         <span class="prog-world">${escapeHtml(prog.world || 'New batch')}</span>${bar}${count}
-        <span class="prog-note"${prog.summary && prog.detail ? ` title="${escapeHtml(prog.detail)}"` : ''}>${escapeHtml(prog.summary || prog.note)}</span>
+        <span class="prog-note"${prog.summary && prog.detail ? ` title="${escapeHtml(prog.detail)}"` : ''}>${escapeHtml(prog.summary || prog.note)}</span>${prog.summary && prog.run ? `<span class="prog-run">${escapeHtml(prog.run.text)}</span>` : ''}
         ${(prog.actions || []).map((x, i) => `<button type="button" class="small-btn prog-act" data-act="${i}">${escapeHtml(x.label)}</button>`).join('')}
         ${prog.timer ? `<span class="prog-time">${fmtElapsed(Date.now() - prog.t0)}${running ? ` · ${running} ${prog.world === 'AI order' ? 'working' : 'rendering'}` : ''}</span>` : ''}
       </div>`;
     }
     function progStart(count) {
       prog.t0 = Date.now(); prog.slots = []; prog.titles = []; prog.worlds = []; prog.marks = []; prog.positions = []; prog.why = []; prog.world = ''; prog.stage = 'invent';
-      prog.total = count; prog.summary = ''; prog.detail = ''; prog.note = `Choosing a territory and writing ${count} scenes…`;
+      prog.total = count; prog.summary = ''; prog.detail = ''; prog.run = null; prog.note = `Choosing a territory and writing ${count} scenes…`;
       document.getElementById('statusText').dataset.idle = '';
       clearInterval(prog.timer); prog.timer = setInterval(progRender, 1000); progRender();
     }
@@ -4368,12 +4508,14 @@
       if (creditsOut) parts.push('Krea is out of credits: add some at krea.ai, then Retry');
       if (notMade) parts.push(`${notMade} not made`);
       prog.detail = prog.titles.map((t, i) => (prog.why[i] ? `${t}: ${prog.why[i]}` : '')).filter(Boolean).join('\n');
+      const pa = ideas.map(i => i.placement && i.placement.path).find(Boolean), pr = pa && pathRuns.find(r => r.run === pa.run), pv = pr && runView(pr);
+      prog.run = pv && pv.missing ? { id: pr.run, text: `Path ${PATH_GLYPH[pr.dir] || '→'} ${pr.len}%: ${pv.kept} of ${pr.n} steps` } : null;   // a path left with gaps: said once, here
       progStop(`${batchStop && notMade ? 'Stopped' : 'Done'} · ${parts.join(' · ')}`);
-      const again = [...failedItems, ...left.values()];
-      batchActions(again.length ? [
+      const again = [...failedItems, ...left.values()], show = prog.run ? [{ label: 'Show run', run: () => showRun(pa.run) }] : [];
+      batchActions([...show, ...(again.length ? [
         { label: `Retry ${again.length}`, run: () => retryBatch(again, model) },
         { label: 'Discard', run: () => { savePending([], model); batchActions([]); } },
-      ] : []);
+      ] : [])]);
     }
     async function retryBatch(items, model) {
       if (isBusy()) { setStatus('Wait until the running job ends.'); return; }
@@ -4408,7 +4550,7 @@
 
       const model = document.getElementById('modelSelect').value;
       const kimiModel = document.getElementById('kimiModelSelect').value;
-      const count = parseInt(document.getElementById('batchCountSelect').value, 10) || 4;
+      const count = batchCount();
       const worldChoice = document.getElementById('worldSelect').value;
       if (!worldChoice) { setStatus('Choose a territory first.'); toggleTerrMenu(null, true); return; }   // the territories have not loaded yet
       const direction = document.getElementById('directionInput').value.trim();
@@ -4425,7 +4567,7 @@
         const invRes = await fetch('/api/invent-prompts', {
           method: 'POST',
           headers: forProject({'Content-Type': 'application/json'}),
-          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main', rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed, keep: document.getElementById('keepCheck').checked })
+          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main', rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed })
         });
         const invData = await invRes.json();
         if (invData.needs_kimi_key) {
@@ -4440,8 +4582,8 @@
         placeSeed = newSeed();                                               // the strip's places are this batch's now: the next one gets its own
 
         ran = true;
-        const target = document.getElementById('targetSelect').value || 'exact', keep = document.getElementById('keepCheck').checked;   // each image keeps the batch's choices and the place its scene was written for (a Resume too)
-        await runBatch(invData.ideas.map(i => ({ ...i, target, keep })), model);
+        const target = document.getElementById('targetSelect').value || 'exact';   // each image keeps the batch's choices and the place its scene was written for (a Resume too)
+        await runBatch(invData.ideas.map(i => ({ ...i, target })), model);
         if (worldChoice === '__custom__' && invData.world) {                     // your territory exists now: the next batch carries on in it
           await loadWorlds();
           const sel = document.getElementById('worldSelect');
@@ -4744,7 +4886,7 @@ Object.assign(window, {
   installUpdate,
   isBusy, setStatus,
   exportProject, importProject, importProjectPath, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
-  downloadShown, setThumbSizeAt, openViewer, closeViewer, viewerStep, toggleTerrMenu, editRefine, clearRefine, closeGroupMenu, showNewGroupForm,
+  downloadShown, setThumbSizeAt, openViewer, closeViewer, showRun, makeMissing, viewerStep, toggleTerrMenu, editRefine, clearRefine, closeGroupMenu, showNewGroupForm,
   openProjectMenu, switchProject, openProjectForm, closeProjectForm, saveProject, psKey, psSelect, psSetProject, psSetMark, psColour, psColourAdd, psColourKey, psStar, psDrop1, psSetWords, psRemove, psPick, psFileChosen, psFilesChosen, psCancelRead,
   removeChange,
   startAiOrder,

@@ -1,11 +1,13 @@
 const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg, aiSetup, skip, api, page, consoleErrors, addAi } = require('./harness.cjs');
 register();
 // the count: a number field (1 to 20), as the Film's Tempo; double-click, type, Enter
-async function setCount(n) {
+async function setCount(n) {                                                   // the count lives in the Mark menu's share box
+  if (await page.locator('#placeMenu').isHidden()) await page.click('#placeBtn');
   await page.dblclick('#countField');
   await page.keyboard.press('Meta+a');
   await page.keyboard.type(String(n));
   await page.keyboard.press('Enter');
+  await page.evaluate(() => togglePlaceMenu(null, false));
   if (n >= 1 && n <= 40) assert.equal(await page.inputValue('#batchCountSelect'), String(n));
 }
 
@@ -139,6 +141,54 @@ test('Scattered: the batch is made with the places the strip drew (the same seed
   await ctx.close();
 });
 
+test('Path: Steps decide how many; a run left with gaps says so after its batch, in AI order (Motion) and in Made with, where Make N fills just those steps', { skip }, async () => {
+  const ctx = await fresh({ delays: { invent: 50, generate: 50 }, failGen: n => n === 3 });   // the third image fails: a gap
+  await page.click('#placeBtn');
+  await page.click('#placeMenu [data-list="position"][data-v="path"]');
+  assert.equal(await page.locator('#placeMenu [data-list="psteps"]').count(), 5, 'Steps: 8 · 12 · 16 · 24 · 32');
+  await page.click('#placeMenu [data-list="psteps"][data-v="8"]');
+  assert.equal(await text('#placeName'), 'Path → 40% · 8 steps', 'the Mark button says the steps');
+  assert.match(await text('#placeMenu .mm-sharet'), /^8 steps · one per step/);
+  assert.equal(await page.locator('#placeMenu .mm-sharet #countField').count(), 0, 'with a Path the count is the steps, set in its panel');
+  assert.equal(await page.locator('#placeMenu .mm-path circle').count(), 8, 'the frame draws a dot a step, the last in orange');
+  assert.equal(await page.locator('#placeMenu [data-list="panchor"][aria-checked="true"]').getAttribute('data-v'), 'through', 'through the target by default, as every path before');
+  await page.click('#placeMenu [data-list="panchor"][data-v="lands"]');
+  assert.equal(await text('#placeName'), 'Path → 40% · lands · 8 steps', 'it says the mark lands home');
+  const ends = await page.locator('#placeMenu .mm-path circle').evaluateAll(els => els.map(e => [+e.getAttribute('cx'), +e.getAttribute('cy')]));
+  assert.ok(Math.abs(ends[ends.length - 1][0] - 35) < 0.5, 'the drawing ends on the target');
+  await page.evaluate(() => togglePlaceMenu(null, false));
+  await page.click('#generateBtn');
+  await page.waitForFunction(() => /Done/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
+  assert.equal(api.state.calls.find(c => c.path === '/api/invent-prompts').body.count, 8, 'the batch is the path\'s steps');
+  assert.equal(api.state.calls.find(c => c.path === '/api/invent-prompts').body.path.anchor, 'lands', 'and where the target sits on it');
+  assert.equal(await text('#statusText .prog-run'), 'Path → 40%: 7 of 8 steps', 'a gap: said once, after the batch');
+  const acts = await page.locator('#statusText .prog-act').allTextContents();
+  assert.deepEqual(acts.slice(0, 2), ['Show run', 'Retry 1']);
+  // AI order, Motion: the gap becomes a jump
+  await page.click('#aiBtn');
+  await page.click('#aiPanel .ai-mode [data-mode="motion"]');
+  assert.match(await text('#aiGap'), /has 7 of 8 steps: the mark will jump at step 3\./);
+  await page.click('#aiGap .link-btn');                                         // Show run in Made with
+  await page.waitForSelector('#madePanel:not([hidden])');
+  assert.equal(await page.locator('.card').count(), 7, 'only that run');
+  const run = page.locator('#madePanel .mw-run').first();
+  assert.equal(await run.locator('.mw-of').textContent(), '7 of 8');
+  assert.deepEqual(await run.locator('.run-strip i').evaluateAll(els => els.map(e => e.className)), ['ok', 'ok', 'none', 'ok', 'ok', 'ok', 'ok', 'ok'], 'a hollow cell where the step is missing');
+  assert.equal(await page.locator('#madePanel .mw-chip[data-v="path"] .mw-short').count(), 1, 'the Path chip says a run is short');
+  // Make 1: just the missing step, in the same run
+  await run.locator('.mw-make').click();
+  await page.waitForFunction(() => /Done · 1 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
+  const fill = api.state.calls.filter(c => c.path === '/api/invent-prompts').pop().body;
+  assert.equal(fill.fill, api.state.pathRuns[0].run, 'Make N asks for that run\'s missing steps');
+  const sent = api.state.calls.filter(c => c.path === '/api/generate-image').pop().body;
+  assert.deepEqual([sent.placement.path.i, sent.placement.path.run, sent.target], [2, api.state.pathRuns[0].run, 'path'], 'step 3, in the same run');
+  await page.waitForFunction(() => /8 of 8/.test(document.querySelector('#madePanel .mw-of').textContent));
+  assert.equal(await page.locator('#madePanel .mw-make').count(), 0, 'complete: nothing to make');
+  await shot('36-path-runs');
+  assert.deepEqual(consoleErrors.filter(e => !/generate-image/.test(e)), [], 'no errors but the failure made on purpose');
+  await ctx.close();
+});
+
 test('a server restart during a batch does not reload the page underneath it', { skip }, async () => {
   const ctx = await fresh({ delays: { invent: 100, generate: 5000 } });                // long enough for two version checks while it runs
   await setCount(2);
@@ -169,17 +219,22 @@ test('closing or reloading the page during a batch asks first (and not when idle
 });
 
 
-test('the count: any number from 1 to 40, as a value field (×N); it sends the number chosen and is remembered', { skip }, async () => {
+test('the count: any number from 1 to 40, a value field in the Mark menu; the Mark button says it; it sends the number chosen and is remembered', { skip }, async () => {
   const ctx = await fresh({ delays: { invent: 50, generate: 20 } });
+  await page.click('#placeBtn');                                                 // the count: in the Mark menu's share box
+  assert.match(await text('#placeMenu .mm-sharet'), /^4\s*images\s*· all the same/, 'how many, where the strip draws them');
   await page.focus('#countField');
   await page.keyboard.press('ArrowUp');
-  assert.equal(await text('#countVal'), '×5', 'arrows step by one: no set list');
+  assert.equal(await page.inputValue('#batchCountSelect'), '5', 'arrows step by one: no set list');
+  assert.equal(await text('#placeName'), 'On target · 5 images', 'the Mark button says how many');
+  assert.equal(await page.locator('#placeMenu .mm-cell').count(), 5, 'the strip follows at once');
   for (let i = 0; i < 50; i++) await page.keyboard.press('ArrowUp');
-  assert.equal(await text('#countVal'), '×40', 'never past 40');
+  assert.equal(await page.inputValue('#batchCountSelect'), '40', 'never past 40');
+  await page.evaluate(() => togglePlaceMenu(null, false));
   await setCount(0);
-  assert.equal(await text('#countVal'), '×1', 'nor under 1');
+  assert.equal(await text('#placeName'), 'On target · 1 image', 'nor under 1');
   await setCount(13);
-  assert.equal(await text('#countVal'), '×13');
+  assert.equal(await text('#placeName'), 'On target · 13 images');
   await setCount(12);
   await page.click('#generateBtn');
   await page.waitForFunction(() => /Done · 12 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });

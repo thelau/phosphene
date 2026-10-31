@@ -330,14 +330,15 @@ class BatchPlan:
     fourth mark). The ticks keep the menu's order. Shared by a batch's chunks: a chunk peeks at the next turns and takes only those of
     the scenes it kept, so a scene Kimi dropped leaves its turn to the next one. Loose and Scattered draw each turn's place from `seed`
     and its number (`place`), so the places the menu's strip drew before Generate (`/api/placements`, the same seed) are the batch's."""
-    def __init__(self, target: str = "exact", mark=None, rot=None, scale=None, path=None, count: int = 1, seed=None):
+    def __init__(self, target: str = "exact", mark=None, rot=None, scale=None, path=None, count: int = 1, seed=None, steps=None, run=None):
         self.target, self.seed = target, (str(seed)[:40] if seed not in (None, "") else None)
         self.marks, self.rots = mark_set(mark), rot_set(rot)
         self.scales = scale_set(scale) if target in ("exact", "path") else [1.0]   # Loose and Scattered choose their own sizes
         self.count = max(1, int(count or 1))
         base = path_for(target, path)
-        self.path = placement.clean_path({**base, "i": 0, "n": self.count, "run": f"{time.time_ns() % 10**12:x}"}) if base else None
-        self.queue, self.next = list(range(self.count)), self.count
+        self.path = placement.clean_path({**base, "i": 0, "n": self.count, "run": run or f"{time.time_ns() % 10**12:x}"}) if base else None
+        self.steps = [i for i in (steps or []) if 0 <= i < self.count] or None   # Make N: only a run's missing steps, each with its own turn
+        self.queue, self.next = list(self.steps or range(self.count)), self.count
 
     def turn(self, i: int) -> dict:
         m, a = len(self.marks), len(self.rots)
@@ -347,6 +348,9 @@ class BatchPlan:
     def peek(self, n: int) -> list:
         q = self.queue[:n]
         while len(q) < n:                                                       # spares past the batch: the turns go on round
+            if self.steps:                                                      # filling a run: its missing steps again
+                q.append((self.queue or self.steps)[(len(q)) % len(self.queue or self.steps)])
+                continue
             self.queue.append(self.next)
             q.append(self.next)
             self.next += 1
@@ -356,11 +360,58 @@ class BatchPlan:
         if i in self.queue:
             self.queue.remove(i)
 
+    def extra(self, k: int) -> dict:
+        """The turn of a scene Kimi sent beyond those asked: past the batch's end, or filling a run, one of its missing steps."""
+        return self.turn(self.steps[k % len(self.steps)] if self.steps else self.count + k)
+
     def place(self, t: dict) -> dict | None:
         """Turn t's placement: its mark's place and size, angle and size, or path step; Loose and Scattered drawn from the seed and t's
         number (no seed: at random)."""
         rng = random.Random(f"{self.seed}:{t['i']}") if self.seed is not None else None
         return placement.choose(self.target, projects.with_mark(PROJECT, t["mark"]), rng, rot=t["rot"], scale=t["scale"], path=t["path"])
+
+
+def path_runs(st: dict) -> dict:
+    """Every Path run of this project (one per batch), by its id: its steps and how it was made, as recorded when it was made
+    (`path_runs`) or, for one from before, read off its images; `files` its images, `at` when it was made."""
+    rec, worlds, runs = st.get("path_runs", {}), st.get("worlds", {}), {}
+    for name, pl in st.get("placements", {}).items():
+        pa = (pl or {}).get("path") if isinstance(pl, dict) else None
+        if pa and pa.get("run"):
+            r = runs.setdefault(pa["run"], {"run": pa["run"], "n": pa["n"], "shape": pa["shape"], "dir": pa["dir"], "len": pa["len"], "anchor": pa.get("anchor", "through"), "files": []})
+            r["files"].append(name)
+    for run, r in runs.items():
+        made = rec.get(run) or {}
+        times = [f.stat().st_mtime for f in (PLATES_DIR / n for n in r["files"]) if f.exists()]
+        names = [worlds.get(n) for n in r["files"] if worlds.get(n)]
+        r["at"] = made.get("at") or (min(times) if times else 0)
+        every = names or [w for w in worlds.values() if w]                    # unknown: the project's most used territory, never a new one invented
+        r["world"] = made.get("world") or (max(set(every), key=every.count) if every else "")
+        r["keep"] = bool(made.get("keep"))
+        for k in ("mark", "rot", "scale"):
+            if made.get(k):
+                r[k] = made[k]
+    return runs
+
+
+def run_fill(st: dict, run: str) -> dict | None:
+    """What Make N needs for a run: its missing steps (none in the Selection: never made, or in the Trash) and its turns, as recorded,
+    or for a run from before, read off its images (the marks, angles and sizes they were made with, in the menu's order)."""
+    r = path_runs(st).get(run)
+    if not r:
+        return None
+    trashed, placed, used = set(st.get("trashed", [])), st.get("placements", {}), st.get("marks_used", {})
+    have = {placed[f]["path"]["i"] for f in r["files"] if f not in trashed and (PLATES_DIR / f).exists()}
+    mine = [placed[f] for f in r["files"]]
+    if not r.get("mark"):
+        order = ["main"] + [m["id"] for m in (PROJECT or {}).get("marks") or []]
+        seen = {used.get(f) or "main" for f in r["files"]}
+        r["mark"] = ",".join(m for m in order if m in seen) or "main"
+    if not r.get("rot"):
+        r["rot"] = ",".join(str(x) for x in projects.ROTATIONS if x in {projects.clean_rot(pl.get("rot")) for pl in mine}) or "0"
+    if not r.get("scale"):
+        r["scale"] = ",".join(str(x) for x in projects.SCALES if x in {projects.clean_scale(pl.get("scale")) for pl in mine}) or "1"
+    return {**r, "steps": [i for i in range(r["n"]) if i not in have]}
 
 
 class OneTurn:
@@ -377,6 +428,9 @@ class OneTurn:
         return [self.t] * n
 
     def turn(self, i: int) -> dict:
+        return self.t
+
+    def extra(self, k: int) -> dict:
         return self.t
 
     def take(self, i) -> None:
@@ -823,7 +877,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     ideas = parse_llm_json(out, "[")
     for i, idea in enumerate(ideas):
         if isinstance(idea, dict):
-            t = turns[i] if i < len(turns) else plan.turn(plan.count + i)
+            t = turns[i] if i < len(turns) else plan.extra(i)
             idea["_turn"] = t["i"]
             idea["_mark"] = mids[i] if i < len(mids) else t["mark"]
             idea["_place"] = places[i] if i < len(places) else plan.place(t)   # the shot it was written for
@@ -845,6 +899,16 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
         # (copies of a past image are acceptable stand-ins; copies of something already in THIS batch are not)
         spare = sorted((d for d in dropped if d[2] >= 0.25), key=lambda x: -x[0])
         kept += [idea for _, idea, _ in spare[: count - len(kept)]]
+    turns_kept = [i.get("_turn") for i in kept]
+    if len(set(turns_kept)) < len(turns_kept):    # two scenes for one step (filling a run): a dropped scene written for a step still missing comes first
+        have = set(turns_kept)
+        for _, idea, same_batch in sorted(dropped, key=lambda x: -x[0]):
+            if idea.get("_turn") not in have and same_batch >= 0.25:
+                kept.append(idea); have.add(idea.get("_turn"))
+        seen, first, again = set(), [], []
+        for i in kept:
+            (again if i.get("_turn") in seen else first).append(i); seen.add(i.get("_turn"))
+        kept = first + again
     kept = kept[:count]
     for i in kept:
         plan.take(i.get("_turn"))
@@ -867,14 +931,18 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
 
 
 def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, world: str | None = None, direction: str = "", stats: dict | None = None,
-                         target: str = "exact", mark: str | None = None, keep: bool = False, rot=None, scale=None, path=None, seed=None) -> list[dict]:
+                         target: str = "exact", mark: str | None = None, keep: bool = False, rot=None, scale=None, path=None, seed=None, fill: dict | None = None) -> list[dict]:
     """
     One authored territory per batch (shots cohere), idea-first, steered by taste, near-duplicates dropped.
     Returns exactly `count` scenes whenever Kimi can supply them: large batches are asked in chunks of up to 10,
     and a short answer is followed up with a request for just the missing ones.
     """
+    plan = None
+    if fill:                                                                    # Make N: a run's missing steps, with its own turns
+        target, mark, rot, scale, count = "path", fill["mark"], fill["rot"], fill["scale"], len(fill["steps"])
+        plan = BatchPlan("path", mark, rot, scale, {k: fill[k] for k in ("shape", "dir", "len", "anchor")}, fill["n"], steps=fill["steps"], run=fill["run"])
     if world == "__sampler__":
-        return ask_kimi_sampler(st, api_key, kimi_model, count, direction, stats, target, mark, keep, rot, scale, path, seed)
+        return ask_kimi_sampler(st, api_key, kimi_model, count, direction, stats, target, mark, keep, rot, scale, path, seed, plan)
     w = chapters.choose_world(st, world or "")
     if direction and not world:
         w = match_world(st, api_key, kimi_model, direction) or invent_world(st, api_key, kimi_model, direction)
@@ -885,7 +953,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
 
     out: list = []
     totals = {"asked_kimi": 0, "from_kimi": 0, "dropped_duplicates": 0, "topped_up": 0, "kimi_calls": 0}
-    plan = BatchPlan(target, mark, rot, scale, path, count, seed)    # one set of turns for the whole batch, across its chunks
+    plan = plan or BatchPlan(target, mark, rot, scale, path, count, seed)   # one set of turns for the whole batch, across its chunks
     for _ in range(-(-count // 10) + 2):                 # chunks of 10 (a batch of 40 is four), plus at most a couple of follow-ups
         need = count - len(out)
         if need <= 0:
@@ -910,14 +978,14 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     return out[:count]
 
 
-def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direction: str = "", stats: dict | None = None, target: str = "exact", mark=None, keep: bool = False, rot=None, scale=None, path=None, seed=None) -> list[dict]:
+def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direction: str = "", stats: dict | None = None, target: str = "exact", mark=None, keep: bool = False, rot=None, scale=None, path=None, seed=None, plan=None) -> list[dict]:
     """The Sampler: one scene from each of `count` territories, the ones tried least first (to explore at large). Each territory's
     scene is written by its own Kimi request, 6 at a time, each on a copy of the state; their memory (subjects, territories, axes
     used) is merged back into `st` after, so later batches still avoid repeating them."""
     from concurrent.futures import ThreadPoolExecutor
     made = chapters.world_stats(st)
     worlds = sorted(chapters.all_worlds(st), key=lambda w: (made.get(w["name"], {}).get("n", 0), random.random()))[:max(1, count)]
-    deal = BatchPlan(target, mark, rot, scale, path, len(worlds), seed)
+    deal = plan or BatchPlan(target, mark, rot, scale, path, len(worlds), seed)
     turns = deal.peek(len(worlds))                                       # each territory's scene its turn, dealt before they run at once
 
     def one(job):
@@ -1591,6 +1659,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 "groups": groups.public(st, {p["filename"] for p in plates}),
                 "edits": edits.public(st),
                 "active_sequence": st.get("active_sequence"),
+                "path_runs": [{k: r[k] for k in ("run", "n", "shape", "dir", "len", "anchor", "at", "world")} for r in path_runs(st).values()],   # each Path run: the page counts its steps
             })
             return
 
@@ -2052,6 +2121,13 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 return
             stats, t_batch = {}, time.time()
             direction = (body.get("direction") or "").strip()[:DIRECTION_MAX]
+            fill = None
+            if body.get("fill"):                                         # Make N: the missing steps of a Path run
+                fill = run_fill(st, str(body["fill"])[:16])
+                if not fill or not fill["steps"]:
+                    self.send_json({"ok": False, "error": "That path has all its steps." if fill else "That path is gone."}, 400)
+                    return
+                body = {**body, "world": fill["world"] or "", "count": len(fill["steps"]), "target": "path", "keep": fill["keep"]}
             try:
                 ideas = ask_kimi_for_prompts(
                     st,
@@ -2068,6 +2144,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     scale=body.get("scale"),
                     path=body.get("path"),
                     seed=body.get("seed"),
+                    fill=fill,
                 )
                 with STATE_LOCK:                               # Kimi took seconds: what changed meanwhile stays; only its titles are added,
                     if PROJECT and PROJECT["slug"] == started_in:   # and never into another project opened meanwhile
@@ -2078,8 +2155,13 @@ class StudioHandler(SimpleHTTPRequestHandler):
                                 now["history"].append(t)
                         # and whatever this step itself changed: a territory Kimi invented (custom_worlds), the memory that keeps
                         # batches from repeating (recent_subjects / _worlds / _axes). Merging only the titles lost them all.
+                        run = next((i["placement"]["path"]["run"] for i in ideas if (i.get("placement") or {}).get("path")), None)
+                        if run and not fill:                         # a new Path run: how it was made, so Make N can fill it alike
+                            now.setdefault("path_runs", {})[run] = {"at": time.time(), "world": "__sampler__" if body.get("world") == "__sampler__" else ideas[0].get("world", ""),
+                                                                    "mark": str(body.get("mark") or "main")[:200], "rot": str(body.get("rot") or "0")[:100],
+                                                                    "scale": str(body.get("scale") or "1")[:100], "keep": bool(body.get("keep"))}
                         for k, v in st.items():
-                            if k in ("history", "kimi_api_key") or v == before.get(k):
+                            if k in ("history", "kimi_api_key", "path_runs") or v == before.get(k):
                                 continue
                             if k == "custom_worlds":
                                 mine = {w.get("name"): w for w in v}
@@ -2089,7 +2171,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         save_state(now)
                 gen_log.record("batch", ok=True, asked=int(body.get("count", 4)), territory_choice=body.get("world") or "mix", direction=direction, kimi_model=kimi_model,
                                seconds=round(time.time() - t_batch, 1), titles=[i.get("title") for i in ideas], **stats)
-                self.send_json({"ok": True, "ideas": ideas, "world": stats.get("world")})
+                self.send_json({"ok": True, "ideas": ideas, "world": stats.get("world"), **({"keep": fill["keep"]} if fill else {})})
             except Exception as e:
                 print(f"[KIMI] invent-prompts failed: {e!r}", flush=True)
                 gen_log.record("batch", ok=False, asked=int(body.get("count", 4)), territory_choice=body.get("world") or "mix", direction=direction,

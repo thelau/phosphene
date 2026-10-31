@@ -23,6 +23,7 @@ PATHS = {
 }
 PATH_DIRS = (0, 90, 45, -45)          # degrees clockwise from left-to-right: across, down, down-right, up-right
 PATH_LENS = (20, 40, 70)              # % of the frame: short, medium, long
+PATH_ANCHORS = ("through", "lands", "leaves")   # where the target sits on it: its middle, its last step (the motion lands home), its first
 LEVELS = {                    # per level, bands that never overlap, so each reads as itself (never as On target):
     # how far from the project's place (% of the frame, the larger of across and down; None: as far as the frame goes),
     # and its size, times the project's (one of two bands: smaller or bigger, never about the same)
@@ -49,20 +50,24 @@ def clean_path(path) -> dict | None:
         return None
     if d not in PATH_DIRS or ln not in PATH_LENS or not (1 <= n <= 200 and 0 <= i < n):
         return None
-    return {"shape": path["shape"], "dir": d, "len": ln, "i": i, "n": n, "run": str(path.get("run") or "")[:16]}
+    anchor = path.get("anchor") if path.get("anchor") in PATH_ANCHORS else "through"
+    return {"shape": path["shape"], "dir": d, "len": ln, "i": i, "n": n, "run": str(path.get("run") or "")[:16],
+            **({"anchor": anchor} if anchor != "through" else {})}    # through, as every path before anchors: nothing added
 
 
 def path_place(project: dict, path: dict, size: float, ratio: float) -> tuple[float, float]:
     """Where step i of n of a path puts the mark: along its shape through the project's place, its length shrunk if an end would leave
     the frame (the box kept clear of the edges)."""
     t = path["i"] / max(1, path["n"] - 1) if path["n"] > 1 else 0.5
-    u, v = PATHS[path["shape"]](t)
+    shape, anchor = PATHS[path["shape"]], path.get("anchor", "through")
+    o = shape({"lands": 1.0, "leaves": 0.0}.get(anchor, 0.5))                  # the point of the shape that sits on the target
+    u, v = (lambda q: (q[0] - o[0], q[1] - o[1]))(shape(t))
     a = math.radians(path["dir"])
     dx, dy = u * math.cos(a) - v * math.sin(a), u * math.sin(a) + v * math.cos(a)    # its reach: % of the frame along each axis (70% down: 70% of the height)
     hx, hy = project["mark_x"], project["mark_y"]
     hw, hh = size / 2, size * ratio * projects.FRAME_W / projects.FRAME_H / 2
     ln = float(path["len"])
-    for e in (-0.5, 0.5):                                       # both ends of the line inside: shrink it until they are
+    for e in (shape(0.0)[0] - o[0], shape(1.0)[0] - o[0]):     # both ends of the line inside: shrink it until they are
         ex, ey = e * math.cos(a), e * math.sin(a)
         for c, h, d in ((hx, hw, ex), (hy, hh, ey)):
             if abs(d) > 1e-9:

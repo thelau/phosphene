@@ -172,19 +172,18 @@
           </div>
           <span class="gen-sep place-sep"></span>
           <span class="place">
-            <button type="button" class="place-btn" id="placeBtn" onclick="togglePlaceMenu(event)" aria-haspopup="dialog" aria-expanded="false"><span class="pb-stack" id="placeStack" hidden></span><span class="pb-text"><span class="pb-label" id="placeLabel" hidden></span><span class="pb-line"><span class="pb-sum" id="placeName">On target</span><span class="pb-designed" id="placeDesigned" hidden title="Exact mark"><i></i></span></span></span><svg class="pb-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
-            <input type="hidden" id="markSelect" value="main" /><input type="hidden" id="rotSelect" value="0" /><input type="hidden" id="sizeSelect" value="1" /><input type="hidden" id="pathSelect" value="line:0:40" />
+            <button type="button" class="place-btn" id="placeBtn" onclick="togglePlaceMenu(event)" aria-haspopup="dialog" aria-expanded="false"><span class="pb-stack" id="placeStack" hidden></span><span class="pb-text"><span class="pb-line"><span class="pb-sum" id="placeName">On target</span></span></span><svg class="pb-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+            <input type="hidden" id="markSelect" value="main" /><input type="hidden" id="rotSelect" value="0" /><input type="hidden" id="sizeSelect" value="1" /><input type="hidden" id="pathSelect" value="line:0:40:12" />
             <select id="targetSelect" class="src-only" aria-hidden="true" tabindex="-1">
               <option value="exact" selected>On target</option>
               <option value="loose">Loose</option>
               <option value="scattered">Scattered</option>
               <option value="path">Path</option>
             </select>
-            <input type="checkbox" id="keepCheck" class="src-only" aria-hidden="true" tabindex="-1" />
+            
             <div class="place-menu" id="placeMenu" role="dialog" aria-label="Mark" hidden></div>
+            <div id="countHome" hidden><div class="vfield mm-count" id="countField" role="spinbutton" tabindex="0" aria-valuemin="1" aria-valuemax="40" aria-valuenow="4" aria-label="Images in this batch" title="How many images: 1 to 40. Drag up or down, double-click to type, arrows to step."><span class="vf-val" id="countVal">×4</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div></div>
           </span>
-          <span class="gen-sep"></span>
-          <div class="vfield gen-count" id="countField" role="spinbutton" tabindex="0" aria-valuemin="1" aria-valuemax="20" aria-valuenow="4" aria-label="Images in this batch" title="How many images: 1 to 20. Drag up or down, double-click to type, arrows to step."><span class="vf-val" id="countVal">×4</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div>
           <input type="hidden" id="batchCountSelect" value="4" />
           <button class="primary" id="generateBtn" onclick="generateImages()"><span class="gen-spin" aria-hidden="true"></span><span id="genLabel">Generate</span></button>
           <div class="terr-menu" id="terrMenu" role="listbox" aria-label="Territories" hidden></div>
@@ -215,7 +214,7 @@
                 <button type="button" role="radio" data-mode="look" onclick="setAiMode('look')"><span class="ai-draw" aria-hidden="true"><i style="background:linear-gradient(180deg,#F3EFD9,#C8B48A)"></i><i style="background:linear-gradient(180deg,#C8743A,#6A3418)"></i><i style="background:linear-gradient(180deg,#3A4A6A,#12161E)"></i><i style="background:linear-gradient(180deg,#2A2825,#0C0B0A)"></i></span><b>Look</b><small>From light to dark, by shape and colour</small></button>
                 <button type="button" role="radio" data-mode="motion" onclick="setAiMode('motion')"><svg class="ai-draw" width="96" height="38" viewBox="0 0 96 38" aria-hidden="true"><line x1="8" y1="30" x2="88" y2="8" stroke="#FEFFE7" stroke-width="1" stroke-dasharray="1 3"></line><rect x="4" y="25" width="9" height="9" fill="none" stroke="#FEFFE7" stroke-width="1.3"></rect><rect x="30" y="17" width="10" height="10" fill="none" stroke="#FEFFE7" stroke-width="1.3" transform="rotate(30 35 22)"></rect><rect x="56" y="10" width="11" height="11" fill="none" stroke="#FEFFE7" stroke-width="1.3" transform="rotate(60 61.5 15.5)"></rect><rect x="81" y="2" width="12" height="12" fill="#EC540C" transform="rotate(90 87 8)"></rect></svg><b>Motion</b><small>The mark travels, spins, grows</small></button>
               </div>
-              <div class="ai-line" id="aiLine"><span class="ai-line-k" id="aiLineK">Look</span><span id="aiLineT"></span></div>
+              <div class="ai-line" id="aiLine"><span class="ai-line-k" id="aiLineK">Look</span><span id="aiLineT"></span></div><div class="ai-gap" id="aiGap" hidden></div>
               <label>Note (optional)
                 <input id="aiDirection" type="text" maxlength="300" placeholder="e.g. open on the cap, end on the container" />
               </label>
@@ -226,10 +225,6 @@
             </div>
           </div>
           <div class="tool-group" role="toolbar" aria-label="Grid tools">
-            <button onclick="document.getElementById('uploadInput').click()" id="uploadBtn" title="Add your own images (or drop them on the grid): each is framed to the film's 9:16, centred" aria-label="Add images">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="13" height="18" rx="2"></rect><path d="M8 15l3-3 3 3"></path><path d="M19 8v6M16 11h6"></path></svg>
-            </button>
-            <input type="file" id="uploadInput" accept="image/*,.heic,.heif" multiple hidden onchange="uploadImages(this.files); this.value = ''" />
             <button onclick="downloadShown()" id="downloadBtn" title="Download the images shown, full size, in their order (a zip)" aria-label="Download the images shown">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"></path><path d="M7 10l5 5 5-5"></path><path d="M5 20h14"></path></svg>
             </button>
@@ -285,7 +280,7 @@
         <button type="button" class="viewer-nav prev" onclick="event.stopPropagation(); viewerStep(-1)" aria-label="Previous image">‹</button>
         <button type="button" class="viewer-nav next" onclick="event.stopPropagation(); viewerStep(1)" aria-label="Next image">›</button>
         <div class="viewer-head" onclick="event.stopPropagation()">
-          <kbd class="viewer-esc" title="Esc closes the viewer">esc</kbd>
+          <button type="button" class="viewer-tool viewer-close" id="viewerClose" onclick="event.stopPropagation(); closeViewer()" title="Close (esc)" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
           <span class="viewer-id"><span class="viewer-l1"><b id="viewerTitle"></b><span class="viewer-count" id="viewerCount"></span></span><span class="viewer-l2"><span class="viewer-made" id="viewerMade" hidden></span><span class="viewer-model" id="viewerModel"></span><span id="viewerQa"></span></span></span>
           <span class="viewer-fill"></span>
           <span class="viewer-tools"><button type="button" class="viewer-tool" id="viewerTargetBtn" onclick="toggleReticle()" title="Mark target (T)" aria-label="Show the mark target" aria-pressed="false"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button><button type="button" class="viewer-tool wide" id="viewerInfoBtn" onclick="toggleViewerInfo()" title="The prompt and the mark check" aria-label="Info"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>Info</button><button type="button" class="viewer-tool wide" id="viewerTrashBtn" onclick="viewerTrash()" title="Move to the Trash" aria-label="Move to the Trash">Trash</button><button type="button" class="viewer-tool wide viewer-restore" id="viewerRestoreBtn" onclick="viewerRestore()" title="Back to the selection" hidden>Restore</button></span>
