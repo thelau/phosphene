@@ -414,7 +414,7 @@ test('many groups: those that do not fit go behind "+N more" (never the chosen o
   const row = await page.locator('#groupRow').boundingBox(), auto = await page.locator('#autoMenus').boundingBox(), all = await page.locator('#groupAll').boundingBox();
   const shown = await page.locator('#groupBar .chip:not(.out):not(.chip-overflow)').evaluateAll(b => b.map(x => ({ key: x.dataset.key, left: x.getBoundingClientRect().left, right: x.getBoundingClientRect().right })));
   assert.ok(all.x < auto.x && shown.length >= 3 && shown.every(c => c.left > auto.x + auto.width && c.right <= row.x + row.width), `All | Auto [Look] | Custom [your groups]: ${JSON.stringify(shown)}`);
-  assert.equal(await text('#ownLabel'), 'CUSTOM');
+  assert.deepEqual(await page.locator('#groupBar .group-label').allTextContents(), ['Manual'], 'your groups under a quiet label');
   const n = +(await text('#moreChip')).match(/\+(\d+)/)[1];
   assert.equal(shown.length + n, 11, 'the 11 groups: shown or behind +N more');
   await page.click('#moreChip');
@@ -1787,7 +1787,7 @@ test('the info panel on a card: less at small sizes, the text scrolls, Copy copi
   await ctx.close();
 });
 
-test('automatic groups by how images were made: Mark, Position and Source, each only with two kinds or more; the grid, the film and its dropdown follow', { skip }, async () => {
+test('Made with: one panel for how images were made (mark, position, source...), live filtering, a filter saved as a smart group that fills itself, edited in place', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945, setup: st => {
     const p = st.projects.find(x => x.slug === st.project);
     p.marks = [{ id: 'tri', name: 'Triangle', size: 18, x: 50, y: 50, shape: 'triangle', noun: 'triangle', ratio: 1, url: p.mark_url }];
@@ -1797,23 +1797,43 @@ test('automatic groups by how images were made: Mark, Position and Source, each 
     st.plates.push({ ...shown[0], filename: 'up1', title: 'My photo', url: '/assets/ai-plates/up1.svg', uploaded: true, model: null });
     st.sequences[0].order.push('up1');
   } });
-  const menu = async kind => { await page.click(`#auto-${kind}`); const items = await page.locator('#groupMenu .gm-item').allTextContents(); return items; };
-  assert.match(await page.locator('#autoMenus').textContent(), /Mark\s*2.*Position\s*2.*Source\s*2/s);
-  assert.deepEqual(await menu('mark'), ['Main mark2', 'Triangle1'], 'each mark, an upload in none');
-  assert.equal(await page.locator('#groupMenu .gm-item img.pm-thumb').count(), 2, 'each previewed as in the Mark menu');
-  await shot('30-auto-mark-menu');
-  assert.deepEqual(await menu('pos'), ['On target2', 'Loose1']);
-  assert.deepEqual(await menu('src'), ['Generated3', 'Uploaded1']);
-  await page.click('#auto-pos'); await page.click('#groupMenu .gm-item[data-key="pos:loose"]');
-  assert.match(await text('#auto-pos'), /^Position: Loose\s*1$/);
+  assert.doesNotMatch(await page.locator('#autoMenus').textContent(), /Position|Source/, 'no menu per kind any more');
+  assert.match(await page.locator('#autoMenus').textContent(), /Auto.*Made with/s);
+  await page.click('#auto-made');
+  const rows = async () => page.locator('#madePanel .mw-row').evaluateAll(r => r.map(x => x.querySelector('.mw-label').textContent + ': ' + [...x.querySelectorAll('.mw-chip')].map(c => c.textContent.replace(/\s+/g, ' ').trim()).join(' | ')));
+  assert.deepEqual(await rows(), ['Mark: Main mark2 | Triangle1', 'Position: On target2 | Loose1', 'Source: Made here3 | Uploaded1'], 'a row only where the images differ, each chip its count');
+  assert.equal(await page.locator('#madePanel .mw-save').isDisabled(), true, 'Save waits for a tick');
+  await shot('30-made-with');
+  await page.click('#madePanel .mw-chip[data-kind="pos"][data-v="loose"]');
   const loose = api.state.plates.filter(x => !x.trashed)[2].filename;
-  assert.deepEqual(await names(), [loose], 'the grid shows the group');
+  assert.deepEqual(await names(), [loose], 'the grid filters live');
+  assert.match(await text('#auto-made'), /^Made with: Loose\s*1$/, 'the button reads the filter');
+  assert.deepEqual(await rows(), ['Mark: Main mark1 | Triangle0', 'Position: On target2 | Loose1', 'Source: Made here1 | Uploaded0'], 'counts: each chip with the other rows\' ticks');
+  await page.click('#madePanel .mw-chip[data-kind="pos"][data-v="exact"]');
+  assert.equal((await names()).length, 3, 'ticks in a row widen (or)');
+  await page.click('#madePanel .mw-chip[data-kind="mark"][data-v="tri"]');
+  assert.deepEqual(await names(), [api.state.plates.filter(x => !x.trashed)[1].filename], 'rows narrow (and)');
+  await page.click('#madePanel .mw-save');
+  await page.fill('#madeNewName', 'Triangles');
+  await page.click('#madePanel .mw-form .mw-done');
+  await page.waitForSelector('#groupBar .chip.smart.on');
+  assert.match(await text('#groupBar .chip.smart.on'), /^Triangles\s*1$/, 'a smart group, chosen');
+  assert.deepEqual(await page.locator('#groupBar .group-label').allTextContents(), ['Smart'], 'under its label');
+  assert.deepEqual(api.state.groups.find(g => g.name === 'Triangles').rule, { pos: ['loose', 'exact'], mark: ['tri'] });
+  await page.click('#groupMenuBtn');                                               // the pencil: the same panel on its rule
+  assert.equal(await page.locator('#madeName').inputValue(), 'Triangles');
+  await page.click('#madePanel .mw-chip[data-kind="mark"][data-v="tri"]');
+  await page.click('#madePanel .mw-chip[data-kind="mark"][data-v="main"]');
+  await page.waitForFunction(() => /Triangles\s*2/.test(document.querySelector('#groupBar .chip.smart.on').textContent));
+  assert.deepEqual(api.state.groups.find(g => g.name === 'Triangles').rule.mark, ['main'], 'changes apply as you tick');
+  await page.click('#madePanel .mw-done');
   await film();
-  assert.equal(await page.locator('#filmstrip button').count(), 1, 'and so does the film');
-  assert.deepEqual(await page.locator('#filmGroup optgroup').evaluateAll(g => g.map(x => x.label)), ['Look', 'Mark', 'Position', 'Source'], "Film's dropdown has them too");
+  assert.equal(await page.locator('#filmstrip button').count(), 2, 'the film plays the smart group');
   await curate();
-  await page.click('#autoMenus .auto-x');
+  await page.click('#groupMenuBtn');
+  await page.click('#madePanel .mw-del');
   await page.waitForSelector('#groupRow .chip.on[data-key="all"]');
+  assert.equal(api.state.groups.some(g => g.name === 'Triangles'), false);
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });

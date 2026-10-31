@@ -965,7 +965,7 @@
       const step = pushStep({ label: `Delete “${e.name}”`, undo: async () => { await editsCall({ action: 'restore', edit: e }); setCurrentEdit(e.id); renderEditBar(); }, redo: async () => { await editsCall({ action: 'delete', id: e.id }); setCurrentEdit(null); renderEditBar(); } });
       setStatus(`“${e.name}” deleted.`, { label: 'Undo', run: () => undoStep(step) });
     }
-    let currentGroup = (() => { try { return localStorage.getItem('studioGroup') || 'all'; } catch (e) { return 'all'; } })();
+    let currentGroup = (() => { try { return normalGroupKey(localStorage.getItem('studioGroup') || 'all'); } catch (e) { return 'all'; } })();
     const LOOKS = [['warm', 'Warm'], ['cold', 'Cold'], ['mono', 'Mono'], ['dark', 'Dark'], ['bright', 'Bright']];
     // how each image was made, for the automatic groups Mark, Position and Source (an upload has no mark and no position)
     const POSITION_NAMES = { exact: 'On target', loose: 'Loose', scattered: 'Scattered', path: 'Path' };
@@ -980,26 +980,42 @@
     function groupMembers(key) {
       if (key === 'all') return 'all';
       const shown = plates.filter(p => !p.trashed);
-      if (key.startsWith('g:')) { const g = groups.find(x => x.id === key.slice(2)); return g ? new Set(g.files) : null; }
+      if (key.startsWith('g:')) { const g = groups.find(x => x.id === key.slice(2)); return !g ? null : g.rule ? new Set(shown.filter(madeMatch(g.rule)).map(p => p.filename)) : new Set(g.files); }
+      if (key.startsWith('f:')) { const rule = filterRule(key); return rule ? new Set(shown.filter(madeMatch(rule)).map(p => p.filename)) : null; }   // a Made with filter, not saved (empty: none match)
       if (key.startsWith('look:')) { const set = new Set(shown.filter(p => (p.look || []).includes(key.slice(5))).map(p => p.filename)); return set.size ? set : null; }
       if (key.startsWith('world:')) { const set = new Set(shown.filter(p => p.world === key.slice(6)).map(p => p.filename)); return set.size ? set : null; }
       const by = MADE_BY[key.slice(0, key.indexOf(':'))];
       if (by) { const v = key.slice(key.indexOf(':') + 1), set = new Set(shown.filter(p => by(p) === v).map(p => p.filename)); return set.size ? set : null; }
       return null;
     }
+    // Made with (Claude Design's GroupsMade): a rule {kind: [values]} over how images were made; within a row any value, across rows all
+    const MADE_KINDS = [['mark', 'Mark'], ['pos', 'Position'], ['rot', 'Angle'], ['size', 'Size'], ['src', 'Source']];
+    const madeMatch = rule => p => Object.entries(rule || {}).every(([k, vals]) => { const by = MADE_BY[k], v = by && by(p); return v != null && vals.includes(v); });
+    function filterRule(key) { try { const r = JSON.parse(decodeURIComponent(String(key).slice(2))); return r && typeof r === 'object' ? r : null; } catch (e) { return null; } }
+    const filterKey = rule => (Object.keys(rule).length ? `f:${encodeURIComponent(JSON.stringify(rule))}` : 'all');
+    // a group chosen from the Mark / Position / Source menus of before reads as the same Made with filter
+    function normalGroupKey(key) { const k = String(key || 'all'), i = k.indexOf(':'), kind = k.slice(0, i); return MADE_BY[kind] ? filterKey({ [kind]: [k.slice(i + 1)] }) : k; }
+    function madeName(kind, v) {
+      if (kind === 'mark') { const c = markChoices().find(x => x[0] === v); return c ? c[1] : v === 'main' ? ((project && project.mark_name) || 'Main mark') : v; }
+      if (kind === 'pos') return POSITION_NAMES[v] || v;
+      if (kind === 'rot') return v === '0' ? 'Upright' : rotLabel(+v);
+      if (kind === 'size') return sizeLabel(+v);
+      return v === 'uploaded' ? 'Uploaded' : 'Made here';
+    }
     // what a group shows: All and the automatic groups in the one order of the selection; one of your groups in its OWN order
     function inGroup(list) {
-      const own = ownGroup();
+      const own = manualGroup();
       if (own) { const by = new Map(list.map(p => [p.filename, p])); return own.files.map(f => by.get(f)).filter(Boolean); }
       const m = groupMembers(currentGroup);
       return m === 'all' || !m ? list : list.filter(p => m.has(p.filename));
     }
     function ownGroup() { return currentGroup.startsWith('g:') ? groups.find(g => g.id === currentGroup.slice(2)) : null; }
+    function manualGroup() { const g = ownGroup(); return g && !g.rule ? g : null; }   // a smart group has no order of its own: it plays in the one order
     // the chips: All, your groups, then the automatic ones that have a few images (looks first, then territories)
     function groupChips() {
       const shown = plates.filter(p => !p.trashed), count = key => { const m = groupMembers(key); return m === 'all' ? shown.length : m ? [...m].filter(f => shown.some(p => p.filename === f)).length : 0; };
       const chips = [{ key: 'all', name: 'All', n: shown.length }];
-      groups.forEach(g => chips.push({ key: `g:${g.id}`, name: g.name, n: count(`g:${g.id}`), own: true }));
+      groups.forEach(g => chips.push({ key: `g:${g.id}`, name: g.name, n: count(`g:${g.id}`), own: true, smart: !!g.rule }));
       const auto = [];
       LOOKS.forEach(([tag, name]) => { const n = count(`look:${tag}`); if (n >= 2) auto.push({ key: `look:${tag}`, name, n }); });
       const worlds = {};
@@ -1019,7 +1035,7 @@
     }
     // Curate's group row: All and your own groups as chips (those that do not fit behind "+N more", never the chosen one), then on
     // the right the automatic groups in two menus, Look and Territory (a chosen one shows in its button: "Look: Warm ×")
-    const AUTO_MENUS = [['look', 'Look'], ['terr', 'Territory'], ['mark', 'Mark'], ['pos', 'Position'], ['rot', 'Angle'], ['size', 'Size'], ['src', 'Source']];
+    const AUTO_MENUS = [['look', 'Look'], ['terr', 'Territory']];          // then Made with: one panel for everything about how images were made
     const AUTO_TIPS = { look: 'Automatic groups by look', terr: 'Automatic groups, one per territory with 6+ images', mark: 'Automatic groups: the images made with each of your marks',
       pos: 'Automatic groups: On target, Loose, Scattered', rot: 'Automatic groups: how far each image\'s mark was turned', size: 'Automatic groups: the size each image\'s mark was made at', src: 'Automatic groups: the images made here and the ones you added' };
     const LOOK_SWATCH = { warm: '#C8743A', cold: '#4C7BD1', mono: '#8A877C', dark: '#1A1A1A', bright: '#F3EFD9' };
@@ -1033,13 +1049,15 @@
       document.getElementById('groupRow').hidden = showTrash;
       const { chips, auto } = groupChips();
       const menu = '<button type="button" class="chip-more" id="groupMenuBtn" onclick="openGroupMenu(event, \'edit\')" title="Rename or delete this group" aria-label="Rename or delete this group"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></button>';
-      const chip = c => `<button type="button" class="chip${c.key === currentGroup ? ' on' : ''}${c.own ? ' own' : ''}" data-key="${escapeHtml(c.key)}" onclick="setGroup(this.dataset.key)">${escapeHtml(c.name)} <span>${c.n}</span></button>${c.own && c.key === currentGroup ? menu : ''}`;   // your group's menu sits right after its chip
+      const funnel = '<svg class="chip-funnel" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"></path></svg>';
+      const pencil = '<button type="button" class="chip-edit" id="groupMenuBtn" onclick="openMadeWith(event, true)" title="Edit its choices" aria-label="Edit this smart group\'s choices"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L20 8l-4-4L4 16z"></path></svg></button>';
+      // a smart group (a saved Made with filter) carries a funnel, and chosen, a pencil that opens its rule; a manual one its ⋯ (rename, delete)
+      const chip = c => `<button type="button" class="chip${c.key === currentGroup ? ' on' : ''}${c.own ? ' own' : ''}${c.smart ? ' smart' : ''}" data-key="${escapeHtml(c.key)}" onclick="setGroup(this.dataset.key)">${c.smart ? funnel : ''}${escapeHtml(c.name)} <span>${c.n}</span></button>${c.own && c.key === currentGroup ? (c.smart ? pencil : menu) : ''}`;
       document.getElementById('groupAll').innerHTML = chip(chips[0]);
-      const own = chips.slice(1);
-      bar.innerHTML = own.map(chip).join('') + '<button type="button" class="chip chip-overflow" id="moreChip" onclick="openGroupMenu(event, \'more\')" aria-haspopup="menu" hidden></button>';
-      const kinds = autoKinds(), hasAuto = Object.values(kinds).some(l => l.length);
-      document.getElementById('autoSep').hidden = !hasAuto;
-      document.getElementById('ownSep').hidden = document.getElementById('ownLabel').hidden = !own.length;
+      const own = chips.slice(1), smart = own.filter(c => c.smart), manual = own.filter(c => !c.smart);
+      bar.innerHTML = (smart.length ? '<span class="group-label">Smart</span>' + smart.map(chip).join('') : '') + (manual.length ? '<span class="group-label">Manual</span>' + manual.map(chip).join('') : '')
+        + '<button type="button" class="chip chip-overflow" id="moreChip" onclick="openGroupMenu(event, \'more\')" aria-haspopup="menu" hidden></button>';
+      const kinds = autoKinds(), made = madeRows(), hasAuto = Object.values(kinds).some(l => l.length) || made.length > 0;
       const autoBtn = (kind, list, label) => {
         if (!list.length) return '';
         const on = list.find(c => c.key === currentGroup);
@@ -1049,19 +1067,116 @@
           ? `<span class="auto-btn on"><button type="button" class="auto-main" id="auto-${kind}" onclick="openGroupMenu(event, '${kind}')" aria-haspopup="menu" title="${tip}">${label}: ${escapeHtml(on.name)} <span>${on.n}</span></button><button type="button" class="auto-x" onclick="setGroup('all')" aria-label="Clear ${label}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span>`
           : `<span class="auto-btn"><button type="button" class="auto-main" id="auto-${kind}" onclick="openGroupMenu(event, '${kind}')" aria-haspopup="menu" title="${tip}">${label} <span>${list.length}</span>${caret}</button></span>`;
       };
-      const am = hasAuto ? '<span class="auto-label">Auto</span>' + AUTO_MENUS.map(([kind, label]) => autoBtn(kind, kinds[kind], label)).join('') : '';
+      const rule = currentGroup.startsWith('f:') ? filterRule(currentGroup) : null;   // a Made with filter in use, not saved: it reads as the active filter
+      const madeBtn = !made.length && !rule ? '' : rule
+        ? `<span class="auto-btn on"><button type="button" class="auto-main" id="auto-made" onclick="openMadeWith(event)" aria-haspopup="dialog" title="Made with: ${escapeHtml(madeSummary(rule))}">Made with: ${escapeHtml(madeSummary(rule))} <span>${(groupMembers(currentGroup) || new Set()).size}</span></button><button type="button" class="auto-x" onclick="setGroup('all')" aria-label="Clear Made with"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span>`
+        : '<span class="auto-btn"><button type="button" class="auto-main" id="auto-made" onclick="openMadeWith(event)" aria-haspopup="dialog" title="Filter by how the images were made: mark, position, angle, size, source">Made with<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button></span>';
+      const am = hasAuto ? '<span class="auto-label">Auto</span>' + AUTO_MENUS.map(([kind, label]) => autoBtn(kind, kinds[kind], label)).join('') + madeBtn : '';
       const amEl = document.getElementById('autoMenus');
       if (amEl.innerHTML !== am) amEl.innerHTML = am;
       fitChips();                                                            // after the Auto menus: the room left for your groups
-      document.getElementById('removeFromGroupBtn').hidden = !ownGroup();
+      document.getElementById('removeFromGroupBtn').hidden = !manualGroup();
       // the same choice in Film, as a dropdown above the film strip: your groups, then Look, then Territory
       const fg = document.getElementById('filmGroup');
       const opt = c => `<option value="${escapeHtml(c.key)}">${escapeHtml(c.name)} (${c.n})</option>`;
-      fg.innerHTML = chips.map(opt).join('') + AUTO_MENUS.map(([kind, label]) => (kinds[kind].length ? `<optgroup label="${label}">${kinds[kind].map(opt).join('')}</optgroup>` : '')).join('');
+      fg.innerHTML = chips.map(opt).join('') + AUTO_MENUS.map(([kind, label]) => (kinds[kind].length ? `<optgroup label="${label}">${kinds[kind].map(opt).join('')}</optgroup>` : '')).join('')
+        + (rule ? `<optgroup label="Made with"><option value="${escapeHtml(currentGroup)}">${escapeHtml(madeSummary(rule))} (${(groupMembers(currentGroup) || new Set()).size})</option></optgroup>` : '');
       fg.value = currentGroup;
       syncSelects();
-      document.getElementById('miniTitle').textContent = currentGroup === 'all' ? 'Film' : (chips.concat(auto).find(c => c.key === currentGroup) || { name: 'Film' }).name;
+      document.getElementById('miniTitle').textContent = currentGroup === 'all' ? 'Film' : rule ? 'Made with' : (chips.concat(auto).find(c => c.key === currentGroup) || { name: 'Film' }).name;
+      if (madeOpen()) renderMadeWith();
     }
+    // ---- the Made with panel (Claude Design's GroupsMade): rows Mark, Position, Angle, Size, Source, each value a chip with its count
+    // (the images matching it together with the other rows' ticks); ticks in a row widen (or), rows narrow (and); the grid filters live.
+    // A filter can be saved as a smart group; a smart group opens the same panel on its rule, changes applying as you tick ----
+    let madeEditing = null, madeNaming = false;
+    const madeOpen = () => !document.getElementById('madePanel').hidden;
+    function madeRule() {
+      if (madeEditing) { const g = groups.find(x => x.id === madeEditing); return g && g.rule ? g.rule : {}; }
+      return currentGroup.startsWith('f:') ? (filterRule(currentGroup) || {}) : {};
+    }
+    function madeRows(rule = madeRule()) {
+      const shown = plates.filter(p => !p.trashed), order = { pos: Object.keys(POSITION_NAMES), rot: ['0', ...ROTATIONS.filter(r => r).map(String)], size: SIZES.map(String), src: ['generated', 'uploaded'], mark: markChoices().map(c => c[0]) };
+      return MADE_KINDS.map(([kind, label]) => {
+        const by = MADE_BY[kind], vals = new Set(shown.map(by).filter(v => v != null)), ticked = rule[kind] || [];
+        ticked.forEach(v => vals.add(v));
+        if (vals.size < 2 && !ticked.length) return null;                   // a row only where the images differ
+        const others = Object.fromEntries(Object.entries(rule).filter(([k]) => k !== kind)), base = shown.filter(madeMatch(others));
+        const list = [...vals].sort((a, b) => ((order[kind].indexOf(a) + 1) || 99) - ((order[kind].indexOf(b) + 1) || 99));
+        return { kind, label, chips: list.map(v => ({ v, name: madeName(kind, v), n: base.filter(p => by(p) === v).length, on: ticked.includes(v), img: kind === 'mark' ? (markChoices().find(c => c[0] === v) || [])[2] : null })) };
+      }).filter(Boolean);
+    }
+    function madeSummary(rule) { return MADE_KINDS.flatMap(([k]) => (rule[k] || []).map(v => madeName(k, v))).join(', '); }
+    function openMadeWith(e, edit) {
+      if (e && e.stopPropagation) e.stopPropagation();
+      const panel = document.getElementById('madePanel');
+      const g = ownGroup();
+      const editing = edit && g && g.rule ? g.id : null;
+      if (madeOpen() && madeEditing === editing) { closeMadeWith(); return; }
+      closeGroupMenu();
+      madeEditing = editing; madeNaming = false;
+      panel.hidden = false;
+      renderMadeWith();
+      const anchor = document.getElementById(editing ? 'groupMenuBtn' : 'auto-made') || document.getElementById('groupRow');
+      const r = anchor.getBoundingClientRect();
+      panel.style.top = `${r.bottom + 6}px`;
+      panel.style.left = `${Math.max(8, Math.min(r.left, innerWidth - panel.offsetWidth - 8))}px`;
+    }
+    function closeMadeWith() { document.getElementById('madePanel').hidden = true; madeEditing = null; madeNaming = false; }
+    function renderMadeWith() {
+      const panel = document.getElementById('madePanel'), rule = madeRule(), rows = madeRows(rule), g = madeEditing && groups.find(x => x.id === madeEditing);
+      const n = Object.keys(rule).length ? plates.filter(p => !p.trashed).filter(madeMatch(rule)).length : plates.filter(p => !p.trashed).length;
+      const head = g ? `<div class="mw-head"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#EC540C" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"></path></svg><span class="mw-kind">Smart group</span><input id="madeName" type="text" maxlength="40" value="${escapeHtml(g.name)}" autocomplete="off" aria-label="Its name" /></div>` : '';
+      const body = rows.map(r => `<div class="mw-row"><span class="mw-label">${r.label}</span><div class="mw-chips">${r.chips.map(c => `<button type="button" class="mw-chip" data-kind="${r.kind}" data-v="${escapeHtml(c.v)}" aria-pressed="${c.on}">${c.img ? `<img class="pm-thumb" src="${escapeHtml(c.img)}" alt="" />` : ''}${escapeHtml(c.name)}<span class="mw-n">${c.n}</span></button>`).join('')}</div></div>`).join('')
+        || '<p class="mw-empty">All the images here were made the same way: nothing to filter by yet.</p>';
+      const empty = !Object.keys(rule).length;
+      const foot = g ? `<button type="button" class="mw-del" onclick="madeDelete()">Delete group</button><button type="button" class="mw-done" onclick="closeMadeWith()">Done</button>`
+        : madeNaming ? `<form class="mw-form" onsubmit="event.preventDefault(); madeSave(this.elements.name.value)"><input name="name" id="madeNewName" type="text" maxlength="40" placeholder="Its name" autocomplete="off" /><button type="button" class="mw-cancel" onclick="madeAskName(false)">Cancel</button><button type="submit" class="mw-done">Save</button></form>`
+        : `<button type="button" class="mw-clear" onclick="setGroup('all')"${empty ? ' disabled' : ''}>Clear</button><button type="button" class="mw-save" onclick="madeAskName(true)"${empty ? ' disabled' : ''}>Save as smart group…</button>`;
+      panel.innerHTML = `${head}<div class="mw-body">${body}</div><div class="mw-foot"><span class="mw-count"><b>${n}</b> images</span><span class="mw-fill"></span>${foot}</div>`;
+      panel.querySelectorAll('img.pm-thumb').forEach(fitMarkTone);
+      const name = document.getElementById('madeName');
+      if (name && name.addEventListener) name.addEventListener('change', () => { if (name.value.trim() && name.value.trim() !== g.name) renameSmart(g.id, name.value); });
+    }
+    async function madeTick(kind, v) {
+      const rule = JSON.parse(JSON.stringify(madeRule())), list = rule[kind] || [];
+      rule[kind] = list.includes(v) ? list.filter(x => x !== v) : [...list, v];
+      if (!rule[kind].length) delete rule[kind];
+      if (madeEditing) {                                                     // a smart group: its rule changes as you tick (one choice at least)
+        if (!Object.keys(rule).length) { setStatus('A smart group needs at least one choice.'); return; }
+        const id = madeEditing, before = madeRule();
+        if (await groupsCall({ action: 'rule', id, rule })) pushStep({ label: 'Change a smart group', undo: () => groupsCall({ action: 'rule', id, rule: before }), redo: () => groupsCall({ action: 'rule', id, rule }) });
+        return;
+      }
+      setGroup(filterKey(rule));                                             // the grid filters live
+      renderMadeWith();
+    }
+    function madeAskName(on) {                                               // "Save as smart group…" becomes a name field, in place
+      madeNaming = on;
+      renderMadeWith();
+      const i = document.getElementById('madeNewName'); if (on && i && i.focus) i.focus();
+    }
+    async function madeSave(name) {
+      const rule = madeRule();
+      if (!name.trim() || !Object.keys(rule).length) return;
+      const res = await groupsCall({ action: 'create', name, rule });
+      if (!res) return;
+      const id = res.group.id;
+      pushStep({ label: `New smart group “${name.trim()}”`, undo: () => groupsCall({ action: 'delete', id }), redo: () => groupsCall({ action: 'restore', group: res.group }) });
+      closeMadeWith();
+      setGroup(`g:${id}`);
+    }
+    async function renameSmart(id, name) {
+      const g = groups.find(x => x.id === id), old = g && g.name;
+      if (await groupsCall({ action: 'rename', id, name })) pushStep({ label: `Rename “${old}”`, undo: () => groupsCall({ action: 'rename', id, name: old }), redo: () => groupsCall({ action: 'rename', id, name }) });
+    }
+    async function madeDelete() { closeMadeWith(); await deleteGroup(); }
+    (() => {
+      const panel = document.getElementById('madePanel');
+      if (!panel || !panel.addEventListener) return;
+      panel.addEventListener('click', e => { e.stopPropagation(); const c = e.target.closest('.mw-chip'); if (c) madeTick(c.dataset.kind, c.dataset.v); });
+      document.addEventListener('click', e => { if (madeOpen() && !(e.target.closest && e.target.closest('#madePanel'))) closeMadeWith(); });
+    })();
     function setGroup(key) {
       if (!groupMembers(key)) key = 'all';
       if (key === currentGroup) return;
@@ -1123,7 +1238,7 @@
     function fitChips() {
       const bar = document.getElementById('groupBar'), more = document.getElementById('moreChip');
       if (!bar.querySelectorAll || !more) return;
-      const items = [...bar.children].filter(el => el !== more);
+      const items = [...bar.children].filter(el => el !== more && !el.classList.contains('group-label'));
       items.forEach(el => el.classList.remove('out'));
       more.hidden = true;
       const avail = bar.clientWidth;
@@ -1157,7 +1272,7 @@
       const hiddenOwn = [...document.querySelectorAll('#groupBar .chip.out')].map(el => groupChips().chips.find(c => c.key === el.dataset.key)).filter(Boolean);
       m.innerHTML = mode === 'add'
         ? `<button type="button" class="gm-item" id="gmNewBtn" onclick="showNewGroupForm(event)"><span class="gm-plus">＋</span> New group…</button>`
-          + (groups.length ? '<div class="gm-sep"></div>' + groups.map(g => `<button type="button" class="gm-item" data-id="${g.id}" onclick="addToGroup(this.dataset.id)"><span>${escapeHtml(g.name)}</span><span class="gm-n">${g.files.length}</span></button>`).join('') : '')
+          + (groups.some(g => !g.rule) ? '<div class="gm-sep"></div>' + groups.filter(g => !g.rule).map(g => `<button type="button" class="gm-item" data-id="${g.id}" onclick="addToGroup(this.dataset.id)"><span>${escapeHtml(g.name)}</span><span class="gm-n">${g.files.length}</span></button>`).join('') : '')
         : mode === 'edit'
           ? `<form class="gm-new" onsubmit="event.preventDefault(); renameGroup(this.elements.name.value)"><input name="name" id="groupNameInput" type="text" maxlength="40" value="${escapeHtml(own ? own.name : '')}" autocomplete="off" /><button type="submit">Rename</button></form>`
             + `<button type="button" class="gm-item danger-text" onclick="deleteGroup()">Delete group</button>`
@@ -1213,7 +1328,7 @@
       setGroup(`g:${g.id}`);
     }
     async function removeFromGroup() {
-      const g = ownGroup(), files = [...pickSel];
+      const g = manualGroup(), files = [...pickSel];
       if (!g || !files.length) return;
       if (await groupsCall({ action: 'remove', id: g.id, files })) pushStep({ label: `Remove from “${g.name}”`, undo: () => groupsCall({ action: 'add', id: g.id, files }), redo: () => groupsCall({ action: 'remove', id: g.id, files }) });
       clearPicks();
@@ -1277,7 +1392,7 @@
       if (!ensureKimiReady()) return;
       const shown = plates.filter(p => !p.trashed).length;
       if (shown < 2) { setStatus('Keep at least two images before ordering.'); return; }
-      const own = ownGroup();                                                 // one of your groups: its own order, nothing else moves
+      const own = manualGroup();                                                 // one of your groups: its own order, nothing else moves
       const before = own ? { group: own.id, files: [...own.files] } : { order: plates.filter(p => !p.trashed).map(p => p.filename) };   // for Undo
       const body = {
         direction: document.getElementById('aiDirection').value.trim(),
@@ -1760,7 +1875,7 @@
 
       const dragged = draggedFilename;
       const target = targetFilename;
-      const own = ownGroup();
+      const own = manualGroup();
       if (own) {                                                             // one of your groups: its own order only
         const before = [...own.files], list = before.filter(f => f !== dragged);
         list.splice(list.indexOf(target) + (before.indexOf(dragged) < before.indexOf(target) ? 1 : 0), 0, dragged);
@@ -4456,6 +4571,7 @@ Object.assign(window, {
   viewerTrash,
   viewerRestore,
   setAiMode,
+  openMadeWith, closeMadeWith, madeSave, madeDelete, madeAskName,
   copyPromptText,
   tasteMark,
   tasteCopy,

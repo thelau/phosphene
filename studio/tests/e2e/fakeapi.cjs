@@ -214,9 +214,11 @@ function start(state = makeState()) {
         const gs = state.groups || (state.groups = []);
         const g = gs.find(x => x.id === body.id);
         const name = String(body.name || '').trim();
-        if (body.action === 'create') { if (!name || gs.some(x => x.name.toLowerCase() === name.toLowerCase())) return send({ ok: false, error: name ? `There is already a group called “${name}”.` : 'A group needs a name.' }, 400); const ng = { id: `g${gs.length + 1}${Date.now() % 1000}`, name, files: [...new Set(body.files || [])] }; gs.push(ng); return send({ ok: true, group: ng }); }
+        if (body.action === 'create') { if (!name || gs.some(x => x.name.toLowerCase() === name.toLowerCase())) return send({ ok: false, error: name ? `There is already a group called “${name}”.` : 'A group needs a name.' }, 400); const ng = { id: `g${gs.length + 1}${Date.now() % 1000}`, name, files: body.rule ? [] : [...new Set(body.files || [])], ...(body.rule ? { rule: body.rule } : {}) }; gs.push(ng); return send({ ok: true, group: ng }); }
         if (body.action === 'restore') { gs.push({ ...body.group }); return send({ ok: true }); }
         if (!g) return send({ ok: false, error: 'That group is gone.' }, 400);
+        if (body.action === 'rule') { if (!g.rule || !body.rule || !Object.keys(body.rule).length) return send({ ok: false, error: 'A smart group needs at least one choice.' }, 400); g.rule = body.rule; return send({ ok: true }); }
+        if (g.rule && ['add', 'remove', 'reorder'].includes(body.action)) return send({ ok: false, error: 'A smart group fills itself: change its choices instead.' }, 400);
         if (body.action === 'add') { g.files = [...new Set([...g.files, ...(body.files || [])])]; return send({ ok: true }); }
         if (body.action === 'remove') { g.files = g.files.filter(f => !(body.files || []).includes(f)); return send({ ok: true }); }
         if (body.action === 'reorder') { const want = (body.files || []).filter(f => g.files.includes(f)); g.files = [...want, ...g.files.filter(f => !want.includes(f))]; return send({ ok: true }); }

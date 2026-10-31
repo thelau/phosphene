@@ -725,9 +725,9 @@
     .group-bar .out { display: none; }                                   /* behind "+N more" */
     .chip-overflow[hidden] { display: none; }
     .auto-menus { flex: none; display: flex; align-items: center; gap: 6px; }
-    .auto-label, .group-label { flex: none; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin-right: 2px; }
+    .auto-label, .group-label { flex: none; align-self: center; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #6F6B5F; margin: 0 2px 0 10px; }   /* the kinds apart by a quiet label, not a line (Claude Design) */
     .group-all { flex: none; display: flex; }
-    .group-sep { flex: none; width: 1px; height: 20px; margin: 0 6px; background: var(--line-2); }
+    .group-sep { display: none; }
     .group-sep[hidden], .group-label[hidden], .auto-menus:empty { display: none; }
     .auto-btn { display: inline-flex; align-items: center; height: 30px; box-sizing: border-box; border-radius: 7px; border: 1px solid #34312C; }
     .auto-btn > button.auto-main { height: 28px; padding: 0 10px 0 12px; display: flex; align-items: center; gap: 7px; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; white-space: nowrap; }
@@ -754,6 +754,40 @@
     .chip.on span { color: #5E5A50; }
     .chip-more { flex: none; width: 28px; height: 28px; margin-left: -2px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 14px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); transition: none; }
     .chip-more:hover { color: var(--text); border-color: var(--line-3); }
+    .chip.smart { display: inline-flex; align-items: center; gap: 6px; }
+    .chip-funnel { flex: none; }
+    .chip-edit { flex: none; width: 24px; height: 24px; margin-left: -4px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid var(--line-3); background: transparent; color: var(--text-2); align-self: center; }
+    .chip-edit:hover { color: var(--text); border-color: var(--text-2); }
+    /* the Made with panel (Claude Design's GroupsMade): laid out like the Mark menu */
+    .made-panel { position: fixed; z-index: 70; width: 560px; max-width: calc(100vw - 16px); max-height: calc(100vh - 140px); overflow-y: auto; box-sizing: border-box; border-radius: var(--r-menu); background: var(--raised); border: 1px solid var(--line-3); box-shadow: var(--menu-shadow); display: flex; flex-direction: column; color: var(--text); }
+    .made-panel[hidden] { display: none; }
+    .made-panel button { transition: none; font: inherit; }
+    .mw-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .mw-kind { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+    .mw-head input { flex: 1; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r-chip); border: 1px solid #34312C; background: var(--panel); color: var(--text); font-size: 14px; font-weight: 600; }
+    .mw-body { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+    .mw-row { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; align-items: start; }
+    .mw-label { padding-top: 7px; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+    .mw-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .mw-chip { height: 28px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: var(--r-chip); border: 1px solid #34312C; background: transparent; color: var(--text-2); font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .mw-chip .pm-thumb { width: 14px; height: 14px; }
+    .mw-n { font-family: var(--mono); font-size: 10px; font-weight: 500; color: var(--faint); }
+    .mw-chip[aria-pressed="true"] { border-color: var(--orange); background: var(--ticked-bg); color: var(--text); }
+    .mw-chip[aria-pressed="true"] .mw-n { color: var(--orange-soft); }
+    .mw-chip:hover { border-color: var(--off); }
+    .mw-empty { margin: 0; font-size: 13px; color: var(--muted); }
+    .mw-foot { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); background: #1A1918; border-radius: 0 0 var(--r-menu) var(--r-menu); }
+    .mw-count { font-size: 13px; color: var(--muted); }
+    .mw-count b { color: var(--text); }
+    .mw-fill { flex: 1; }
+    .mw-clear { height: 30px; padding: 0 10px; border: 0; background: transparent; color: var(--text-2); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+    .mw-save, .mw-done { height: 30px; padding: 0 12px; border-radius: var(--r-chip); border: 0; background: var(--text); color: #1A1A1A; font-size: 12px; font-weight: 700; }
+    .mw-save:disabled { background: #2E2C28; color: var(--model); cursor: default; }
+    .mw-clear:disabled { opacity: .4; cursor: default; }
+    .mw-cancel { height: 30px; padding: 0 10px; border-radius: var(--r-chip); border: 1px solid var(--line-3); background: transparent; color: var(--text); font-size: 12px; }
+    .mw-del { height: 30px; padding: 0 10px; border-radius: var(--r-chip); border: 1px solid #6B2B37; background: transparent; color: var(--qa-red); font-size: 12px; font-weight: 600; }
+    .mw-form { display: flex; align-items: center; gap: 8px; }
+    .mw-form input { width: 200px; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r-chip); border: 1px solid var(--orange); background: var(--panel); color: var(--text); font-size: 13px; }
     .pick-bar { position: fixed; left: 50%; bottom: calc(24px + var(--status-h, 0px)); transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 12px; background: #262522; border: 1px solid #45423B; box-shadow: 0 20px 50px rgba(0,0,0,.6); }
     .pick-bar[hidden] { display: none; }
     .pick-n { font-size: 14px; font-weight: 700; white-space: nowrap; }
