@@ -58,17 +58,17 @@ def path_place(project: dict, path: dict, size: float, ratio: float) -> tuple[fl
     t = path["i"] / max(1, path["n"] - 1) if path["n"] > 1 else 0.5
     u, v = PATHS[path["shape"]](t)
     a = math.radians(path["dir"])
-    dx, dy = u * math.cos(a) - v * math.sin(a), u * math.sin(a) + v * math.cos(a)    # % of a square frame: y scaled to the 9:16 below
+    dx, dy = u * math.cos(a) - v * math.sin(a), u * math.sin(a) + v * math.cos(a)    # its reach: % of the frame along each axis (70% down: 70% of the height)
     hx, hy = project["mark_x"], project["mark_y"]
     hw, hh = size / 2, size * ratio * projects.FRAME_W / projects.FRAME_H / 2
     ln = float(path["len"])
     for e in (-0.5, 0.5):                                       # both ends of the line inside: shrink it until they are
-        ex, ey = e * math.cos(a), e * math.sin(a) * projects.FRAME_W / projects.FRAME_H
+        ex, ey = e * math.cos(a), e * math.sin(a)
         for c, h, d in ((hx, hw, ex), (hy, hh, ey)):
             if abs(d) > 1e-9:
                 room = ((100 - MARGIN - h - c) if d > 0 else (c - MARGIN - h)) / abs(d)
                 ln = max(0.0, min(ln, room))
-    return round(hx + dx * ln, 1), round(hy + dy * ln * projects.FRAME_W / projects.FRAME_H, 1)
+    return round(hx + dx * ln, 1), round(hy + dy * ln, 1)
 
 
 def choose(kind: str, project: dict, rng: random.Random | None = None, rot=0, scale=1, path: dict | None = None) -> dict | None:

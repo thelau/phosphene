@@ -358,66 +358,112 @@
       const marks = (project && project.marks) || [];
       return marks.length ? [['main', 'Main mark', project.mark_url], ...marks.map(m => [m.id, m.name, m.url])] : [];
     }
-    function renderPlace() {
-      const t = document.getElementById('targetSelect').value || 'exact', ticks = markTicks(), rots = rotTicks(), zs = sizeTicks(), sized = t === 'exact' || t === 'path';
-      const keep = document.getElementById('keepCheck').checked, choices = markChoices(), on = choices.filter(c => ticks.includes(c[0]));
-      const ps = pathSet(), pos = t === 'path' ? `Path ${(PATH_DIRS.find(d => d[0] === ps.dir) || PATH_DIRS[0])[1]}` : (POSITIONS.find(p => p[0] === t) || POSITIONS[0])[1];
-      const markWord = k => (k === choices.length ? `All ${k} marks` : `${k} marks`);   // several ticked: how many, "All 4 marks" when every one is
-      const rotWord = rs => (rs.length > 1 ? `${rs.length} angles` : rs[0] ? rotLabel(rs[0]) : '');   // upright: nothing to say
-      const sizeWord = list => (!sized ? '' : list.length > 1 ? `${list.length} sizes` : list[0] !== 1 ? sizeLabel(list[0]) : '');   // its own size: nothing to say
-      const label = (m, p, k, r = '', z = '') => [m, p, r, z, k ? 'As designed' : ''].filter(Boolean).join(' · ');
-      const name = document.getElementById('placeName'), one = on.length === 1 ? on[0] : null;
-      name.textContent = label(!choices.length ? '' : one ? (one[0] === 'main' ? 'Main' : one[1]) : markWord(on.length), pos, keep, rotWord(rots), sizeWord(zs));
-      document.getElementById('placeBtn').title = name.textContent;
-      const thumb = document.getElementById('placeThumb'), mixIcon = document.getElementById('placeMix');
-      thumb.hidden = !(one && one[2]);
-      if (one && one[2] && thumb.getAttribute('src') !== one[2]) { thumb.src = one[2]; fitMarkTone(thumb); }   // as the top bar shows it: a dark mark as a light silhouette
-      const pair = on.filter(c => c[2]).slice(0, 2).map(c => c[2]);   // several ticked: two of them, overlapping, so the button keeps an icon
-      mixIcon.hidden = !(on.length > 1 && pair.length);
-      if (!mixIcon.hidden && mixIcon.dataset.urls !== pair.join(' ')) {
-        mixIcon.dataset.urls = pair.join(' ');
-        mixIcon.innerHTML = pair.map(u => `<img class="pm-thumb" src="${escapeHtml(u)}" alt="" />`).join('');
-        mixIcon.querySelectorAll('img').forEach(fitMarkTone);
-      }
-      const words = choices.length ? [...choices.map(c => (c[0] === 'main' ? 'Main' : c[1])), ...choices.slice(1).map((c, i) => markWord(i + 2))] : [''];
-      name.style.minWidth = name.style.maxWidth = placeLabelWidth(name, words.flatMap(w => POSITIONS.map(([v, p]) => (v === 'path' ? 'Path →' : p)).flatMap(p => ['', '8 angles'].flatMap(r => ['', '5 sizes'].flatMap(z => [label(w, p, false, r, z), label(w, p, true, r, z)]))))) + 'px';   // as wide as its widest choice, never wider (past 260 px it ends in …, the whole on hover: the Describe field beside it keeps its room): the row never moves
-      const m = document.getElementById('placeMenu');
-      if (m.hidden) return;
-      const img = (url, r = 0, z = 0) => `<img class="pm-thumb" src="${escapeHtml(url)}" alt=""${r || z ? ` style="${r ? `transform:rotate(${r}deg);` : ''}${z ? `width:${Math.round(20 * z)}px;height:${Math.round(20 * z)}px` : ''}"` : ''} />`;
-      // each section a row of choices: Mark, Angle and Size are ticks, one or more, taking turns evenly through the batch (the user,
-      // 2026-10-31: Mix said too little, and gave the main mark half the batch); Position is one of three; the line under them says how
-      const chip = (list, v, inner, on, multi, off, tip = '') => `<div class="tm-item pm-chip${multi ? ' multi' : ''}" role="${multi ? 'menuitemcheckbox' : 'menuitemradio'}" data-list="${list}" data-v="${escapeHtml(v)}" aria-checked="${on}" aria-selected="${on}"${off ? ' aria-disabled="true"' : ''} title="${escapeHtml(off === true ? `${tip}${tip ? ' · ' : ''}At least one` : off || tip)}">${inner}</div>`;
-      const row = (head, inner, cls = '') => `<div class="pm-row${cls}"><div class="tm-head pm-label"><span>${head}</span></div><div class="pm-chips">${inner}</div></div>`;
-      const glyph = (one && one[2]) || (on[0] && on[0][2]) || (project && project.mark_url) || '';   // the angles and sizes shown on the mark the batch uses
-      const n = Math.max(1, +document.getElementById('batchCountSelect').value || 1);
-      const each = k => { const lo = Math.floor(n / k); return lo < 1 ? `only ${n} of them used: raise the count` : `${lo}${n % k ? ` or ${lo + 1}` : ''} each`; };   // fewer images than ticks: said, never hidden
-      const turns = [ticks.length > 1 && choices.length ? `${ticks.length} marks, ${each(ticks.length)}` : '', rots.length > 1 ? `${rots.length} angles, ${each(rots.length)}` : '',
-        sized && zs.length > 1 ? `${zs.length} sizes, ${each(zs.length)}` : ''].filter(Boolean);
-      const desc = (POSITIONS.find(p => p[0] === t) || POSITIONS[0])[2];
-      const share = turns.length ? `${n} image${n > 1 ? 's' : ''}: ${turns.join(' · ')}, taking turns` : `${desc[0].toUpperCase()}${desc.slice(1)}.${choices.length ? ' Tick several marks and they take turns.' : ''}`;
-      const moreSet = rots.some(r => r) || (zs.length > 1 || zs[0] !== 1), open = placeMore || moreSet;
-      const moreSays = [rotWord(rots) || 'Upright', sized ? (sizeWord(zs) || 'its own size') : 'size by position'].join(' · ');
-      const turnTip = r => (r ? `The mark turned ${Math.abs(r)}° ${r === 180 ? '(upside down)' : r > 0 ? 'clockwise' : 'anticlockwise'}` : 'Upright, as designed');
-      m.innerHTML = (choices.length ? row('Mark', choices.map(([v, name, url]) => chip('mark', v, `${url ? img(url) : ''}<span>${escapeHtml(name)}</span>`, ticks.includes(v), true, ticks.length === 1 && ticks[0] === v, name)).join('')) : '')
-        + row('Position', POSITIONS.map(([v, name, sub]) => chip('position', v, `<span>${name}</span>`, v === t, false, false, sub)).join(''))
-        + (t === 'path' ? row('Path', PATH_SHAPES.map(([v, nm]) => chip('pshape', v, `<span>${nm}</span>`, ps.shape === v, false, false, 'More shapes to come')).join('')
-            + '<span class="pm-gap"></span>' + PATH_DIRS.map(([v, arrow, tip]) => chip('pdir', String(v), `<span class="pm-arrow">${arrow}</span>`, ps.dir === v, false, false, tip)).join('')
-            + '<span class="pm-gap"></span>' + PATH_LENS.map(([v, nm]) => chip('plen', String(v), `<span>${nm}</span>`, ps.len === v, false, false, `${v}% of the frame`)).join(''), ' pm-path') : '')
-        + `<div class="tm-item pm-more" role="menuitem" data-list="more" data-v="more" aria-expanded="${open}"${moreSet ? ' aria-disabled="true" title="Open while an angle or a size is set"' : ''}><span>Angle and size</span><span class="tm-sub">${escapeHtml(moreSays)}</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></div>`
-        + (open ? row('Angle', ROTATIONS.map(r => chip('angle', String(r), `${glyph ? img(glyph, r) : ''}<span>${rotLabel(r)}</span>`, rots.includes(r), true, rots.length === 1 && rots[0] === r, turnTip(r))).join(''), ' pm-angles')
-          + row('Size', SIZES.map(z => chip('size', String(z), `<span class="pm-zbox">${glyph ? img(glyph, 0, z) : ''}</span><span>${sizeLabel(z)}</span>`, sized && zs.includes(z), true,
-              !sized ? 'Loose and Scattered choose their own sizes' : zs.length === 1 && zs[0] === z, z === 1 ? 'Its own size, as set in the project' : `${Math.round(z * 100)}% of its own size`)).join(''), ` pm-angles pm-sizes${sized ? '' : ' off'}`) : '')
-        + `<div class="pm-share">${share}</div><div class="tm-sep"></div>`
-        + `<div class="tm-item pm-keep" role="menuitemcheckbox" data-list="keep" data-v="keep" aria-checked="${keep}"><span class="pm-box"></span><span>Keep it as designed <span class="tm-sub">same colours and lettering as your file</span></span></div>`;
-      m.querySelectorAll('img.pm-thumb').forEach(fitMarkTone);
+    // the Mark button and menu (Claude Design's 31 Oct pass, MM-States / MarkMenu): the button a fixed 260 × 46, the ticked marks'
+    // thumbnails and "N marks · take turns" only when 2+ are ticked, then the summary (position, angles, sizes) and a glyph for As
+    // designed, cut with an ellipsis and whole on hover; the menu in rows (Mark, Position with its Path panel, More: angle and size),
+    // a share box whose strip draws the batch one cell per image in the order the server makes it (BatchPlan), and Keep it as designed
+    const PATH_GLYPH = { 0: '→', 90: '↓', 45: '↘', '-45': '↗' };
+    const DIAL = [0, 45, 90, 135, 180, -135, -90, -45];                    // the dial's ticks clockwise from the top
+    let pathShapeOpen = false;
+    function placeState() {
+      const t = document.getElementById('targetSelect').value || 'exact', ticks = markTicks(), rots = rotTicks(), zs = sizeTicks();
+      const choices = markChoices(), sizeOff = t === 'loose' || t === 'scattered';
+      const on = choices.length ? choices.filter(c => ticks.includes(c[0])) : [['main', (project && project.mark_name) || 'Mark', project && project.mark_url]];
+      return { t, ticks, rots, zs, choices, sizeOff, on, effSizes: sizeOff ? [1] : zs, ps: pathSet(), keep: document.getElementById('keepCheck').checked,
+        n: Math.max(1, +document.getElementById('batchCountSelect').value || 1) };
     }
-    let placeCanvas = null;
-    function placeLabelWidth(el, labels) {
-      const cx = (placeCanvas || (placeCanvas = document.createElement('canvas'))).getContext && placeCanvas.getContext('2d');
-      if (!cx) return 0;
-      if (!placeCanvas.fontsAsked && document.fonts && document.fonts.ready) { placeCanvas.fontsAsked = true; document.fonts.ready.then(() => renderPlace()); }   // measured again in the bundled font once it has loaded
-      cx.font = getComputedStyle(el).font || '600 14px sans-serif';
-      return Math.min(260, Math.ceil(Math.max(0, ...labels.map(t => cx.measureText(t).width))));   // past 260 px (long mark names) it ends in …
+    function placeSummary(st) {
+      const pos = st.t === 'path' ? `Path ${PATH_GLYPH[st.ps.dir]} ${st.ps.len}%` : (POSITIONS.find(p => p[0] === st.t) || POSITIONS[0])[1];
+      const ang = st.rots.length > 1 ? `${st.rots.length} angles` : st.rots[0] ? rotLabel(st.rots[0]) : '';
+      const siz = st.sizeOff ? '' : st.zs.length > 1 ? `${st.zs.length} sizes` : st.zs[0] !== 1 ? sizeLabel(st.zs[0]) : '';
+      return [pos, ang, siz].filter(Boolean).join(' · ');
+    }
+    function renderPlace() {
+      const st = placeState(), m = st.on.length, multi = st.choices.length > 0 && m > 1;
+      const summary = placeSummary(st);
+      document.getElementById('placeName').textContent = summary;
+      document.getElementById('placeBtn').title = `${multi ? `${m} marks: ${st.on.map(c => c[1]).join(', ')}` : st.on[0][1]} · ${summary}${st.keep ? ' · Kept as designed' : ''}`;
+      document.getElementById('placeDesigned').hidden = !st.keep;
+      const stack = document.getElementById('placeStack'), label = document.getElementById('placeLabel');
+      stack.hidden = label.hidden = !multi;                                   // one mark ticked (or one in the project): the summary only
+      if (multi) {
+        label.textContent = `${m} marks · take turns`;
+        const urls = st.on.slice(0, 3).map(c => c[2]).filter(Boolean), key = urls.join(' ') + `|${m}`;
+        if (stack.dataset.key !== key) {
+          stack.dataset.key = key;
+          stack.style.width = `${24 + (Math.max(1, urls.length) - 1) * 12}px`;
+          stack.innerHTML = urls.map((u, i) => `<span class="pb-th" style="left:${i * 12}px"><img class="pm-thumb" src="${escapeHtml(u)}" alt="" /></span>`).join('') + `<span class="pb-n">${m}</span>`;
+          stack.querySelectorAll('img').forEach(fitMarkTone);
+        }
+      }
+      const menu = document.getElementById('placeMenu');
+      if (menu.hidden) return;
+      menu.innerHTML = placeMenuHtml(st);
+      menu.querySelectorAll('img.pm-thumb').forEach(fitMarkTone);
+    }
+    function placeMenuHtml(st) {
+      const m = st.on.length, a = st.rots.length, z = st.zs.length, n = st.n;
+      const img = (url, style = '') => (url ? `<img class="pm-thumb" src="${escapeHtml(url)}" alt=""${style ? ` style="${style}"` : ''} />` : '');
+      const head = (label, turns) => `<div class="mm-label"><span>${label}</span>${turns > 1 ? `<span class="mm-turns">${turns} take turns</span>` : ''}</div>`;
+      const glyph = st.on[0][2];
+      let html = '';
+      if (st.choices.length) {                                              // the Mark row: only with 2+ marks
+        html += `<div class="mm-sec mm-grid">${head('Mark', m)}<div class="mm-tiles">${st.choices.map(([v, name, url], i) => { const on = st.ticks.includes(v);
+          return `<button type="button" class="mm-tile" data-list="mark" data-v="${escapeHtml(v)}" aria-pressed="${on}" title="${escapeHtml(name)}">${i === 0 ? '<span class="mm-main">MAIN</span>' : ''}${on ? '<span class="mm-tick"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>' : ''}<span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span></button>`; }).join('')}</div></div>`;
+      }
+      const dots = { exact: [[8, 13, 2.2]], loose: [[9.5, 11.5, 2.2]], scattered: [[5, 6, 1.6], [11, 12, 1.6], [6, 19, 1.6]], path: [[8, 5, 1.2], [8, 10, 1.2], [8, 15, 1.2], [8, 20, 2]] };
+      html += `<div class="mm-sec mm-grid"><div class="mm-label mm-pad"><span>Position</span></div><div class="mm-col"><div class="mm-seg" role="radiogroup" aria-label="Position">${POSITIONS.map(([v, name, sub]) =>
+        `<button type="button" role="radio" data-list="position" data-v="${v}" aria-checked="${st.t === v}" title="${escapeHtml(sub)}"><svg width="16" height="26" viewBox="0 0 16 26" fill="none" aria-hidden="true"><rect x="0.75" y="0.75" width="14.5" height="24.5" rx="2" stroke="currentColor" stroke-width="1.2" opacity="0.6"></rect>${dots[v].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="currentColor"></circle>`).join('')}</svg><span>${name}</span></button>`).join('')}</div>`;
+      if (st.t === 'path') {                                                // the Path panel: a frame drawing it, its shape, direction and reach
+        const rad = st.ps.dir * Math.PI / 180, half = st.ps.len / 100 / 2, f = v => v.toFixed(1);   // its reach along each axis of the frame, as the server places it
+        const x1 = 35 - Math.cos(rad) * half * 68, y1 = 62 - Math.sin(rad) * half * 122, x2 = 35 + Math.cos(rad) * half * 68, y2 = 62 + Math.sin(rad) * half * 122;
+        const pd = [0, 1, 2, 3, 4, 5].map(k => `<circle cx="${f(x1 + (x2 - x1) * k / 5)}" cy="${f(y1 + (y2 - y1) * k / 5)}" r="2.2" fill="#FEFFE7"></circle>`).join('');
+        const shapes = PATH_SHAPES.map(([v, nm]) => `<button type="button" class="mm-opt" data-list="pshape" data-v="${v}" aria-selected="${st.ps.shape === v}">${nm}</button>`).join('');
+        html += `<div class="mm-path"><svg width="70" height="124" viewBox="0 0 70 124" role="img" aria-label="Where the path runs in the frame"><rect x="1" y="1" width="68" height="122" rx="5" fill="#2A2825" stroke="#4A4740"></rect><rect x="28" y="55" width="14" height="14" fill="none" stroke="#EC540C" stroke-dasharray="2 2"></rect><line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="#FEFFE7" stroke-width="1.2" stroke-dasharray="1 3" stroke-linecap="round"></line>${pd}<circle cx="${f(x2)}" cy="${f(y2)}" r="3.4" fill="#EC540C"></circle></svg>
+          <div class="mm-col"><div class="mm-prow"><span>Shape</span><span class="mm-dd"><button type="button" class="mm-ddbtn" data-list="pshape-open" data-v="1" aria-haspopup="listbox" aria-expanded="${pathShapeOpen}"><svg width="16" height="10" viewBox="0 0 16 10" aria-hidden="true"><line x1="1" y1="9" x2="15" y2="1" stroke="#FEFFE7" stroke-width="1.6" stroke-linecap="round"></line></svg>${(PATH_SHAPES.find(p => p[0] === st.ps.shape) || PATH_SHAPES[0])[1]}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#A8A390" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>${pathShapeOpen ? `<span class="mm-ddlist" role="listbox">${shapes}<span class="mm-ddnote">More shapes to come</span></span>` : ''}</span></div>
+          <div class="mm-prow"><span>Direction</span><span class="mm-btns" role="radiogroup" aria-label="Direction">${PATH_DIRS.map(([v, arrow, tip]) => `<button type="button" class="mm-dir" role="radio" data-list="pdir" data-v="${v}" aria-checked="${st.ps.dir === v}" aria-label="${tip}" title="${tip}">${arrow}</button>`).join('')}</span></div>
+          <div class="mm-prow"><span>Reach</span><span class="mm-btns" role="radiogroup" aria-label="Reach">${PATH_LENS.map(([v]) => `<button type="button" class="mm-reach" role="radio" data-list="plen" data-v="${v}" aria-checked="${st.ps.len === v}" title="${v}% of the frame"><span class="mm-bar"><i style="left:${(100 - v) / 2}%;width:${v}%"></i></span><span>${v}%</span></button>`).join('')}</span></div>
+          <span class="mm-help">Reach is how much of the frame the path covers.</span></div></div>`;
+      }
+      html += '</div></div>';
+      // More: angle and size, folded until used (open by itself while either is set)
+      const moreSet = a > 1 || st.rots[0] !== 0 || (!st.sizeOff && (z > 1 || st.zs[0] !== 1)), open = placeMore || moreSet;
+      const angSum = a > 1 ? `${a} angles` : st.rots[0] === 0 ? 'Upright' : rotLabel(st.rots[0]);
+      const sizeSum = st.sizeOff ? `size by ${st.t === 'loose' ? 'Loose' : 'Scattered'}` : z > 1 ? `${z} sizes` : st.zs[0] === 1 ? 'its own size' : sizeLabel(st.zs[0]);
+      html += `<div class="mm-more"><button type="button" class="mm-morebtn${moreSet ? ' set' : ''}" data-list="more" data-v="more" aria-expanded="${open}"${moreSet ? ' aria-disabled="true" title="Open while an angle or a size is set"' : ''}><span class="mm-moret">More: angle and size</span><span class="mm-mores">${angSum} · ${sizeSum}</span><span class="mm-fill"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#A8A390" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>`;
+      if (open) {
+        const turn = r => (r ? `The mark turned ${Math.abs(r)}° ${r === 180 ? '(upside down)' : r > 0 ? 'clockwise' : 'anticlockwise'}` : 'Upright, as designed');
+        const dial = DIAL.map(deg => { const on = st.rots.includes(deg), rad = (deg - 90) * Math.PI / 180;
+          return `<button type="button" class="mm-ang" data-list="angle" data-v="${deg}" aria-pressed="${on}" aria-label="${rotLabel(deg)}" title="${turn(deg)}" style="left:${Math.round(70 + Math.cos(rad) * 54 - 16)}px;top:${Math.round(70 + Math.sin(rad) * 54 - 16)}px">${img(glyph, `transform:rotate(${deg}deg)`)}</button>`; }).join('');
+        html += `<div class="mm-moreb"><div class="mm-grid">${head('Angle', a)}<div class="mm-dialrow"><div class="mm-dial"><span class="mm-ring"></span>${dial}<span class="mm-dialn">${a} of 8</span></div><span class="mm-anglist">${st.rots.map(rotLabel).join('  ')}</span></div></div>
+          <div class="mm-grid">${head('Size', st.sizeOff ? 1 : z)}<div class="mm-col"><div class="mm-sizes${st.sizeOff ? ' off' : ''}">${SIZES.map(k => { const on = st.zs.includes(k);
+            return `<button type="button" class="mm-size" data-list="size" data-v="${k}" aria-pressed="${on && !st.sizeOff}"${st.sizeOff ? ' aria-disabled="true"' : ''} title="${k === 1 ? 'Its own size, as set in the project' : `${Math.round(k * 100)}% of its own size`}"><span class="mm-sw">${img(glyph, `width:${Math.round(18 * k)}px;height:${Math.round(18 * k)}px`)}</span><span>${sizeLabel(k)}</span></button>`; }).join('')}</div>${st.sizeOff ? `<span class="mm-help">${st.t === 'loose' ? 'Loose' : 'Scattered'} picks its own sizes.</span>` : ''}</div></div></div>`;
+      }
+      html += '</div>';
+      // the share box: what the batch will be, and a strip drawing it one cell per image (the server's order: BatchPlan)
+      const each = k => (n % k === 0 ? String(n / k) : `${Math.floor(n / k)}–${Math.ceil(n / k)}`);
+      const parts = [];
+      if (m > 1) parts.push(n >= m ? `${m} marks, ${each(m)} each` : `${n} of ${m} marks, one each`);
+      if (a > 1) parts.push(n >= a ? `${a} angles, ${each(a)} each` : `${n} of ${a} angles`);
+      if (!st.sizeOff && z > 1) parts.push(n >= z ? `${z} sizes, ${each(z)} each` : `${n} of ${z} sizes`);
+      if (st.t === 'path') parts.push('one step each along the path');
+      if (st.sizeOff) parts.push(st.t === 'loose' ? 'each a little off target' : 'each anywhere in the frame');
+      if (!parts.length) parts.push('all the same: same mark, place, angle and size');
+      const big = n > 20, cw = big ? 12 : 18, ch = big ? 21 : 32, es = st.effSizes, vec = [Math.cos(st.ps.dir * Math.PI / 180), Math.sin(st.ps.dir * Math.PI / 180)];
+      let cells = '';
+      for (let i = 0; i < n; i++) {
+        const mk = st.on[i % m], ang = st.rots[Math.floor(i / m) % a], sz = es[Math.floor(i / (m * a)) % es.length];
+        let dx = 0, dy = 0;
+        if (st.t === 'path') { const u = n > 1 ? i / (n - 1) - 0.5 : 0, r = st.ps.len / 100; dx = vec[0] * u * r * cw; dy = vec[1] * u * r * ch; }   // its step in the cell, as in the frame
+        if (st.t === 'loose') { dx = ((i * 7) % 5 - 2) * 0.8; dy = ((i * 3) % 5 - 2) * 0.8; }
+        if (st.t === 'scattered') { dx = ((i * 7) % 9 - 4) * 1.4; dy = ((i * 5) % 9 - 4) * 2.4; }
+        const px = Math.round((big ? 7 : 10) * sz);
+        cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px">${img(mk[2], `width:${px}px;height:${px}px;transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px) rotate(${ang}deg)`)}</span>`;
+      }
+      const sitOut = n < m ? st.on.slice(n).map(c => c[1]) : [];
+      html += `<div class="mm-share"><span class="mm-sharet"><b>${n} image${n > 1 ? 's' : ''}</b> · ${parts.join(' · ')}</span><div class="mm-strip" role="img" aria-label="How the images take turns">${cells}</div>${sitOut.length ? `<span class="mm-sit">${escapeHtml(sitOut.join(', '))} ${sitOut.length > 1 ? 'sit' : 'sits'} out this batch: fewer images than marks.</span>` : ''}</div>`;
+      html += `<div class="mm-keep" role="checkbox" data-list="keep" data-v="keep" aria-checked="${st.keep}" tabindex="0"><span class="pm-box"></span><span class="mm-keept">Keep it as designed</span><span class="mm-help">same colours and lettering as your file</span></div>`;
+      return html;
     }
     function togglePlaceMenu(e, open) {
       if (e && e.stopPropagation) e.stopPropagation();
@@ -435,16 +481,21 @@
         if (!on.length) return;                                              // one mark at least
         setv('markSelect', markChoices().map(c => c[0]).filter(x => on.includes(x)).join(','));
       }
+      else if (list === 'pshape-open') pathShapeOpen = !pathShapeOpen;
       else if (list === 'pshape' || list === 'pdir' || list === 'plen') {
+        pathShapeOpen = false;
         const p = pathSet();
         p[{ pshape: 'shape', pdir: 'dir', plen: 'len' }[list]] = list === 'pshape' ? v : +v;
         setv('pathSelect', `${p.shape}:${p.dir}:${p.len}`);
       }
       else if (list === 'more') {
+        const st = placeState();
+        if (st.rots.length > 1 || st.rots[0] !== 0 || (!st.sizeOff && (st.zs.length > 1 || st.zs[0] !== 1))) return;   // open while one is set
         placeMore = !placeMore;
         try { localStorage.setItem('studioPlaceMore', placeMore ? '1' : '0'); } catch (e) {}
       }
       else if (list === 'size') {
+        if (['loose', 'scattered'].includes(document.getElementById('targetSelect').value)) return;   // they pick their own sizes
         const z = +v, t = sizeTicks(), on = t.includes(z) ? t.filter(x => x !== z) : [...t, z];
         if (!on.length) return;                                              // one size at least
         setv('sizeSelect', SIZES.filter(x => on.includes(x)).join(','));
@@ -462,7 +513,8 @@
       const m = document.getElementById('placeMenu');
       if (!m || !m.addEventListener) return;
       m.addEventListener('mousedown', e => e.preventDefault());
-      m.addEventListener('click', e => { e.stopPropagation(); const it = e.target.closest('.tm-item'); if (it) choosePlace(it.dataset.list, it.dataset.v); });
+      m.addEventListener('click', e => { e.stopPropagation(); const it = e.target.closest('[data-list]'); if (it) choosePlace(it.dataset.list, it.dataset.v); });
+      m.addEventListener('keydown', e => { const it = e.target.closest('.mm-keep'); if (it && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); choosePlace('keep', 'keep'); } });
       document.addEventListener('click', () => { if (!m.hidden) togglePlaceMenu(null, false); });
     })();
     async function openProjectMenu(e) {
@@ -1432,7 +1484,7 @@
       }
       gridView = showTrash;
       patchChildren(grid, items);
-      grid.querySelectorAll('.card-mark img').forEach(fitMarkTone);         // measured once a mark, then only a class
+      grid.querySelectorAll('.cm-frame img').forEach(fitMarkTone);          // measured once a mark, then only a class
       const empty = document.getElementById('gridEmpty');
       empty.hidden = items.length > 0;
       empty.textContent = showTrash ? 'The Trash is empty.' : project ? 'No images yet. Choose a territory and press Generate.' : 'No images yet';
@@ -1466,6 +1518,7 @@
     // why this image's mark is not on target: its batch asked for it (Loose / Scattered), and where
     function targetTip(pl) { return `${POSITION_NAMES[pl.kind] || 'Loose'}${pl.path ? ` (step ${pl.path.i + 1} of ${pl.path.n})` : ''}: made with the mark at ${pl.x}% across, ${pl.y}% down, ${pl.size}% wide (on purpose: its batch asked for it)`; }
     function cardHtml(p) {
+      const made = cardMade(p);
       return `
         <div class="card"
              id="card-${CSS.escape(p.filename)}"
@@ -1480,7 +1533,7 @@
              ondblclick="openViewer(event, '${p.filename}')">
           <div class="card-thumb"${p.box || p.placement ? ` style="${placeVars(p.box || p.placement)}"` : ''}>
             <img src="${p.thumb || p.url}" loading="lazy" decoding="async" alt="" />
-            <span class="card-num"></span>
+            <span class="card-num"></span>${cardQa(p)}
             ${!showTrash && seenAtLoad && !seenAtLoad.has(p.filename) ? '<span class="card-new">New</span>' : ''}
             ${showTrash ? '<span class="card-pick" aria-hidden="true"></span>' : `<button type="button" class="card-pick" title="Pick (⌘-click) to add to a group" aria-label="Pick ${escapeHtml(p.title)}" onclick="pickClick(event, '${p.filename}')"></button>`}
             <div class="card-actions">
@@ -1496,33 +1549,39 @@
               <div class="prompt-overlay-meta"><button class="po-copy" onclick="copyPromptText(event, '${p.filename}')">Copy prompt</button></div>
             </div>
           </div>
-          <div class="card-title" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</div>
+          <div class="card-title" title="${escapeHtml(p.title)}"><span class="ct-text">${escapeHtml(p.title)}</span>${made ? `<span class="ct-frame" title="${escapeHtml(made.tip)}">${made.frame}</span>` : ''}</div>
           <div class="card-meta">
-            ${p.uploaded ? '<span class="card-model-badge uploaded" title="One of your own images: it is not checked for the mark">Uploaded</span>' : `<span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>`}
-            ${p.as_designed ? '<span class="card-model-badge designed" title="Kept exactly as designed: its colours, lettering and details">As designed</span>' : ''}
-            ${cardMark(p)}${cardTurn(p)}
-            ${p.placement && p.placement.kind !== 'exact' ? `<span class="card-model-badge target" title="${escapeHtml(targetTip(p.placement))}">${p.placement.path ? `Path ${p.placement.path.i + 1}/${p.placement.path.n}` : POSITION_NAMES[p.placement.kind] || 'Loose'}</span>` : ''}
-            ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(!p.qa_passed && (p.qa_issues || []).length && p.trash_reason === 'Mark check' ? p.qa_issues.join(', ') : p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
-            ${!p.qa_passed ? (p.trash_reason === 'Mark check' ? '' : `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>`) : p.qa_doubt ? `<span class="card-model-badge doubt" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : ''}
+            <span class="card-model${p.uploaded ? ' uploaded" title="One of your own images: it is not checked for the mark' : ''}">${p.uploaded ? 'Uploaded' : escapeHtml(formatModelShort(p.model))}</span>${made ? `<span class="card-made" title="${escapeHtml(made.tip)}">${made.frame}${made.vals ? `<span class="cm-vals">${escapeHtml(made.vals)}</span>` : ''}${p.as_designed ? '<span class="cm-designed" aria-label="as designed"><i></i></span>' : ''}</span>` : ''}
           </div>
         </div>`;
     }
     // with several marks, every card shows which one it was made with, as a small icon (the user, 2026-10-31: two marks may share a name)
-    function cardMark(p) {
-      const choices = markChoices();
-      if (!choices.length || p.uploaded) return '';
-      const c = choices.find(x => x[0] === (p.mark || 'main')) || choices[0];
-      if (!c[2]) return '';
-      const name = c[0] === 'main' ? (project.mark_name || 'Main mark') : c[1], r = cardRot(p);
-      return `<span class="card-mark" title="Made with ${escapeHtml(name)}${r ? `, turned ${rotLabel(r)}` : ''}"><img src="${escapeHtml(c[2])}" alt="${escapeHtml(name)}"${r ? ` style="transform:rotate(${r}deg)"` : ''} /></span>`;
-    }
     const cardRot = p => (p.uploaded ? 0 : +((p.placement && p.placement.rot) || 0));
-    // a turned mark says so on its card, with its angle (the user: the curation should show how each image was made)
     const cardScale = p => (p.uploaded ? 1 : +((p.placement && p.placement.scale) || 1));
-    function cardTurn(p) {
-      const r = cardRot(p), z = cardScale(p);
-      return (r ? `<span class="card-model-badge turn" title="Made with the mark turned ${Math.abs(r)}° ${r === 180 ? '(upside down)' : r > 0 ? 'clockwise' : 'anticlockwise'}">${r > 0 && r !== 180 ? '↻' : r < 0 ? '↺' : '↻'} ${rotLabel(r)}</span>` : '')
-        + (z !== 1 ? `<span class="card-model-badge turn" title="Made with the mark at ${Math.round(z * 100)}% of its own size">${sizeLabel(z)}</span>` : '');
+    // how the image was made, as one small cluster under its title (Claude Design's CardsMade): a 10 × 16 frame with the mark in it,
+    // turned, sized and placed as in the image, then only the values that are not plain (position, angle, size), then As designed's
+    // glyph. A plain image (one mark, on target, upright, its own size) has none, so existing projects look as before; an upload none
+    function cardMade(p) {
+      if (p.uploaded) return null;
+      const choices = markChoices(), pl = p.placement || {}, rot = cardRot(p), k = cardScale(p);
+      const c = choices.find(x => x[0] === (p.mark || 'main')) || ['main', (project && project.mark_name) || 'Main mark', project && project.mark_url];
+      const name = c[0] === 'main' ? ((project && project.mark_name) || 'Main mark') : c[1];
+      const pos = pl.path ? `${PATH_GLYPH[pl.path.dir] || '→'} ${pl.path.i + 1}/${pl.path.n}` : pl.kind === 'loose' ? 'Loose' : pl.kind === 'scattered' ? 'Scattered' : '';
+      const vals = [pos, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
+      if (!choices.length && !vals && !p.as_designed) return null;
+      const box = p.box || pl, x = +(box.x != null ? box.x : (project ? project.mark_x : 50)), y = +(box.y != null ? box.y : (project ? project.mark_y : 50));
+      const dx = ((x - 50) / 100 * 8).toFixed(1), dy = ((y - 50) / 100 * 14).toFixed(1);
+      const frame = `<span class="cm-frame">${c[2] ? `<img class="pm-thumb" src="${escapeHtml(c[2])}" alt="" style="transform:translate(-50%,-50%) translate(${dx}px,${dy}px) rotate(${rot}deg) scale(${k})" />` : ''}</span>`;
+      const tip = [name, pl.path ? `Path ${PATH_GLYPH[pl.path.dir] || '→'} ${pl.path.i + 1}/${pl.path.n}` : POSITION_NAMES[pl.kind || 'exact'] || 'On target', rot ? rotLabel(rot) : 'upright', k !== 1 ? sizeLabel(k) : 'own size', p.as_designed ? 'as designed' : ''].filter(Boolean).join(' · ');
+      return { frame, vals, tip };
+    }
+    // the mark check's verdict, on the image as one solid pill (a dot at size S): red for QA flagged and Mark check, amber to check
+    function cardQa(p) {
+      if (!p.qa_passed) {
+        const label = p.trash_reason === 'Mark check' ? 'Mark check' : 'QA flagged';
+        return `<span class="card-qa red" title="${escapeHtml((p.qa_issues || []).join(', ') || label)}">${label}</span>`;
+      }
+      return p.qa_doubt ? `<span class="card-qa amber" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : '';
     }
     function promptInfoHtml(p) {
       return `${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-check po-qa">Mark check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : p.qa_doubt ? `<span class="po-check po-doubt">Mark check: ${escapeHtml(p.qa_doubt)}</span>` : ''}`;

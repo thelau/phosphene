@@ -161,7 +161,7 @@
           </select>
           <span class="gen-sep"></span>
           <div class="refine" id="refine" data-state="empty">
-            <button type="button" class="refine-open" id="refineOpen" onclick="editRefine()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Refine <span>· optional</span></button>
+            <button type="button" class="refine-open" id="refineOpen" onclick="editRefine()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Refine</button>
             <label class="refine-edit">
               <span class="refine-label" id="refineLabel">Refine</span>
               <span class="refine-req" id="refineReq" hidden>Required</span>
@@ -172,7 +172,7 @@
           </div>
           <span class="gen-sep place-sep"></span>
           <span class="place">
-            <button type="button" class="place-btn" id="placeBtn" onclick="togglePlaceMenu(event)" aria-haspopup="menu" aria-expanded="false" title="The mark in this batch: which one, where it goes, and whether it is kept exactly as designed"><img class="place-thumb" id="placeThumb" alt="" hidden /><span class="pm-mix" id="placeMix" hidden></span><span id="placeName">On target</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+            <button type="button" class="place-btn" id="placeBtn" onclick="togglePlaceMenu(event)" aria-haspopup="dialog" aria-expanded="false"><span class="pb-stack" id="placeStack" hidden></span><span class="pb-text"><span class="pb-label" id="placeLabel" hidden></span><span class="pb-line"><span class="pb-sum" id="placeName">On target</span><span class="pb-designed" id="placeDesigned" hidden title="Kept as designed"><i></i></span></span></span><svg class="pb-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
             <input type="hidden" id="markSelect" value="main" /><input type="hidden" id="rotSelect" value="0" /><input type="hidden" id="sizeSelect" value="1" /><input type="hidden" id="pathSelect" value="line:0:40" />
             <select id="targetSelect" class="src-only" aria-hidden="true" tabindex="-1">
               <option value="exact" selected>On target</option>
@@ -181,7 +181,7 @@
               <option value="path">Path</option>
             </select>
             <input type="checkbox" id="keepCheck" class="src-only" aria-hidden="true" tabindex="-1" />
-            <div class="place-menu terr-menu" id="placeMenu" role="menu" hidden></div>
+            <div class="place-menu" id="placeMenu" role="dialog" aria-label="Mark" hidden></div>
           </span>
           <span class="gen-sep"></span>
           <div class="vfield gen-count" id="countField" role="spinbutton" tabindex="0" aria-valuemin="1" aria-valuemax="20" aria-valuenow="4" aria-label="Images in this batch" title="How many images: 1 to 20. Drag up or down, double-click to type, arrows to step."><span class="vf-val" id="countVal">×4</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div>

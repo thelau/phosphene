@@ -6,7 +6,7 @@ async function setCount(n) {
   await page.keyboard.press('Meta+a');
   await page.keyboard.type(String(n));
   await page.keyboard.press('Enter');
-  if (n >= 1 && n <= 20) assert.equal(await page.inputValue('#batchCountSelect'), String(n));
+  if (n >= 1 && n <= 40) assert.equal(await page.inputValue('#batchCountSelect'), String(n));
 }
 
 test('generate: a custom territory waits for its description; controls lock, progress shows per image and on the button; the refinement stays', { skip }, async () => {

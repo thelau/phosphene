@@ -2141,7 +2141,7 @@ test('an image the mark check trashed has one badge, Mark check, with the reason
   const h = load({ routes: baseRoutes() });
   await settle(); await settle();
   const html = h.run(`cardHtml(${JSON.stringify({ ...mkPlate('x.jpg'), trashed: true, trash_reason: 'Mark check', qa_passed: false, qa_issues: ['The mark is not at its place and size (fit 0.30)'] })})`);
-  assert.match(html, /class="card-model-badge warn" title="The mark is not at its place and size \(fit 0\.30\)">Mark check</);
+  assert.match(html, /class="card-qa red" title="The mark is not at its place and size \(fit 0\.30\)">Mark check</, 'one red pill on the image');
   assert.doesNotMatch(html, /QA flagged/);
 });
 
@@ -2149,7 +2149,7 @@ test('a doubtful logo check stays in the selection with a "Check the mark" badge
   const h = load({ routes: baseRoutes() });
   await settle(); await settle();
   const html = h.run(`cardHtml(${JSON.stringify({ ...mkPlate('x.jpg'), qa_passed: true, qa_doubt: "Check the mark's size: it fits a little better at about 1.16x" })})`);
-  assert.match(html, /class="card-model-badge doubt"[^>]*>Check the mark</);
+  assert.match(html, /class="card-qa amber"[^>]*>Check the mark</, 'an amber pill on the image');
   assert.match(html, /Mark check: Check the mark's size: it fits a little better at about 1\.16x/);
   assert.doesNotMatch(html, /QA flagged/);
 });

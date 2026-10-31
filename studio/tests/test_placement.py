@@ -164,9 +164,19 @@ def test_the_prompt_says_the_mark_is_turned_and_only_then(srv, tmp_path, monkeyp
 
 def test_ticked_angles_take_turns_evenly(srv):
     assert srv.rot_set("0,90,-45,33,x") == [0, 90, -45] and srv.rot_set(None) == [0] and srv.rot_set([180, -180]) == [180]
-    deck = srv.RotDeck("0,45,90,135")
-    got = deck.peek(20)
+    got = [t["rot"] for t in srv.BatchPlan("exact", None, "0,45,90,135", count=20).peek(20)]
     assert sorted(got.count(r) for r in (0, 45, 90, 135)) == [5, 5, 5, 5]
+
+
+def test_marks_angles_and_sizes_combine_in_the_strips_order_every_combination_before_a_repeat(srv, monkeypatch):
+    """The design's order: mark i % m, angle (i // m) % a, size (i // (m * a)) % s; the page's strip draws the same."""
+    monkeypatch.setattr(srv, "PROJECT", {**demo(srv), "marks": [{"id": "b"}]})
+    turns = srv.BatchPlan("exact", "main,b", "0,90", "1,1.25", count=8).peek(8)
+    assert [(t["mark"], t["rot"], t["scale"]) for t in turns] == [
+        (None, 0, 1.0), ("b", 0, 1.0), (None, 90, 1.0), ("b", 90, 1.0), (None, 0, 1.25), ("b", 0, 1.25), (None, 90, 1.25), ("b", 90, 1.25)]
+    assert {t["scale"] for t in srv.BatchPlan("loose", None, None, "1,1.25", count=4).peek(4)} == {1.0}, "Loose picks its own sizes"
+    few = srv.BatchPlan("exact", "main,b", count=1).peek(1)
+    assert [t["mark"] for t in few] == [None], "fewer images than marks: the later ones sit out"
 
 
 def test_a_size_is_one_of_the_menus_and_kept_with_the_image(srv):
@@ -195,6 +205,7 @@ def test_a_path_puts_a_batchs_images_at_even_steps_along_a_line_through_the_targ
     assert all(s["y"] == 50 and s["kind"] == "path" and s["size"] == p["mark_size"] for s in steps), "across: the same height and size"
     down = [placement.choose("path", p, path={"shape": "line", "dir": 90, "len": 70, "i": i, "n": 3}) for i in range(3)]
     assert down[0]["x"] == 50 and down[0]["y"] < 50 < down[2]["y"], "down the frame"
+    assert abs(down[0]["y"] - 15) < 0.2 and abs(down[2]["y"] - 85) < 0.2, "70% reach down: 70% of the height, as the menu draws it"
     long = [placement.choose("path", p, scale=1.6, path={"shape": "line", "dir": 0, "len": 70, "i": i, "n": 2}) for i in range(2)]
     half = long[0]["size"] / 2
     assert long[0]["x"] - half >= placement.MARGIN - 0.2 and long[1]["x"] + half <= 100 - placement.MARGIN + 0.2, "shrunk so both ends stay inside"
@@ -203,9 +214,10 @@ def test_a_path_puts_a_batchs_images_at_even_steps_along_a_line_through_the_targ
 
 
 def test_path_steps_go_in_order_across_chunks_and_fill_dropped_scenes(srv):
-    steps = srv.PathSteps({"shape": "line", "dir": 45, "len": 20}, 6)
-    first = steps.peek(4)
-    assert [s["i"] for s in first] == [0, 1, 2, 3] and all(s["n"] == 6 and s["run"] for s in first)
-    steps.take(first[0]); steps.take(first[2])                          # a chunk kept two of its scenes
-    assert [s["i"] for s in steps.peek(3)] == [1, 3, 4], "the next chunk fills the step a dropped scene left"
-    assert srv.PathSteps(None, 4).peek(2) == [None, None] and srv.path_for("exact", {"shape": "line"}) is None
+    plan = srv.BatchPlan("path", path={"shape": "line", "dir": 45, "len": 20}, count=6)
+    first = plan.peek(4)
+    assert [t["path"]["i"] for t in first] == [0, 1, 2, 3] and all(t["path"]["n"] == 6 and t["path"]["run"] for t in first)
+    plan.take(first[0]["i"]); plan.take(first[2]["i"])                  # a chunk kept two of its scenes
+    assert [t["path"]["i"] for t in plan.peek(3)] == [1, 3, 4], "the next chunk fills the step a dropped scene left"
+    assert [t["path"]["i"] for t in plan.peek(8)][-2:] == [5, 5], "spares past the end: its last step"
+    assert srv.BatchPlan("exact", count=4).peek(2)[0]["path"] is None and srv.path_for("exact", {"shape": "line"}) is None

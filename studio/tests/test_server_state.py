@@ -307,16 +307,17 @@ def test_saving_and_reading_the_curation_at_once_never_loses_it(srv):
 
 def test_ticked_marks_take_turns_evenly_through_a_batch(srv, monkeypatch):
     """Mix drew each shot's mark at random, the main one half the time: 20 images over 4 marks once had none of the fourth.
-    The ticked marks now take turns: every one in each round, so a batch splits evenly whatever the dice."""
+    The ticked marks now take turns in the Mark menu's strip order: mark i % m, so a batch splits evenly whatever the chunks."""
     monkeypatch.setattr(srv, "PROJECT", {"marks": [{"id": "a"}, {"id": "b"}, {"id": "c"}]})
     assert srv.mark_set("mix") == [None, "a", "b", "c"], "a menu saved before the ticks: all of them"
     assert srv.mark_set("main,c,zz") == [None, "c"] and srv.mark_set(["b"]) == ["b"] and srv.mark_set("") == [None]
-    for _ in range(50):
-        deck = srv.MarkDeck("mix")
-        dealt = []
-        for _chunk in range(2):                                   # a batch of 20 in chunks of 10, Kimi asked for 12 each time
-            ahead = deck.peek(12)
-            for m in ahead[:10]:
-                deck.take(m)
-            dealt += ahead[:10]
-        assert sorted(dealt.count(m) for m in [None, "a", "b", "c"]) == [5, 5, 5, 5]
+    plan = srv.BatchPlan("exact", "mix", count=20)
+    dealt = []
+    for _chunk in range(2):                                       # a batch of 20 in chunks of 10, Kimi asked for 12 each time
+        ahead = plan.peek(12)
+        for t in ahead[:10]:
+            plan.take(t["i"])
+        dealt += ahead[:10]
+    assert [t["i"] for t in dealt] == list(range(20)), "in order, every turn once"
+    assert sorted([t["mark"] for t in dealt].count(m) for m in [None, "a", "b", "c"]) == [5, 5, 5, 5]
+    assert [t["mark"] for t in dealt[:4]] == [None, "a", "b", "c"], "the strip's order"

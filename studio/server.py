@@ -302,35 +302,6 @@ def rot_set(choice) -> list:
     return out or [0]
 
 
-class Turns:
-    """What was ticked taking turns through a batch: rounds of every choice once, each round shuffled, so 20 images over 4 marks are 5
-    each (Mix drew them at random, the main one half the time: a batch of 20 once had none of its fourth mark, 2026-10-31). A chunk
-    peeks at what comes next and takes only the choices of the scenes it kept (the spares Kimi writes would skew the turns)."""
-    def __init__(self, items: list):
-        self.marks, self.queue = list(items), []
-
-    def peek(self, n: int) -> list:
-        while len(self.queue) < n:
-            r = self.marks[:]
-            random.shuffle(r)
-            self.queue += r
-        return self.queue[:n]
-
-    def take(self, m) -> None:
-        if m in self.queue:
-            self.queue.remove(m)
-
-
-def MarkDeck(choice) -> Turns:
-    """The ticked marks, taking turns (the main one: None)."""
-    return Turns(mark_set(choice))
-
-
-def RotDeck(choice) -> Turns:
-    """The ticked angles, taking turns."""
-    return Turns(rot_set(choice))
-
-
 def scale_set(choice) -> list:
     """The sizes a batch draws its mark at, as ticked in the Mark menu ("0.8,1,1.25", or a list), times its own. Nothing: its own."""
     out = []
@@ -345,11 +316,6 @@ def scale_set(choice) -> list:
     return out or [1.0]
 
 
-def ScaleDeck(choice) -> Turns:
-    """The ticked sizes, taking turns."""
-    return Turns(scale_set(choice))
-
-
 def path_for(target: str, path) -> dict | None:
     """The path a batch walks: the page's (shape, dir, len), a line across by default; none unless the position is Path."""
     if target != "path":
@@ -357,23 +323,51 @@ def path_for(target: str, path) -> dict | None:
     return path if isinstance(path, dict) else {"shape": "line"}
 
 
-class PathSteps:
-    """A Path batch's steps, in order (never shuffled: step i is the i-th scene written), shared across its chunks; a chunk takes the
-    steps of the scenes it kept, so a scene Kimi dropped leaves no hole the next one cannot fill. `path` from the page: shape, dir, len."""
-    def __init__(self, path, count: int):
-        base = placement.clean_path({**(path if isinstance(path, dict) else {}), "i": 0, "n": max(1, count), "run": f"{time.time_ns() % 10**12:x}"}) \
-            if isinstance(path, dict) else None
-        self.base, self.queue = base, list(range(max(1, count))) if base else []
+class BatchPlan:
+    """What each image of a batch is made with, in the order the Mark menu's strip draws it (Claude Design's pass, 2026-10-31): image i
+    takes mark i % m, angle (i // m) % a, size (i // (m * a)) % s and, on a Path, step i, so every combination comes round before any
+    repeats and the strip shows exactly what is made (each choice shuffled on its own before: Mix had given a batch of 20 none of its
+    fourth mark). The ticks keep the menu's order. Shared by a batch's chunks: a chunk peeks at the next turns and takes only those of
+    the scenes it kept, so a scene Kimi dropped leaves its turn to the next one."""
+    def __init__(self, target: str = "exact", mark=None, rot=None, scale=None, path=None, count: int = 1):
+        self.marks, self.rots = mark_set(mark), rot_set(rot)
+        self.scales = scale_set(scale) if target in ("exact", "path") else [1.0]   # Loose and Scattered choose their own sizes
+        self.count = max(1, int(count or 1))
+        base = path_for(target, path)
+        self.path = placement.clean_path({**base, "i": 0, "n": self.count, "run": f"{time.time_ns() % 10**12:x}"}) if base else None
+        self.queue, self.next = list(range(self.count)), self.count
+
+    def turn(self, i: int) -> dict:
+        m, a = len(self.marks), len(self.rots)
+        return {"i": i, "mark": self.marks[i % m], "rot": self.rots[(i // m) % a], "scale": self.scales[(i // (m * a)) % len(self.scales)],
+                "path": {**self.path, "i": min(i, self.count - 1)} if self.path else None}    # past the batch's end (spares): its last step
 
     def peek(self, n: int) -> list:
-        if not self.base:
-            return [None] * n
-        q = self.queue + [self.queue[-1] if self.queue else self.base["n"] - 1] * max(0, n - len(self.queue))   # past the end: the last step again
-        return [{**self.base, "i": i} for i in q[:n]]
+        q = self.queue[:n]
+        while len(q) < n:                                                       # spares past the batch: the turns go on round
+            self.queue.append(self.next)
+            q.append(self.next)
+            self.next += 1
+        return [self.turn(i) for i in q]
 
-    def take(self, path) -> None:
-        if path and path.get("i") in self.queue:
-            self.queue.remove(path["i"])
+    def take(self, i) -> None:
+        if i in self.queue:
+            self.queue.remove(i)
+
+
+class OneTurn:
+    """One image's turn, dealt ahead (the Sampler's requests run at once)."""
+    def __init__(self, t: dict):
+        self.t = t
+
+    def peek(self, n: int) -> list:
+        return [self.t] * n
+
+    def turn(self, i: int) -> dict:
+        return self.t
+
+    def take(self, i) -> None:
+        pass
 
 
 def world_examples(w: dict, n: int = 2) -> list[str]:
@@ -719,7 +713,7 @@ def match_world(st: dict, api_key: str, kimi_model: str, direction: str) -> dict
 BIG_MARK = 30   # % of the width from which Kimi is told the mark is large and needs a subject that big (DEMO, 18%, keeps its words)
 
 
-def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list, target: str = "exact", mark=None, keep: bool = False, rot=None, scale=None, path=None) -> tuple[list, dict]:
+def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list, target: str = "exact", mark=None, keep: bool = False, rot=None, scale=None, path=None, plan=None) -> tuple[list, dict]:
     """One Kimi request for up to `count` scenes in territory `w`; `batch` = scenes already collected for this batch (never repeated)."""
     titles = st.get("titles", {})
     prompts = st.get("prompts", {})
@@ -728,14 +722,9 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
 
     n_ask = count + 2  # a little spare: some scenes come back as near-copies of past images and are dropped
     shots = diversity.sample_shots(n_ask, st.get("recent_axes"))
-    deck = mark if isinstance(mark, Turns) else MarkDeck(mark)
-    mids = deck.peek(n_ask)                                              # which of the project's marks each shot uses (the main one: None), in turns
-    turns = rot if isinstance(rot, Turns) else RotDeck(rot)
-    rots = turns.peek(n_ask)                                             # and how far each turns its mark, in turns too
-    sizes = scale if isinstance(scale, Turns) else ScaleDeck(scale)
-    scales = sizes.peek(n_ask) if target in ("exact", "path") else [1.0] * n_ask   # and its size (Loose and Scattered choose their own)
-    steps = path if isinstance(path, PathSteps) else PathSteps(path_for(target, path), count)
-    walks = steps.peek(n_ask) if target == "path" else [None] * n_ask    # a Path: each shot its step along it, in order
+    plan = plan or BatchPlan(target, mark, rot, scale, path, count)
+    turns = plan.peek(n_ask)                                             # each shot's mark (the main one: None), angle, size and path step
+    mids, rots, scales, walks = ([t[k] for t in turns] for k in ("mark", "rot", "scale", "path"))
     projs = [projects.with_mark(PROJECT, m) for m in mids]
     places = [placement.choose(target, pj, rot=r, scale=z, path=s) for pj, r, z, s in zip(projs, rots, scales, walks)]   # Loose: each shot's own place and size, known before it is written
     moved = [pl if pl and pl["kind"] != "exact" else None for pl in places]       # on target, only turned: its place is the project's
@@ -821,8 +810,10 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     ideas = parse_llm_json(out, "[")
     for i, idea in enumerate(ideas):
         if isinstance(idea, dict):
-            idea["_mark"] = mids[i] if i < len(mids) else random.choice(deck.marks)
-            idea["_place"] = places[i] if i < len(places) else placement.choose(target, projects.with_mark(PROJECT, idea["_mark"]), rot=random.choice(turns.marks), scale=random.choice(sizes.marks) if target in ("exact", "path") else 1, path=(steps.peek(1) or [None])[0])   # the shot it was written for
+            t = turns[i] if i < len(turns) else plan.turn(plan.count + i)
+            idea["_turn"] = t["i"]
+            idea["_mark"] = mids[i] if i < len(mids) else t["mark"]
+            idea["_place"] = places[i] if i < len(places) else placement.choose(target, projects.with_mark(PROJECT, t["mark"]), rot=t["rot"], scale=t["scale"], path=t["path"])   # the shot it was written for
 
     past = list(prompts.values()) + [b["prompt"] for b in batch]
     kept, dropped = [], []
@@ -843,10 +834,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
         kept += [idea for _, idea, _ in spare[: count - len(kept)]]
     kept = kept[:count]
     for i in kept:
-        deck.take(i.get("_mark"))
-        turns.take((i.get("_place") or {}).get("rot", 0))
-        sizes.take((i.get("_place") or {}).get("scale", 1.0))
-        steps.take((i.get("_place") or {}).get("path"))
+        plan.take(i.get("_turn"))
     info = {"asked_kimi": n_ask, "from_kimi": len(ideas), "dropped_duplicates": len(dropped), "topped_up": max(0, len(kept) - fresh)}
 
     flat = [{"title": i.get("title", "Untitled"), "guide": i.get("guide", "dark"), "prompt": i["prompt"], "idea": i.get("idea", ""), "world": w["name"], "subject": str(i.get("subject", "")).strip(), "placement": i.get("_place"), "mark": i.get("_mark")} for i in kept]
@@ -884,14 +872,13 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
 
     out: list = []
     totals = {"asked_kimi": 0, "from_kimi": 0, "dropped_duplicates": 0, "topped_up": 0, "kimi_calls": 0}
-    mark, rot, scale = MarkDeck(mark), RotDeck(rot), ScaleDeck(scale)   # one set of turns for the whole batch, across its chunks
-    path = PathSteps(path_for(target, path), count)                  # and a Path's steps, in order
+    plan = BatchPlan(target, mark, rot, scale, path, count)          # one set of turns for the whole batch, across its chunks
     for _ in range(-(-count // 10) + 2):                 # chunks of 10 (a batch of 40 is four), plus at most a couple of follow-ups
         need = count - len(out)
         if need <= 0:
             break
         try:
-            got, info = _ask_chunk(st, api_key, kimi_model, w, min(need, 10), direction, out, target, mark, keep, rot, scale, path)
+            got, info = _ask_chunk(st, api_key, kimi_model, w, min(need, 10), direction, out, target, keep=keep, plan=plan)
         except Exception:
             if not out:
                 raise                                      # nothing at all: let the caller report it
@@ -917,25 +904,19 @@ def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direct
     from concurrent.futures import ThreadPoolExecutor
     made = chapters.world_stats(st)
     worlds = sorted(chapters.all_worlds(st), key=lambda w: (made.get(w["name"], {}).get("n", 0), random.random()))[:max(1, count)]
-    marks = MarkDeck(mark).peek(len(worlds))              # each territory's scene its turn of the ticked marks, dealt before they run at once
-    rots = RotDeck(rot).peek(len(worlds))                 # and of the ticked angles and sizes
-    scales = ScaleDeck(scale).peek(len(worlds))
-    walks = PathSteps(path_for(target, path), len(worlds)).peek(len(worlds))   # a Path: one step a territory, in order
+    turns = BatchPlan(target, mark, rot, scale, path, len(worlds)).peek(len(worlds))   # each territory's scene its turn, dealt before they run at once
 
     def one(job):
-        w, m, r, z, s = job
+        w, t = job
         mine = json.loads(json.dumps(st))
         try:
-            fixed = PathSteps(None, 1)
-            if s:
-                fixed.base, fixed.queue = s, [s["i"]]
-            got, info = _ask_chunk(mine, api_key, kimi_model, w, 1, direction, [], target, m or "main", keep, str(r), str(z), fixed)
+            got, info = _ask_chunk(mine, api_key, kimi_model, w, 1, direction, [], target, keep=keep, plan=OneTurn(t))
             return w, mine, got[:1], info
         except Exception as e:
             print(f"[KIMI] sampler: {w['name']} failed ({str(e)[:120]})", flush=True)
             return w, None, [], {}
     with ThreadPoolExecutor(max_workers=6) as pool:
-        done = list(pool.map(one, zip(worlds, marks, rots, scales, walks)))
+        done = list(pool.map(one, zip(worlds, turns)))
     out, totals, errors = [], {"asked_kimi": 0, "from_kimi": 0, "dropped_duplicates": 0, "topped_up": 0, "kimi_calls": 0}, 0
     for w, mine, got, info in done:
         if mine is None:
