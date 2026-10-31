@@ -458,7 +458,7 @@ def test_plate_marks_reads_placements_marks_and_uploads(srv, monkeypatch):
     st = {"placements": {"b.jpg": {"kind": "scattered", "x": 20.0, "y": 30.0, "size": 25.0}, "e.jpg": {"kind": "exact", "x": 50, "y": 50, "size": 18, "angle": 20}},
           "marks_used": {"c.jpg": "bird", "d.jpg": "gone"}, "uploads": ["u.jpg"]}
     m = srv.plate_marks(st, ["a.jpg", "b.jpg", "c.jpg", "d.jpg", "e.jpg", "u.jpg"])
-    assert m["a.jpg"] == {"x": 50.0, "y": 50.0, "size": 18.0, "id": None}
-    assert m["b.jpg"] == {"x": 20.0, "y": 30.0, "size": 25.0, "id": None}
-    assert m["c.jpg"] == {"x": 40.0, "y": 70.0, "size": 12.0, "id": "bird"}
+    assert m["a.jpg"] == {"x": 50.0, "y": 50.0, "size": 18.0, "id": None, "rot": 0}
+    assert m["b.jpg"] == {"x": 20.0, "y": 30.0, "size": 25.0, "id": None, "rot": 0}
+    assert m["c.jpg"] == {"x": 40.0, "y": 70.0, "size": 12.0, "id": "bird", "rot": 0}
     assert m["d.jpg"]["id"] is None and m["e.jpg"]["x"] == 50.0 and m["u.jpg"] is None

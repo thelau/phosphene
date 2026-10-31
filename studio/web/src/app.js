@@ -323,20 +323,30 @@
       const out = ids.filter(x => on.includes(x));
       return out.length ? out : ['main'];
     }
-    // the Mark menu: which of the project's marks (with several), where it goes, and Keep it as designed; one button, sections inside
+    // the Mark menu: which of the project's marks (with several), where it goes, how far it is turned, and Keep it as designed; one
+    // button, a row a section (the user, 2026-10-31: more sections are coming, size next, so rows of choices rather than one long list)
     const POSITIONS = [['exact', 'On target', 'same spot and size in every image'], ['loose', 'Loose', 'a little off, a little bigger or smaller'], ['scattered', 'Scattered', 'anywhere, much bigger or smaller']];
+    const ROTATIONS = [-135, -90, -45, 0, 45, 90, 135, 180];                // degrees clockwise, as a dial from left to right
+    const rotLabel = r => (r === 180 || r === -180 ? '180°' : r < 0 ? `−${-r}°` : `${r}°`);
+    // the angles ticked (kept as "0,45" in #rotSelect): one or more, they take turns as the marks do; none known: upright
+    function rotTicks() {
+      const on = String(document.getElementById('rotSelect').value || '0').split(',').map(Number);
+      const out = ROTATIONS.filter(r => on.includes(r));
+      return out.length ? out : [0];
+    }
     function markChoices() {
       const marks = (project && project.marks) || [];
       return marks.length ? [['main', 'Main mark', project.mark_url], ...marks.map(m => [m.id, m.name, m.url])] : [];
     }
     function renderPlace() {
-      const t = document.getElementById('targetSelect').value || 'exact', ticks = markTicks();
+      const t = document.getElementById('targetSelect').value || 'exact', ticks = markTicks(), rots = rotTicks();
       const keep = document.getElementById('keepCheck').checked, choices = markChoices(), on = choices.filter(c => ticks.includes(c[0]));
       const pos = (POSITIONS.find(p => p[0] === t) || POSITIONS[0])[1];
       const markWord = k => (k === choices.length ? `All ${k} marks` : `${k} marks`);   // several ticked: how many, "All 4 marks" when every one is
-      const label = (m, p, k) => [m, p, k ? 'As designed' : ''].filter(Boolean).join(' · ');
+      const rotWord = rs => (rs.length > 1 ? `${rs.length} angles` : rs[0] ? rotLabel(rs[0]) : '');   // upright: nothing to say
+      const label = (m, p, k, r = '') => [m, p, r, k ? 'As designed' : ''].filter(Boolean).join(' · ');
       const name = document.getElementById('placeName'), one = on.length === 1 ? on[0] : null;
-      name.textContent = label(!choices.length ? '' : one ? (one[0] === 'main' ? 'Main' : one[1]) : markWord(on.length), pos, keep);
+      name.textContent = label(!choices.length ? '' : one ? (one[0] === 'main' ? 'Main' : one[1]) : markWord(on.length), pos, keep, rotWord(rots));
       const thumb = document.getElementById('placeThumb'), mixIcon = document.getElementById('placeMix');
       thumb.hidden = !(one && one[2]);
       if (one && one[2] && thumb.getAttribute('src') !== one[2]) { thumb.src = one[2]; fitMarkTone(thumb); }   // as the top bar shows it: a dark mark as a light silhouette
@@ -348,20 +358,25 @@
         mixIcon.querySelectorAll('img').forEach(fitMarkTone);
       }
       const words = choices.length ? [...choices.map(c => (c[0] === 'main' ? 'Main' : c[1])), ...choices.slice(1).map((c, i) => markWord(i + 2))] : [''];
-      name.style.minWidth = placeLabelWidth(name, words.flatMap(w => POSITIONS.flatMap(([, p]) => [label(w, p, false), label(w, p, true)]))) + 'px';   // as wide as its widest choice: the row never moves
+      name.style.minWidth = name.style.maxWidth = placeLabelWidth(name, words.flatMap(w => POSITIONS.flatMap(([, p]) => ['', '−135°', '8 angles'].flatMap(r => [label(w, p, false, r), label(w, p, true, r)])))) + 'px';   // as wide as its widest choice, never wider (past 300 px it ends in …): the row never moves
       const m = document.getElementById('placeMenu');
       if (m.hidden) return;
-      const check = '<svg class="tm-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
-      const item = (list, v, inner, on) => `<div class="tm-item" role="menuitemradio" data-list="${list}" data-v="${escapeHtml(v)}" aria-selected="${on}" aria-checked="${on}">${inner}${check}</div>`;
-      const img = url => `<img class="pm-thumb" src="${escapeHtml(url)}" alt="" />`;
-      // the marks are ticks, one or more (the user, 2026-10-31: Mix said too little, and gave the main mark half the batch); the line under them says how they share it
-      const n = Math.max(1, +document.getElementById('batchCountSelect').value || 1), k = ticks.length, lo = Math.floor(n / k);
-      const share = k < 2 ? 'Tick more marks to take turns between them' : lo < 1 ? `They take turns: ${n} image${n > 1 ? 's' : ''}, one mark each` : `They take turns: ${n} images, ${lo}${n % k ? ` or ${lo + 1}` : ''} of each`;
-      m.innerHTML = (choices.length ? '<div class="tm-head"><span>Mark</span></div>' + choices.map(([v, name, url]) =>
-          `<div class="tm-item pm-mark" role="menuitemcheckbox" data-list="mark" data-v="${escapeHtml(v)}" aria-checked="${ticks.includes(v)}"${ticks.length === 1 && ticks[0] === v ? ' aria-disabled="true" title="At least one mark"' : ''}><span class="pm-box"></span>${url ? img(url) : ''}<span>${escapeHtml(name)}</span></div>`).join('')
-          + `<div class="pm-share">${share}</div><div class="tm-sep"></div>` : '')
-        + '<div class="tm-head"><span>Position</span></div>' + POSITIONS.map(([v, name, sub]) => item('position', v, `<span>${name} <span class="tm-sub">${sub}</span></span>`, v === t)).join('')
-        + '<div class="tm-sep"></div>'
+      const img = (url, r = 0) => `<img class="pm-thumb" src="${escapeHtml(url)}" alt=""${r ? ` style="transform:rotate(${r}deg)"` : ''} />`;
+      // each section a row of choices: Mark and Angle are ticks, one or more, taking turns evenly through the batch (the user,
+      // 2026-10-31: Mix said too little, and gave the main mark half the batch); Position is one of three; the line under them says how
+      const chip = (list, v, inner, on, multi, only, tip = '') => `<div class="tm-item pm-chip${multi ? ' multi' : ''}" role="${multi ? 'menuitemcheckbox' : 'menuitemradio'}" data-list="${list}" data-v="${escapeHtml(v)}" aria-checked="${on}" aria-selected="${on}"${only ? ' aria-disabled="true"' : ''} title="${escapeHtml(only ? `${tip}${tip ? ' · ' : ''}At least one` : tip)}">${inner}</div>`;
+      const row = (head, inner, cls = '') => `<div class="pm-row${cls}"><div class="tm-head pm-label"><span>${head}</span></div><div class="pm-chips">${inner}</div></div>`;
+      const glyph = (one && one[2]) || (on[0] && on[0][2]) || (project && project.mark_url) || '';   // the angles shown on the mark the batch uses
+      const n = Math.max(1, +document.getElementById('batchCountSelect').value || 1);
+      const each = k => { const lo = Math.floor(n / k); return lo < 1 ? 'one each' : `${lo}${n % k ? ` or ${lo + 1}` : ''} each`; };
+      const turns = [ticks.length > 1 && choices.length ? `${ticks.length} marks, ${each(ticks.length)}` : '', rots.length > 1 ? `${rots.length} angles, ${each(rots.length)}` : ''].filter(Boolean);
+      const desc = (POSITIONS.find(p => p[0] === t) || POSITIONS[0])[2];
+      const share = turns.length ? `${n} image${n > 1 ? 's' : ''}: ${turns.join(' · ')}, taking turns` : `${desc[0].toUpperCase()}${desc.slice(1)}. Tick several ${choices.length ? 'marks or angles' : 'angles'} and they take turns.`;
+      m.innerHTML = (choices.length ? row('Mark', choices.map(([v, name, url]) => chip('mark', v, `${url ? img(url) : ''}<span>${escapeHtml(name)}</span>`, ticks.includes(v), true, ticks.length === 1 && ticks[0] === v, name)).join('')) : '')
+        + row('Position', POSITIONS.map(([v, name, sub]) => chip('position', v, `<span>${name}</span>`, v === t, false, false, sub)).join(''))
+        + row('Angle', ROTATIONS.map(r => chip('angle', String(r), `${glyph ? img(glyph, r) : ''}<span>${rotLabel(r)}</span>`, rots.includes(r), true, rots.length === 1 && rots[0] === r,
+            r ? `The mark turned ${Math.abs(r)}° ${r === 180 ? '(upside down)' : r > 0 ? 'clockwise' : 'anticlockwise'}` : 'Upright, as designed')).join(''), ' pm-angles')
+        + `<div class="pm-share">${share}</div><div class="tm-sep"></div>`
         + `<div class="tm-item pm-keep" role="menuitemcheckbox" data-list="keep" data-v="keep" aria-checked="${keep}"><span class="pm-box"></span><span>Keep it as designed <span class="tm-sub">same colours and lettering as your file</span></span></div>`;
       m.querySelectorAll('img.pm-thumb').forEach(fitMarkTone);
     }
@@ -388,6 +403,11 @@
         const t = markTicks(), on = t.includes(v) ? t.filter(x => x !== v) : [...t, v];
         if (!on.length) return;                                              // one mark at least
         setv('markSelect', markChoices().map(c => c[0]).filter(x => on.includes(x)).join(','));
+      }
+      else if (list === 'angle') {
+        const r = +v, t = rotTicks(), on = t.includes(r) ? t.filter(x => x !== r) : [...t, r];
+        if (!on.length) return;                                              // one angle at least
+        setv('rotSelect', ROTATIONS.filter(x => on.includes(x)).join(','));
       }
       else setv('targetSelect', v);
       saveSettings();
@@ -844,6 +864,7 @@
     const MADE_BY = {
       mark: p => (p.uploaded ? null : p.mark || 'main'),
       pos: p => (p.uploaded ? null : ['loose', 'scattered'].includes(p.placement && p.placement.kind) ? p.placement.kind : 'exact'),   // Angled's few images read as on target
+      rot: p => (p.uploaded ? null : String(cardRot(p))),                  // how far its mark was turned
       src: p => (p.uploaded ? 'uploaded' : 'generated'),
     };
     // the members of a group key ('all', 'g:<id>', 'look:<tag>', 'world:<name>', 'mark:<id>', 'pos:<kind>', 'src:<kind>'), or null when there is no such group
@@ -877,8 +898,8 @@
       Object.entries(worlds).filter(([, n]) => n >= 6).sort((a, b) => b[1] - a[1]).forEach(([w, n]) => auto.push({ key: `world:${w}`, name: w, n }));
       // Mark, Position and Source: each only when the selection holds two kinds or more (one mark only: nothing to choose between)
       const marks = new Map(markChoices().map(c => [c[0], c]));
-      const names = { mark: v => (marks.get(v) || [v, v === 'main' ? 'Main mark' : v])[1], pos: v => POSITION_NAMES[v], src: v => (v === 'uploaded' ? 'Uploaded' : 'Generated') };
-      const order = { mark: [...marks.keys()], pos: Object.keys(POSITION_NAMES), src: ['generated', 'uploaded'] };
+      const names = { mark: v => (marks.get(v) || [v, v === 'main' ? 'Main mark' : v])[1], pos: v => POSITION_NAMES[v], rot: v => (v === '0' ? 'Upright' : `Turned ${rotLabel(+v)}`), src: v => (v === 'uploaded' ? 'Uploaded' : 'Generated') };
+      const order = { mark: [...marks.keys()], pos: Object.keys(POSITION_NAMES), rot: ['0', ...ROTATIONS.filter(r => r).map(String)], src: ['generated', 'uploaded'] };
       Object.entries(MADE_BY).forEach(([kind, by]) => {
         const n = {};
         shown.forEach(p => { const v = by(p); if (v) n[v] = (n[v] || 0) + 1; });
@@ -889,14 +910,14 @@
     }
     // Curate's group row: All and your own groups as chips (those that do not fit behind "+N more", never the chosen one), then on
     // the right the automatic groups in two menus, Look and Territory (a chosen one shows in its button: "Look: Warm ×")
-    const AUTO_MENUS = [['look', 'Look'], ['terr', 'Territory'], ['mark', 'Mark'], ['pos', 'Position'], ['src', 'Source']];
+    const AUTO_MENUS = [['look', 'Look'], ['terr', 'Territory'], ['mark', 'Mark'], ['pos', 'Position'], ['rot', 'Angle'], ['src', 'Source']];
     const AUTO_TIPS = { look: 'Automatic groups by look', terr: 'Automatic groups, one per territory with 6+ images', mark: 'Automatic groups: the images made with each of your marks',
-      pos: 'Automatic groups: On target, Loose, Scattered', src: 'Automatic groups: the images made here and the ones you added' };
+      pos: 'Automatic groups: On target, Loose, Scattered', rot: 'Automatic groups: how far each image\'s mark was turned', src: 'Automatic groups: the images made here and the ones you added' };
     const LOOK_SWATCH = { warm: '#C8743A', cold: '#4C7BD1', mono: '#8A877C', dark: '#1A1A1A', bright: '#F3EFD9' };
     function autoKinds() {
       const { auto } = groupChips();
       const of = prefix => auto.filter(c => c.key.startsWith(prefix));
-      return { look: of('look:'), terr: of('world:'), mark: of('mark:'), pos: of('pos:'), src: of('src:') };
+      return { look: of('look:'), terr: of('world:'), mark: of('mark:'), pos: of('pos:'), rot: of('rot:'), src: of('src:') };
     }
     function renderGroups() {
       const bar = document.getElementById('groupBar');
@@ -1368,7 +1389,7 @@
       old.forEach(el => el.remove());
     }
     // an image with its own placement (a Loose batch): the logo target draws its box there (the project's otherwise)
-    function placeVars(pl) { return pl ? `--mark-x:${pl.x}%;--mark-y:${pl.y}%;--mark-w:${pl.size}%${pl.ar ? `;--mark-ar:${pl.ar}` : ''}` : ''; }   // (box: also another mark's shape)
+    function placeVars(pl) { return pl ? `--mark-x:${pl.x}%;--mark-y:${pl.y}%;--mark-w:${pl.size}%${pl.ar ? `;--mark-ar:${pl.ar}` : ''}${pl.rot ? `;--mark-rot:${pl.rot}deg` : ''}` : ''; }   // (box: also another mark's shape, and its angle)
     // why this image's mark is not on target: its batch asked for it (Loose / Scattered), and where
     function targetTip(pl) { return `${pl.kind === 'scattered' ? 'Scattered' : 'Loose'}: made with the mark at ${pl.x}% across, ${pl.y}% down, ${pl.size}% wide (on purpose: its batch asked for it)`; }
     function cardHtml(p) {
@@ -1406,7 +1427,7 @@
           <div class="card-meta">
             ${p.uploaded ? '<span class="card-model-badge uploaded" title="One of your own images: it is not checked for the mark">Uploaded</span>' : `<span class="card-model-badge">${escapeHtml(formatModelShort(p.model))}</span>`}
             ${p.as_designed ? '<span class="card-model-badge designed" title="Kept exactly as designed: its colours, lettering and details">As designed</span>' : ''}
-            ${cardMark(p)}
+            ${cardMark(p)}${cardTurn(p)}
             ${p.placement && p.placement.kind !== 'exact' ? `<span class="card-model-badge target" title="${escapeHtml(targetTip(p.placement))}">${p.placement.kind === 'scattered' ? 'Scattered' : 'Loose'}</span>` : ''}
             ${p.trash_reason ? `<span class="card-model-badge warn" title="${escapeHtml(!p.qa_passed && (p.qa_issues || []).length && p.trash_reason === 'Mark check' ? p.qa_issues.join(', ') : p.trash_reason)}">${escapeHtml(p.trash_reason.slice(0, 40))}</span>` : ''}
             ${!p.qa_passed ? (p.trash_reason === 'Mark check' ? '' : `<span class="card-model-badge warn" title="${escapeHtml((p.qa_issues || []).join(', '))}">QA flagged</span>`) : p.qa_doubt ? `<span class="card-model-badge doubt" title="${escapeHtml(p.qa_doubt)}">Check the mark</span>` : ''}
@@ -1419,8 +1440,14 @@
       if (!choices.length || p.uploaded) return '';
       const c = choices.find(x => x[0] === (p.mark || 'main')) || choices[0];
       if (!c[2]) return '';
-      const name = c[0] === 'main' ? (project.mark_name || 'Main mark') : c[1];
-      return `<span class="card-mark" title="Made with ${escapeHtml(name)}"><img src="${escapeHtml(c[2])}" alt="${escapeHtml(name)}" /></span>`;
+      const name = c[0] === 'main' ? (project.mark_name || 'Main mark') : c[1], r = cardRot(p);
+      return `<span class="card-mark" title="Made with ${escapeHtml(name)}${r ? `, turned ${rotLabel(r)}` : ''}"><img src="${escapeHtml(c[2])}" alt="${escapeHtml(name)}"${r ? ` style="transform:rotate(${r}deg)"` : ''} /></span>`;
+    }
+    const cardRot = p => (p.uploaded ? 0 : +((p.placement && p.placement.rot) || 0));
+    // a turned mark says so on its card, with its angle (the user: the curation should show how each image was made)
+    function cardTurn(p) {
+      const r = cardRot(p);
+      return r ? `<span class="card-model-badge turn" title="Made with the mark turned ${Math.abs(r)}° ${r === 180 ? '(upside down)' : r > 0 ? 'clockwise' : 'anticlockwise'}">${r > 0 && r !== 180 ? '↻' : r < 0 ? '↺' : '↻'} ${rotLabel(r)}</span>` : '';
     }
     function promptInfoHtml(p) {
       return `${p.world ? `<b class="po-world">${escapeHtml(p.world)}</b>` : ''}${p.idea ? `<i class="po-idea">${escapeHtml(p.idea)}</i>` : ''}<span class="po-prompt">${escapeHtml(p.prompt || p.title)}</span>${!p.qa_passed && (p.qa_issues || []).length ? `<span class="po-check po-qa">Mark check: ${escapeHtml(p.qa_issues.join('; '))}</span>` : p.qa_doubt ? `<span class="po-check po-doubt">Mark check: ${escapeHtml(p.qa_doubt)}</span>` : ''}`;
@@ -1430,7 +1457,7 @@
     // (in a group, only those that will belong to it: a territory's own; your groups and the looks get images only once they are made)
     function pendingCards() {
       if (!generating || prog.stage !== 'render') return [];
-      const made = { world: prog.worlds, mark: prog.marks, pos: prog.positions, src: prog.slots.map(() => 'generated') }, kind = currentGroup.slice(0, currentGroup.indexOf(':'));
+      const made = { world: prog.worlds, mark: prog.marks, pos: prog.positions, rot: prog.rots || [], src: prog.slots.map(() => 'generated') }, kind = currentGroup.slice(0, currentGroup.indexOf(':'));
       const belongs = i => currentGroup === 'all' || (kind in made && (made[kind] || [])[i] === currentGroup.slice(kind.length + 1));
       return prog.slots.map((st, i) => ((st === 'wait' || st === 'run') && belongs(i)
         ? `<div class="card pending-card" aria-hidden="true"><div class="card-thumb"><div class="pending-ring"></div><span class="pending-label">${st === 'run' ? 'Rendering' : 'Queued'}</span><div class="pending-bar ${st}"><i></i></div></div><div class="card-title">${escapeHtml(prog.titles[i] || '')}</div><div class="card-meta"><span class="card-model-badge">generating…</span></div></div>`
@@ -2226,7 +2253,7 @@
     // Not in it: permanent deletes and generation (they say so when you start them), the mode and the views.
     const history = [], future = [];
     let applyingHistory = false;
-    const NOT_UNDONE = ['targetSelect', 'markSelect', 'keepCheck', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
+    const NOT_UNDONE = ['targetSelect', 'markSelect', 'rotSelect', 'keepCheck', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
     function pushStep(step) { if (!step.settings) commitSettings(); history.push(step); if (history.length > 100) history.shift(); future.length = 0; showUndo(); return step; }
     function showUndo() {
       const b = document.getElementById('undoRandomBtn');
@@ -2958,14 +2985,14 @@
         set: v => { setv('repeatSelect', String(v)); updateTempo(); },
         parse: t => { const n = parseInt(t.replace(/[×x\s]/g, ''), 10); return Number.isFinite(n) ? n : null; },
       },
-      countField: {                                                           // how many images a batch makes: any number, 1 to 20
+      countField: {                                                           // how many images a batch makes: any number, 1 to 40 (20 until 2026-10-31: with marks and angles taking turns, a batch needs room)
         label: 'Images',
-        get: () => Math.min(20, Math.max(1, parseInt(document.getElementById('batchCountSelect').value, 10) || 4)),
+        get: () => Math.min(40, Math.max(1, parseInt(document.getElementById('batchCountSelect').value, 10) || 4)),
         drag: (v0, dy, fine) => v0 - dy / (fine ? 24 : 12),
         step: (v, d, big) => v + d * (big ? 4 : 1),
         text: v => String(Math.round(v)),
         parse: t => { const n = parseInt(String(t).replace(/[×x\s]/g, ''), 10); return Number.isFinite(n) ? n : null; },
-        set: v => { setv('batchCountSelect', String(Math.min(20, Math.max(1, Math.round(v))))); showCount(); },
+        set: v => { setv('batchCountSelect', String(Math.min(40, Math.max(1, Math.round(v))))); showCount(); },
         commit: () => { saveSettings(); renderTerrMenu(); },              // a generation setting: no undo step (as the territory)
       },
       multField: {
@@ -3293,7 +3320,7 @@
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'keepCheck'];
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'rotSelect', 'keepCheck'];
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
     // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved
@@ -3828,7 +3855,7 @@
       prog.slots = ideas.map(() => 'wait');
       prog.titles = ideas.map(i => i.title);
       prog.worlds = ideas.map(i => i.world || prog.world);
-      prog.marks = ideas.map(i => i.mark || 'main'); prog.positions = ideas.map(i => (i.placement && i.placement.kind) || 'exact');
+      prog.marks = ideas.map(i => i.mark || 'main'); prog.positions = ideas.map(i => (i.placement && i.placement.kind) || 'exact'); prog.rots = ideas.map(i => String((i.placement && i.placement.rot) || 0));
       prog.why = ideas.map(() => '');
       prog.note = `${formatModelShort(model)} · 3 at a time`;
       const keep = () => savePending([...failedItems, ...left.values()], model);
@@ -3930,7 +3957,7 @@
       const items = p.items.filter(it => !made.has(it.title));
       if (!items.length) { savePending([], p.model); return; }
       document.getElementById('statusText').dataset.idle = '';
-      prog.stage = 'render'; prog.world = items[0].world || 'Unfinished batch'; prog.slots = items.map(() => 'wait'); prog.titles = items.map(i => i.title); prog.worlds = items.map(i => i.world || prog.world); prog.marks = items.map(i => i.mark || 'main'); prog.positions = items.map(i => (i.placement && i.placement.kind) || 'exact'); prog.why = items.map(() => '');
+      prog.stage = 'render'; prog.world = items[0].world || 'Unfinished batch'; prog.slots = items.map(() => 'wait'); prog.titles = items.map(i => i.title); prog.worlds = items.map(i => i.world || prog.world); prog.marks = items.map(i => i.mark || 'main'); prog.positions = items.map(i => (i.placement && i.placement.kind) || 'exact'); prog.rots = items.map(i => String((i.placement && i.placement.rot) || 0)); prog.why = items.map(() => '');
       prog.total = items.length; prog.summary = `${items.length} image${items.length === 1 ? '' : 's'} of the last batch ${items.length === 1 ? 'wasn\'t' : 'weren\'t'} made`;
       batchActions([
         { label: 'Resume', run: () => retryBatch(items, p.model) },
@@ -3962,7 +3989,7 @@
         const invRes = await fetch('/api/invent-prompts', {
           method: 'POST',
           headers: forProject({'Content-Type': 'application/json'}),
-          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main', keep: document.getElementById('keepCheck').checked })
+          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main', rot: rotTicks().join(','), keep: document.getElementById('keepCheck').checked })
         });
         const invData = await invRes.json();
         if (invData.needs_kimi_key) {

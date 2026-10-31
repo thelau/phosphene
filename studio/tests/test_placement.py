@@ -100,3 +100,70 @@ def test_the_logo_check_measures_a_loose_image_where_its_mark_was_placed(srv, tm
     img = placement.guide(demo(srv), pl)["files"]["dark"]
     assert srv.check_new_image(img, pl)["qa_passed"], "where it was placed"
     assert not srv.check_new_image(img)["qa_passed"], "not at the centre: the check knows the difference"
+
+
+# ---- the mark turned (2026-10-31): flat in the frame, the angles ticked in the Mark menu taking turns ----
+
+def ell(srv, tmp_path, monkeypatch):
+    """A project whose mark is an L (wide, lopsided: any turn shows), as the open one."""
+    from PIL import ImageDraw
+    f = tmp_path / "ell.png"
+    im = Image.new("RGBA", (400, 300), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rectangle((0, 0, 90, 299), fill=(20, 20, 20, 255))
+    d.rectangle((0, 210, 399, 299), fill=(20, 20, 20, 255))
+    im.save(f)
+    p = {**demo(srv), "mark_file": f, "qa": None, "mark_size": 24.0, "mark_x": 50.0, "mark_y": 50.0, "marks": []}
+    p.pop("demo", None)
+    monkeypatch.setattr(srv, "PROJECT", p)
+    monkeypatch.setattr(placement, "GUIDE_DIR", tmp_path / "guides")
+    return p
+
+
+def test_an_angle_is_one_of_the_menus_and_kept_with_the_image(srv):
+    assert [projects.clean_rot(v) for v in (45, "90", -135, 180, -180, 540, 30, "x", None)] == [45, 90, -135, 180, 180, 180, 0, 0, 0]
+    assert placement.choose("exact", demo(srv), rot=90) == {"kind": "exact", "x": 50.0, "y": 50.0, "size": demo(srv)["mark_size"], "rot": 90}, "on target, turned: kept"
+    assert placement.clean({"kind": "exact", "x": 50, "y": 50, "size": 50, "rot": -45}) == {"kind": "exact", "x": 50.0, "y": 50.0, "size": 50.0, "rot": -45}, "the project's own size, up to 60%"
+    assert placement.clean({"kind": "exact", "x": 50, "y": 50, "size": 18, "rot": 0}) is None, "upright on target: nothing to keep, as before"
+    assert placement.clean({"kind": "loose", "x": 30, "y": 40, "size": 20, "rot": 33}) == {"kind": "loose", "x": 30.0, "y": 40.0, "size": 20.0}, "an angle not offered: upright"
+
+
+def test_a_turned_mark_is_its_file_turned_and_keeps_its_own_size(srv, tmp_path, monkeypatch):
+    p = ell(srv, tmp_path, monkeypatch)
+    t = projects.rotated(p, 90)
+    a = projects.mark_alpha(Image.open(t["mark_file"]))
+    assert a.height > a.width, "the wide L stands tall"
+    assert abs(t["mark_size"] - 24 * 300 / 400) < 0.3, "its box is as wide as the mark was tall: the mark keeps its size"
+    assert projects.rotated(p, 0) is p and projects.rotated(p, 90)["mark_file"] == t["mark_file"], "upright: as it was; turned once, kept"
+    g = Image.open(placement.guide(p, placement.choose("exact", p, rot=90))["files"]["dark"]).convert("L")
+    left, top, right, bottom = g.point(lambda v: 255 if v > 128 else 0).getbbox()
+    assert bottom - top > right - left, "the guide Krea draws from shows it turned"
+    assert abs((left + right) / 2 - 540) < 8 and abs((top + bottom) / 2 - 960) < 8, "at its place"
+
+
+def test_the_logo_check_measures_a_turned_mark_turned(srv, tmp_path, monkeypatch):
+    """The turned guide as the image: it passes cleanly measured turned; measured upright it is doubted (the check trashes only the
+    clearly wrong: a quarter turn of an L still overlaps it) or, at 45°, trashed."""
+    p = ell(srv, tmp_path, monkeypatch)
+    for rot in (90, 45):
+        pl = placement.choose("exact", p, rot=rot)
+        img = placement.guide(p, pl)["files"]["dark"]
+        turned, upright = srv.check_new_image(img, pl), srv.check_new_image(img)
+        assert turned["qa_passed"] and not turned["qa_doubt"], rot
+        assert not upright["qa_passed"] or upright["qa_doubt"], f"{rot}: upright, the check knows the difference"
+    assert srv._plate_key(img, pl) != srv._plate_key(img, {**pl, "rot": -90}), "each angle measured on its own"
+
+
+def test_the_prompt_says_the_mark_is_turned_and_only_then(srv, tmp_path, monkeypatch):
+    p = ell(srv, tmp_path, monkeypatch)
+    turned = srv.build_full_prompt("a wall", placement.as_project(p, placement.choose("exact", p, rot=-45)))
+    assert "TURNED 45° anticlockwise" in turned and "never seen in perspective" in turned
+    assert "TURNED" not in srv.build_full_prompt("a wall", p)
+    assert "upside down" in srv.build_full_prompt("a wall", placement.as_project(p, placement.choose("exact", p, rot=180)), keep=True)
+
+
+def test_ticked_angles_take_turns_evenly(srv):
+    assert srv.rot_set("0,90,-45,33,x") == [0, 90, -45] and srv.rot_set(None) == [0] and srv.rot_set([180, -180]) == [180]
+    deck = srv.RotDeck("0,45,90,135")
+    got = deck.peek(20)
+    assert sorted(got.count(r) for r in (0, 45, 90, 135)) == [5, 5, 5, 5]

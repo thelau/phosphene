@@ -30,50 +30,59 @@ def _ratio(project: dict) -> float:
     return a.height / a.width
 
 
-def choose(kind: str, project: dict, rng: random.Random | None = None) -> dict | None:
+def choose(kind: str, project: dict, rng: random.Random | None = None, rot=0) -> dict | None:
     """A placement for one image: None on target; for Loose or Scattered, a place and size inside its level's reach (its box clear of
-    the frame's edges)."""
+    the frame's edges). rot: the mark turned that many degrees clockwise (on target too: the project's place and size, turned)."""
+    rot = projects.clean_rot(rot)
     level = LEVELS.get(kind)
     if not level:
-        return None
+        return {"kind": "exact", "x": project["mark_x"], "y": project["mark_y"], "size": project["mark_size"], "rot": rot} if rot else None
     rng = rng or random.Random()
+    turned = projects.rotated(project, rot)                                     # a turned mark's box is wider or taller
+    grow, ratio = turned["mark_size"] / project["mark_size"], _ratio(turned)
     hx, hy = project["mark_x"], project["mark_y"]
     near, far = level["away"]
     for _ in range(400):                                                        # drawn until it falls in its band (a few tries)
         size = min(SIZE_PCT[1], max(SIZE_PCT[0], project["mark_size"] * rng.uniform(*rng.choice(level["size"]))))
-        hw, hh = size / 2, size * _ratio(project) * projects.FRAME_W / projects.FRAME_H / 2   # half its box, in % of the width / height
+        hw, hh = size * grow / 2, size * grow * ratio * projects.FRAME_W / projects.FRAME_H / 2   # half its box, in % of the width / height
         reach = far if far is not None else 100.0
         x = rng.uniform(max(hw + MARGIN, hx - reach), min(100 - hw - MARGIN, hx + reach))
         y = rng.uniform(max(hh + MARGIN, hy - reach), min(100 - hh - MARGIN, hy + reach))
         if near <= max(abs(x - hx), abs(y - hy)) <= reach:
             break
-    return {"kind": kind, "x": round(x, 1), "y": round(y, 1), "size": round(size, 1)}
+    return {"kind": kind, "x": round(x, 1), "y": round(y, 1), "size": round(size, 1), **({"rot": rot} if rot else {})}
 
 
 def clean(pl) -> dict | None:
-    """A placement from the page or a received project, checked: numbers inside the frame, or None."""
-    if not isinstance(pl, dict) or pl.get("kind") not in KINDS or pl["kind"] == "exact":
+    """A placement from the page or a received project, checked: numbers inside the frame, or None. On target it is kept only for a
+    turned mark (its angle, `rot`, degrees clockwise)."""
+    if not isinstance(pl, dict) or pl.get("kind") not in KINDS:
+        return None
+    rot = projects.clean_rot(pl.get("rot"))
+    if pl["kind"] == "exact" and not rot:
         return None
     try:
         x, y, size = (float(pl[k]) for k in ("x", "y", "size"))
     except (KeyError, TypeError, ValueError):
         return None
-    if not (0 < x < 100 and 0 < y < 100 and SIZE_PCT[0] <= size <= SIZE_PCT[1]):
+    lo, hi = (4.0, 60.0) if pl["kind"] == "exact" else SIZE_PCT              # on target: the project's own size, which may be up to 60%
+    if not (0 < x < 100 and 0 < y < 100 and lo <= size <= hi):
         return None
-    return {"kind": pl["kind"], "x": round(x, 1), "y": round(y, 1), "size": round(size, 1)}
+    return {"kind": pl["kind"], "x": round(x, 1), "y": round(y, 1), "size": round(size, 1), **({"rot": rot} if rot else {})}
 
 
 def as_project(project: dict, pl: dict | None) -> dict:
     """The project as this image sees it: its mark at the placement's size and place (the project itself on target)."""
     if not pl:
         return project
-    return {**project, "mark_size": pl["size"], "mark_x": pl["x"], "mark_y": pl["y"]}
+    seen = {**project, "mark_size": pl["size"], "mark_x": pl["x"], "mark_y": pl["y"]}
+    return projects.rotated(seen, pl["rot"]) if pl.get("rot") else seen         # turned: the mark's file turned, its box's width
 
 
 def guide(project: dict, pl: dict, keep: bool = False) -> dict:
     """This placement's guide images (dark and light), drawn once into a temporary folder; the `guide` the Krea client uploads.
     keep (Keep it as designed): the mark's own artwork, its colours and details, instead of its silhouette."""
-    key = hashlib.sha1(f"{project['mark_file']}:{Path(project['mark_file']).stat().st_mtime}:{pl['x']}:{pl['y']}:{pl['size']}:{keep}".encode()).hexdigest()[:16]
+    key = hashlib.sha1(f"{project['mark_file']}:{Path(project['mark_file']).stat().st_mtime}:{pl['x']}:{pl['y']}:{pl['size']}:{pl.get('rot', 0)}:{keep}".encode()).hexdigest()[:16]
     files = {kind: GUIDE_DIR / f"{key}-{kind}.png" for kind in ("dark", "light")}
     if not all(f.exists() for f in files.values()):
         GUIDE_DIR.mkdir(parents=True, exist_ok=True)

@@ -162,7 +162,8 @@ def current_mark(pl: dict | None = None, mark_id: str | None = None):
     An image made with another of the project's marks: that mark, at its size (or its placement's)."""
     proj = projects.with_mark(PROJECT, mark_id) if mark_id else PROJECT
     if pl:
-        return mark_spec(proj["mark_file"], pl["size"], pl["x"], pl["y"])
+        seen = placement.as_project(proj, pl)          # a turned mark: its turned file, at its box's width
+        return mark_spec(seen["mark_file"], seen["mark_size"], pl["x"], pl["y"])
     if proj is not PROJECT:                        # another mark; Demo's orbital one keeps its tuned check wherever it sits
         return DEMO_MARK if proj.get("qa") == "demo-tuned" else mark_spec(proj["mark_file"], proj["mark_size"], proj["mark_x"], proj["mark_y"])
     return DEMO_MARK if is_demo() else mark_spec(PROJECT["mark_file"], PROJECT["mark_size"], PROJECT["mark_x"], PROJECT["mark_y"])
@@ -208,7 +209,7 @@ def _plate_key(path: Path, pl: dict | None = None, mark_id: str | None = None) -
     proj = projects.with_mark(PROJECT, mark_id) if mark_id else PROJECT
     mark = f":mark:{proj['mark_id']}" if proj is not PROJECT else ""   # another of its marks: measured against that one
     if pl:                                         # its own placement: measured there
-        return f"{path.name}:{path.stat().st_size}:{qa_engine.OWN_CHECK_VERSION}:at:{pl['size']:g}:{pl['x']:g}:{pl['y']:g}{mark}"
+        return f"{path.name}:{path.stat().st_size}:{qa_engine.OWN_CHECK_VERSION}:at:{pl['size']:g}:{pl['x']:g}:{pl['y']:g}{mark}" + (f":rot:{pl['rot']}" if pl.get("rot") else "")
     if mark and proj.get("qa") == "demo-tuned":   # Demo's orbital mark, not its default: its own check, which has no version
         return f"{path.name}:{path.stat().st_size}{mark}"
     if mark:
@@ -290,12 +291,23 @@ def pick_mark(choice) -> str | None:
     return random.choice(mark_set(choice))
 
 
-class MarkDeck:
-    """The ticked marks taking turns through a batch: rounds of every mark once, each round shuffled, so 20 images over 4 marks are 5
+def rot_set(choice) -> list:
+    """The angles a batch turns its mark by, as ticked in the Mark menu ("0,45,-90", or a list), degrees clockwise. Nothing: upright."""
+    out = []
+    for c in choice if isinstance(choice, list) else str(choice if choice is not None else "").split(","):
+        if str(c).strip() in ("0", "0.0") or projects.clean_rot(c):
+            r = projects.clean_rot(c)
+            if r not in out:
+                out.append(r)
+    return out or [0]
+
+
+class Turns:
+    """What was ticked taking turns through a batch: rounds of every choice once, each round shuffled, so 20 images over 4 marks are 5
     each (Mix drew them at random, the main one half the time: a batch of 20 once had none of its fourth mark, 2026-10-31). A chunk
-    peeks at what comes next and takes only the marks of the scenes it kept (the spares Kimi writes would skew the turns)."""
-    def __init__(self, choice):
-        self.marks, self.queue = mark_set(choice), []
+    peeks at what comes next and takes only the choices of the scenes it kept (the spares Kimi writes would skew the turns)."""
+    def __init__(self, items: list):
+        self.marks, self.queue = list(items), []
 
     def peek(self, n: int) -> list:
         while len(self.queue) < n:
@@ -307,6 +319,16 @@ class MarkDeck:
     def take(self, m) -> None:
         if m in self.queue:
             self.queue.remove(m)
+
+
+def MarkDeck(choice) -> Turns:
+    """The ticked marks, taking turns (the main one: None)."""
+    return Turns(mark_set(choice))
+
+
+def RotDeck(choice) -> Turns:
+    """The ticked angles, taking turns."""
+    return Turns(rot_set(choice))
 
 
 def world_examples(w: dict, n: int = 2) -> list[str]:
@@ -326,8 +348,17 @@ def world_examples(w: dict, n: int = 2) -> list[str]:
     return out
 
 
+def rot_words(rot) -> str:
+    """An angle as the prompts say it: "45° clockwise", "90° anticlockwise", "upside down"."""
+    r = projects.clean_rot(rot)
+    return "upside down (180°)" if r == 180 else f"{abs(r)}° {'clockwise' if r > 0 else 'anticlockwise'}"
+
+
 def build_full_prompt(raw_prompt: str, project: dict | None = None, keep: bool = False) -> str:
     m = mark_words(project)
+    rot = (project or {}).get("mark_rot")
+    turned = (f" The {m['noun']} is TURNED {rot_words(rot)} in the frame, exactly as the reference guide image shows it: the whole mark rotated "
+              f"flat, keeping its exact shape and proportions, never seen in perspective, never redrawn upright.") if rot else ""
     if keep:                                          # Keep it as designed: the mark as its artwork is, only placed in the scene
         cols = projects.mark_colours(Image.open((project or PROJECT)["mark_file"]))
         lead = "" if m["centred"] else (
@@ -339,7 +370,7 @@ def build_full_prompt(raw_prompt: str, project: dict | None = None, keep: bool =
             f"reference guide image shows it: its exact shape, every inner detail and every letter of its lettering, and its exact colours"
             f"{(' (' + ', '.join(cols) + ')') if cols else ''}, never recoloured, simplified or restyled. It sits naturally in the scene as a real "
             f"applied element (printed, painted, a label, a sticker, a sign, an enamel badge or an emblem) taking the scene's light and perspective, "
-            f"but its design and colours stay exactly as the reference shows. No extra outer rings, no second mark."
+            f"but its design and colours stay exactly as the reference shows. No extra outer rings, no second mark.{turned}"
         )
     # a mark away from the centre: said first and in words (image models pull a lone subject to the middle; a spot given in numbers
     # at the end of the prompt was ignored), so the scene is composed around it
@@ -350,7 +381,7 @@ def build_full_prompt(raw_prompt: str, project: dict | None = None, keep: bool =
         f"{lead}{raw_prompt}. 9:16 vertical frame. "
         f"At the {m['where']} of the 9:16 frame at ~{m['size']}% frame width "
         f"(matching the exact {m['shape']} SHAPE and position of the reference guide image) is the SINGLE {m['noun']}, "
-        f"physically integrated into the scene's exact perspective, lighting, and medium (whether 3D extruded sculpture, CAD wireframe, isometric object, nature formation, UI, or apparel — never a flat 2D sticker pasted over an unrelated angle, and no extra outer rings)."
+        f"physically integrated into the scene's exact perspective, lighting, and medium (whether 3D extruded sculpture, CAD wireframe, isometric object, nature formation, UI, or apparel — never a flat 2D sticker pasted over an unrelated angle, and no extra outer rings).{turned}"
     )
 
 
@@ -643,7 +674,7 @@ def match_world(st: dict, api_key: str, kimi_model: str, direction: str) -> dict
 BIG_MARK = 30   # % of the width from which Kimi is told the mark is large and needs a subject that big (DEMO, 18%, keeps its words)
 
 
-def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list, target: str = "exact", mark=None, keep: bool = False) -> tuple[list, dict]:
+def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list, target: str = "exact", mark=None, keep: bool = False, rot=None) -> tuple[list, dict]:
     """One Kimi request for up to `count` scenes in territory `w`; `batch` = scenes already collected for this batch (never repeated)."""
     titles = st.get("titles", {})
     prompts = st.get("prompts", {})
@@ -652,10 +683,13 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
 
     n_ask = count + 2  # a little spare: some scenes come back as near-copies of past images and are dropped
     shots = diversity.sample_shots(n_ask, st.get("recent_axes"))
-    deck = mark if isinstance(mark, MarkDeck) else MarkDeck(mark)
+    deck = mark if isinstance(mark, Turns) else MarkDeck(mark)
     mids = deck.peek(n_ask)                                              # which of the project's marks each shot uses (the main one: None), in turns
+    turns = rot if isinstance(rot, Turns) else RotDeck(rot)
+    rots = turns.peek(n_ask)                                             # and how far each turns its mark, in turns too
     projs = [projects.with_mark(PROJECT, m) for m in mids]
-    places = [placement.choose(target, pj) for pj in projs]             # Loose: each shot's own place and size, known before it is written
+    places = [placement.choose(target, pj, rot=r) for pj, r in zip(projs, rots)]   # Loose: each shot's own place and size, known before it is written
+    moved = [pl if pl and pl["kind"] != "exact" else None for pl in places]       # on target, only turned: its place is the project's
     seen_subjects = st.get("recent_subjects", {}).get(w["name"], [])[-60:]
     avoid_block = ""
     if direction:
@@ -676,18 +710,24 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
             + (f"Subjects already used here recently (never repeat these or close variants): {'; '.join(seen_subjects)}.\n" if seen_subjects else "")
             + "Reach for subjects a design studio would actually photograph, not the first obvious thing for the territory.\n\n"
         )
-    if any(places):                                                     # Loose: where each shot's mark goes, so the scene is built around it
-        shot_lines = "\n".join(f"{line} | the mark: {mark_words(placement.as_project(pj, pl))['at']}, ~{pl['size']:g}% frame width"
-                               for line, pl, pj in zip(shot_lines.split("\n"), places, projs))
+    if any(moved):                                                      # Loose: where each shot's mark goes, so the scene is built around it
+        shot_lines = "\n".join(f"{line} | the mark: {mark_words(placement.as_project(pj, pl))['at']}, ~{pl['size']:g}% frame width" if pl else line
+                               for line, pl, pj in zip(shot_lines.split("\n"), moved, projs))
+    if any(rots):                                                       # turned: each shot says how far, so the scene can carry a tilted mark
+        shot_lines = "\n".join(f"{line} | the mark turned {rot_words(r)}" if r else f"{line} | the mark upright"
+                                for line, r in zip(shot_lines.split("\n"), rots))
     if any(mids):                                                       # several marks: each shot says which one, and its shape
         shot_lines = "\n".join(f"{line} | which mark: the {pj['mark_noun']} ({pj['mark_shape']})" for line, pj in zip(shot_lines.split("\n"), projs))
     liked = "\n".join(f"- {t}: {p[:200]}" for t, p in brief["liked"]) or "(none yet)"
     disliked = ", ".join(brief["disliked"]) or "(none yet)"
     mw = mark_words()
-    big = max([(pl or {}).get("size") or pj["mark_size"] for pl, pj in zip(places, projs)] or [PROJECT["mark_size"]]) >= BIG_MARK
+    big = max([(pl or {}).get("size") or pj["mark_size"] for pl, pj in zip(moved, projs)] or [PROJECT["mark_size"]]) >= BIG_MARK
     one = "one large" if big else "one small"                           # Halo's 50% ring was "one small", and Kimi chose urchins, tampers and zip pulls it had to shrink onto
     where = (f"{one} {mw['noun']} sits in every shot, each shot at its own place and size (given per shot below; often NOT at the centre: compose the scene around where it is)"
-             if any(places) else f"{one} {mw['noun']} sits at the {mw['at']} at {mw['size']}% frame width")
+             if any(moved) else f"{one} {mw['noun']} sits at the {mw['at']} at {mw['size']}% frame width")
+    if any(rots):
+        where += ("; in some shots it is TURNED in the frame by the angle given per shot (as if the whole mark were rotated flat, never seen in perspective), "
+                  "so pick subjects and surfaces where a tilted mark looks natural")
     if big:
         where += ("; the mark is big, so every subject must carry it at that size: a surface or object at least that wide in the frame "
                   "(a wall, a panel, a sheet, a screen, a sign, a floor, a body), never a small object (a button, a coin, a zip pull, a matchbox, a shell) it would have to shrink onto")
@@ -729,7 +769,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     for i, idea in enumerate(ideas):
         if isinstance(idea, dict):
             idea["_mark"] = mids[i] if i < len(mids) else random.choice(deck.marks)
-            idea["_place"] = places[i] if i < len(places) else placement.choose(target, projects.with_mark(PROJECT, idea["_mark"]))   # the shot it was written for
+            idea["_place"] = places[i] if i < len(places) else placement.choose(target, projects.with_mark(PROJECT, idea["_mark"]), rot=random.choice(turns.marks))   # the shot it was written for
 
     past = list(prompts.values()) + [b["prompt"] for b in batch]
     kept, dropped = [], []
@@ -751,6 +791,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     kept = kept[:count]
     for i in kept:
         deck.take(i.get("_mark"))
+        turns.take((i.get("_place") or {}).get("rot", 0))
     info = {"asked_kimi": n_ask, "from_kimi": len(ideas), "dropped_duplicates": len(dropped), "topped_up": max(0, len(kept) - fresh)}
 
     flat = [{"title": i.get("title", "Untitled"), "guide": i.get("guide", "dark"), "prompt": i["prompt"], "idea": i.get("idea", ""), "world": w["name"], "subject": str(i.get("subject", "")).strip(), "placement": i.get("_place"), "mark": i.get("_mark")} for i in kept]
@@ -770,14 +811,14 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
 
 
 def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, world: str | None = None, direction: str = "", stats: dict | None = None,
-                         target: str = "exact", mark: str | None = None, keep: bool = False) -> list[dict]:
+                         target: str = "exact", mark: str | None = None, keep: bool = False, rot=None) -> list[dict]:
     """
     One authored territory per batch (shots cohere), idea-first, steered by taste, near-duplicates dropped.
     Returns exactly `count` scenes whenever Kimi can supply them: large batches are asked in chunks of up to 10,
     and a short answer is followed up with a request for just the missing ones.
     """
     if world == "__sampler__":
-        return ask_kimi_sampler(st, api_key, kimi_model, count, direction, stats, target, mark, keep)
+        return ask_kimi_sampler(st, api_key, kimi_model, count, direction, stats, target, mark, keep, rot)
     w = chapters.choose_world(st, world or "")
     if direction and not world:
         w = match_world(st, api_key, kimi_model, direction) or invent_world(st, api_key, kimi_model, direction)
@@ -788,13 +829,13 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
 
     out: list = []
     totals = {"asked_kimi": 0, "from_kimi": 0, "dropped_duplicates": 0, "topped_up": 0, "kimi_calls": 0}
-    mark = MarkDeck(mark)                                 # one set of turns for the whole batch, across its chunks
-    for _ in range(4):                                    # chunks plus at most a couple of follow-ups
+    mark, rot = MarkDeck(mark), RotDeck(rot)              # one set of turns for the whole batch, across its chunks
+    for _ in range(-(-count // 10) + 2):                 # chunks of 10 (a batch of 40 is four), plus at most a couple of follow-ups
         need = count - len(out)
         if need <= 0:
             break
         try:
-            got, info = _ask_chunk(st, api_key, kimi_model, w, min(need, 10), direction, out, target, mark, keep)
+            got, info = _ask_chunk(st, api_key, kimi_model, w, min(need, 10), direction, out, target, mark, keep, rot)
         except Exception:
             if not out:
                 raise                                      # nothing at all: let the caller report it
@@ -813,7 +854,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     return out[:count]
 
 
-def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direction: str = "", stats: dict | None = None, target: str = "exact", mark=None, keep: bool = False) -> list[dict]:
+def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direction: str = "", stats: dict | None = None, target: str = "exact", mark=None, keep: bool = False, rot=None) -> list[dict]:
     """The Sampler: one scene from each of `count` territories, the ones tried least first (to explore at large). Each territory's
     scene is written by its own Kimi request, 6 at a time, each on a copy of the state; their memory (subjects, territories, axes
     used) is merged back into `st` after, so later batches still avoid repeating them."""
@@ -821,18 +862,19 @@ def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direct
     made = chapters.world_stats(st)
     worlds = sorted(chapters.all_worlds(st), key=lambda w: (made.get(w["name"], {}).get("n", 0), random.random()))[:max(1, count)]
     marks = MarkDeck(mark).peek(len(worlds))              # each territory's scene its turn of the ticked marks, dealt before they run at once
+    rots = RotDeck(rot).peek(len(worlds))                 # and of the ticked angles
 
     def one(job):
-        w, m = job
+        w, m, r = job
         mine = json.loads(json.dumps(st))
         try:
-            got, info = _ask_chunk(mine, api_key, kimi_model, w, 1, direction, [], target, m or "main", keep)
+            got, info = _ask_chunk(mine, api_key, kimi_model, w, 1, direction, [], target, m or "main", keep, str(r))
             return w, mine, got[:1], info
         except Exception as e:
             print(f"[KIMI] sampler: {w['name']} failed ({str(e)[:120]})", flush=True)
             return w, None, [], {}
     with ThreadPoolExecutor(max_workers=6) as pool:
-        done = list(pool.map(one, zip(worlds, marks)))
+        done = list(pool.map(one, zip(worlds, marks, rots)))
     out, totals, errors = [], {"asked_kimi": 0, "from_kimi": 0, "dropped_duplicates": 0, "topped_up": 0, "kimi_calls": 0}, 0
     for w, mine, got, info in done:
         if mine is None:
@@ -876,7 +918,7 @@ def plate_marks(st: dict, names: list) -> dict:
         src = mark_ids[mk] if mk else PROJECT
         own = pl if pl and pl.get("kind") in ("loose", "scattered") else None   # Angled's few, kind "exact": on target
         out[n] = {"x": float((own or {}).get("x", src["mark_x"])), "y": float((own or {}).get("y", src["mark_y"])),
-                  "size": float((own or {}).get("size", src["mark_size"])), "id": mk}
+                  "size": float((own or {}).get("size", src["mark_size"])), "id": mk, "rot": projects.clean_rot((pl or {}).get("rot"))}
     return out
 
 
@@ -1460,7 +1502,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "uploaded": up,
                     "box": ({"x": (pl or {}).get("x", (mark_ids[mk] if mk else PROJECT)["mark_x"]), "y": (pl or {}).get("y", (mark_ids[mk] if mk else PROJECT)["mark_y"]),
                              "size": (pl or {}).get("size", mark_ids[mk]["mark_size"] if mk else PROJECT["mark_size"]),
-                             "ar": projects.mark_ratio(projects.with_mark(PROJECT, mk))} if pl or mk else None),   # where its logo target is drawn
+                             "ar": projects.mark_ratio(projects.with_mark(PROJECT, mk)), "rot": projects.clean_rot((pl or {}).get("rot"))} if pl or mk else None),   # where its logo target is drawn (turned with its mark)
                 })
 
             kimi_key = st.get("kimi_api_key", "")
@@ -1949,6 +1991,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     target=body.get("target") or "exact",
                     mark=body.get("mark") or None,
                     keep=bool(body.get("keep")),
+                    rot=body.get("rot"),
                 )
                 with STATE_LOCK:                               # Kimi took seconds: what changed meanwhile stays; only its titles are added,
                     if PROJECT and PROJECT["slug"] == started_in:   # and never into another project opened meanwhile

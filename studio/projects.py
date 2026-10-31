@@ -249,6 +249,46 @@ def _opaque_alpha(img: Image.Image) -> Image.Image:
     return d.point(lambda v: 255 if v > 40 else int(v * 255 / 40))
 
 
+ROTATIONS = (0, 45, 90, 135, 180, -45, -90, -135)   # the angles the Mark menu offers, degrees clockwise
+
+
+def clean_rot(v) -> int:
+    """An angle in degrees clockwise, as one of ROTATIONS (180 for -180), or 0 for anything else."""
+    try:
+        r = int(round(float(v)))
+    except (TypeError, ValueError):
+        return 0
+    r = ((r + 180) % 360) - 180 or 0
+    r = 180 if r == -180 else r
+    return r if r in ROTATIONS else 0
+
+
+def rotated(p: dict, rot) -> dict:
+    """The project as an image with its mark turned `rot` degrees clockwise sees it: the mark's file turned (cut out of its background
+    first, so the corners a turn opens are empty), and its size the width of the turned mark's box, so the mark itself keeps its size.
+    Everything downstream reads the file as any mark: the guide, the artwork, the logo check. Kept in a temporary folder."""
+    import hashlib
+    import tempfile
+    rot = clean_rot(rot)
+    if not rot:
+        return p
+    src = Path(p["mark_file"])
+    key = hashlib.sha1(f"{src}:{src.stat().st_mtime}:{rot}".encode()).hexdigest()[:16]
+    out = Path(tempfile.gettempdir()) / "phosphene-rotated" / f"{key}.png"
+    if not out.exists():
+        img = Image.open(src).convert("RGBA")
+        if img.split()[3].getextrema()[0] > 250:      # opaque: its background taken out as mark_alpha does
+            img.putalpha(_opaque_alpha(img))
+        box = img.split()[3].getbbox()
+        img = (img.crop(box) if box else img).rotate(-rot, resample=Image.Resampling.BICUBIC, expand=True)   # PIL turns anticlockwise
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(f".{time.time_ns()}.tmp")
+        img.save(tmp, "PNG")
+        tmp.replace(out)
+    grow = mark_alpha(Image.open(out)).width / mark_alpha(Image.open(src)).width
+    return {**p, "mark_file": out, "mark_size": round(p["mark_size"] * grow, 2), "mark_rot": rot}
+
+
 def make_guides(p: dict) -> None:
     """The two guide images Krea draws from: the mark in cream on near-black (dark) and in ink on cream (light), at its size and place."""
     a = mark_alpha(Image.open(p["mark_file"]))

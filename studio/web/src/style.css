@@ -110,16 +110,26 @@
     .pm-mix { position: relative; width: 22px; height: 22px; flex: none; }
     .pm-mix .pm-thumb { position: absolute; width: 16px; height: 16px; }
     .pm-mix .pm-thumb + .pm-thumb { right: 0; bottom: 0; }
-    .place-menu { left: auto; right: 0; min-width: 340px; }
+    .place-menu { left: auto; right: 0; min-width: 340px; width: 600px; max-width: calc(100vw - 48px); }
     .place-menu .tm-item { gap: 10px; }
+    .pm-row { display: grid; grid-template-columns: 78px minmax(0, 1fr); align-items: start; gap: 4px; padding: 4px 0; }
+    .pm-label { padding: 12px 0 0 10px; }
+    .pm-chips { display: flex; flex-wrap: wrap; gap: 6px; padding-right: 4px; }
+    .place-menu .pm-chip { min-height: 32px; gap: 6px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line-3); font-size: 13px; color: var(--text-2); background: transparent; }
+    .place-menu .pm-chip:hover { border-color: var(--text-2); color: var(--text); }
+    .place-menu .pm-chip[aria-checked="true"] { border-color: var(--orange); color: var(--text); background: rgba(236, 84, 12, .12); }
+    .place-menu .pm-chip[aria-disabled="true"] { cursor: default; }
+    .pm-chip .pm-thumb { width: 18px; height: 18px; }
+    .pm-angles .pm-chip { flex: 1 1 0; min-width: 52px; justify-content: center; padding: 0 6px; flex-direction: column; gap: 2px; min-height: 48px; }   /* a dial: the mark as it will be turned */
+    .pm-angles .pm-chip span { font-family: var(--mono); font-size: 11px; }
     .place-menu .pm-box { width: 16px; height: 16px; flex: none; border-radius: 4px; border: 1.5px solid var(--line-3); display: flex; align-items: center; justify-content: center; }
     .place-menu [aria-checked="true"] > .pm-box { background: var(--orange); border-color: var(--orange); }
     .place-menu [aria-checked="true"] > .pm-box::after { content: "✓"; color: #1A1A1A; font-size: 11px; font-weight: 800; }
-    .pm-mark[aria-disabled="true"] { cursor: default; }
-    .pm-share { padding: 2px 10px 8px 36px; font-size: 12px; color: var(--faint); }   /* how the ticked marks share the batch */
+    .pm-share { padding: 6px 10px 6px 92px; font-size: 12px; color: var(--faint); }   /* how the ticked marks and angles share the batch */
     .card-model-badge.designed { color: #F5C2A8; background: rgba(236, 84, 12, .14); }   /* kept exactly as designed */
     .card-mark { display: inline-flex; align-items: center; justify-content: center; height: 15px; padding: 0 4px; border-radius: 4px; background: rgba(230, 200, 140, .13); vertical-align: top; }   /* which mark the image was made with */
     .card-mark img { height: 11px; width: auto; max-width: 22px; object-fit: contain; display: block; }
+    .card-model-badge.turn { color: #E6D3A8; background: rgba(230, 200, 140, .13); }   /* the mark turned: its angle */
     .gen .csel-face { height: 44px; padding: 0 40px 0 18px; border: 0; border-radius: 0; background-color: transparent; background-position: right 16px center; font-weight: 600; font-size: 14px; }   /* room on either side of "20 images" */
     .settings-popover .csel, .ai-panel .csel { display: flex; width: 100%; }
     .look-char .csel { flex: 1; }
@@ -231,7 +241,7 @@
     body.no-project .reticle { display: none; }
     .reticle .ret-v { position: absolute; left: var(--mark-x); top: 0; bottom: 0; width: 1px; background: rgba(236, 84, 12, .55); }
     .reticle .ret-h { position: absolute; top: var(--mark-y); left: 0; right: 0; height: 1px; background: rgba(236, 84, 12, .55); }
-    .reticle-circle { position: absolute; left: var(--mark-x); top: var(--mark-y); width: var(--mark-w); aspect-ratio: 1 / var(--mark-ar); transform: translate(-50%, -50%); border-radius: var(--mark-r); border: 1.5px dashed var(--orange); }
+    .reticle-circle { position: absolute; left: var(--mark-x); top: var(--mark-y); width: var(--mark-w); aspect-ratio: 1 / var(--mark-ar); transform: translate(-50%, -50%) rotate(var(--mark-rot, 0deg)); border-radius: var(--mark-r); border: 1.5px dashed var(--orange); }
     .stage:fullscreen { background: #000; border-radius: 0; box-shadow: none; }       /* the whole frame, letterboxed */
     .stage:fullscreen img { object-fit: contain; }
     .stage:fullscreen .reticle { display: none; }
@@ -536,7 +546,7 @@
     /* the logo target on every card (the T switch): the same crosshair and 18% dashed circle as the Film's reticle */
     body.target-on .card-thumb::before, body.target-on .viewer-frame::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
       background: linear-gradient(rgba(236, 84, 12, .55), rgba(236, 84, 12, .55)) center / 1px 100% no-repeat, linear-gradient(rgba(236, 84, 12, .55), rgba(236, 84, 12, .55)) center / 100% 1px no-repeat; }
-    body.target-on .card-thumb::after, body.target-on .viewer-frame::after { content: ''; position: absolute; left: var(--mark-x); top: var(--mark-y); z-index: 1; width: var(--mark-w); aspect-ratio: 1 / var(--mark-ar); transform: translate(-50%, -50%); border-radius: var(--mark-r); border: 1.5px dashed var(--orange); pointer-events: none; }
+    body.target-on .card-thumb::after, body.target-on .viewer-frame::after { content: ''; position: absolute; left: var(--mark-x); top: var(--mark-y); z-index: 1; width: var(--mark-w); aspect-ratio: 1 / var(--mark-ar); transform: translate(-50%, -50%) rotate(var(--mark-rot, 0deg)); border-radius: var(--mark-r); border: 1.5px dashed var(--orange); pointer-events: none; }
     body.target-on .pending-card .card-thumb::before, body.target-on .pending-card .card-thumb::after { display: none; }
     .card-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
     body:has(#tabTrash.on) .card-num { display: none; }   /* a place in the order means nothing in the Trash */
