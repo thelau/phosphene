@@ -749,7 +749,7 @@
         : `<button type="button" class="ps-add" id="psAdd" onclick="psPick('add')"><span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>${psDrag ? `Drop ${psDrag} mark${psDrag > 1 ? 's' : ''} here` : 'Add marks'}</span><small>${psDrag ? `${n} → ${Math.min(PS_MAX, n + psDrag)} of ${PS_MAX}` : `${n} of ${PS_MAX} · drop here or choose`}</small></button>`;
       const rail = document.getElementById('psRail');
       rail.classList.toggle('frames', !!(f.frames && n > 1));                // the grips show: the order is the animation's
-      const frames = n > 1 && !pending ? `<label class="ps-frames"><input type="checkbox" id="psFramesOn"${f.frames ? ' checked' : ''} onchange="psFrames(this.checked)" /><span><b>Frames of one animation</b><small>In this order (drag to change): AI order keeps them looping, cards say which frame</small></span></label>` : '';
+      const frames = n > 1 && !pending ? `<label class="ps-frames"><input type="checkbox" id="psFramesOn"${f.frames ? ' checked' : ''} onchange="psFrames(this.checked)" /><span><b>Animation frames</b><small>Played in this order</small></span></label>` : '';
       rail.innerHTML = `<span class="ps-rail-head">Project</span>${projRow}<span class="ps-rail-head"><span>Marks</span><span class="${n >= PS_MAX ? 'ps-count full' : 'ps-count'}">${n ? `${n} of ${PS_MAX}` : `up to ${PS_MAX}`}</span></span>${rows}${frames}${add}`;
       const tile = document.getElementById('psAdd');
       if (tile) tile.classList.toggle('over', !!psDrag);
