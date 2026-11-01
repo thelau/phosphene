@@ -2722,3 +2722,61 @@ test('AI order: Motion says what it will do with the images shown (their path, a
   h2.run("setAiMode('motion')");
   assert.equal(h2.$('aiLine').hidden, true, 'nothing moves: Motion stays off, and Look needs no line under its card');
 });
+
+// ---- Whole loops and ghosts (Claude Design, 2026-11-01): frames of one animation ----
+function framesPage(seq, extra = {}) {
+  const r = baseRoutes();
+  const plates = seq.map((m, i) => ({ ...mkPlate(`f${i + 1}`), ...(m === 'up' ? { uploaded: true } : { mark: m === 'main' ? null : m }) }));
+  r['/api/state'] = { plates, project: { slug: 'sphere', name: 'Sphere', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', frames: true, marks: [{ id: 'b', name: 'B', url: '/b' }, { id: 'c', name: 'C', url: '/c' }], ...extra }, krea_connected: true, kimi_configured: true };
+  return load({ routes: r });
+}
+const names = list => JSON.parse(list).map(p => p.ghost !== undefined ? `ghost${p.ghost + 1}` : p.filename);
+
+test('Whole loops: whole rounds in frame order, the next image of each frame taken in the current order; uploads left out', async () => {
+  const h = framesPage(['c', 'main', 'b', 'b', 'main', 'up', 'c', 'b']);   // frame 1 ×2, frame 2 ×3, frame 3 ×2, one upload
+  await settle(); await settle(); await h.run('loadState()');
+  const v = JSON.parse(h.run('JSON.stringify(loopView(groupPlates()))'));
+  assert.deepEqual(v.list.map(p => p.filename), ['f2', 'f3', 'f1', 'f5', 'f4', 'f7'], '1, 2, 3, 1, 2, 3: each frame in the order it comes');
+  assert.deepEqual([v.rounds, v.total, v.held], [2, 8, 2]);
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(activePlates().map(p => p.filename))')), ['f2', 'f3', 'f1', 'f5', 'f4', 'f7'], 'on by default: what plays');
+  h.run('toggleWholeLoops(false)');
+  assert.equal(h.run('activePlates().length'), 8, 'off: every image');
+  assert.equal(h.run("localStorage.getItem('studioWholeLoops:sphere')"), '0', 'remembered per project');
+  assert.equal(h.run('framesOn()'), true);
+});
+
+test('ghosts: a ghost for each frame the order skips, none for an upload, none at the end; a project without frames has none', async () => {
+  const h = framesPage(['main', 'b', 'c', 'b', 'up', 'c', 'c', 'main']);
+  await settle(); await settle(); await h.run('loadState()');
+  assert.deepEqual(names(h.run('JSON.stringify(withGhosts(groupPlates()))')),
+    ['f1', 'f2', 'f3', 'ghost1', 'f4', 'f5', 'f6', 'ghost1', 'ghost2', 'f7', 'f8'], 'skipped frame 1; then c twice: 1 and 2 missing between; the upload changes nothing');
+  const h2 = framesPage(['c', 'main']);
+  await settle(); await settle(); await h2.run('loadState()');
+  assert.deepEqual(names(h2.run('JSON.stringify(withGhosts(groupPlates()))')), ['ghost1', 'ghost2', 'f1', 'f2'], 'the loop starts on frame 1');
+  const h3 = framesPage(['main', 'b'], { frames: false });
+  await settle(); await settle(); await h3.run('loadState()');
+  assert.equal(h3.run('wholeLoopsOn()'), false, 'not frames: Whole loops never applies');
+  assert.equal(h3.run('activePlates().length'), 2);
+});
+
+test('one chevron everywhere: the drawn 10 px chevron, never the old 24-unit one or a text character', () => {
+  const path = require('path'), web = path.join(__dirname, '..', '..', 'web'), read = (...p) => fs.readFileSync(path.join(web, ...p), 'utf8');
+  const html = read('index.html'), js = read('src', 'app.js'), css = read('src', 'style.css');
+  for (const [name, src] of [['index.html', html], ['app.js', js], ['style.css', css]]) assert.ok(!/M6 9l6 6 6-6/.test(src), `${name}: an old chevron`);
+  assert.ok(!/[⌄▾▿]/.test(html), 'no text chevron in the markup');
+  const svgs = (html + js).match(/<svg[^>]*><path d="M2\.5 3\.75L5 6\.25L7\.5 3\.75"><\/path><\/svg>/g) || [];
+  assert.ok(svgs.length >= 10 && svgs.every(s => /class="chev/.test(s) && /width="10" height="10"/.test(s)), `every chevron the one: ${svgs.length}`);
+});
+
+test('Whole loops follows the group shown: your own group in its own order, with its own count', async () => {
+  const r = baseRoutes();
+  const seq = ['main', 'b', 'c', 'main', 'b', 'c', 'main'];
+  const plates = seq.map((m, i) => ({ ...mkPlate(`f${i + 1}`), mark: m === 'main' ? null : m }));
+  r['/api/state'] = { plates, groups: [{ id: 'g1', name: 'mine', files: ['f6', 'f5', 'f4', 'f1', 'f7'] }], project: { slug: 'sphere', name: 'Sphere', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', frames: true, marks: [{ id: 'b', name: 'B', url: '/b' }, { id: 'c', name: 'C', url: '/c' }] }, krea_connected: true, kimi_configured: true };
+  const h = load({ routes: r });
+  await settle(); await settle(); await h.run('loadState()');
+  h.run("setGroup('g:g1')");
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(activePlates().map(p => p.filename))')), ['f4', 'f5', 'f6'], "the group's own: f4 is its first frame 1 (its order: f6, f5, f4, f1…), one whole round");
+  const v = JSON.parse(h.run('JSON.stringify(loopView(groupPlates()))'));
+  assert.deepEqual([v.list.length, v.total], [3, 5], '"3 of 5" for this group');
+});

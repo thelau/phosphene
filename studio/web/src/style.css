@@ -88,7 +88,8 @@
     .csel { position: relative; display: inline-flex; min-width: 0; vertical-align: middle; }
     .csel > select { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
     .csel > select:disabled { cursor: not-allowed; }
-    .csel-face { flex: 1; min-width: 0; display: flex; align-items: center; height: 30px; padding: 0 30px 0 10px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--field) no-repeat right 11px center / 12px 12px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23C9C4B0' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); color: var(--text); font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+    svg.chev { display: block; flex: none; align-self: center; }   /* one chevron everywhere, drawn, centred on its label (Claude Design, 2026-11-01) */
+    .csel-face { flex: 1; min-width: 0; display: flex; align-items: center; height: 30px; padding: 0 30px 0 10px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--field) no-repeat right 11px center / 10px 10px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' fill='none' stroke='%23C9C4B0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 3.75L5 6.25L7.5 3.75'/%3E%3C/svg%3E"); color: var(--text); font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
     .csel:hover .csel-face { border-color: var(--line-3); }
     .csel:focus-within .csel-face, .csel.open .csel-face { border-color: var(--orange); }
     .csel.disabled .csel-face { opacity: .45; }
@@ -782,9 +783,26 @@
     .tool-sep { width: 1px; height: 22px; background: var(--line-2); margin: 0 4px; }
     #aiBtn { display: flex; align-items: center; gap: 7px; }
     /* groups: one row of chips (All, yours, then the automatic ones); the picks' actions on the right */
+    .pb-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--amber); margin-right: 8px; }   /* frames uneven (Claude Design): before the chevron */
+    .pb-dot[hidden] { display: none; }
     .group-row { flex: none; display: flex; align-items: center; gap: 8px; padding: 2px 24px 12px; min-height: 44px; position: relative; }   /* its height before the chips arrive: the grid jumped 10 px on load (Lighthouse: layout shift 0.23) */
     .group-row[hidden] { display: none; }
     .group-bar { flex: 1; display: flex; gap: 6px; min-width: 0; overflow: hidden; }
+    /* Whole loops (frames of one animation): a switch, not a chip, at the row's right end, with what it holds back */
+    .loops-sw { flex: none; height: 30px; padding: 0 12px; display: inline-flex; align-items: center; gap: 10px; box-sizing: border-box; border-radius: 8px; border: 1px solid #2E2C28; background: transparent; color: var(--text); font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .loops-sw[hidden] { display: none; }
+    .loops-sw:hover { background: #1E1D1B; }
+    .ls-track { position: relative; width: 28px; height: 16px; flex: none; border-radius: 8px; background: #3A3732; transition: background .15s; }
+    .ls-track i { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--text); transition: left .15s; }
+    .loops-sw[aria-checked="true"] .ls-track { background: var(--orange); }
+    .loops-sw[aria-checked="true"] .ls-track i { left: 14px; }
+    .ls-n { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--muted); }
+    .ls-n:empty { display: none; }
+    /* a ghost: a frame the order skips (Whole loops off), the card's size, never in the Film */
+    .ghost-card { pointer-events: none; }
+    .card-thumb.ghost-thumb { background: transparent; border: 1.5px dashed #6F6B5F; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+    .card-thumb.ghost-thumb img.pm-thumb { position: static; inset: auto; width: 26%; height: auto; aspect-ratio: 1; object-fit: contain; opacity: .3; }   /* not the card's full-bleed image */
+    .ghost-thumb span { font-size: 11px; font-weight: 600; color: #A8A390; }
     .group-bar .out { display: none; }                                   /* behind "+N more" */
     .chip-overflow[hidden] { display: none; }
     .auto-menus { flex: none; display: flex; align-items: center; gap: 6px; }

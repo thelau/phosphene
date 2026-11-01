@@ -200,7 +200,42 @@
     }
 
     // the images in the edit: the shown ones (AI order's "best N" cut was removed on request: every image plays)
-    function activePlates() { return inGroup(plates.filter(p => !p.trashed)); }
+    // the group's images, all of them, in its order (AI order reorders these); what plays is activePlates: with Whole loops, whole rounds only
+    function groupPlates() { return inGroup(plates.filter(p => !p.trashed)); }
+    function activePlates() { return wholeLoopsOn() ? loopView(groupPlates()).list : groupPlates(); }
+    // ---- Whole loops (Claude Design's "Animated marks · Whole loops switch, ghosts, Mark button dot", 2026-11-01): in a project whose marks
+    // are frames of one animation, the group shown keeps as many images of each frame as its shortest frame has, laid out in frame order
+    // (1, 2, 3, 4, 1…), the next image of each frame the next one of that frame in the current order. Nothing deleted or moved; the grid,
+    // the Film, the film strip and the export use what it keeps. On by default, remembered per project. Uploads have no frame: left out ----
+    const loopsKey = () => `studioWholeLoops:${filmSlug || (project && project.slug) || ''}`;
+    let wholeLoops = true;
+    function readWholeLoops() { try { wholeLoops = localStorage.getItem(loopsKey()) !== '0'; } catch (e) { wholeLoops = true; } }
+    const wholeLoopsOn = () => framesOn() && wholeLoops;
+    const frameOrder = () => ['main', ...((project && project.marks) || []).map(m => m.id)];
+    function loopView(list) {
+      const order = frameOrder(), q = order.map(id => list.filter(p => !p.uploaded && (p.mark || 'main') === id));
+      const rounds = Math.min(...q.map(x => x.length)), out = [];
+      for (let r = 0; r < rounds; r++) q.forEach(x => out.push(x[r]));
+      return { list: out, rounds, total: list.length, held: list.length - out.length };
+    }
+    function toggleWholeLoops(on) {
+      wholeLoops = on === undefined ? !wholeLoops : !!on;
+      try { localStorage.setItem(loopsKey(), wholeLoops ? '1' : '0'); } catch (e) {}
+      renderView(); renderFilmstrip(); restartLoop(); if (!isPlaying) drawFrame();
+      if (isPlaying) musicChanged();                                        // the film is longer or shorter: the sound follows
+    }
+    // ghosts (Curate, Whole loops off): walking the order, a ghost for each frame the order skips, recomputed every time
+    function withGhosts(list) {
+      const order = frameOrder(), m = order.length, out = [];
+      let next = 0;
+      list.forEach(p => {
+        const k = p.uploaded ? -1 : order.indexOf(p.mark || 'main');
+        if (k < 0) { out.push(p); return; }
+        for (let f = next; f !== k; f = (f + 1) % m) out.push({ ghost: f });
+        out.push(p); next = (k + 1) % m;
+      });
+      return out;
+    }
 
     // ---- groups: All, yours (stored), and automatic ones from each image's look and territory. The grid and the film show the group chosen. ----
     let groups = [];
@@ -442,7 +477,10 @@
     function renderPlace() {
       const st = placeState(), m = st.on.length, multi = st.choices.length > 0 && m > 1;
       const summary = showSummary(st);
-      document.getElementById('placeBtn').title = `${multi ? `${m} marks: ${st.on.map(c => c[1]).join(', ')}` : st.on[0][1]} · ${summary}`;
+      const fv = framesOn() ? frameView() : null, dot = document.getElementById('placeDot');   // frames uneven: an amber dot, before opening anything
+      dot.hidden = !(fv && fv.need.length);
+      dot.title = dot.hidden ? '' : `Frames uneven · Even out ${fv.need.length}`;
+      document.getElementById('placeBtn').title = dot.hidden ? `${multi ? `${m} marks: ${st.on.map(c => c[1]).join(', ')}` : st.on[0][1]} · ${summary}` : dot.title;
       const stack = document.getElementById('placeStack');
       stack.hidden = !multi;                                                  // one mark ticked (or one in the project): the summary only
       if (multi) {                                                           // their thumbnails and count say it; the summary stays on the row's line
@@ -546,7 +584,7 @@
         const ns = st.ps.steps, pd = Array.from({ length: ns - 1 }, (_, k) => `<circle cx="${f(x1 + (x2 - x1) * k / (ns - 1))}" cy="${f(y1 + (y2 - y1) * k / (ns - 1))}" r="${ns > 16 ? 1.3 : 1.8}" fill="#FEFFE7"></circle>`).join('');   // one dot a step
         const shapes = PATH_SHAPES.map(([v, nm]) => `<button type="button" class="mm-opt" data-list="pshape" data-v="${v}" aria-selected="${st.ps.shape === v}">${nm}</button>`).join('');
         html += `<div class="mm-path"><svg width="70" height="124" viewBox="0 0 70 124" role="img" aria-label="Where the path runs in the frame"><rect x="1" y="1" width="68" height="122" rx="5" fill="#2A2825" stroke="#4A4740"></rect><rect x="${f(tx)}" y="${f(ty)}" width="14" height="14" fill="none" stroke="#EC540C" stroke-dasharray="2 2"></rect><line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="#FEFFE7" stroke-width="1.2" stroke-dasharray="1 3" stroke-linecap="round"></line>${pd}<circle cx="${f(x2)}" cy="${f(y2)}" r="3.4" fill="#EC540C"></circle></svg>
-          <div class="mm-col"><div class="mm-prow"><span>Shape</span><span class="mm-dd"><button type="button" class="mm-ddbtn" data-list="pshape-open" data-v="1" aria-haspopup="listbox" aria-expanded="${pathShapeOpen}"><svg width="16" height="10" viewBox="0 0 16 10" aria-hidden="true"><line x1="1" y1="9" x2="15" y2="1" stroke="#FEFFE7" stroke-width="1.6" stroke-linecap="round"></line></svg>${(PATH_SHAPES.find(p => p[0] === st.ps.shape) || PATH_SHAPES[0])[1]}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#A8A390" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>${pathShapeOpen ? `<span class="mm-ddlist" role="listbox">${shapes}<span class="mm-ddnote">More shapes to come</span></span>` : ''}</span></div>
+          <div class="mm-col"><div class="mm-prow"><span>Shape</span><span class="mm-dd"><button type="button" class="mm-ddbtn" data-list="pshape-open" data-v="1" aria-haspopup="listbox" aria-expanded="${pathShapeOpen}"><svg width="16" height="10" viewBox="0 0 16 10" aria-hidden="true"><line x1="1" y1="9" x2="15" y2="1" stroke="#FEFFE7" stroke-width="1.6" stroke-linecap="round"></line></svg>${(PATH_SHAPES.find(p => p[0] === st.ps.shape) || PATH_SHAPES[0])[1]}<svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#A8A390" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.75L5 6.25L7.5 3.75"></path></svg></button>${pathShapeOpen ? `<span class="mm-ddlist" role="listbox">${shapes}<span class="mm-ddnote">More shapes to come</span></span>` : ''}</span></div>
           <div class="mm-prow"><span>Direction</span><span class="mm-btns" role="radiogroup" aria-label="Direction">${PATH_DIRS.map(([v, arrow, tip]) => `<button type="button" class="mm-dir" role="radio" data-list="pdir" data-v="${v}" aria-checked="${st.ps.dir === v}" aria-label="${tip}" title="${tip}">${arrow}</button>`).join('')}</span></div>
           <div class="mm-prow"><span>Target</span><span class="mm-steps" role="radiogroup" aria-label="Where the target is on the path">${PATH_ANCHORS.map(([v, nm, tip]) => `<button type="button" class="mm-step mm-anchor" role="radio" data-list="panchor" data-v="${v}" aria-checked="${st.ps.anchor === v}" title="${tip}">${nm}</button>`).join('')}</span></div>
           <div class="mm-prow"><span>Reach</span><span class="mm-btns" role="radiogroup" aria-label="Reach">${PATH_LENS.map(([v]) => { const real = Math.round(pathLine({ ...st.ps, len: v }).ln);   // what it really covers here: shortened to fit, it says so
@@ -560,7 +598,7 @@
       const pv = Math.min(26, Math.round(16 * (st.sizeOff ? 1 : st.zs[0])));   // the mark once, at the first ticked angle and size
       const angSum = a > 1 ? `${a} angles` : st.rots[0] === 0 ? 'Upright' : rotLabel(st.rots[0]);
       const sizeSum = st.sizeOff ? `size by ${st.t === 'loose' ? 'Loose' : 'Scattered'}` : z > 1 ? `${z} sizes` : st.zs[0] === 1 ? 'its own size' : sizeLabel(st.zs[0]);
-      html += `<div class="mm-more"><button type="button" class="mm-morebtn${moreSet ? ' set' : ''}" data-list="more" data-v="more" aria-expanded="${open}"${moreSet ? ' aria-disabled="true" title="Open while an angle or a size is set"' : ''}><span class="mm-mprev">${img(glyph, `width:${pv}px;height:${pv}px;transform:rotate(${st.rots[0]}deg)`)}</span><span class="mm-moret">More: angle and size</span><span class="mm-mores">${angSum} · ${sizeSum}</span><span class="mm-fill"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#A8A390" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>`;
+      html += `<div class="mm-more"><button type="button" class="mm-morebtn${moreSet ? ' set' : ''}" data-list="more" data-v="more" aria-expanded="${open}"${moreSet ? ' aria-disabled="true" title="Open while an angle or a size is set"' : ''}><span class="mm-mprev">${img(glyph, `width:${pv}px;height:${pv}px;transform:rotate(${st.rots[0]}deg)`)}</span><span class="mm-moret">More: angle and size</span><span class="mm-mores">${angSum} · ${sizeSum}</span><span class="mm-fill"></span><svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#A8A390" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.75L5 6.25L7.5 3.75"></path></svg></button>`;
       if (open) {
         // Angle and Size (Claude Design's "angle and size rows", B): each row one segmented strip as wide as Position, the cells sharing it;
         // a glyph says only what changes (a level line with an up notch, a dot), the mark itself once, in the header
@@ -1311,7 +1349,7 @@
       const autoBtn = (kind, list, label) => {
         if (!list.length) return '';
         const on = list.find(c => c.key === currentGroup);
-        const caret = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>';
+        const caret = '<svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.75L5 6.25L7.5 3.75"></path></svg>';
         const tip = AUTO_TIPS[kind];
         return on
           ? `<span class="auto-btn on"><button type="button" class="auto-main" id="auto-${kind}" onclick="openGroupMenu(event, '${kind}')" aria-haspopup="menu" title="${tip}">${label}: ${escapeHtml(on.name)} <span>${on.n}</span></button><button type="button" class="auto-x" onclick="setGroup('all')" aria-label="Clear ${label}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span>`
@@ -1320,7 +1358,7 @@
       const rule = currentGroup.startsWith('f:') ? filterRule(currentGroup) : null;   // a Made with filter in use, not saved: it reads as the active filter
       const madeBtn = !made.length && !rule ? '' : rule
         ? `<span class="auto-btn on"><button type="button" class="auto-main" id="auto-made" onclick="openMadeWith(event)" aria-haspopup="dialog" title="Made with: ${escapeHtml(madeSummary(rule))}">Made with: ${escapeHtml(madeSummary(rule))} <span>${(groupMembers(currentGroup) || new Set()).size}</span></button><button type="button" class="auto-x" onclick="setGroup('all')" aria-label="Clear Made with"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span>`
-        : '<span class="auto-btn"><button type="button" class="auto-main" id="auto-made" onclick="openMadeWith(event)" aria-haspopup="dialog" title="Filter by how the images were made: mark, position, angle, size, source">Made with<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button></span>';
+        : '<span class="auto-btn"><button type="button" class="auto-main" id="auto-made" onclick="openMadeWith(event)" aria-haspopup="dialog" title="Filter by how the images were made: mark, position, angle, size, source">Made with<svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.75L5 6.25L7.5 3.75"></path></svg></button></span>';
       const am = hasAuto ? '<span class="auto-label">Auto</span>' + AUTO_MENUS.map(([kind, label]) => autoBtn(kind, kinds[kind], label)).join('') + madeBtn : '';
       const amEl = document.getElementById('autoMenus');
       if (amEl.innerHTML !== am) amEl.innerHTML = am;
@@ -1335,6 +1373,13 @@
       syncSelects();
       document.getElementById('miniTitle').textContent = currentGroup === 'all' ? 'Film' : rule ? 'Made with' : (chips.concat(auto).find(c => c.key === currentGroup) || { name: 'Film' }).name;
       if (madeOpen()) renderMadeWith();
+      const sw = document.getElementById('loopsSw');                          // Whole loops: only in a frames project, at the row's right end
+      sw.hidden = !framesOn() || showTrash;
+      if (!sw.hidden) {
+        const lv = wholeLoops ? loopView(groupPlates()) : null;
+        sw.setAttribute('aria-checked', String(wholeLoops));
+        document.getElementById('loopsN').textContent = lv && lv.held ? `${lv.list.length} of ${lv.total}` : '';   // what it holds back, for the group shown
+      }
     }
     // ---- the Made with panel (Claude Design's GroupsMade): rows Mark, Position, Angle, Size, Source, each value a chip with its count
     // (the images matching it together with the other rows' ticks); ticks in a row widen (or), rows narrow (and); the grid filters live.
@@ -1592,7 +1637,7 @@
       const hidden = [];
       items.forEach(el => { if (keep.has(el)) return; if (used + w(el) <= avail) used += w(el); else { el.classList.add('out'); hidden.push(el); } });
       more.hidden = !hidden.length;
-      more.innerHTML = `+${hidden.length} more <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>`;
+      more.innerHTML = `+${hidden.length} more <svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.75L5 6.25L7.5 3.75"></path></svg>`;
     }
     addEventListener('resize', () => { if (mode === 'curate') fitChips(); });
     async function groupsCall(payload) {
@@ -1696,7 +1741,7 @@
       return showTrash
         // newest trashed first; plates trashed before timestamps existed fall back to creation number
         ? plates.filter(p => p.trashed).sort((a, b) => (b.trashed_at || 0) - (a.trashed_at || 0) || num(b) - num(a))
-        : inGroup(plates.filter(p => !p.trashed));
+        : activePlates();                                                    // what plays: Whole loops keeps whole rounds
     }
 
     // ---- trash: select, delete selected, empty ----
@@ -1710,11 +1755,11 @@
       return { x: +(b.x != null ? b.x : home.mark_x), y: +(b.y != null ? b.y : home.mark_y), size: +(b.size != null ? b.size : home.mark_size), rot: cardRot(p) };
     }
     function marksMove() {
-      return new Set(activePlates().filter(p => !p.trashed && !p.uploaded).map(p => { const a = markAt(p); return `${a.x},${a.y},${a.size},${a.rot}`; })).size > 1;
+      return new Set(groupPlates().filter(p => !p.trashed && !p.uploaded).map(p => { const a = markAt(p); return `${a.x},${a.y},${a.size},${a.rot}`; })).size > 1;
     }
     // what Motion can make of the images shown, in one line (Claude Design's AIOrder): their path, angles and sizes; or why it can't
     function motionLine() {
-      const shown = activePlates().filter(p => !p.trashed && !p.uploaded), runs = {};
+      const shown = groupPlates().filter(p => !p.trashed && !p.uploaded), runs = {};
       shown.forEach(p => { const pa = p.placement && p.placement.path; if (pa) (runs[pa.run] = runs[pa.run] || []).push(pa); });
       const run = Object.values(runs).sort((a, b) => b.length - a.length)[0];
       const angles = new Set(shown.map(cardRot)).size, sizes = new Set(shown.map(p => markAt(p).size)).size;
@@ -1727,7 +1772,7 @@
       return parts.length ? `${parts.join(' · ')}. The order follows the mark ${verbs.length > 1 ? `${verbs.slice(0, -1).join(', ')} and ${verbs[verbs.length - 1]}` : verbs[0] || 'as it moves'}.` : '';
     }
     function setAiMode(m) {
-      const moves = marksMove(), n = activePlates().filter(p => !p.trashed).length;
+      const moves = marksMove(), n = groupPlates().length;                   // AI order orders all of them (Whole loops then keeps whole rounds)
       aiMode = m === 'motion' && moves ? 'motion' : 'look';
       try { localStorage.setItem('studioAiMode', m === 'motion' ? 'motion' : 'look'); } catch (e) {}
       document.querySelectorAll('#aiPanel .ai-mode button').forEach(b => {
@@ -1735,7 +1780,7 @@
         b.setAttribute('aria-checked', String(on)); b.disabled = off;
         b.title = off ? 'Nothing moves in these images' : '';
       });
-      document.getElementById('aiShown').textContent = `Reorders the ${n} image${n === 1 ? '' : 's'} shown.`;
+      document.getElementById('aiShown').textContent = wholeLoopsOn() && activePlates().length < n ? `Reorders all ${n} images of the group.` : `Reorders the ${n} image${n === 1 ? '' : 's'} shown.`;   // with Whole loops, more than the grid shows
       const line = document.getElementById('aiLine');                         // Motion only: what the order follows in these images (Look's card says it all)
       line.classList.toggle('motion', aiMode === 'motion');
       line.hidden = aiMode !== 'motion';
@@ -1743,13 +1788,9 @@
       document.getElementById('aiLineT').textContent = aiMode === 'motion' ? motionLine() : '';
       document.getElementById('aiDirection').placeholder = aiMode === 'motion' ? 'e.g. slow at the start, spin at the end' : 'e.g. light to dark, then a burst of colour';
       // a path run being ordered with gaps: said here, in Motion, where a gap becomes a jump (Claude Design's PathMissing); it never blocks
-      const gap = document.getElementById('aiGap'), shownRuns = new Set(activePlates().filter(p => !p.trashed).map(MADE_BY.run).filter(Boolean));
+      const gap = document.getElementById('aiGap'), shownRuns = new Set(groupPlates().map(MADE_BY.run).filter(Boolean));
       const short = aiMode === 'motion' ? pathRuns.filter(r => shownRuns.has(r.run)).map(runView).filter(v => v.missing).sort((a, b) => b.r.at - a.r.at) : [];
-      const fv = frameView(activePlates()), fshort = fv ? fv.n.map((k, i) => [i + 1, k]).filter(([, k]) => k < fv.most) : [];
-      gap.hidden = !short.length && !fshort.length;
-      if (!short.length && fshort.length) {                                   // frames uneven: one sentence, where it's fixed (Claude Design)
-        gap.innerHTML = `<span>${fv.rounds ? `The frame loop ends after ${fv.rounds} round${fv.rounds === 1 ? '' : 's'}.` : 'The frame loop never completes.'} Even out frames in the Mark menu.</span>`;
-      }
+      gap.hidden = !short.length;                                             // frames: no sentence (Whole loops keeps the loop whole)
       if (short.length) {
         const v = short[0], at = v.gaps.map(i => i + 1), list = at.length > 4 ? `${at.length} steps` : at.length > 1 ? `steps ${at.slice(0, -1).join(', ')} and ${at[at.length - 1]}` : `step ${at[0]}`;
         gap.innerHTML = `<span><b>${escapeHtml(runName(v.r))}</b> has ${v.kept} of ${v.r.n} steps: the mark will jump at ${list}.${short.length > 1 ? ` ${short.length - 1} more run${short.length > 2 ? 's have' : ' has'} gaps too.` : ''}</span>
@@ -1776,7 +1817,7 @@
       const body = {
         direction: document.getElementById('aiDirection').value.trim(),
         mode: aiMode,
-        ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // an automatic group: its images change places among themselves in All
+        ...(currentGroup === 'all' ? {} : { files: groupPlates().map(p => p.filename) }),   // an automatic group: its images change places among themselves in All
         ...(own ? { group: own.id } : {}),
       };
       document.getElementById('aiPanel').hidden = true;
@@ -1834,7 +1875,7 @@
       if (!n && isPlaying) togglePlay();                                     // the last image went (trashed, another group): stop
     }
     function syncAiBtn() {                                                   // nothing to order under two images
-      const b = document.getElementById('aiBtn'), few = activePlates().length < 2;
+      const b = document.getElementById('aiBtn'), few = groupPlates().length < 2;
       b.disabled = aiRunning || generating || few;
       b.title = few ? 'AI re-order needs at least two images' : 'Reorder with AI';
     }
@@ -1967,7 +2008,14 @@
       const visible = visiblePlates();
       if (seenAtLoad === null && plates.length) seenAtLoad = new Set(plates.map(p => p.filename));
       const items = [];
-      visible.forEach(p => {
+      const ghosts = !showTrash && framesOn() && !wholeLoops, choices = ghosts ? markChoices() : [];
+      let g = 0;
+      (ghosts ? withGhosts(visible) : visible).forEach(p => {
+        if (p.ghost !== undefined) {                                          // a missing frame: no number, not draggable or pickable, never in the Film
+          const c = choices[p.ghost] || [];
+          items.push([`ghost:${g++}`, `<div class="card ghost-card" aria-hidden="true"><div class="card-thumb ghost-thumb">${c[2] ? `<img class="pm-thumb" src="${escapeHtml(c[2])}" alt="" />` : ''}<span>${escapeHtml(c[1] || `Frame ${p.ghost + 1}`)}</span></div></div>`]);
+          return;
+        }
         items.push([`card:${p.filename}`, cardHtml(p)]);
       });
       if (!showTrash) pendingCards().forEach((html, i) => items.push([`pending:${i}`, html]));
@@ -1981,7 +2029,8 @@
       grid.querySelectorAll('.cm-frame img').forEach(fitMarkTone);          // measured once a mark, then only a class
       const empty = document.getElementById('gridEmpty');
       empty.hidden = items.length > 0;
-      empty.textContent = showTrash ? 'The Trash is empty.' : project ? 'No images yet. Choose a territory and press Generate.' : 'No images yet';
+      empty.textContent = showTrash ? 'The Trash is empty.' : wholeLoopsOn() && groupPlates().length ? 'No whole loop yet. Even out frames in the Mark menu, or turn Whole loops off.'   // a frame with no images here: nothing whole to play
+        : project ? 'No images yet. Choose a territory and press Generate.' : 'No images yet';
       if (grid.querySelectorAll) grid.querySelectorAll('.card[data-filename]').forEach((el, i) => {   // the place in the order lives outside the markup, so a reorder only moves cards
         const num = el.querySelector('.card-num'), txt = String(i + 1).padStart(2, '0');
         if (num && num.textContent !== txt) num.textContent = txt;
@@ -3986,6 +4035,7 @@
     const filmKey = slug => `studioFilm:${slug}`;
     let filmSlug = null, legacyFilm = null;
     try { filmSlug = localStorage.getItem('studioProject') || null; } catch (e) {}
+    readWholeLoops();                                                        // the project open last: its Whole loops
     // the territory used last, read now: the page saves its settings before the territories arrive, which blanked it
     let savedWorld = '';
     try { savedWorld = JSON.parse(localStorage.getItem(`studioFilm:${filmSlug}`) || '{}').worldSelect || ''; } catch (e) {}
@@ -4027,6 +4077,7 @@
     function useProjectFilm(slug) {
       if (!slug || slug === filmSlug) return;
       filmSlug = slug;
+      readWholeLoops();                                                      // Whole loops: per project
       try { localStorage.setItem('studioProject', slug); currentEdit = localStorage.getItem(editKey()) || null; } catch (e) { currentEdit = null; }
       const saved = readJson(filmKey(slug));
       if (!legacyFilm) for (const [id, v] of Object.entries(PLACE_DEFAULTS)) {
@@ -4257,7 +4308,7 @@
       }
       let list = m.querySelector('.tm-list');
       if (!list) {
-        m.innerHTML = '<div class="tm-list"></div><div class="tm-more" aria-hidden="true">More below <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></div>';
+        m.innerHTML = '<div class="tm-list"></div><div class="tm-more" aria-hidden="true">More below <svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.75L5 6.25L7.5 3.75"></path></svg></div>';
         m.tabIndex = -1;
         list = m.querySelector('.tm-list');
         m.addEventListener('scroll', terrMore, { passive: true });
@@ -4873,7 +4924,7 @@
         zoom_mode: document.getElementById('zoomSelect').value,
         zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
         trail: (parseFloat(document.getElementById('trailRange').value) || 0) / 100,
-        ...(currentGroup === 'all' ? {} : { files: activePlates().map(p => p.filename) }),   // a group: just its images
+        ...(currentGroup === 'all' && !wholeLoopsOn() ? {} : { files: activePlates().map(p => p.filename) }),   // a group, or whole loops: just what plays
         ...(editOf(currentEdit) ? { edit: editOf(currentEdit).name } : {}),   // the file is named after the edit
       };
       const filmSec = rhythmFor(activePlates().length).end / 30;
@@ -5062,6 +5113,7 @@ Object.assign(window, {
   toggleReticle,
   refreshLibrary,                     // no button since 2026-11-01: the tests reload the library with it
   toggleMarkOverlay,
+  toggleWholeLoops,
   toggleSettings,
   updateTempo,
   updateRhythm,

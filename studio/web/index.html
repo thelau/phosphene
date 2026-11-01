@@ -26,7 +26,7 @@
       <span class="brand-sep" aria-hidden="true">/</span>
       <button type="button" class="project-btn" id="projectBtn" onclick="openProjectMenu(event)" aria-haspopup="menu" title="Project">
         <img id="projectMark" alt="" /><span id="projectName">Demo</span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+        <svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.75L5 6.25L7.5 3.75"></path></svg>
       </button>
     </div>
     <div class="group-menu project-menu" id="projectMenu" role="menu" hidden></div>
@@ -152,7 +152,7 @@
           <button type="button" class="terr-btn" id="terrBtn" onclick="toggleTerrMenu(event)" aria-haspopup="listbox" aria-expanded="false">
             <span class="terr-icon" id="terrIcon" aria-hidden="true"></span>
             <span class="terr-text"><span class="terr-line"><b id="terrName"></b></span></span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+            <svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.75L5 6.25L7.5 3.75"></path></svg>
           </button>
           <select id="worldSelect" class="src-only" title="Which territory to generate in" tabindex="-1" aria-hidden="true">
             <option value="" hidden></option>
@@ -173,7 +173,7 @@
           </div>
           <span class="gen-sep place-sep"></span>
           <span class="place">
-            <button type="button" class="place-btn" id="placeBtn" onclick="togglePlaceMenu(event)" aria-haspopup="dialog" aria-expanded="false"><span class="pb-stack" id="placeStack" hidden></span><span class="pb-text"><span class="pb-line"><span class="pb-sum" id="placeName">On target</span></span></span><svg class="pb-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+            <button type="button" class="place-btn" id="placeBtn" onclick="togglePlaceMenu(event)" aria-haspopup="dialog" aria-expanded="false"><span class="pb-stack" id="placeStack" hidden></span><span class="pb-text"><span class="pb-line"><span class="pb-sum" id="placeName">On target</span></span></span><i class="pb-dot" id="placeDot" hidden></i><svg class="chev pb-caret" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.75L5 6.25L7.5 3.75"></path></svg></button>
             <input type="hidden" id="markSelect" value="main" /><input type="hidden" id="rotSelect" value="0" /><input type="hidden" id="sizeSelect" value="1" /><input type="hidden" id="pathSelect" value="line:0:40:12" />
             <select id="targetSelect" class="src-only" aria-hidden="true" tabindex="-1">
               <option value="exact" selected>On target</option>
@@ -254,6 +254,7 @@
           <i class="group-sep" id="ownSep"></i>
           <span class="group-label" id="ownLabel" hidden></span>
           <div class="group-bar" id="groupBar"></div>
+          <button type="button" class="loops-sw" id="loopsSw" role="switch" aria-checked="true" onclick="toggleWholeLoops()" title="Play whole rounds of the frames" hidden><span class="ls-track" aria-hidden="true"><i></i></span><span class="ls-label">Whole loops</span><span class="ls-n" id="loopsN"></span></button>
         </div>
         <!-- picking floats at the bottom, never over the chips -->
         <div class="pick-bar" id="pickBar" role="toolbar" aria-label="Picked images" hidden>
@@ -296,7 +297,7 @@
         <div class="mini-head">
           <span id="miniTitle">Film</span>
           <button class="mini-x" onclick="toggleMini(false)" id="miniHide" aria-label="Hide the preview" title="Hide the preview">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+            <svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.75L5 6.25L7.5 3.75"></path></svg>
           </button>
         </div>
         <div class="mini-stage" id="stageMini"></div>
@@ -430,7 +431,7 @@
         <div class="edit-bar" aria-label="Edits">
           <button type="button" class="edit-btn" id="editBtn" onclick="openEditMenu(event)" title="Snapshots" aria-haspopup="menu">
             <span class="edit-lbl">Snapshot</span><span class="edit-name untitled" id="editName">No snapshot yet</span><i class="edit-dirty" id="editDirty" title="Changed since the snapshot" hidden></i>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+            <svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.75L5 6.25L7.5 3.75"></path></svg>
           </button>
           <button type="button" class="edit-save" id="editSaveBtn" onclick="snapshotEdit()" title="Save snapshot (⌘S)">＋ Snapshot</button>
         </div>
