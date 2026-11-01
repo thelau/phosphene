@@ -272,3 +272,15 @@ def test_short_of_room_the_three_reaches_share_it_so_they_always_differ(srv):
     assert old["x"] == 31.0 and "fit" not in old["path"], "a run from before: its reach cut to the room, as it was made"
     assert srv.BatchPlan("path", path={"shape": "line"}, count=3).path["fit"] == 1, "a new run scales"
     assert "fit" not in srv.BatchPlan("path", path={"shape": "line", "dir": 0, "len": 40}, count=3, steps=[1], run="abc").path, "Make N on an old run: as it was"
+
+
+def test_a_frames_deal_makes_one_image_of_each_listed_mark_in_order(srv, monkeypatch):
+    """Make N of frames: a project whose marks are frames of one animation, a frame short of images: the listed marks one by one,
+    repeats kept, unknown ones dropped; angles and sizes still take turns; never on a path."""
+    monkeypatch.setattr(srv, "PROJECT", {**demo(srv), "marks": [{"id": "f2"}, {"id": "f3"}]})
+    assert srv.deal_list("f3,f3,nope,main") == ["f3", "f3", None] and srv.deal_list("") is None and srv.deal_list("nope") is None
+    plan = srv.BatchPlan("exact", "main", "0,90", count=4, deal="f3,f3,f3,f2")
+    got = plan.peek(4)
+    assert [t["mark"] for t in got] == ["f3", "f3", "f3", "f2"] and [t["rot"] for t in got] == [0, 90, 0, 90] and all(t["path"] is None for t in got)
+    plan.take(0)
+    assert [t["mark"] for t in plan.peek(3)] == ["f3", "f3", "f2"], "a dropped scene's mark goes to the next one"

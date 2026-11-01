@@ -1725,6 +1725,30 @@ test('frames of one animation: Project settings says so, names Kimi gives alike 
   await ctx.close();
 });
 
+test('frames with fewer images than the others: Made with counts each frame and Make N fills them; AI order says when the loop gives way', { skip }, async () => {
+  const ctx = await fresh({ setup: st => { Object.assign(st.projects[0], { frames: true, marks: [{ id: 'n1', name: 'Bar', size: 18, x: 50, y: 50, shape: 'bar', noun: 'bar', ratio: 1, url: '/api/project-mark?p=demo&m=n1' }] }); st.plates[1].mark = 'n1'; st.plates[1].mark_name = 'Bar'; } });
+  const main = api.state.plates.filter(p => !p.trashed && (p.mark || 'main') === 'main').length;
+  await page.evaluate(() => openMadeWith());
+  await page.waitForSelector('#madePanel .mw-frames');
+  assert.equal((await page.locator('#madePanel .mw-fn').textContent()).replace(/\s/g, ''), `${main}·1`, 'each frame its count, in order');
+  assert.equal(await page.locator('#madePanel .mw-fn .short').textContent(), '1', 'the short frame in amber');
+  assert.equal(await page.locator('#madePanel [data-make-frames]').textContent(), `Make ${main - 1}`);
+  await shot('39-made-frames');
+  await page.evaluate(() => { document.getElementById('targetSelect').value = 'path'; });   // a Path in the row: frames made to fill the loop are no run's steps
+  await page.click('#madePanel [data-make-frames]');
+  for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/invent-prompts'); i++) await page.waitForTimeout(100);
+  const sent = api.state.calls.find(c => c.path === '/api/invent-prompts').body;
+  assert.deepEqual([sent.deal, sent.count, sent.target], [Array(main - 1).fill('n1').join(','), main - 1, 'exact'], 'the short frame, as many as it lacks, on target');
+  await page.waitForFunction(() => /Done ·/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  await page.evaluate(() => { document.getElementById('targetSelect').value = 'exact'; closeMadeWith(); });
+  await page.click('#aiBtn');
+  await page.waitForSelector('#aiPanel:not([hidden])');
+  assert.equal(await page.locator('#aiGap').isVisible(), true);
+  assert.match(await page.locator('#aiGap').textContent(), /Frame 2 has \d+ images?, the others \d+\. The loop holds for \d+ rounds?\./);
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('a project of your own images: New project › No mark; no mark target, no Mark menu, Generate says Add a mark and opens the settings', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(() => { kimiConfigured = true; openProjectForm('new'); });

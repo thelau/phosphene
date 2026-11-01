@@ -1380,6 +1380,24 @@
         if (madeOpen()) renderMadeWith();
       }
     }
+    // ---- Frames of one animation: AI order loops them, so a frame with fewer images than the others breaks the loop once it runs out.
+    // How many images each frame has (in the Selection, or the images given) and the frames to make so they all have as many as the most ----
+    function frameView(list = plates) {
+      const order = project && project.frames ? ['main', ...(project.marks || []).map(m => m.id)] : [];
+      if (order.length < 2) return null;
+      const mine = list.filter(p => !p.trashed && !p.uploaded);
+      const n = order.map(id => mine.filter(p => (p.mark || 'main') === id).length), most = Math.max(...n);
+      if (!most) return null;
+      return { order, n, most, rounds: Math.min(...n), need: order.flatMap((id, i) => Array(most - n[i]).fill(id)) };
+    }
+    async function makeFrames() {                                             // Make N: the short frames, in the row's territory and choices
+      const v = frameView();
+      if (!v || !v.need.length) return;
+      const job = generateImages({ deal: v.need });
+      if (madeOpen()) renderMadeWith();                                       // its button greys out while they are made
+      await job;
+      if (madeOpen()) renderMadeWith();
+    }
     function openMadeWith(e, edit) {
       if (e && e.stopPropagation) e.stopPropagation();
       const panel = document.getElementById('madePanel');
@@ -1408,7 +1426,11 @@
           ${v.missing && !(makingRun && makingRun.run === v.r.run) ? `<button type="button" class="mw-make" data-make="${escapeHtml(v.r.run)}"${generating ? ' disabled title="Wait until the batch ends"' : ''}>Make ${v.missing}</button>` : ''}</div>`).join('')}
           ${views.length > 4 ? `<button type="button" class="mw-more-runs" data-runs-all="1">${madeRunsAll ? 'Fewer runs' : `+ ${views.length - 4} more run${views.length - 4 > 1 ? 's' : ''}`}</button>` : ''}</div>`;
       };
-      const body = rows.map(r => `<div class="mw-row"><span class="mw-label">${r.label}</span><div class="mw-chips">${r.chips.map(c => `<button type="button" class="mw-chip" data-kind="${r.kind}" data-v="${escapeHtml(c.v)}" aria-pressed="${c.on}">${c.img ? `<img class="pm-thumb" src="${escapeHtml(c.img)}" alt="" />` : ''}${escapeHtml(c.name)}<span class="mw-n">${c.n}</span>${r.kind === 'pos' && c.v === 'path' && short ? '<span class="mw-short" title="A path run is missing steps"></span>' : ''}</button>`).join('')}</div></div>${r.kind === 'pos' && (rule.pos || []).includes('path') && views.length ? runsHtml() : ''}`).join('')
+      const fv = frameView();
+      const framesHtml = () => !fv || !fv.need.length ? '' : `<div class="mw-frames"><span class="mw-when">Frames</span><span class="mw-fn">${fv.n.map((k, i) => `<span class="${k < fv.most ? 'short' : ''}" title="Frame ${i + 1}: ${k} of ${fv.most}">${k}</span>`).join('<i>·</i>')}</span><span class="mw-fill"></span>
+          <button type="button" class="mw-make" data-make-frames="1"${generating ? ' disabled title="Wait until the batch ends"' : ` title="Frames ${fv.order.map((id, i) => fv.n[i] < fv.most ? i + 1 : 0).filter(Boolean).join(', ')} up to ${fv.most}"`}>Make ${fv.need.length}</button></div>`;
+      const body = rows.map(r => `<div class="mw-row"><span class="mw-label">${r.label}</span><div class="mw-chips">${r.chips.map(c => `<button type="button" class="mw-chip" data-kind="${r.kind}" data-v="${escapeHtml(c.v)}" aria-pressed="${c.on}">${c.img ? `<img class="pm-thumb" src="${escapeHtml(c.img)}" alt="" />` : ''}${escapeHtml(c.name)}<span class="mw-n">${c.n}</span>${r.kind === 'pos' && c.v === 'path' && short ? '<span class="mw-short" title="A path run is missing steps"></span>' : ''}</button>`).join('')}</div></div>${r.kind === 'pos' && (rule.pos || []).includes('path') && views.length ? runsHtml() : ''}${r.kind === 'mark' ? framesHtml() : ''}`).join('')
+        || (rows.length ? '' : framesHtml())                                  // one frame made so far: no Mark row, the frames line alone
         || '<p class="mw-empty">All the images here were made the same way: nothing to filter by yet.</p>';
       const empty = !Object.keys(rule).length;
       const foot = g ? `<button type="button" class="mw-del" onclick="madeDelete()">Delete group</button><button type="button" class="mw-done" onclick="closeMadeWith()">Done</button>`
@@ -1471,6 +1493,7 @@
         e.stopPropagation();
         const make = e.target.closest('[data-make]'), all = e.target.closest('[data-runs-all]'), run = e.target.closest('.mw-run'), c = e.target.closest('.mw-chip');
         if (make) makeMissing(make.dataset.make);
+        if (e.target.closest('[data-make-frames]')) makeFrames();
         else if (all) { madeRunsAll = !madeRunsAll; renderMadeWith(); }
         else if (run) madeRun(run.dataset.run);
         else if (c) madeTick(c.dataset.kind, c.dataset.v);
@@ -1704,7 +1727,13 @@
       // a path run being ordered with gaps: said here, in Motion, where a gap becomes a jump (Claude Design's PathMissing); it never blocks
       const gap = document.getElementById('aiGap'), shownRuns = new Set(activePlates().filter(p => !p.trashed).map(MADE_BY.run).filter(Boolean));
       const short = aiMode === 'motion' ? pathRuns.filter(r => shownRuns.has(r.run)).map(runView).filter(v => v.missing).sort((a, b) => b.r.at - a.r.at) : [];
-      gap.hidden = !short.length;
+      const fv = frameView(activePlates()), fshort = fv ? fv.n.map((k, i) => [i + 1, k]).filter(([, k]) => k < fv.most) : [];
+      gap.hidden = !short.length && !fshort.length;
+      if (!short.length && fshort.length) {                                   // frames of one animation, uneven: the loop gives way when the fewest run out (Look and Motion)
+        const which = fshort.length > 1 ? `Frames ${fshort.slice(0, -1).map(x => x[0]).join(', ')} and ${fshort[fshort.length - 1][0]} have ${fshort.slice(0, -1).map(x => x[1]).join(', ')} and ${fshort[fshort.length - 1][1]} images` : `Frame ${fshort[0][0]} has ${fshort[0][1]} image${fshort[0][1] === 1 ? '' : 's'}`;
+        gap.innerHTML = `<span>${which}, the others ${fv.most}. The loop holds for ${fv.rounds} round${fv.rounds === 1 ? '' : 's'}.</span>
+          <button type="button" class="link-btn" onclick="event.stopPropagation(); document.getElementById('aiPanel').hidden = true; openMadeWith()" title="Made with, where Make fills them">Show frames</button>`;
+      }
       if (short.length) {
         const v = short[0], at = v.gaps.map(i => i + 1), list = at.length > 4 ? `${at.length} steps` : at.length > 1 ? `steps ${at.slice(0, -1).join(', ')} and ${at[at.length - 1]}` : `step ${at[0]}`;
         gap.innerHTML = `<span><b>${escapeHtml(runName(v.r))}</b> has ${v.kept} of ${v.r.n} steps: the mark will jump at ${list}.${short.length > 1 ? ` ${short.length - 1} more run${short.length > 2 ? 's have' : ' has'} gaps too.` : ''}</span>
@@ -4570,7 +4599,9 @@
         { label: 'Discard', run: () => { savePending([], p.model); batchActions([]); prog.summary = ''; document.getElementById('statusText').dataset.idle = '1'; refreshIdle(); } },
       ]);
     }
-    async function generateImages() {
+    const rowTarget = deal => { const t = document.getElementById('targetSelect').value || 'exact'; return deal && t === 'path' ? 'exact' : t; };   // frames made to fill the loop are no run's steps
+    async function generateImages(over) {                                    // over: { deal: [mark ids] } for Make N of frames
+      const deal = over && Array.isArray(over.deal) && over.deal.length ? over.deal : null;
       if (blockedByAi()) return;
       if (!project) { setStatus('Make a project or import one first: the project menu, at the top.'); openProjectMenu(); return; }
       if (project.has_mark === false) { openProjectForm('edit'); return; }   // no mark yet: Project settings, where + Add a mark is
@@ -4578,7 +4609,7 @@
 
       const model = document.getElementById('modelSelect').value;
       const kimiModel = document.getElementById('kimiModelSelect').value;
-      const count = batchCount();
+      const count = deal ? deal.length : batchCount();
       const worldChoice = document.getElementById('worldSelect').value;
       if (!worldChoice) { setStatus('Choose a territory first.'); toggleTerrMenu(null, true); return; }   // the territories have not loaded yet
       const direction = document.getElementById('directionInput').value.trim();
@@ -4595,7 +4626,7 @@
         const invRes = await fetch('/api/invent-prompts', {
           method: 'POST',
           headers: forProject({'Content-Type': 'application/json'}),
-          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: document.getElementById('targetSelect').value || 'exact', mark: document.getElementById('markSelect').value || 'main', rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed })
+          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: rowTarget(deal), mark: document.getElementById('markSelect').value || 'main', rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed, ...(deal ? { deal: deal.join(',') } : {}) })
         });
         const invData = await invRes.json();
         if (invData.needs_kimi_key) {
@@ -4610,7 +4641,7 @@
         placeSeed = newSeed();                                               // the strip's places are this batch's now: the next one gets its own
 
         ran = true;
-        const target = document.getElementById('targetSelect').value || 'exact';   // each image keeps the batch's choices and the place its scene was written for (a Resume too)
+        const target = rowTarget(deal);                                          // each image keeps the batch's choices and the place its scene was written for (a Resume too)
         await runBatch(invData.ideas.map(i => ({ ...i, target })), model);
         if (worldChoice === '__custom__' && invData.world) {                     // your territory exists now: the next batch carries on in it
           await loadWorlds();

@@ -286,6 +286,20 @@ def mark_set(choice) -> list:
     return out or [None]
 
 
+def deal_list(choice) -> list | None:
+    """The marks to make one image each with, in order, repeats kept ("f3,f3,f2": a project's frames that are short); unknown ids
+    dropped, at most 40. Nothing: None."""
+    if not choice:
+        return None
+    ids = {m["id"] for m in (PROJECT or {}).get("marks") or []}
+    out = []
+    for c in (choice if isinstance(choice, list) else str(choice).split(","))[:40]:
+        c = str(c or "").strip()
+        if c == "main" or c in ids:
+            out.append(None if c == "main" else c)
+    return out or None
+
+
 def pick_mark(choice) -> str | None:
     """One shot's mark: the one chosen, or one of those ticked. A project with one mark: always the main one."""
     return random.choice(mark_set(choice))
@@ -330,9 +344,10 @@ class BatchPlan:
     fourth mark). The ticks keep the menu's order. Shared by a batch's chunks: a chunk peeks at the next turns and takes only those of
     the scenes it kept, so a scene Kimi dropped leaves its turn to the next one. Loose and Scattered draw each turn's place from `seed`
     and its number (`place`), so the places the menu's strip drew before Generate (`/api/placements`, the same seed) are the batch's."""
-    def __init__(self, target: str = "exact", mark=None, rot=None, scale=None, path=None, count: int = 1, seed=None, steps=None, run=None):
+    def __init__(self, target: str = "exact", mark=None, rot=None, scale=None, path=None, count: int = 1, seed=None, steps=None, run=None, deal=None):
         self.target, self.seed = target, (str(seed)[:40] if seed not in (None, "") else None)
         self.marks, self.rots = mark_set(mark), rot_set(rot)
+        self.deal = deal_list(deal)                                             # Make N of frames: the marks one by one, as listed (repeats kept)
         self.scales = scale_set(scale) if target in ("exact", "path") else [1.0]   # Loose and Scattered choose their own sizes
         self.count = max(1, int(count or 1))
         base = path_for(target, path)
@@ -341,6 +356,9 @@ class BatchPlan:
         self.queue, self.next = list(self.steps or range(self.count)), self.count
 
     def turn(self, i: int) -> dict:
+        if self.deal:                                                           # the listed marks in turn; angles and sizes take turns over them
+            a = len(self.rots)
+            return {"i": i, "mark": self.deal[i % len(self.deal)], "rot": self.rots[i % a], "scale": self.scales[(i // a) % len(self.scales)], "path": None}
         m, a = len(self.marks), len(self.rots)
         return {"i": i, "mark": self.marks[i % m], "rot": self.rots[(i // m) % a], "scale": self.scales[(i // (m * a)) % len(self.scales)],
                 "path": {**self.path, "i": min(i, self.count - 1)} if self.path else None}    # past the batch's end (spares): its last step
@@ -931,7 +949,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
 
 
 def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, world: str | None = None, direction: str = "", stats: dict | None = None,
-                         target: str = "exact", mark: str | None = None, keep: bool = False, rot=None, scale=None, path=None, seed=None, fill: dict | None = None) -> list[dict]:
+                         target: str = "exact", mark: str | None = None, keep: bool = False, rot=None, scale=None, path=None, seed=None, fill: dict | None = None, deal=None) -> list[dict]:
     """
     One authored territory per batch (shots cohere), idea-first, steered by taste, near-duplicates dropped.
     Returns exactly `count` scenes whenever Kimi can supply them: large batches are asked in chunks of up to 10,
@@ -941,6 +959,10 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     if fill:                                                                    # Make N: a run's missing steps, with its own turns
         target, mark, rot, scale, count = "path", fill["mark"], fill["rot"], fill["scale"], len(fill["steps"])
         plan = BatchPlan("path", mark, rot, scale, {k: fill[k] for k in ("shape", "dir", "len", "anchor", "fit")}, fill["n"], steps=fill["steps"], run=fill["run"])
+    elif deal_list(deal):                                                       # Make N of frames: one image of each listed frame, never on a path
+        target = "exact" if target == "path" else target
+        count = len(deal_list(deal))
+        plan = BatchPlan(target, mark, rot, scale, None, count, seed, deal=deal)
     if world == "__sampler__":
         return ask_kimi_sampler(st, api_key, kimi_model, count, direction, stats, target, mark, keep, rot, scale, path, seed, plan)
     w = chapters.choose_world(st, world or "")
@@ -2155,6 +2177,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     path=body.get("path"),
                     seed=body.get("seed"),
                     fill=fill,
+                    deal=None if fill else body.get("deal"),
                 )
                 with STATE_LOCK:                               # Kimi took seconds: what changed meanwhile stays; only its titles are added,
                     if PROJECT and PROJECT["slug"] == started_in:   # and never into another project opened meanwhile

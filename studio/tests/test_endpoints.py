@@ -1252,3 +1252,18 @@ def test_a_project_of_your_own_images_starts_with_no_mark_and_generates_once_one
     assert r["project"]["has_mark"] is True and r["project"]["mark_name"] == "Star"
     assert srv.projects.load("moodboard")["guides"]["dark"].is_file(), "its guides, made with it"
     assert live("POST", "/api/invent-prompts", {"count": 1, "world": "Editorial Print"})[0] == 200, "now it generates"
+
+
+def test_make_n_of_frames_writes_one_scene_for_each_listed_frame(live, srv, monkeypatch, tmp_path):
+    """A frame short of images (Made with › Mark: Frames 10 · 10 · 6 · 10, Make 4): the listed marks, one scene each, in the row's
+    territory; a Path in the row is made on target (they are no run's steps)."""
+    import base64
+    from test_projects import ring_png, star_png
+    monkeypatch.setattr(srv.placement, "GUIDE_DIR", tmp_path / "guides")
+    url = lambda b: "data:image/png;base64," + base64.b64encode(b).decode()
+    live("POST", "/api/projects", {"action": "create", "name": "Sphere", "mark": url(star_png()), "mark_shape": "striped sphere", "mark_noun": "sphere"})
+    live("POST", "/api/projects", {"action": "add_mark", "slug": "sphere", "name": "Frame 2", "mark": url(ring_png()), "size": 18, "id": "f2"})
+    [f2] = [m["id"] for m in srv.PROJECT["marks"]]
+    _, res = live("POST", "/api/invent-prompts", {"deal": f"{f2},{f2},main", "count": 9, "world": "Editorial Print", "target": "path", "path": {"shape": "line"}})
+    assert res["ok"] and [i["mark"] for i in res["ideas"]] == [f2, f2, None], "as listed, the count from the list"
+    assert all(not (i["placement"] or {}).get("path") for i in res["ideas"]) and not srv.load_state().get("path_runs"), "no run recorded"
