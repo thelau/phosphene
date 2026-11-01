@@ -133,7 +133,11 @@
     .mm-ftile.empty { border: 1px dashed var(--amber); }
     .mm-ftile.empty .mm-well .pm-thumb { opacity: .35; }
     .mm-cell { position: relative; }
-    .mm-cfn { position: absolute; bottom: 1px; left: 0; right: 0; text-align: center; font-family: var(--mono); font-size: 8px; line-height: 1; color: var(--muted); }   /* each cell's frame */
+    .mm-cellf { align-items: flex-end; padding-bottom: 3px; font-family: var(--mono); font-size: 9px; color: var(--muted); }
+    .mm-flabel { flex-direction: column; align-items: flex-start; gap: 4px; }
+    .mm-flabel small { font-family: var(--sans, inherit); font-size: 11px; letter-spacing: 0; text-transform: none; color: #8F8A7A; }
+    .mm-fadd { color: var(--orange); font-weight: 600; }
+    .mm-cfn { position: absolute; top: 2px; left: 3px; text-align: left; font-family: var(--mono); font-size: 8px; line-height: 1; color: var(--muted); }   /* each cell's frame */
     #countHome[hidden] { display: none; }
     /* the Mark menu: which mark (with several), where it goes, and Keep it as designed: one button, sections inside */
     /* the Mark button and menu (Claude Design's 31 Oct pass: MM-States, MarkMenu) */
@@ -705,6 +709,12 @@
     .drag-handle { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: rgba(18, 17, 16, .8); color: var(--text-2); cursor: grab; }
     .action-btn { height: 26px; min-width: 26px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: rgba(18, 17, 16, .85); color: var(--text); font-size: 12px; font-weight: 700; }
     .action-btn.trash-btn:hover { background: var(--red); }
+    .action-btn.skip-btn { font-weight: 600; white-space: nowrap; overflow: hidden; }
+    .skip-btn .sk-short { display: none; }
+    #grid[data-size="S"] .skip-btn .sk-long, #grid[data-size="M"] .skip-btn .sk-long { display: none; }   /* S and M: the short word (measured: "Skip in film" needs 64 px, M gives 53) */
+    #grid[data-size="S"] .skip-btn .sk-short, #grid[data-size="M"] .skip-btn .sk-short { display: inline; }
+    #grid[data-size="S"] .action-btn.skip-btn { flex: 1 1 auto; min-width: 0; padding: 0 3px; }   /* 92 px for Info, Skip and Trash */
+    .action-btn.skip-btn:hover { background: var(--text); color: #1A1A1A; }
     .action-btn.info-btn:hover { background: var(--orange); color: #1A1A1A; }
     .action-btn.restore-btn { flex: 1; background: rgba(254, 255, 231, .92); color: #1A1A1A; }
     /* the info panel on a card: what it shows depends on the thumbnail size; the text scrolls, Copy stays */
@@ -788,18 +798,27 @@
     .group-row { flex: none; display: flex; align-items: center; gap: 8px; padding: 2px 24px 12px; min-height: 44px; position: relative; }   /* its height before the chips arrive: the grid jumped 10 px on load (Lighthouse: layout shift 0.23) */
     .group-row[hidden] { display: none; }
     .group-bar { flex: 1; display: flex; gap: 6px; min-width: 0; overflow: hidden; }
-    /* Whole loops (frames of one animation): a switch, not a chip, at the row's right end, with what it holds back */
-    .loops-sw { flex: none; height: 30px; padding: 0 12px; display: inline-flex; align-items: center; gap: 10px; box-sizing: border-box; border-radius: 8px; border: 1px solid #2E2C28; background: transparent; color: var(--text); font-size: 13px; font-weight: 600; white-space: nowrap; }
-    .loops-sw[hidden] { display: none; }
-    .loops-sw:hover { background: #1E1D1B; }
+    /* Show missing frames (frames of one animation): a switch, not a chip, at the row's right end; its words never change, so it never moves */
+    .gaps-sw { flex: none; height: 30px; padding: 0 12px; display: inline-flex; align-items: center; gap: 10px; box-sizing: border-box; border-radius: 8px; border: 1px solid #2E2C28; background: transparent; color: var(--text); font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .gaps-sw[hidden] { display: none; }
+    .gaps-sw:hover { background: #1E1D1B; }
     .ls-track { position: relative; width: 28px; height: 16px; flex: none; border-radius: 8px; background: #3A3732; transition: background .15s; }
     .ls-track i { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--text); transition: left .15s; }
-    .loops-sw[aria-checked="true"] .ls-track { background: var(--orange); }
-    .loops-sw[aria-checked="true"] .ls-track i { left: 14px; }
-    .ls-n { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--muted); }
-    .ls-n:empty { display: none; }
+    .gaps-sw[aria-checked="true"] .ls-track { background: var(--orange); }
+    .gaps-sw[aria-checked="true"] .ls-track i { left: 14px; }
     /* a ghost: a frame the order skips (Whole loops off), the card's size, never in the Film */
-    .ghost-card { pointer-events: none; }
+    .ghost-card { cursor: default; }
+    .ghost-thumb .g-drop { display: none; font-size: 11px; color: var(--text); }
+    .ghost-card.drop-ok .card-thumb.ghost-thumb { border-color: var(--text); background: #24221F; }   /* a card of its frame dragged over it */
+    .ghost-card.drop-ok .g-name { display: none; }
+    .ghost-card.drop-ok .g-drop { display: inline; }
+    /* Skip: the card in place, its picture dimmed, a badge top right; its title quieter */
+    .card-dim { position: absolute; inset: 0; z-index: 1; background: rgba(12, 11, 10, .62); pointer-events: none; }   /* its own layer: T's box is the thumb's ::after */
+    .card.skipped .card-title { color: #8F8A7A; }
+    .card-skip { position: absolute; right: 6px; top: 6px; z-index: 2; height: 18px; padding: 0 6px; border-radius: 4px; background: rgba(18, 17, 16, .85); color: var(--text); font-family: var(--mono); font-size: 10px; line-height: 18px; }
+    .card:hover .card-skip, body.picking .card-skip { display: none; }   /* the pick circle takes its corner */
+    #grid[data-size="S"] .card-skip { height: 16px; line-height: 16px; font-size: 9px; padding: 0 4px; }
+    #grid[data-size="XL"] .card-skip, #grid[data-size="XXL"] .card-skip { height: 24px; line-height: 24px; font-size: 12px; padding: 0 8px; }
     .card-thumb.ghost-thumb { background: transparent; border: 1.5px dashed #6F6B5F; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
     .card-thumb.ghost-thumb img.pm-thumb { position: static; inset: auto; width: 26%; height: auto; aspect-ratio: 1; object-fit: contain; opacity: .3; }   /* not the card's full-bleed image */
     .ghost-thumb span { font-size: 11px; font-weight: 600; color: #A8A390; }

@@ -2724,39 +2724,72 @@ test('AI order: Motion says what it will do with the images shown (their path, a
 });
 
 // ---- Whole loops and ghosts (Claude Design, 2026-11-01): frames of one animation ----
-function framesPage(seq, extra = {}) {
+function framesPage(seq, extra = {}, more = () => ({})) {
   const r = baseRoutes();
-  const plates = seq.map((m, i) => ({ ...mkPlate(`f${i + 1}`), ...(m === 'up' ? { uploaded: true } : { mark: m === 'main' ? null : m }) }));
+  const plates = seq.map((m, i) => ({ ...mkPlate(`f${i + 1}`), ...(m === 'up' ? { uploaded: true } : { mark: m === 'main' ? null : m }), ...more(i) }));
   r['/api/state'] = { plates, project: { slug: 'sphere', name: 'Sphere', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', frames: true, marks: [{ id: 'b', name: 'B', url: '/b' }, { id: 'c', name: 'C', url: '/c' }], ...extra }, krea_connected: true, kimi_configured: true };
+  r['/api/invent-prompts'] = body => ({ ok: true, ideas: String(body.deal || 'main').split(',').map((m, i) => ({ title: `${body.world} ${i}`, prompt: 'p', guide: 'dark', world: body.world, mark: m === 'main' ? null : m })) });
+  r['/api/generate-image'] = body => ({ ok: true, qa_passed: true, filename: `new-${body.title}`, title: body.title });
   return load({ routes: r });
 }
 const names = list => JSON.parse(list).map(p => p.ghost !== undefined ? `ghost${p.ghost + 1}` : p.filename);
 
-test('Whole loops: whole rounds in frame order, the next image of each frame taken in the current order; uploads left out', async () => {
-  const h = framesPage(['c', 'main', 'b', 'b', 'main', 'up', 'c', 'b']);   // frame 1 ×2, frame 2 ×3, frame 3 ×2, one upload
+test('Skip: per group key; what plays leaves out the skipped, the grid keeps them; the other groups still play them', async () => {
+  const h = framesPage(['main', 'b', 'c', 'main'], { frames: false });
   await settle(); await settle(); await h.run('loadState()');
-  const v = JSON.parse(h.run('JSON.stringify(loopView(groupPlates()))'));
-  assert.deepEqual(v.list.map(p => p.filename), ['f2', 'f3', 'f1', 'f5', 'f4', 'f7'], '1, 2, 3, 1, 2, 3: each frame in the order it comes');
-  assert.deepEqual([v.rounds, v.total, v.held], [2, 8, 2]);
-  assert.deepEqual(JSON.parse(h.run('JSON.stringify(activePlates().map(p => p.filename))')), ['f2', 'f3', 'f1', 'f5', 'f4', 'f7'], 'on by default: what plays');
-  h.run('toggleWholeLoops(false)');
-  assert.equal(h.run('activePlates().length'), 8, 'off: every image');
-  assert.equal(h.run("localStorage.getItem('studioWholeLoops:sphere')"), '0', 'remembered per project');
-  assert.equal(h.run('framesOn()'), true);
+  h.run("skips = { all: ['f2'], 'look:dark': ['f3'] }");
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(activePlates().map(p => p.filename))')), ['f1', 'f3', 'f4'], 'All: f2 left out');
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(visiblePlates().map(p => p.filename))')), ['f1', 'f2', 'f3', 'f4'], 'the grid keeps it, in its place');
+  assert.equal(h.run("skipSet('look:dark').has('f3') && !skipSet('look:dark').has('f2')"), true, 'per group');
+  h.run('renderGrid()');
+  assert.match(h.$('grid').innerHTML, /class="card skipped"[^>]*data-filename="f2"/, 'the card says so');
+  assert.equal((h.$('grid').innerHTML.match(/card-skip/g) || []).length, 1);
 });
 
-test('ghosts: a ghost for each frame the order skips, none for an upload, none at the end; a project without frames has none', async () => {
+test('ghosts: a ghost for each frame the order misses, before the next image; uploads are passed by; skipping changes none of it', async () => {
   const h = framesPage(['main', 'b', 'c', 'b', 'up', 'c', 'c', 'main']);
   await settle(); await settle(); await h.run('loadState()');
-  assert.deepEqual(names(h.run('JSON.stringify(withGhosts(groupPlates()))')),
-    ['f1', 'f2', 'f3', 'ghost1', 'f4', 'f5', 'f6', 'ghost1', 'ghost2', 'f7', 'f8'], 'skipped frame 1; then c twice: 1 and 2 missing between; the upload changes nothing');
+  const g = list => JSON.parse(list).map(p => p.ghost !== undefined ? `ghost${p.ghost + 1}>${p.before}` : p.filename);
+  assert.deepEqual(g(h.run('JSON.stringify(withGhosts(groupPlates()))')),
+    ['f1', 'f2', 'f3', 'ghost1>f4', 'f4', 'f5', 'f6', 'ghost1>f7', 'ghost2>f7', 'f7', 'f8'], 'each ghost stands before an image');
+  const before = h.run('JSON.stringify(withGhosts(groupPlates()))');
+  h.run("skips = { all: ['f4', 'f2'] }");
+  assert.equal(h.run('JSON.stringify(withGhosts(groupPlates()))'), before, 'skipping never moves the grid: a skipped card keeps its frame\'s place');
   const h2 = framesPage(['c', 'main']);
   await settle(); await settle(); await h2.run('loadState()');
-  assert.deepEqual(names(h2.run('JSON.stringify(withGhosts(groupPlates()))')), ['ghost1', 'ghost2', 'f1', 'f2'], 'the loop starts on frame 1');
-  const h3 = framesPage(['main', 'b'], { frames: false });
+  assert.deepEqual(g(h2.run('JSON.stringify(withGhosts(groupPlates()))')), ['ghost1>f1', 'ghost2>f1', 'f1', 'f2'], 'the loop starts on frame 1');
+  const h3 = framesPage(['main', 'c'], { frames: false });
   await settle(); await settle(); await h3.run('loadState()');
-  assert.equal(h3.run('wholeLoopsOn()'), false, 'not frames: Whole loops never applies');
-  assert.equal(h3.run('activePlates().length'), 2);
+  assert.equal(h3.run('groupGaps().length'), 0, 'not frames: no gaps');
+});
+
+test('Fill the gaps: one image per gap of the group shown (the first 40), never with Path; the tiles count the group shown', async () => {
+  const seq = ['main', 'b', 'c', 'b', 'c', 'main', 'c'];                   // gaps: frame 1 before f4; frame 2 before f7 (after f6=main? no: f6 main, f7 c: frame 2 missing)
+  const h = framesPage(seq);
+  await settle(); await settle(); await h.run('loadState()');
+  const plan = JSON.parse(h.run('JSON.stringify(fillPlan())'));
+  assert.deepEqual(plan.ids, ['main', 'b'], 'frame 1 then frame 2, in the gaps\' order');
+  assert.deepEqual([plan.total, plan.per], [2, [1, 1, 0]]);
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(frameCounts())')), [2, 2, 3]);
+  h.run("skips = { all: ['f7'] }");
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(frameCounts())')), [2, 2, 2], 'skipped images do not count');
+  h.run("skips = {}; document.getElementById('targetSelect').value = 'path'");
+  assert.equal(h.run('fillPlan()'), null, 'never with Path');
+  const many = framesPage(Array.from({ length: 50 }, () => 'c'));         // frame 3 only, 50 times: two gaps before each
+  await settle(); await settle(); await many.run('loadState()');
+  const mp = JSON.parse(many.run('JSON.stringify(fillPlan())'));
+  assert.deepEqual([mp.ids.length, mp.total], [40, 100], 'the first 40 gaps, in order');
+});
+
+test('Fill the gaps, after its batch: each new image lands before the image its ghost stood before, in the gaps\' order', async () => {
+  const h = framesPage(['main', 'b', 'c', 'b', 'c']);                      // gap: frame 1 before f4
+  await settle(); await settle(); await h.run('loadState()');
+  const plan = h.run('fillPlan()');
+  h.calls.length = 0;
+  await h.run(`placeFilled(${JSON.stringify(plan)}, [{ filename: 'n1', gi: 0 }, { filename: 'n2', gi: 7 }], null)`);
+  const call = h.calls.find(c => c.url === '/api/reorder');
+  const order = (typeof call.body === 'string' ? JSON.parse(call.body) : call.body).order;
+  assert.deepEqual(order.slice(0, 6), ['f1', 'f2', 'f3', 'n1', 'f4', 'f5'], 'into its gap; one for no gap is left where it is');
 });
 
 test('one chevron everywhere: the drawn 10 px chevron, never the old 24-unit one or a text character', () => {
@@ -2768,15 +2801,31 @@ test('one chevron everywhere: the drawn 10 px chevron, never the old 24-unit one
   assert.ok(svgs.length >= 10 && svgs.every(s => /class="chev/.test(s) && /width="10" height="10"/.test(s)), `every chevron the one: ${svgs.length}`);
 });
 
-test('Whole loops follows the group shown: your own group in its own order, with its own count', async () => {
-  const r = baseRoutes();
-  const seq = ['main', 'b', 'c', 'main', 'b', 'c', 'main'];
-  const plates = seq.map((m, i) => ({ ...mkPlate(`f${i + 1}`), mark: m === 'main' ? null : m }));
-  r['/api/state'] = { plates, groups: [{ id: 'g1', name: 'mine', files: ['f6', 'f5', 'f4', 'f1', 'f7'] }], project: { slug: 'sphere', name: 'Sphere', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', frames: true, marks: [{ id: 'b', name: 'B', url: '/b' }, { id: 'c', name: 'C', url: '/c' }] }, krea_connected: true, kimi_configured: true };
-  const h = load({ routes: r });
-  await settle(); await settle(); await h.run('loadState()');
-  h.run("setGroup('g:g1')");
-  assert.deepEqual(JSON.parse(h.run('JSON.stringify(activePlates().map(p => p.filename))')), ['f4', 'f5', 'f6'], "the group's own: f4 is its first frame 1 (its order: f6, f5, f4, f1…), one whole round");
-  const v = JSON.parse(h.run('JSON.stringify(loopView(groupPlates()))'));
-  assert.deepEqual([v.list.length, v.total], [3, 5], '"3 of 5" for this group');
+
+
+test('a fill matches its gap: the territory before it (after it at the start; one not listed: the row\'s), the Look group\'s look, else one both neighbours share', async () => {
+  const worlds = ['Editorial Print', 'Harbor & Signal', 'Gone World', 'Editorial Print'];
+  const looks = [['dark'], ['dark', 'cold'], ['bright'], ['dark', 'cold']];
+  const h = framesPage(['main', 'c', 'b', 'c'], {}, i => ({ world: worlds[i], look: looks[i] }));   // gaps: frame 2 before f2; frame 1 before f3 … (by the walk)
+  await settle(); await settle(); await h.run('loadState()'); await h.run('loadWorlds()');
+  const ctx = g => JSON.parse(h.run(`JSON.stringify(gapContext(${JSON.stringify(g)}))`));
+  assert.deepEqual(ctx({ before: 'f2', after: 'f1' }), { world: 'Editorial Print', look: 'dark' }, 'the image before it; the look both share');
+  assert.deepEqual(ctx({ before: 'f1', after: null }), { world: 'Editorial Print', look: 'dark' }, 'at the start: the image after it');
+  assert.deepEqual(ctx({ before: 'f4', after: 'f3' }), { world: 'Editorial Print', look: '' }, '"Gone World" is not listed: the next neighbour\'s; no look shared');
+  h.run("currentGroup = 'look:bright'");
+  assert.equal(ctx({ before: 'f2', after: 'f1' }).look, 'bright', 'in Look: Bright, bright whatever the neighbours');
+});
+
+test('Fill the gaps asks Kimi once per territory and look, each with only its gaps\' frames', async () => {
+  const worlds = ['Editorial Print', 'Editorial Print', 'Harbor & Signal', 'Harbor & Signal'];
+  const h = framesPage(['main', 'c', 'main', 'c'], {}, i => ({ world: worlds[i], look: [] }));
+  await settle(); await settle(); await h.run('loadState()'); await h.run('loadWorlds()');
+  const plan = JSON.parse(h.run('JSON.stringify(fillPlan())'));
+  assert.deepEqual(plan.gaps.map(g => [g.world, plan.ids[plan.gaps.indexOf(g)]]), [['Editorial Print', 'b'], ['Harbor & Signal', 'b']], 'frame 2 missing twice, in two territories');
+  h.calls.length = 0;
+  const done = h.run(`makeFill(${JSON.stringify(plan)})`);
+  for (let i = 0; i < 20; i++) await settle();
+  const asks = h.calls.filter(c => c.url === '/api/invent-prompts').map(c => [c.body.world, c.body.deal, c.body.count]);
+  assert.deepEqual(asks, [['Editorial Print', 'b', 1], ['Harbor & Signal', 'b', 1]], 'one request per territory, each with only its gaps');
+  void done;
 });

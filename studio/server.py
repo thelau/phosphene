@@ -1689,6 +1689,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 "kimi_model": st.get("kimi_model", "kimi-k3"),
                 "sequences": sequences.public(st, {p["filename"] for p in plates if not p["trashed"]}),
                 "groups": groups.public(st, {p["filename"] for p in plates}),
+                "skips": groups.skips_for(st, {p["filename"] for p in plates}),   # Skip, per group key: the images that still exist
                 "edits": edits.public(st),
                 "active_sequence": st.get("active_sequence"),
                 "path_runs": [{k: r[k] for k in ("run", "n", "shape", "dir", "len", "anchor", "at", "world")} for r in path_runs(st).values()],   # each Path run: the page counts its steps

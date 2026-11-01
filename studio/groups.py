@@ -41,6 +41,50 @@ def clean_rule(rule) -> dict | None:
     return out or None
 
 
+MAX_KEY = 300
+
+
+def clean_key(key) -> str:
+    """A group's key, as the page names the group shown ('all', 'g:<id>', 'look:dark', 'world:<name>', a Made with filter): short text."""
+    key = str(key or "") if isinstance(key, (str, int)) else ""
+    return key if 0 < len(key) <= MAX_KEY and key.isprintable() else ""
+
+
+def clean_skips(value) -> dict:
+    """Skipped images, per group key: {key: [file names]} (an image skipped in one group plays in the others)."""
+    out = {}
+    for k, v in (value.items() if isinstance(value, dict) else []):
+        k = clean_key(k)
+        files = [f for f in _files(v) if f and "/" not in f and "\\" not in f and not f.startswith(".")]
+        if k and files:
+            out[k] = files
+    return out
+
+
+def skips_for(st: dict, existing: set) -> dict:
+    """The skips for the page: per group key, the images that still exist; a key left with none is not listed."""
+    out = {k: [f for f in v if f in existing] for k, v in clean_skips(st.get("skips")).items()}
+    return {k: v for k, v in out.items() if v}
+
+
+def skip(st: dict, body: dict) -> dict:
+    """skip {key, files, skip: true | false}: leave images out of that group's film, or play them again. They keep their place."""
+    key = clean_key(body.get("key"))
+    if not key:
+        return {"ok": False, "error": "Which group?"}
+    files = [f for f in _files(body.get("files")) if f and "/" not in f]
+    skips = st.setdefault("skips", {})
+    now = skips.get(key, [])
+    now = now + [f for f in files if f not in now] if body.get("skip", True) is not False else [f for f in now if f not in files]
+    if now:
+        skips[key] = now
+    else:
+        skips.pop(key, None)
+    if not skips:
+        st.pop("skips", None)
+    return {"ok": True}
+
+
 def find(st: dict, gid: str) -> dict | None:
     return next((g for g in st.get("groups", []) if g.get("id") == gid), None)
 
@@ -53,9 +97,11 @@ def public(st: dict, existing: set) -> list:
 
 def act(st: dict, body: dict) -> dict:
     """create {name, files} or {name, rule} (a smart group) · add {id, files} · remove {id, files} · reorder {id, files} · rename {id, name} ·
-    delete {id} · restore {group} (undo of a delete)."""
-    groups = st.setdefault("groups", [])
+    delete {id} · restore {group} (undo of a delete) · skip {key, files, skip} (any group shown, by its key)."""
     action = body.get("action")
+    if action == "skip":                                      # Skip / Play: per group, All and the automatic ones too
+        return skip(st, body)
+    groups = st.setdefault("groups", [])
     if action == "create":
         name = _clean_name(body.get("name"))
         if not name:

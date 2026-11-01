@@ -123,6 +123,7 @@
       const data = await res.json();
       if (call !== stateCalls) return;                                       // a newer request is on its way: an older answer must not win
       const lengthBefore = activePlates().length;
+      skips = data.skips && typeof data.skips === 'object' ? data.skips : {};   // before anything draws: Skip, per group
       if (project && (!data.project || data.project.slug !== project.slug)) {   // another window (or a file opened from Finder) changed the project: show that one
         reopen(data.project ? data.project.name : '');
         return;
@@ -200,41 +201,61 @@
     }
 
     // the images in the edit: the shown ones (AI order's "best N" cut was removed on request: every image plays)
-    // the group's images, all of them, in its order (AI order reorders these); what plays is activePlates: with Whole loops, whole rounds only
+    // the group's images, all of them, in its order (the grid shows them, AI order orders them); what plays leaves out the ones skipped
     function groupPlates() { return inGroup(plates.filter(p => !p.trashed)); }
-    function activePlates() { return wholeLoopsOn() ? loopView(groupPlates()).list : groupPlates(); }
-    // ---- Whole loops (Claude Design's "Animated marks · Whole loops switch, ghosts, Mark button dot", 2026-11-01): in a project whose marks
-    // are frames of one animation, the group shown keeps as many images of each frame as its shortest frame has, laid out in frame order
-    // (1, 2, 3, 4, 1…), the next image of each frame the next one of that frame in the current order. Nothing deleted or moved; the grid,
-    // the Film, the film strip and the export use what it keeps. On by default, remembered per project. Uploads have no frame: left out ----
-    const loopsKey = () => `studioWholeLoops:${filmSlug || (project && project.slug) || ''}`;
-    let wholeLoops = true;
-    function readWholeLoops() { try { wholeLoops = localStorage.getItem(loopsKey()) !== '0'; } catch (e) { wholeLoops = true; } }
-    const wholeLoopsOn = () => framesOn() && wholeLoops;
+    // ---- Skip (Claude Design's "Skip per group · Show missing frames · Fill the gaps", 2026-11-01): an image left out of one group's
+    // film (All, an automatic group, your own: by the group's key), kept with the project; it keeps its place; the Film, the film strip and
+    // the export leave it out ----
+    let skips = {};                                                           // {group key: [file names]}, from /api/state
+    const skipSet = (key = currentGroup) => new Set(skips[key] || []);
+    function activePlates() { const s = skipSet(); return s.size ? groupPlates().filter(p => !s.has(p.filename)) : groupPlates(); }
+    async function setSkip(files, on) {
+      if (!files.length || blockedByAi()) return;
+      const key = currentGroup, call = v => () => groupsCall({ action: 'skip', key, files, skip: v });
+      if (!(await call(on)())) return;
+      pushStep({ label: `${on ? 'Skip' : 'Play'} ${files.length === 1 ? `“${(plates.find(x => x.filename === files[0]) || {}).title || files[0]}”` : `${files.length} images`}`, undo: call(!on), redo: call(on) });
+      if (isPlaying) musicChanged();                                          // the film is shorter or longer: the sound follows
+    }
+    function skipCard(e, filename) { if (e) e.stopPropagation(); setSkip([filename], !skipSet().has(filename)); }
+    function skipPicked() { const files = [...pickSel], s = skipSet(); setSkip(files, !files.every(f => s.has(f))); }   // Play when every one picked is skipped
+    // ---- Show missing frames (frames projects): a ghost wherever the shown group's order (its images not skipped) skips a frame; on by
+    // default, remembered per project ----
+    const gapsKey = () => `studioMissingFrames:${filmSlug || (project && project.slug) || ''}`;
+    let showMissing = true;
+    function readShowMissing() { try { showMissing = localStorage.getItem(gapsKey()) !== '0'; } catch (e) { showMissing = true; } }
     const frameOrder = () => ['main', ...((project && project.marks) || []).map(m => m.id)];
-    function loopView(list) {
-      const order = frameOrder(), q = order.map(id => list.filter(p => !p.uploaded && (p.mark || 'main') === id));
-      const rounds = Math.min(...q.map(x => x.length)), out = [];
-      for (let r = 0; r < rounds; r++) q.forEach(x => out.push(x[r]));
-      return { list: out, rounds, total: list.length, held: list.length - out.length };
+    function toggleMissingFrames(on) {
+      showMissing = on === undefined ? !showMissing : !!on;
+      try { localStorage.setItem(gapsKey(), showMissing ? '1' : '0'); } catch (e) {}
+      renderView();
     }
-    function toggleWholeLoops(on) {
-      wholeLoops = on === undefined ? !wholeLoops : !!on;
-      try { localStorage.setItem(loopsKey(), wholeLoops ? '1' : '0'); } catch (e) {}
-      renderView(); renderFilmstrip(); restartLoop(); if (!isPlaying) drawFrame();
-      if (isPlaying) musicChanged();                                        // the film is longer or shorter: the sound follows
-    }
-    // ghosts (Curate, Whole loops off): walking the order, a ghost for each frame the order skips, recomputed every time
+    // walking the order from frame 1: a ghost {ghost: frame index, before: the file it stands before} for each frame missing before the
+    // next image; an upload is passed by; none at the end. A skipped image keeps its frame's place (the user: skipping must never move
+    // the grid; its dimmed card already shows that spot plays nothing)
     function withGhosts(list) {
       const order = frameOrder(), m = order.length, out = [];
-      let next = 0;
+      let next = 0, prev = null;
       list.forEach(p => {
         const k = p.uploaded ? -1 : order.indexOf(p.mark || 'main');
-        if (k < 0) { out.push(p); return; }
-        for (let f = next; f !== k; f = (f + 1) % m) out.push({ ghost: f });
-        out.push(p); next = (k + 1) % m;
+        if (k >= 0) for (let f = next; f !== k; f = (f + 1) % m) out.push({ ghost: f, before: p.filename, after: prev });
+        if (k >= 0) next = (k + 1) % m;
+        out.push(p); prev = p.filename;
       });
       return out;
+    }
+    const groupGaps = () => (framesOn() ? withGhosts(groupPlates()).filter(x => x.ghost !== undefined) : []);
+    // what a fill makes, from the images around its gap (the user: a fill in Look: Dark must be dark, and keep its neighbours' territory):
+    // the territory of the image before the gap (after it, at the start; one no longer listed: the row's), and the look of the Look group
+    // shown, else one both neighbours share
+    const LOOK_WORDS = { dark: 'dark, low-key light', bright: 'bright, high-key light', warm: 'warm colours', cold: 'cold colours', mono: 'black and white, no colour' };
+    function gapContext(g) {
+      const by = f => plates.find(x => x.filename === f), a = g.after && by(g.after), b = by(g.before);
+      const known = new Set(namedWorlds().map(o => o.value));
+      const row = document.getElementById('worldSelect').value;
+      const world = [a && a.world, b && b.world].find(w => w && known.has(w)) || (known.has(row) ? row : [...known][0] || row);
+      const shared = (a && b ? (a.look || []).filter(t => (b.look || []).includes(t)) : ((a || b || {}).look || [])).filter(t => LOOK_WORDS[t]);
+      const look = currentGroup.startsWith('look:') ? currentGroup.slice(5) : (['dark', 'bright', 'mono', 'warm', 'cold'].find(t => shared.includes(t)) || '');
+      return { world, look };
     }
 
     // ---- groups: All, yours (stored), and automatic ones from each image's look and territory. The grid and the film show the group chosen. ----
@@ -389,7 +410,7 @@
     }
     const pathOn = () => document.getElementById('targetSelect').value === 'path';
     // how many images Generate makes: the count's (in the Mark menu's share box), or with a Path its steps
-    function batchCount() { return pathOn() ? pathSet().steps : evenOn() ? evenPlan().ids.length : Math.min(40, Math.max(1, parseInt(document.getElementById('batchCountSelect').value, 10) || 4)); }
+    function batchCount() { return pathOn() ? pathSet().steps : fillOn() ? fillPlan().ids.length : Math.min(40, Math.max(1, parseInt(document.getElementById('batchCountSelect').value, 10) || 4)); }
     const ROTATIONS = [-135, -90, -45, 0, 45, 90, 135, 180];                // degrees clockwise, as a dial from left to right
     const rotLabel = r => (r === 180 || r === -180 ? '180°' : r < 0 ? `−${-r}°` : `${r}°`);
     // the angles ticked (kept as "0,45" in #rotSelect): one or more, they take turns as the marks do; none known: upright
@@ -415,21 +436,31 @@
       const all = marks.length ? [['main', 'Main mark', project.mark_url], ...marks.map(m => [m.id, m.name, m.url])] : [];
       return framesOn() ? all.map((c, i) => [c[0], `Frame ${i + 1}`, c[2]]) : all;
     }
-    // Even out (one control, in the Mark menu's IMAGES row): a one-off batch of exactly the images the short frames lack, never with a
-    // Path; up to 40, shortest frames first (each next image goes to the frame with the fewest). Unticked when its batch ends
-    let evenOut = false;
-    function evenPlan() {
-      const fv = framesOn() && !pathOn() ? frameView() : null;
-      if (!fv || !fv.need.length) return null;
-      const have = fv.n.slice(), ids = [];
-      while (ids.length < Math.min(40, fv.need.length)) {
-        let k = -1;
-        have.forEach((c, i) => { if (c < fv.most && (k < 0 || c < have[k])) k = i; });
-        have[k]++; ids.push(fv.order[k]);
-      }
-      return { ids, total: fv.need.length, most: fv.most, per: fv.order.map(id => ids.filter(x => x === id).length) };
+    // Fill the gaps (one control, in the Mark menu's IMAGES row; Claude Design, 2026-11-01): one image for each missing frame of the
+    // group shown (its ghosts), each landing in its ghost's place; never with a Path; the first 40 in order. A one-off: unticked when its
+    // batch ends (done, stopped or failed)
+    let fillGaps = false;
+    function fillPlan() {
+      if (!framesOn() || pathOn()) return null;
+      const gaps = groupGaps();
+      if (!gaps.length) return null;
+      const take = gaps.slice(0, 40).map(g => ({ ...g, ...gapContext(g) })), order = frameOrder(), ids = take.map(g => order[g.ghost]);
+      return { ids, gaps: take, total: gaps.length, per: order.map(id => ids.filter(x => x === id).length) };
     }
-    const evenOn = () => evenOut && !!evenPlan();
+    const fillOn = () => fillGaps && !!fillPlan();
+    // each frame's images in the group shown that play (not skipped, not uploads): the FRAMES tiles
+    function frameCounts() {
+      const s = skipSet(), mine = groupPlates().filter(p => !p.uploaded && !s.has(p.filename));
+      return frameOrder().map(id => mine.filter(p => (p.mark || 'main') === id).length);
+    }
+    // the group shown, by name: "All", "test 2", "Look: Dark"
+    function groupLabel() {
+      if (currentGroup === 'all') return 'All';
+      const rule = currentGroup.startsWith('f:') ? madeRule() : null;
+      if (rule) return madeSummary(rule);
+      const c = groupChips(), hit = c.chips.concat(c.auto).find(x => x.key === currentGroup);
+      return hit ? hit.name : 'this group';
+    }
     // the Mark button and menu (Claude Design's 31 Oct pass, MM-States / MarkMenu): the button a fixed 260 × 46, the ticked marks'
     // thumbnails and "N marks · take turns" only when 2+ are ticked, then the summary (position, angles, sizes) and a glyph for As
     // designed, cut with an ellipsis and whole on hover; the menu in rows (Mark, Position with its Path panel, More: angle and size),
@@ -449,7 +480,7 @@
       const ang = st.rots.length > 1 ? (path ? 'spin' : `${st.rots.length} angles`) : st.rots[0] ? rotLabel(st.rots[0]) : '';
       const siz = st.sizeOff ? '' : st.zs.length > 1 ? (path ? 'pulse' : `${st.zs.length} sizes`) : st.zs[0] !== 1 ? sizeLabel(st.zs[0]) : '';
       const count = path ? `${st.n} steps` : `${st.n} image${st.n === 1 ? '' : 's'}`;   // how many first (the count lives in the menu; Claude Design's review)
-      const even = !path && evenOn() ? 'Even out' : '';                     // "13 images · Even out · On target"
+      const even = !path && fillOn() ? 'Fill the gaps' : '';               // "37 images · Fill the gaps · On target"
       return { count, rest: [even, pos, ang, siz].filter(Boolean).join(' · '), text: [count, even, pos, ang, siz].filter(Boolean).join(' · ') };
     }
     function showSummary(st) {
@@ -477,9 +508,9 @@
     function renderPlace() {
       const st = placeState(), m = st.on.length, multi = st.choices.length > 0 && m > 1;
       const summary = showSummary(st);
-      const fv = framesOn() ? frameView() : null, dot = document.getElementById('placeDot');   // frames uneven: an amber dot, before opening anything
-      dot.hidden = !(fv && fv.need.length);
-      dot.title = dot.hidden ? '' : `Frames uneven · Even out ${fv.need.length}`;
+      const gaps = groupGaps().length, dot = document.getElementById('placeDot');   // the group shown misses frames: an amber dot, before opening anything
+      dot.hidden = !gaps;
+      dot.title = gaps ? `${gaps} missing frame${gaps === 1 ? '' : 's'} · Fill the gaps` : '';
       document.getElementById('placeBtn').title = dot.hidden ? `${multi ? `${m} marks: ${st.on.map(c => c[1]).join(', ')}` : st.on[0][1]} · ${summary}` : dot.title;
       const stack = document.getElementById('placeStack');
       stack.hidden = !multi;                                                  // one mark ticked (or one in the project): the summary only
@@ -516,10 +547,9 @@
       const m = st.on.length, a = st.rots.length, z = st.zs.length, n = st.n;
       const img = (url, style = '') => (url ? `<img class="pm-thumb" src="${escapeHtml(url)}" alt=""${style ? ` style="${style}"` : ''} />` : '');
       const each = k => (n % k === 0 ? String(n / k) : `${Math.floor(n / k)}–${Math.ceil(n / k)}`);
-      const parts = [], fr = framesOn(), ev = evenOn() ? evenPlan() : null;
-      if (ev) {                                                              // Even out: what it makes, frame by frame
-        parts.push(ev.total > ev.ids.length ? `Makes ${ev.ids.length} of the ${ev.total}, shortest frames first. ${ev.total - ev.ids.length} left for the next batch.`
-          : `${ev.per.map((k, i) => (k ? `${k} of frame ${i + 1}` : '')).filter(Boolean).join(', ')}. All will have ${ev.most}.`);
+      const parts = [], fr = framesOn(), ev = fillOn() ? fillPlan() : null;
+      if (ev) {                                                              // Fill the gaps: the tiles say it; a line only when more remain
+        if (ev.total > ev.ids.length) parts.push(`${ev.total - ev.ids.length} more after this batch`);
       } else if (fr && st.t !== 'path') {
         parts.push(`Frames take turns: ${st.on.map((_, i) => i + 1).join(', ')}, 1…`);
         if (a > 1) parts.push(n >= a ? `${a} angles, ${each(a)} each` : `${n} of ${a} angles`);
@@ -535,15 +565,16 @@
         if (!st.sizeOff && z > 1) parts.push(n >= z ? `${z} sizes, ${each(z)} each` : `${n} of ${z} sizes`);
       }
       if (st.sizeOff && !ev) parts.push(st.t === 'loose' ? 'each a little off target, as drawn' : 'each anywhere in the frame, as drawn');
-      if (!parts.length) parts.push('Same mark, place, angle and size');
-      parts[0] = parts[0][0].toUpperCase() + parts[0].slice(1);              // the sentence under the count row starts it
+      if (!parts.length && !ev) parts.push('Same mark, place, angle and size');
+      if (parts.length) parts[0] = parts[0][0].toUpperCase() + parts[0].slice(1);   // the sentence under the count row starts it
       const big = n > 20, cw = big ? 12 : 18, ch = big ? 21 : 32, es = st.effSizes, L = st.t === 'path' ? pathLine(st.ps) : null;
       let cells = '';
       const places = previewPlaces(st);
       for (let i = 0; i < n; i++) {
-        const di = ev ? st.choices.findIndex(c => c[0] === ev.ids[i]) : -1;   // Even out: image i's frame, as the server deals it (angles then sizes take turns)
+        const di = ev ? st.choices.findIndex(c => c[0] === ev.ids[i]) : -1;   // Fill the gaps: image i's frame, as the server deals it (angles then sizes take turns)
         const mk = ev ? st.choices[di] : st.on[i % m], ang = ev ? st.rots[i % a] : st.rots[Math.floor(i / m) % a], sz = ev ? es[Math.floor(i / a) % es.length] : es[Math.floor(i / (m * a)) % es.length];
         const fno = fr ? `<span class="mm-cfn">${ev ? di + 1 : (i % m) + 1}</span>` : '';   // frames: each cell says its frame
+        if (fr && !st.sizeOff && st.t !== 'path') { cells += `<span class="mm-cell mm-cellf" style="width:${cw}px;height:${ch}px">${ev ? di + 1 : (i % m) + 1}</span>`; continue; }   // its number only (Claude Design): four frames look alike that small
         if (st.sizeOff) {                                                    // the place and size the server picked for image i, to scale (the mark twice as big, to read)
           const pl = places && places[i];
           if (!pl) { cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px">${fno}</span>`; continue; }
@@ -566,10 +597,10 @@
       const head = (label, turns) => `<div class="mm-label"><span>${label}</span>${turns > 1 ? `<span class="mm-turns">${turns} take turns</span>` : ''}</div>`;
       const glyph = st.on[0][2];
       let html = '';
-      if (framesOn()) {                                                      // frames: one tile a frame with its count in the Selection, not ticks
-        const fv = frameView(), most = fv ? fv.most : 0;
-        html += `<div class="mm-sec mm-grid"><div class="mm-label"><span>Frames</span></div><div class="mm-tiles mm-ftiles">${st.choices.map(([v, name, url], i) => { const k = fv ? fv.n[i] : 0, short = fv && k < most;
-          return `<div class="mm-ftile${short ? ' short' : ''}${fv && !k ? ' empty' : ''}" title="${escapeHtml(`${name}: ${k} image${k === 1 ? '' : 's'}`)}"><span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span><span class="mm-fcount">${k}</span><span class="mm-fbar"><i style="width:${most ? Math.round(100 * k / most) : 0}%"></i></span></div>`; }).join('')}</div></div>`;
+      if (framesOn()) {                                                      // frames: one tile a frame, its count in the group shown, not ticks
+        const counts = frameCounts(), fp = fillOn() ? fillPlan() : null;
+        html += `<div class="mm-sec mm-grid"><div class="mm-label mm-flabel"><span>Frames</span><small>in ${escapeHtml(groupLabel())}</small></div><div class="mm-tiles mm-ftiles">${st.choices.map(([v, name, url], i) => { const k = counts[i] || 0, add = fp ? fp.per[i] : 0;
+          return `<div class="mm-ftile" title="${escapeHtml(`${name}: ${k} image${k === 1 ? '' : 's'}${add ? `, ${add} to make` : ''}`)}"><span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span><span class="mm-fcount">${k}${add ? `<b class="mm-fadd"> +${add}</b>` : ''}</span></div>`; }).join('')}</div></div>`;
       } else if (st.choices.length) {                                       // the Mark row: only with 2+ marks
         html += `<div class="mm-sec mm-grid">${head('Mark', m)}<div class="mm-tiles">${st.choices.map(([v, name, url], i) => { const on = st.ticks.includes(v);
           return `<button type="button" class="mm-tile${on && m === 1 ? ' last' : ''}" data-list="mark" data-v="${escapeHtml(v)}" aria-pressed="${on}" title="${escapeHtml(tickTip(name, on, m, 'mark'))}">${i === 0 ? '<span class="mm-main">MAIN</span>' : ''}${on ? '<span class="mm-tick"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>' : ''}<span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span></button>`; }).join('')}</div></div>`;
@@ -612,11 +643,11 @@
       html += '</div>';
       const sh = shareParts(st);
       // the share box: how many (the count lives here, the user's call: not another control in the row; a Path's steps are set in its panel)
-      const plan = st.t !== 'path' ? evenPlan() : null, even = !!(plan && evenOut);
-      const chip = plan ? `<button type="button" class="mm-even" data-list="evenout" data-v="1" aria-pressed="${even}" title="${even ? 'Back to your own count' : 'Make the images the short frames lack'}"><span class="mm-ebox">${even ? '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#121110" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>' : ''}</span>Even out<span class="mm-emiss">${plan.total}</span></button>` : '';
+      const plan = st.t !== 'path' ? fillPlan() : null, even = !!(plan && fillGaps);
+      const chip = plan ? `<button type="button" class="mm-even" data-list="fillgaps" data-v="1" aria-pressed="${even}" title="${even ? 'Back to your own count' : 'One image for each missing frame'}"><span class="mm-ebox">${even ? '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#121110" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>' : ''}</span>Fill the gaps</button>` : '';
       const countRow = st.t === 'path'
         ? `<span class="mm-steps-n">${n} steps</span><span class="mm-help">set by Steps</span>`
-        : even ? `<span class="mm-countfake" aria-label="${n} images">${n}</span>${chip}`      // the count set by Even out: the field greyed, showing it
+        : even ? `<span class="mm-countfake" aria-label="${n} images">${n}</span>${chip}`      // the count set by Fill the gaps: the field greyed, showing it
         : `<span class="mm-countslot"></span>${chip || '<span class="mm-help">1 to 40</span>'}`;   // one value field, ⌃⌄ as the Film's Tempo (the user preferred it to − and +)
       html += `<div class="mm-share"><div class="mm-grid mm-countrow"><div class="mm-label"><span>Images</span></div><div class="mm-countc">${countRow}</div></div>
         <div class="mm-sharec"><span class="mm-sharet mm-sharer">${sh.text}</span><div class="mm-strip" role="img" aria-label="How the images take turns">${sh.cells}</div><span class="mm-sitw">${sh.sit}</span></div></div>`;
@@ -638,7 +669,7 @@
         setv('markSelect', markChoices().map(c => c[0]).filter(x => on.includes(x)).join(','));
       }
       else if (list === 'pshape-open') pathShapeOpen = !pathShapeOpen;
-      else if (list === 'evenout') evenOut = !evenOut;
+      else if (list === 'fillgaps') fillGaps = !fillGaps;
       else if (list === 'pshape' || list === 'pdir' || list === 'plen' || list === 'psteps' || list === 'panchor') {
         pathShapeOpen = false;
         const p = pathSet();
@@ -1373,13 +1404,9 @@
       syncSelects();
       document.getElementById('miniTitle').textContent = currentGroup === 'all' ? 'Film' : rule ? 'Made with' : (chips.concat(auto).find(c => c.key === currentGroup) || { name: 'Film' }).name;
       if (madeOpen()) renderMadeWith();
-      const sw = document.getElementById('loopsSw');                          // Whole loops: only in a frames project, at the row's right end
+      const sw = document.getElementById('gapsSw');                           // Show missing frames: only in a frames project, at the row's right end
       sw.hidden = !framesOn() || showTrash;
-      if (!sw.hidden) {
-        const lv = wholeLoops ? loopView(groupPlates()) : null;
-        sw.setAttribute('aria-checked', String(wholeLoops));
-        document.getElementById('loopsN').textContent = lv && lv.held ? `${lv.list.length} of ${lv.total}` : '';   // what it holds back, for the group shown
-      }
+      sw.setAttribute('aria-checked', String(showMissing));
     }
     // ---- the Made with panel (Claude Design's GroupsMade): rows Mark, Position, Angle, Size, Source, each value a chip with its count
     // (the images matching it together with the other rows' ticks); ticks in a row widen (or), rows narrow (and); the grid filters live.
@@ -1456,16 +1483,6 @@
         setGenerating(false);
         if (madeOpen()) renderMadeWith();
       }
-    }
-    // ---- Frames of one animation: AI order loops them, so a frame with fewer images than the others breaks the loop once it runs out.
-    // How many images each frame has (in the Selection, or the images given) and the frames to make so they all have as many as the most ----
-    function frameView(list = plates) {
-      const order = project && project.frames ? ['main', ...(project.marks || []).map(m => m.id)] : [];
-      if (order.length < 2) return null;
-      const mine = list.filter(p => !p.trashed && !p.uploaded);
-      const n = order.map(id => mine.filter(p => (p.mark || 'main') === id).length), most = Math.max(...n);
-      if (!most) return null;
-      return { order, n, most, rounds: Math.min(...n), need: order.flatMap((id, i) => Array(most - n[i]).fill(id)) };
     }
     function openMadeWith(e, edit) {
       if (e && e.stopPropagation) e.stopPropagation();
@@ -1599,6 +1616,11 @@
       bar.classList.toggle('in-trash', showTrash);
       document.getElementById('pickCount').textContent = `${n} picked`;
       document.getElementById('pickTrashBtn').disabled = aiRunning;
+      if (!showTrash && n) {                                                   // Skip N before Trash N; Play N when every one picked is skipped
+        const s = skipSet(), all = [...pickSel].every(f => s.has(f));
+        document.getElementById('pickSkipBtn').textContent = all ? 'Back in film' : 'Skip in film';   // "3 picked" says how many
+        document.getElementById('pickTrashBtn').textContent = 'Trash';
+      }
       document.body.classList.toggle('picking', !showTrash && n > 0);       // every card shows its circle while picking
     }
     // the picked images to the Trash in one go; one undo step puts them all back where they were
@@ -1741,7 +1763,7 @@
       return showTrash
         // newest trashed first; plates trashed before timestamps existed fall back to creation number
         ? plates.filter(p => p.trashed).sort((a, b) => (b.trashed_at || 0) - (a.trashed_at || 0) || num(b) - num(a))
-        : activePlates();                                                    // what plays: Whole loops keeps whole rounds
+        : groupPlates();                                                     // the group's images, the skipped ones too (dimmed)
     }
 
     // ---- trash: select, delete selected, empty ----
@@ -1772,7 +1794,7 @@
       return parts.length ? `${parts.join(' · ')}. The order follows the mark ${verbs.length > 1 ? `${verbs.slice(0, -1).join(', ')} and ${verbs[verbs.length - 1]}` : verbs[0] || 'as it moves'}.` : '';
     }
     function setAiMode(m) {
-      const moves = marksMove(), n = groupPlates().length;                   // AI order orders all of them (Whole loops then keeps whole rounds)
+      const moves = marksMove(), n = groupPlates().length;                   // AI order orders all of them, the skipped ones too
       aiMode = m === 'motion' && moves ? 'motion' : 'look';
       try { localStorage.setItem('studioAiMode', m === 'motion' ? 'motion' : 'look'); } catch (e) {}
       document.querySelectorAll('#aiPanel .ai-mode button').forEach(b => {
@@ -1780,7 +1802,7 @@
         b.setAttribute('aria-checked', String(on)); b.disabled = off;
         b.title = off ? 'Nothing moves in these images' : '';
       });
-      document.getElementById('aiShown').textContent = wholeLoopsOn() && activePlates().length < n ? `Reorders all ${n} images of the group.` : `Reorders the ${n} image${n === 1 ? '' : 's'} shown.`;   // with Whole loops, more than the grid shows
+      document.getElementById('aiShown').textContent = `Reorders the ${n} image${n === 1 ? '' : 's'} shown.`;   // skipped ones too: they stay skipped
       const line = document.getElementById('aiLine');                         // Motion only: what the order follows in these images (Look's card says it all)
       line.classList.toggle('motion', aiMode === 'motion');
       line.hidden = aiMode !== 'motion';
@@ -1790,7 +1812,7 @@
       // a path run being ordered with gaps: said here, in Motion, where a gap becomes a jump (Claude Design's PathMissing); it never blocks
       const gap = document.getElementById('aiGap'), shownRuns = new Set(groupPlates().map(MADE_BY.run).filter(Boolean));
       const short = aiMode === 'motion' ? pathRuns.filter(r => shownRuns.has(r.run)).map(runView).filter(v => v.missing).sort((a, b) => b.r.at - a.r.at) : [];
-      gap.hidden = !short.length;                                             // frames: no sentence (Whole loops keeps the loop whole)
+      gap.hidden = !short.length;                                             // frames: no sentence (the grid shows the gaps)
       if (short.length) {
         const v = short[0], at = v.gaps.map(i => i + 1), list = at.length > 4 ? `${at.length} steps` : at.length > 1 ? `steps ${at.slice(0, -1).join(', ')} and ${at[at.length - 1]}` : `step ${at[0]}`;
         gap.innerHTML = `<span><b>${escapeHtml(runName(v.r))}</b> has ${v.kept} of ${v.r.n} steps: the mark will jump at ${list}.${short.length > 1 ? ` ${short.length - 1} more run${short.length > 2 ? 's have' : ' has'} gaps too.` : ''}</span>
@@ -1882,7 +1904,7 @@
     // the images shown in Curate (All or the chosen group, in their order), full size, in one zip; the browser saves it
     let downloading = false;
     async function downloadShown() {
-      const list = showTrash ? visiblePlates() : activePlates();
+      const list = visiblePlates();                                          // what the grid shows (skipped ones too)
       if (!list.length || downloading) return;
       downloading = true; renderSequences();
       setStatus(`Packing ${list.length} images…`);
@@ -2008,17 +2030,22 @@
       const visible = visiblePlates();
       if (seenAtLoad === null && plates.length) seenAtLoad = new Set(plates.map(p => p.filename));
       const items = [];
-      const ghosts = !showTrash && framesOn() && !wholeLoops, choices = ghosts ? markChoices() : [];
+      const ghosts = !showTrash && framesOn() && showMissing, choices = ghosts ? markChoices() : [];
       let g = 0;
       (ghosts ? withGhosts(visible) : visible).forEach(p => {
         if (p.ghost !== undefined) {                                          // a missing frame: no number, not draggable or pickable, never in the Film
           const c = choices[p.ghost] || [];
-          items.push([`ghost:${g++}`, `<div class="card ghost-card" aria-hidden="true"><div class="card-thumb ghost-thumb">${c[2] ? `<img class="pm-thumb" src="${escapeHtml(c[2])}" alt="" />` : ''}<span>${escapeHtml(c[1] || `Frame ${p.ghost + 1}`)}</span></div></div>`]);
+          const nm = c[1] || `Frame ${p.ghost + 1}`, fid = frameOrder()[p.ghost], at = (prog.fillAt || []).indexOf(`${fid}|${p.before}`);
+          if (generating && at >= 0 && (prog.slots[at] === 'wait' || prog.slots[at] === 'run')) {   // its image on its way: shown in the gap
+            items.push([`ghost:${g++}`, `<div class="card pending-card ghost-making" aria-hidden="true"><div class="card-thumb"><div class="pending-ring"></div><span class="pending-label">Making ${escapeHtml(nm)}…</span><div class="pending-bar ${prog.slots[at]}"><i></i></div></div><div class="card-title">${escapeHtml(prog.titles[at] || '')}</div><div class="card-meta"><span class="card-model-badge">generating…</span></div></div>`]);
+            return;
+          }
+          items.push([`ghost:${g++}`, `<div class="card ghost-card" data-frame="${escapeHtml(fid)}" data-before="${escapeHtml(p.before)}" title="Fill the gaps in the Mark menu" ondragover="ghostOver(event)" ondragleave="ghostLeave(event)" ondrop="ghostDrop(event)"><div class="card-thumb ghost-thumb">${c[2] ? `<img class="pm-thumb" src="${escapeHtml(c[2])}" alt="" />` : ''}<span class="g-name">${escapeHtml(nm)} missing</span><span class="g-drop">Drop to move here</span></div></div>`]);
           return;
         }
         items.push([`card:${p.filename}`, cardHtml(p)]);
       });
-      if (!showTrash) pendingCards().forEach((html, i) => items.push([`pending:${i}`, html]));
+      if (!showTrash) pendingCards().forEach((html, i) => items.push([`pending:${i}`, html]));   // (a fill's own show in their gaps)
       if (gridView !== showTrash && grid.replaceChildren) {                  // switching Selection / Trash: put the other view's cards back instead of rebuilding them
         const keep = [...grid.children];
         grid.replaceChildren(...(viewCards.get(showTrash) || []));
@@ -2029,8 +2056,7 @@
       grid.querySelectorAll('.cm-frame img').forEach(fitMarkTone);          // measured once a mark, then only a class
       const empty = document.getElementById('gridEmpty');
       empty.hidden = items.length > 0;
-      empty.textContent = showTrash ? 'The Trash is empty.' : wholeLoopsOn() && groupPlates().length ? 'No whole loop yet. Even out frames in the Mark menu, or turn Whole loops off.'   // a frame with no images here: nothing whole to play
-        : project ? 'No images yet. Choose a territory and press Generate.' : 'No images yet';
+      empty.textContent = showTrash ? 'The Trash is empty.' : project ? 'No images yet. Choose a territory and press Generate.' : 'No images yet';
       if (grid.querySelectorAll) grid.querySelectorAll('.card[data-filename]').forEach((el, i) => {   // the place in the order lives outside the markup, so a reorder only moves cards
         const num = el.querySelector('.card-num'), txt = String(i + 1).padStart(2, '0');
         if (num && num.textContent !== txt) num.textContent = txt;
@@ -2068,9 +2094,9 @@
     // why this image's mark is not on target: its batch asked for it (Loose / Scattered), and where
     function targetTip(pl) { return `${POSITION_NAMES[pl.kind] || 'Loose'}${pl.path ? ` (step ${pl.path.i + 1} of ${pl.path.n})` : ''}: made with the mark at ${pl.x}% across, ${pl.y}% down, ${pl.size}% wide (on purpose: its batch asked for it)`; }
     function cardHtml(p) {
-      const made = cardMade(p);
+      const made = cardMade(p), sk = !showTrash && !p.trashed && skipSet().has(p.filename);   // skipped in this group's film: dimmed, a badge
       return `
-        <div class="card"
+        <div class="card${sk ? ' skipped' : ''}"
              id="card-${CSS.escape(p.filename)}"
              draggable="${!showTrash}"
              data-filename="${p.filename}"
@@ -2083,12 +2109,13 @@
              ondblclick="openViewer(event, '${p.filename}')">
           <div class="card-thumb"${thumbStyle(p) ? ` style="${escapeHtml(thumbStyle(p))}"` : ''}>
             <img src="${p.thumb || p.url}" loading="lazy" decoding="async" alt="" />${markImg(p) ? '<i class="mark-ghost" aria-hidden="true"></i>' : ''}
-            <span class="card-num"></span>${cardQa(p)}
+            <span class="card-num"></span>${cardQa(p)}${sk ? `<span class="card-dim"></span><span class="card-skip" title="Left out of this group's film">Skipped</span>` : ''}
             ${!showTrash && seenAtLoad && !seenAtLoad.has(p.filename) ? '<span class="card-new">New</span>' : ''}
             ${showTrash ? '<span class="card-pick" aria-hidden="true"></span>' : `<button type="button" class="card-pick" title="Pick (⌘-click) to add to a group" aria-label="Pick ${escapeHtml(p.title)}" onclick="pickClick(event, '${p.filename}')"></button>`}
             <div class="card-actions">
               ${showTrash ? '' : '<span class="drag-handle" title="Drag to reorder" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span><span class="grow"></span>'}
               <button class="action-btn info-btn" title="The prompt and the model" aria-label="Info for ${escapeHtml(p.title)}" onclick="togglePromptOverlay(event, '${p.filename}')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></button>
+              ${p.trashed ? '' : `<button class="action-btn skip-btn" title="${sk ? 'Play it in this group\'s film again' : 'Leave it out of this group\'s film'}" aria-label="${sk ? 'Back in film' : 'Skip in film'}: ${escapeHtml(p.title)}" onclick="skipCard(event, '${p.filename}')"><span class="sk-long">${sk ? 'Back in film' : 'Skip in film'}</span><span class="sk-short">${sk ? 'Back' : 'Skip'}</span></button>`}
               ${p.trashed
                 ? `<button class="action-btn restore-btn" onclick="setTrash(event, '${p.filename}', false)">Restore</button>`
                 : `<button class="action-btn trash-btn" title="Move to the Trash" aria-label="Move ${escapeHtml(p.title)} to the Trash" onclick="setTrash(event, '${p.filename}', true)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg></button>`
@@ -2144,7 +2171,7 @@
       if (!generating || prog.stage !== 'render') return [];
       const made = { world: prog.worlds, mark: prog.marks, pos: prog.positions, rot: prog.rots || [], size: prog.sizes || [], src: prog.slots.map(() => 'generated') }, kind = currentGroup.slice(0, currentGroup.indexOf(':'));
       const belongs = i => currentGroup === 'all' || (kind in made && (made[kind] || [])[i] === currentGroup.slice(kind.length + 1));
-      return prog.slots.map((st, i) => ((st === 'wait' || st === 'run') && belongs(i)
+      return prog.slots.map((st, i) => ((st === 'wait' || st === 'run') && belongs(i) && !(prog.fillAt && prog.fillAt[i] && framesOn() && showMissing && !showTrash)
         ? `<div class="card pending-card" aria-hidden="true"><div class="card-thumb"><div class="pending-ring"></div><span class="pending-label">${st === 'run' ? 'Rendering' : 'Queued'}</span><div class="pending-bar ${st}"><i></i></div></div><div class="card-title">${escapeHtml(prog.titles[i] || '')}</div><div class="card-meta"><span class="card-model-badge">generating…</span></div></div>`
         : '')).filter(Boolean);
     }
@@ -2222,6 +2249,8 @@
       const qa = qaPill(p);
       document.getElementById('viewerQa').innerHTML = qa ? `<span class="viewer-qa ${qa.cls}" title="${escapeHtml(qa.tip)}">${qa.label}</span>` : '';
       document.getElementById('viewerTrashBtn').hidden = !!p.trashed;            // in the Trash: Restore in its place, as on the cards
+      const sk = document.getElementById('viewerSkipBtn');                       // Skip / Play in this group's film, as on the card
+      sk.hidden = !!p.trashed; sk.textContent = skipSet().has(p.filename) ? 'Back in film' : 'Skip in film';
       document.getElementById('viewerRestoreBtn').hidden = !p.trashed;
       const info = document.getElementById('viewerInfo');
       if (!info.hidden) info.innerHTML = promptInfoHtml(p) + `<button type="button" class="po-copy" onclick="copyPromptText(event, '${p.filename}')">Copy prompt</button>`;
@@ -2241,6 +2270,12 @@
       if (!p || p.trashed) return;
       await setTrash({ stopPropagation() {} }, p.filename, true);           // the same as the card's: one undo step, the toast
       if (viewerOpen()) showViewer();                                       // the next image takes its place
+    }
+    async function viewerSkip() {
+      const p = visiblePlates()[viewerAt];
+      if (!p || p.trashed) return;
+      await setSkip([p.filename], !skipSet().has(p.filename));
+      if (viewerOpen()) showViewer();                                       // it stays: a skipped image keeps its place
     }
     async function viewerRestore() {
       const p = visiblePlates()[viewerAt];
@@ -2344,9 +2379,38 @@
       await reorder(after)();
       pushStep({ label: `Move “${moved.title}”`, undo: reorder(before), redo: reorder(after) });
     }
+    // a ghost takes a card of its own frame: dropped, the card moves into the gap (a normal reorder, one undo step)
+    function ghostFits(el) { const p = plates.find(x => x.filename === draggedFilename); return !!(p && !p.uploaded && (p.mark || 'main') === el.dataset.frame); }
+    function ghostOver(e) { const el = e.currentTarget; if (!ghostFits(el)) return; e.preventDefault(); el.classList.add('drop-ok'); }
+    // a ghost's click: the Mark menu, Fill the gaps ticked; Generate makes them (the user expected a ghost to lead to making it)
+    function ghostLeave(e) { e.currentTarget.classList.remove('drop-ok'); }
+    async function ghostDrop(e) {
+      const el = e.currentTarget;
+      e.preventDefault(); el.classList.remove('drop-ok');
+      if (ghostFits(el)) await moveBefore(draggedFilename, el.dataset.before);
+    }
+    async function moveBefore(dragged, anchor) {
+      if (aiRunning || !dragged || dragged === anchor) return;
+      const p = plates.find(x => x.filename === dragged), own = manualGroup(), label = `Move “${p ? p.title : dragged}” into a gap`;
+      if (own) {
+        const before = [...own.files], list = before.filter(f => f !== dragged), at = list.indexOf(anchor);
+        if (at < 0) return;
+        list.splice(at, 0, dragged);
+        const put = files => () => groupsCall({ action: 'reorder', id: own.id, files });
+        await put(list)();
+        pushStep({ label, undo: put(before), redo: put(list) });
+        return;
+      }
+      const before = plates.map(x => x.filename), list = before.filter(f => f !== dragged), at = list.indexOf(anchor);
+      if (at < 0) return;
+      list.splice(at, 0, dragged);
+      const reorder = order => async () => { await fetch('/api/reorder', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify({ order }) }); await loadState(); };
+      await reorder(list)();
+      pushStep({ label, undo: reorder(before), redo: reorder(list) });
+    }
     function onDragEnd(e) {
       e.currentTarget.classList.remove('dragging');
-      document.querySelectorAll('.card.drag-over').forEach(el => el.classList.remove('drag-over'));
+      document.querySelectorAll('.card.drag-over, .ghost-card.drop-ok').forEach(el => el.classList.remove('drag-over', 'drop-ok'));
       draggedFilename = null;
     }
 
@@ -4035,7 +4099,7 @@
     const filmKey = slug => `studioFilm:${slug}`;
     let filmSlug = null, legacyFilm = null;
     try { filmSlug = localStorage.getItem('studioProject') || null; } catch (e) {}
-    readWholeLoops();                                                        // the project open last: its Whole loops
+    readShowMissing();                                                       // the project open last: its Show missing frames
     // the territory used last, read now: the page saves its settings before the territories arrive, which blanked it
     let savedWorld = '';
     try { savedWorld = JSON.parse(localStorage.getItem(`studioFilm:${filmSlug}`) || '{}').worldSelect || ''; } catch (e) {}
@@ -4077,7 +4141,7 @@
     function useProjectFilm(slug) {
       if (!slug || slug === filmSlug) return;
       filmSlug = slug;
-      readWholeLoops();                                                      // Whole loops: per project
+      readShowMissing();                                                     // Show missing frames: per project
       try { localStorage.setItem('studioProject', slug); currentEdit = localStorage.getItem(editKey()) || null; } catch (e) { currentEdit = null; }
       const saved = readJson(filmKey(slug));
       if (!legacyFilm) for (const [id, v] of Object.entries(PLACE_DEFAULTS)) {
@@ -4404,14 +4468,14 @@
       const count = prog.stage === 'invent' ? '' : `<b>${done}/${prog.total}</b>`;
       el.innerHTML = `<div class="prog">
         <span class="prog-world">${escapeHtml(prog.world || 'New batch')}</span>${bar}${count}
-        <span class="prog-note"${prog.summary && prog.detail ? ` title="${escapeHtml(prog.detail)}"` : ''}>${escapeHtml(prog.summary || (prog.evening && prog.stage !== 'invent' && !/Connection|online|Stopping/.test(prog.note) ? 'Evening out frames' : prog.note))}</span>${prog.summary && prog.run ? `<button type="button" class="prog-run" onclick="event.stopPropagation(); showRun(this.dataset.run)" data-run="${escapeHtml(prog.run.id)}" title="Show the run in Made with">${escapeHtml(prog.run.text)}</button>` : ''}
+        <span class="prog-note"${prog.summary && prog.detail ? ` title="${escapeHtml(prog.detail)}"` : ''}>${escapeHtml(prog.summary || (prog.filling && prog.stage !== 'invent' && !/Connection|online|Stopping/.test(prog.note) ? 'Filling the gaps' : prog.note))}</span>${prog.summary && prog.run ? `<button type="button" class="prog-run" onclick="event.stopPropagation(); showRun(this.dataset.run)" data-run="${escapeHtml(prog.run.id)}" title="Show the run in Made with">${escapeHtml(prog.run.text)}</button>` : ''}
         ${(prog.actions || []).map((x, i) => `<button type="button" class="small-btn prog-act" data-act="${i}">${escapeHtml(x.label)}</button>`).join('')}
         ${prog.timer ? `<span class="prog-time">${fmtElapsed(Date.now() - prog.t0)}${running ? ` · ${running} ${prog.world === 'AI order' ? 'working' : 'rendering'}` : ''}</span>` : ''}
       </div>`;
     }
     function progStart(count) {
       prog.t0 = Date.now(); prog.slots = []; prog.titles = []; prog.worlds = []; prog.marks = []; prog.positions = []; prog.why = []; prog.world = ''; prog.stage = 'invent';
-      prog.total = count; prog.summary = ''; prog.detail = ''; prog.run = null; prog.evening = false; prog.note = `Choosing a territory and writing ${count} scenes…`;
+      prog.total = count; prog.summary = ''; prog.detail = ''; prog.run = null; prog.filling = false; prog.note = `Choosing a territory and writing ${count} scenes…`;
       document.getElementById('statusText').dataset.idle = '';
       clearInterval(prog.timer); prog.timer = setInterval(progRender, 1000); progRender();
     }
@@ -4564,13 +4628,13 @@
       return pausedWait;
     }
     function batchActions(list) { prog.actions = list; progRender(); }
-    async function runBatch(ideas, model) {
+    async function runBatch(ideas, model, onMade) {                          // onMade(item, filename): each image kept (Fill the gaps places them)
       batchStop = false;
       let added = 0, trashedByQa = 0, authFailed = false, creditsOut = false;
       const failedItems = [], left = new Map(ideas.map((it, i) => [i, it]));
       prog.stage = 'render';
       prog.total = ideas.length;
-      prog.world = new Set(ideas.map(i => i.world)).size > 1 ? 'Sampler' : (ideas[0] && ideas[0].world) || '';   // the Sampler: many territories
+      prog.world = new Set(ideas.map(i => i.world)).size > 1 ? (prog.filling ? 'Fill the gaps' : 'Sampler') : (ideas[0] && ideas[0].world) || '';   // the Sampler: many territories (a fill across territories says what it is)
       prog.slots = ideas.map(() => 'wait');
       prog.titles = ideas.map(i => i.title);
       prog.worlds = ideas.map(i => i.world || prog.world);
@@ -4621,6 +4685,7 @@
         left.delete(idx); keep();
         if (genData.qa_passed) {
           added++;
+          if (onMade && genData.filename) onMade(item, genData.filename);
           prog.slots[idx] = 'ok';
           prog.note = `Added “${item.title}”`;
         } else {
@@ -4686,9 +4751,64 @@
         { label: 'Discard', run: () => { savePending([], p.model); batchActions([]); prog.summary = ''; document.getElementById('statusText').dataset.idle = '1'; refreshIdle(); } },
       ]);
     }
+    // Fill the gaps, after its batch: each new image into a gap of its frame, in the gaps' order, just before the image its ghost stood
+    // before; in your own group it joins the group there, else it moves there in the one order (All and the automatic groups)
+    async function placeFilled(plan, made, ownId) {                           // made: [{ filename, gi }] (gi: its gap in plan.gaps)
+      const pairs = made.filter(m => plan.gaps[m.gi]).sort((a, b) => a.gi - b.gi).map(m => [m.filename, plan.gaps[m.gi].before]), used = new Set(pairs.map(x => x[0]));
+      if (!pairs.length) return;
+      const place = list => { const out = list.filter(f => !used.has(f)); pairs.forEach(([f, before]) => { const at = out.indexOf(before); if (at < 0) out.push(f); else out.splice(at, 0, f); }); return out; };
+      try {
+        const own = ownId && groups.find(g => g.id === ownId && !g.rule);
+        if (own) {
+          await groupsCall({ action: 'add', id: own.id, files: [...used] });
+          const now = groups.find(g => g.id === own.id);
+          if (now) await groupsCall({ action: 'reorder', id: own.id, files: place(now.files) });
+          return;
+        }
+        await fetch('/api/reorder', { method: 'POST', headers: forProject({'Content-Type': 'application/json'}), body: JSON.stringify({ order: place(plates.map(p => p.filename)) }) });
+        await loadState();
+      } catch (e) { setStatus(`The new images are at the end: ${plainError(e)}`); }
+    }
+    // Fill the gaps (all, from the Mark menu) or one gap (a ghost's click): one Kimi request per territory and look, every scene tagged
+    // with its gap; one batch; each kept image placed in its gap
+    async function makeFill(plan) {
+      if (!plan || !plan.gaps.length || blockedByAi()) return;
+      if (!ensureKimiReady() || !ensureKreaReady()) return;
+      const model = document.getElementById('modelSelect').value, kimiModel = document.getElementById('kimiModelSelect').value;
+      const refine = document.getElementById('worldSelect').value === '__custom__' ? '' : document.getElementById('directionInput').value.trim();
+      const ownId = manualGroup() && manualGroup().id, target = rowTarget(true), made = [];
+      setGenerating(true);
+      progStart(plan.gaps.length);
+      prog.filling = true;
+      try {
+        const sets = new Map();
+        plan.gaps.forEach((g, i) => { const k = `${g.world}|${g.look}`; if (!sets.has(k)) sets.set(k, []); sets.get(k).push(i); });
+        const ideas = [];
+        for (const idx of sets.values()) {
+          const g0 = plan.gaps[idx[0]];
+          const res = await (await fetch('/api/invent-prompts', { method: 'POST', headers: forProject({ 'Content-Type': 'application/json' }), body: JSON.stringify({
+            count: idx.length, pair: false, kimi_model: kimiModel, world: g0.world, direction: [refine, LOOK_WORDS[g0.look]].filter(Boolean).join(', '),
+            target, mark: markTicks().join(','), rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed, deal: idx.map(i => plan.ids[i]).join(',') }) })).json();
+          if (res.needs_kimi_key) { progStop(''); ensureKimiReady(); return; }
+          if (!res.ok || !res.ideas) throw new Error(res.error || 'Prompt generation failed');
+          const left = [...idx];                                              // each scene to a gap of its frame, in the gaps' order
+          res.ideas.forEach(it => { const k = left.findIndex(i => plan.ids[i] === (it.mark || 'main')); if (k >= 0) { it.gap = left[k]; left.splice(k, 1); } ideas.push(it); });
+        }
+        placeSeed = newSeed();
+        prog.fillAt = ideas.map(it => (it.gap !== undefined ? `${plan.ids[it.gap]}|${plan.gaps[it.gap].before}` : null));   // each one shows in its gap while made
+        await runBatch(ideas.map(i => ({ ...i, target })), model, (item, filename) => { if (item.gap !== undefined) made.push({ filename, gi: item.gap }); });
+        await placeFilled(plan, made, ownId);
+      } catch (e) {
+        progStop(plainError(e));
+      } finally {
+        prog.fillAt = null;
+        setGenerating(false);
+        fillGaps = false; renderPlace(); renderGrid();                       // a one-off: done, stopped or failed
+      }
+    }
     const rowTarget = deal => { const t = document.getElementById('targetSelect').value || 'exact'; return deal && t === 'path' ? 'exact' : t; };   // frames made to fill the loop are no run's steps
     async function generateImages() {
-      const deal = evenOn() ? evenPlan().ids : null;                          // Even out: the short frames' images, one each
+      if (fillOn()) return makeFill(fillPlan());                              // Fill the gaps: its own way (a territory and look per gap)
       if (blockedByAi()) return;
       if (!project) { setStatus('Make a project or import one first: the project menu, at the top.'); openProjectMenu(); return; }
       if (project.has_mark === false) { openProjectForm('edit'); return; }   // no mark yet: Project settings, where + Add a mark is
@@ -4696,7 +4816,7 @@
 
       const model = document.getElementById('modelSelect').value;
       const kimiModel = document.getElementById('kimiModelSelect').value;
-      const count = deal ? deal.length : batchCount();
+      const count = batchCount();
       const worldChoice = document.getElementById('worldSelect').value;
       if (!worldChoice) { setStatus('Choose a territory first.'); toggleTerrMenu(null, true); return; }   // the territories have not loaded yet
       const direction = document.getElementById('directionInput').value.trim();
@@ -4707,14 +4827,13 @@
       }
       setGenerating(true);
       progStart(count);
-      prog.evening = !!deal;
       let ran = false;
 
       try {
         const invRes = await fetch('/api/invent-prompts', {
           method: 'POST',
           headers: forProject({'Content-Type': 'application/json'}),
-          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: rowTarget(deal), mark: markTicks().join(','), rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed, ...(deal ? { deal: deal.join(',') } : {}) })
+          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: rowTarget(false), mark: markTicks().join(','), rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed })
         });
         const invData = await invRes.json();
         if (invData.needs_kimi_key) {
@@ -4729,7 +4848,7 @@
         placeSeed = newSeed();                                               // the strip's places are this batch's now: the next one gets its own
 
         ran = true;
-        const target = rowTarget(deal);                                          // each image keeps the batch's choices and the place its scene was written for (a Resume too)
+        const target = rowTarget(false);                                         // each image keeps the batch's choices and the place its scene was written for (a Resume too)
         await runBatch(invData.ideas.map(i => ({ ...i, target })), model);
         if (worldChoice === '__custom__' && invData.world) {                     // your territory exists now: the next batch carries on in it
           await loadWorlds();
@@ -4744,7 +4863,6 @@
         progStop(plainError(e));
       } finally {
         setGenerating(false);
-        if (deal) { evenOut = false; renderPlace(); }                       // a one-off: done, stopped or failed
       }
     }
 
@@ -4924,7 +5042,7 @@
         zoom_mode: document.getElementById('zoomSelect').value,
         zoom_amount: parseFloat(document.getElementById('zoomAmt').value) || 0,
         trail: (parseFloat(document.getElementById('trailRange').value) || 0) / 100,
-        ...(currentGroup === 'all' && !wholeLoopsOn() ? {} : { files: activePlates().map(p => p.filename) }),   // a group, or whole loops: just what plays
+        ...(currentGroup === 'all' && !skipSet().size ? {} : { files: activePlates().map(p => p.filename) }),   // a group, or skipped images: just what plays
         ...(editOf(currentEdit) ? { edit: editOf(currentEdit).name } : {}),   // the file is named after the edit
       };
       const filmSec = rhythmFor(activePlates().length).end / 30;
@@ -5113,7 +5231,13 @@ Object.assign(window, {
   toggleReticle,
   refreshLibrary,                     // no button since 2026-11-01: the tests reload the library with it
   toggleMarkOverlay,
-  toggleWholeLoops,
+  toggleMissingFrames,
+  skipCard,
+  skipPicked,
+  ghostOver,
+  ghostLeave,
+  ghostDrop,
+  viewerSkip,
   toggleSettings,
   updateTempo,
   updateRhythm,

@@ -1720,26 +1720,31 @@ test('frames of one animation: Project settings says so, names Kimi gives alike 
   await ctx.close();
 });
 
-test('animation frames (Claude Design): the Mark menu shows each frame and its count, Even out makes the missing ones and unticks; Made with says Frames; AI order says nothing of it', { skip }, async () => {
+test('animation frames: the FRAMES tiles count the group shown; Fill the gaps makes one image per gap, each lands in its gap, then unticks; never with Path', { skip }, async () => {
   const bar = id => ({ id, name: 'Striped sphere', size: 18, x: 50, y: 50, shape: 'sphere', noun: 'sphere', ratio: 1, url: `/api/project-mark?p=demo&m=${id}` });
-  const ctx = await fresh({ init: () => { try { localStorage.setItem('studioWholeLoops:demo', '0'); } catch (e) {} }, setup: st => { Object.assign(st.projects[0], { frames: true, marks: [bar('n1'), bar('n2')] }); st.plates[1].mark = 'n1'; st.plates[2].mark = 'n1'; st.markSel = 'main'; } });
+  const ctx = await fresh({ setup: st => { Object.assign(st.projects[0], { frames: true, marks: [bar('n1'), bar('n2')] }); st.plates[1].mark = 'n1'; st.plates[2].mark = 'n1'; } });
   await page.evaluate(() => { document.getElementById('markSelect').value = 'main'; });   // a tick saved before frames: every frame is used anyway
+  // k1 frame 1, k2 frame 2, k3 frame 2: frames 3 and 1 missing before k3
+  assert.equal(await page.locator('#placeDot').isVisible(), true, 'the dot: the group shown misses frames');
+  assert.equal(await page.locator('#placeDot').getAttribute('title'), '2 missing frames · Fill the gaps');
   await page.click('#placeBtn');
   await page.waitForSelector('#placeMenu .mm-ftile');
   assert.deepEqual(await page.locator('#placeMenu .mm-ftile .mm-name').allTextContents(), ['Frame 1', 'Frame 2', 'Frame 3'], 'Frame 1 … N, not ticks');
-  assert.deepEqual(await page.locator('#placeMenu .mm-ftile .mm-fcount').allTextContents(), ['1', '2', '0'], 'each frame its count in the Selection');
-  assert.deepEqual(await page.locator('#placeMenu .mm-ftile').evaluateAll(e => e.map(x => x.className.replace('mm-ftile', '').trim())), ['short', '', 'short empty']);
+  assert.deepEqual(await page.locator('#placeMenu .mm-ftile .mm-fcount').allTextContents(), ['1', '2', '0'], 'each frame its count in the group shown');
+  assert.equal(await page.locator('#placeMenu .mm-flabel small').textContent(), 'in All');
+  assert.equal(await page.locator('#placeMenu .mm-fbar').count(), 0, 'no bars');
   assert.equal(await page.locator('#placeMenu .mm-tile').count(), 0, 'no Mark row');
   assert.match(await page.locator('#placeMenu .mm-sharer').textContent(), /^Frames take turns: 1, 2, 3, 1…/);
-  assert.equal(await page.locator('#placeMenu .mm-even').textContent(), 'Even out3', 'Even out and the missing count');
-  await shot('42-frames-menu');
+  assert.equal(await page.locator('#placeMenu .mm-even').textContent(), 'Fill the gaps', 'no number on the chip');
   await page.click('#placeMenu .mm-even');
   assert.equal(await page.locator('#placeMenu .mm-even').getAttribute('aria-pressed'), 'true');
-  assert.equal(await page.locator('#placeMenu .mm-countfake').textContent(), '3', 'the count greyed, showing what Even out makes');
-  assert.equal(await page.locator('#placeMenu .mm-sharer').textContent(), '1 of frame 1, 2 of frame 3. All will have 2.');
-  assert.deepEqual(await page.locator('#placeMenu .mm-cell .mm-cfn').allTextContents(), ['3', '1', '3'], 'shortest first, each cell its frame');
-  assert.equal(await summary(), '3 images · Even out · On target');
-  await shot('42b-frames-even-out');
+  assert.equal(await page.locator('#placeMenu .mm-countfake').textContent(), '2', 'the count greyed, showing what it makes');
+  assert.deepEqual(await page.locator('#placeMenu .mm-ftile .mm-fcount').allTextContents(), ['1 +1', '2', '0 +1'], 'the answer on the tiles');
+  assert.equal(await page.locator('#placeMenu .mm-fadd').first().evaluate(e => getComputedStyle(e).color), 'rgb(236, 84, 12)', 'the + in orange');
+  assert.equal((await page.locator('#placeMenu .mm-sharer').textContent()).trim(), '', 'no sentence');
+  assert.deepEqual(await page.locator('#placeMenu .mm-cellf').allTextContents(), ['3', '1'], 'each cell its frame, in the gaps\' order');
+  assert.equal(await summary(), '2 images · Fill the gaps · On target');
+  await shot('44-fill-the-gaps');
   await page.click('#placeMenu .mm-seg [data-v="path"]');
   assert.equal(await page.locator('#placeMenu .mm-even').count(), 0, 'never with Path');
   await page.click('#placeMenu .mm-seg [data-v="exact"]');
@@ -1747,78 +1752,128 @@ test('animation frames (Claude Design): the Mark menu shows each frame and its c
   await page.click('#generateBtn');
   for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/invent-prompts'); i++) await page.waitForTimeout(100);
   const sent = api.state.calls.find(c => c.path === '/api/invent-prompts').body;
-  assert.deepEqual([sent.deal, sent.count, sent.mark], ['n2,main,n2', 3, 'main,n1,n2'], 'exactly those, one each; every frame ticked');
+  assert.deepEqual([sent.deal, sent.count, sent.mark], ['n2,main', 2, 'main,n1,n2'], 'one image per gap; every frame ticked');
   await page.waitForFunction(() => /Done ·/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('#grid .card[data-filename]')].map(e => e.dataset.filename).join() === 'k1,k2,g1,g2,k3', null, { timeout: 8000 });
+  assert.equal(await page.locator('.ghost-card').count(), 0, 'filled: no gap left');
   await page.click('#placeBtn');
-  assert.equal(await page.locator('#placeMenu .mm-even[aria-pressed="true"]').count(), 0, 'a one-off: unticked when its batch ends');
+  assert.equal(await page.locator('#placeMenu .mm-even').count(), 0, 'a one-off, and nothing left to fill');
   await page.evaluate(() => togglePlaceMenu(null, false));
   await page.evaluate(() => openMadeWith());
   await page.waitForSelector('#madePanel .mw-row');
   assert.equal(await page.locator('#madePanel .mw-label').first().textContent(), 'Frames');
-  assert.match(await page.locator('#madePanel .mw-chip').first().textContent(), /^Frame 1/);
-  assert.equal(await page.locator('#madePanel [data-make-frames], #madePanel .mw-frames').count(), 0, 'filters only: no Make there');
   await page.evaluate(() => closeMadeWith());
   await page.click('#aiBtn');
   await page.waitForSelector('#aiPanel:not([hidden])');
-  assert.equal(await page.locator('#aiGap').isVisible(), false, 'no frames sentence: Whole loops keeps the loop whole');
-  await page.click('#aiBtn');
-  await page.click('#loopsSw');                                              // Frame 3 has no image: no whole round to play
-  assert.equal(await page.locator('#grid .card').count(), 0);
-  assert.equal(await text('#gridEmpty'), 'No whole loop yet. Even out frames in the Mark menu, or turn Whole loops off.', 'the grid says why it is empty, and what to do');
+  assert.equal(await page.locator('#aiGap').isVisible(), false, 'AI order says nothing of frames');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
 
-test('Whole loops (Claude Design): in a frames project the group keeps whole rounds in frame order, the switch says what it holds back; off, ghosts mark the gaps; the Mark button has a dot; nothing of it without frames', { skip }, async () => {
-  let ctx = await fresh();
-  assert.equal(await page.locator('#loopsSw').isVisible(), false, 'no frames: no switch');
-  assert.equal(await page.locator('#placeDot').isVisible(), false, 'no dot');
+test('Skip in film, per group: the card stays in place, dimmed with "Skipped"; the Film leaves it out; the pick bar and the viewer too; another group still plays it; undo', { skip }, async () => {
+  const ctx = await fresh();
+  const card = f => page.locator(`.card[data-filename="${f}"]`);
+  const strip = () => page.evaluate(() => document.querySelectorAll('#filmstrip button').length);
+  assert.equal(await page.locator('#gapsSw').isVisible(), false, 'no frames: no switch');
+  await card('k2').hover();
+  assert.equal(await card('k2').locator('.skip-btn').innerText(), 'Skip', 'size M: the short word');
+  await card('k2').locator('.skip-btn').click();
+  await page.waitForSelector('.card.skipped[data-filename="k2"]');
+  assert.equal(await card('k2').locator('.card-skip').textContent(), 'Skipped');
+  assert.deepEqual(api.state.skips, { all: ['k2'] }, 'kept per group, for All');
+  assert.deepEqual(await page.locator('#grid .card[data-filename]').evaluateAll(e => e.map(x => x.dataset.filename)), ['k1', 'k2', 'k3'], 'it keeps its place');
+  assert.equal(await strip(), 2, 'the Film leaves it out');
+  await page.mouse.move(5, 5);
+  await shot('45-skipped');
+  await card('k2').hover();
+  assert.equal(await card('k2').locator('.skip-btn').innerText(), 'Back');
+  for (const size of ['S', 'M', 'L']) {                                       // the label fits its button at every size (S and M: the short word)
+    await page.evaluate(v => setThumbSize(v), size);
+    await card('k1').hover();
+    const fit = await card('k1').locator('.skip-btn').evaluate(b => ({ text: b.innerText, over: b.scrollWidth > b.clientWidth + 1, inside: b.getBoundingClientRect().right <= b.closest('.card-thumb').getBoundingClientRect().right }));
+    assert.ok(!fit.over && fit.inside, `size ${size}: ${JSON.stringify(fit)}`);
+    assert.equal(fit.text, size === 'L' ? 'Skip in film' : 'Skip', `size ${size}`);
+  }
+  await page.evaluate(() => setThumbSize('L'));
+  await page.keyboard.press('Meta+z');
+  await page.waitForFunction(() => !document.querySelector('.card.skipped'));
+  assert.equal(await strip(), 3, 'undo: it plays again');
+  // the pick bar: Skip in film for several; Back in film when every one picked is skipped
+  await card('k1').click({ modifiers: ['Meta'] }); await card('k3').click({ modifiers: ['Meta'] });
+  assert.equal(await page.locator('#pickSkipBtn').textContent(), 'Skip in film');
+  await page.click('#pickSkipBtn');
+  await page.waitForFunction(() => document.querySelectorAll('.card.skipped').length === 2);
+  assert.equal(await page.locator('#pickSkipBtn').textContent(), 'Back in film');
+  await page.keyboard.press('Escape');
+  // the viewer
+  await card('k1').dblclick();
+  assert.equal(await page.locator('#viewerSkipBtn').textContent(), 'Back in film');
+  await page.click('#viewerSkipBtn');
+  await page.waitForFunction(() => document.getElementById('viewerSkipBtn').textContent === 'Skip in film');
+  await page.keyboard.press('Escape');
+  // another group plays it
+  await page.evaluate(async () => { await fetch('/api/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', name: 'Mine', files: ['k1', 'k2', 'k3'] }) }); await refreshLibrary(); });
+  const gid = api.state.groups[0].id;
+  await page.evaluate(id => setGroup(`g:${id}`), gid);
+  assert.equal(await page.locator('.card.skipped').count(), 0, 'skipped in All only');
+  assert.equal(await strip(), 3);
+  assert.deepEqual(consoleErrors, []);
   await ctx.close();
+});
+
+test('Show missing frames: a switch that never moves, on by default; ghosts in the flow, never moved by a skip; a ghost takes a card of its frame; Fill the gaps makes it in its place', { skip }, async () => {
   const bar = id => ({ id, name: 'Sphere', size: 18, x: 50, y: 50, shape: 'sphere', noun: 'sphere', ratio: 1, url: `/api/project-mark?p=demo&m=${id}` });
-  const seq = ['main', 'n1', 'n2', 'main', 'n1', 'n2', 'n1', 'n2'];          // frames 1, 2, 3 · 1, 2, 3 · 2, 3: two whole rounds, two images over
-  ctx = await fresh({ setup: st => {
+  const seq = ['main', 'n1', 'n2', 'n1', 'n2', 'main'];                     // 1 2 3 · (1 missing) 2 3 · 1
+  const ctx = await fresh({ setup: st => {
     Object.assign(st.projects[0], { frames: true, marks: [bar('n1'), bar('n2')] });
     const base = st.plates[0];
     st.plates = seq.map((m, i) => ({ ...base, filename: `f${i + 1}`, title: `Shot ${i + 1}`, url: `/assets/ai-plates/f${i + 1}.svg`, mark: m === 'main' ? null : m }));
     st.sequences[0].order = st.plates.map(p => p.filename);
   } });
-  const cards = () => page.locator('#grid .card[data-filename]').evaluateAll(e => e.map(x => x.dataset.filename));
-  assert.equal(await page.locator('#loopsSw').isVisible(), true);
-  assert.equal(await page.locator('#loopsSw').getAttribute('aria-checked'), 'true', 'on by default');
-  assert.equal(await page.locator('#loopsN').textContent(), '6 of 8', 'what it holds back');
-  assert.deepEqual(await cards(), ['f1', 'f2', 'f3', 'f4', 'f5', 'f6'], 'whole rounds only, in frame order');
-  assert.equal(await page.locator('.ghost-card').count(), 0, 'no ghosts while on');
-  assert.equal(await page.locator('#placeDot').isVisible(), true, 'frames uneven: the dot');
-  assert.equal(await page.locator('#placeDot').getAttribute('title'), 'Frames uneven · Even out 1');
-  await shot('43-whole-loops-on');
-  await film();
-  assert.equal(await page.locator('#filmstrip button').count(), 6, 'the Film plays what the grid holds');
-  await curate();
-  await page.click('#aiBtn');
-  await page.waitForSelector('#aiPanel:not([hidden])');
-  assert.equal(await page.locator('#aiGap').isVisible(), false, 'no frames sentence');
-  assert.equal(await text('#aiShown'), 'Reorders all 8 images of the group.');
-  await page.click('#aiBtn');
-  await page.click('#loopsSw');
-  assert.equal(await page.locator('#loopsSw').getAttribute('aria-checked'), 'false');
-  assert.equal(await page.locator('#loopsN').textContent(), '', 'off: no count');
-  await page.waitForTimeout(250);                                            // the knob's slide
-  assert.notEqual(await page.locator('#loopsSw .ls-track').evaluate(e => getComputedStyle(e).backgroundColor), 'rgb(236, 84, 12)', 'off: the track is not orange');
-  assert.deepEqual(await cards(), ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8'], 'every image, in the current order');
-  const grid = await page.locator('#grid > *').evaluateAll(e => e.map(x => x.classList.contains('ghost-card') ? `ghost:${x.textContent.trim()}` : x.dataset.filename));
-  assert.deepEqual(grid, ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'ghost:Frame 1', 'f7', 'f8'], 'a ghost where the order skips Frame 1');
-  const g = page.locator('.ghost-card').first();
-  assert.deepEqual(await g.evaluate(x => [x.draggable, x.querySelector('.card-num') === null, getComputedStyle(x).pointerEvents, getComputedStyle(x.querySelector('.card-thumb')).borderTopStyle]), [false, true, 'none', 'dashed'], 'no number, not draggable or pickable, dashed');
-  const gi = await g.evaluate(x => { const t = x.querySelector('.card-thumb').getBoundingClientRect(), i = x.querySelector('img').getBoundingClientRect(), l = x.querySelector('span').getBoundingClientRect(); return { cx: Math.round(i.left + i.width / 2 - (t.left + t.width / 2)), above: i.bottom <= l.top + 1, w: i.width / t.width, op: getComputedStyle(x.querySelector('img')).opacity }; });
-  assert.ok(Math.abs(gi.cx) <= 1 && gi.above && gi.w < 0.4 && gi.op === '0.3', `the frame's thumbnail, faded, centred above its name: ${JSON.stringify(gi)}`);
-  const real = await page.locator('#grid .card[data-filename]').first().locator('.card-thumb').boundingBox(), gb = await g.locator('.card-thumb').boundingBox();
-  assert.deepEqual([Math.round(gb.width), Math.round(gb.height)], [Math.round(real.width), Math.round(real.height)], 'the size of a card');
-  assert.deepEqual(await page.locator('.card-num').allTextContents(), ['01', '02', '03', '04', '05', '06', '07', '08'], 'ghosts are not counted');
-  await shot('43b-whole-loops-off');
-  await film();
-  assert.equal(await page.locator('#filmstrip button').count(), 8, 'off: the Film plays every image, never a ghost');
+  const flow = () => page.locator('#grid > *').evaluateAll(e => e.map(x => x.classList.contains('ghost-card') ? `ghost:${x.querySelector('.g-name').textContent}` : x.dataset.filename));
+  const sw = page.locator('#gapsSw');
+  assert.equal(await sw.getAttribute('aria-checked'), 'true', 'on by default');
+  assert.equal(await sw.textContent(), 'Show missing frames', 'no count');
+  const w = (await sw.boundingBox()).width, x = (await sw.boundingBox()).x;
+  assert.ok(w < 230, `it fits its words: ${w}`);
+  assert.deepEqual(await flow(), ['f1', 'f2', 'f3', 'ghost:Frame 1 missing', 'f4', 'f5', 'f6']);
+  assert.deepEqual(await page.locator('.card-num').allTextContents(), ['01', '02', '03', '04', '05', '06'], 'ghosts are not counted');
+  // a skip never moves the grid
+  await page.locator('.card[data-filename="f5"]').hover();
+  await page.locator('.card[data-filename="f5"] .skip-btn').click();
+  await page.waitForSelector('.card.skipped[data-filename="f5"]');
+  assert.deepEqual(await flow(), ['f1', 'f2', 'f3', 'ghost:Frame 1 missing', 'f4', 'f5', 'f6'], 'the same flow: a skipped card keeps its frame\'s place');
+  // a card of another frame can't drop on the ghost; one of its frame moves into the gap
+  const ghost = page.locator('.ghost-card').first();
+  await page.locator('.card[data-filename="f4"]').dragTo(ghost);
+  assert.deepEqual(await flow(), ['f1', 'f2', 'f3', 'ghost:Frame 1 missing', 'f4', 'f5', 'f6'], 'Frame 2 does not fit a Frame 1 gap');
+  await page.locator('.card[data-filename="f6"]').dragTo(ghost);
+  await page.waitForFunction(() => [...document.querySelectorAll('#grid .card[data-filename]')].map(e => e.dataset.filename).join() === 'f1,f2,f3,f6,f4,f5');
+  assert.equal(await page.locator('.ghost-card').count(), 0, 'the gap is filled by a move');
+  await page.keyboard.press('Meta+z');
+  await page.waitForSelector('.ghost-card');
+  await shot('46-missing-frames');
+  // a ghost only shows the gap; Fill the gaps (the Mark menu) makes it, in its neighbours' territory and look, shown in the gap while made
+  assert.equal(await page.locator('.ghost-card').first().getAttribute('title'), 'Fill the gaps in the Mark menu');
+  assert.equal(await page.locator('.ghost-card').first().getAttribute('onclick'), null, 'nothing to click');
+  api.state.delays.generate = 1200;
+  await page.click('#placeBtn');
+  await page.click('#placeMenu .mm-even');
+  await page.evaluate(() => togglePlaceMenu(null, false));
+  await page.click('#generateBtn');
+  await page.waitForSelector('.ghost-making', { timeout: 8000 });
+  assert.match(await page.locator('.ghost-making .pending-label').textContent(), /Making Frame 1…/, 'in the gap while it is made');
+  const asked = api.state.calls.filter(c => c.path === '/api/invent-prompts').pop().body;
+  assert.deepEqual([asked.deal, asked.count, asked.world, asked.direction], ['main', 1, 'Editorial Print', 'cold colours'], 'one image, of that frame, in its neighbours\' territory and look');
+  await page.waitForFunction(() => /Done ·/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('#grid .card[data-filename]')].map(e => e.dataset.filename).join() === 'f1,f2,f3,g1,f4,f5,f6', null, { timeout: 8000 });
+  assert.equal(await page.locator('.ghost-card').count(), 0, 'filled, in its place');
+  await sw.click();
+  assert.equal(await sw.getAttribute('aria-checked'), 'false');
+  assert.equal(await page.locator('.ghost-card').count(), 0, 'off: a normal grid');
+  assert.deepEqual([Math.round((await sw.boundingBox()).width), Math.round((await sw.boundingBox()).x)], [Math.round(w), Math.round(x)], 'it never moves');
   await page.reload(); await page.waitForSelector('.card', { state: 'attached' });
-  assert.equal(await page.locator('#loopsSw').getAttribute('aria-checked'), 'false', 'remembered for the project');
+  assert.equal(await page.locator('#gapsSw').getAttribute('aria-checked'), 'false', 'remembered for the project');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });

@@ -792,6 +792,10 @@ def _clean_state(f: Path) -> None:
         st["path_runs"] = runs
     elif "path_runs" in st:
         del st["path_runs"]
+    if "skips" in st:                                  # Skip, per group: keys short text, bare file names only
+        import groups as _groups
+        st["skips"] = {k: [n for n in v if _bare(n)] for k, v in _groups.clean_skips(st["skips"]).items()}
+        st["skips"] = {k: v for k, v in st["skips"].items() if v}
     f.write_text(json.dumps(st, indent=1))
 
 

@@ -130,7 +130,7 @@ def test_export_then_import_brings_the_project_back_as_it_was_and_never_carries_
     for i in range(3):
         Image.new("RGB", (54, 96), (i * 60, 20, 20)).save(p["plates_dir"] / f"{i:02d}_shot.jpg")
     state = {"order": ["02_shot.jpg", "00_shot.jpg", "01_shot.jpg"], "trashed": ["01_shot.jpg"], "groups": [{"id": "g1", "name": "Red", "files": ["02_shot.jpg"]}],
-             "edits": [{"id": "e1", "name": "Feral Ember"}], "kimi_api_key": "sk-secret"}
+             "edits": [{"id": "e1", "name": "Feral Ember"}], "skips": {"all": ["00_shot.jpg"], "g:g1": ["02_shot.jpg"]}, "kimi_api_key": "sk-secret"}
     p["state_file"].write_text(json.dumps(state))
     (p["plates_dir"].parent / ".qa_cache.json").write_text(json.dumps({"00_shot.jpg:123:3:22:50:50": {"qa_passed": True}, "gone.jpg:9": {"qa_passed": False}}))
     out = tmp_path / "x.zip"
@@ -144,7 +144,7 @@ def test_export_then_import_brings_the_project_back_as_it_was_and_never_carries_
     assert json.loads(q["qa_cache_file"].read_text()) == {"00_shot.jpg:123:3:22:50:50": {"qa_passed": True}}, "the logo check comes along (for its images only): an import opens at once"
     assert projects.import_zip(out)["name"] == "Night Owl 3"
     got = json.loads(q["state_file"].read_text())
-    assert (got["order"], got["trashed"], got["groups"], got["edits"]) == (state["order"], state["trashed"], state["groups"], state["edits"]), "as it was"
+    assert (got["order"], got["trashed"], got["groups"], got["edits"], got["skips"]) == (state["order"], state["trashed"], state["groups"], state["edits"], state["skips"]), "as it was, Skip in film per group too"
     assert sorted(f.name for f in q["plates_dir"].iterdir()) == ["00_shot.jpg", "01_shot.jpg", "02_shot.jpg"]
     demo_out = tmp_path / "demo.zip"
     projects.export_zip("demo", demo_out)
@@ -432,6 +432,15 @@ def test_an_imported_curation_keeps_only_sound_path_run_records(pdir, tmp_path):
                                            "../evil": {"at": 1}, "b2": "nope"}}))
     projects._clean_state(f)
     assert json.loads(f.read_text())["path_runs"] == {"a1f": {"at": 5.0, "keep": True, "world": "Fog", "mark": "main", "rot": "0,90", "scale": "1"}}
+
+
+def test_an_imported_curation_keeps_only_sound_skips(pdir, tmp_path):
+    """Skip, per group, travels in a .phos file; an image name that is a path is dropped, as everywhere."""
+    import json
+    f = tmp_path / "state.json"
+    f.write_text(json.dumps({"skips": {"all": ["a.jpg", "../b.jpg", "/Users/x/c.jpg"], "g:g1": ["d.jpg"], "look:dark": ["../e.jpg"], "": ["f.jpg"]}}))
+    projects._clean_state(f)
+    assert json.loads(f.read_text())["skips"] == {"all": ["a.jpg"], "g:g1": ["d.jpg"]}
 
 
 def test_the_settings_form_saves_every_mark_at_once_each_with_its_own_place(pdir):

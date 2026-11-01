@@ -1267,3 +1267,17 @@ def test_make_n_of_frames_writes_one_scene_for_each_listed_frame(live, srv, monk
     _, res = live("POST", "/api/invent-prompts", {"deal": f"{f2},{f2},main", "count": 9, "world": "Editorial Print", "target": "path", "path": {"shape": "line"}})
     assert res["ok"] and [i["mark"] for i in res["ideas"]] == [f2, f2, None], "as listed, the count from the list"
     assert all(not (i["placement"] or {}).get("path") for i in res["ideas"]) and not srv.load_state().get("path_runs"), "no run recorded"
+
+
+def test_skip_per_group_through_the_server_and_in_the_state(live):
+    """Skip and Play go through /api/groups and come back in /api/state per group key, only for images that exist."""
+    for i in range(3):
+        live("POST", "/api/generate-image", {"title": f"S{i}", "prompt": "p", "model": "m"})
+    names = [p["filename"] for p in live("GET", "/api/state")[1]["plates"]]
+    assert live("POST", "/api/groups", {"action": "skip", "key": "all", "files": [names[0], "gone.jpg"]})[0] == 200
+    assert live("POST", "/api/groups", {"action": "skip", "key": "look:dark", "files": [names[1]]})[0] == 200
+    st = live("GET", "/api/state")[1]
+    assert st["skips"] == {"all": [names[0]], "look:dark": [names[1]]}
+    assert [p["filename"] for p in st["plates"]] == names, "nothing moved, nothing trashed"
+    live("POST", "/api/groups", {"action": "skip", "key": "all", "files": [names[0]], "skip": False})
+    assert live("GET", "/api/state")[1]["skips"] == {"look:dark": [names[1]]}

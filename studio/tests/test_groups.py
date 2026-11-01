@@ -62,3 +62,24 @@ def test_a_smart_group_holds_a_rule_not_files_and_only_its_choices_change():
     assert groups.act(st, {"action": "restore", "group": deleted})["ok"] and st["groups"][0]["rule"] == {"size": ["1.25"]}, "undo brings its rule back"
     manual = groups.act(st, {"action": "create", "name": "Mine", "files": ["a.jpg"]})["group"]
     assert "rule" not in manual and groups.public(st, {"a.jpg"})[1]["files"] == ["a.jpg"], "manual groups as before"
+
+
+def test_skip_is_per_group_key_and_play_brings_it_back():
+    """Skip (Claude Design, 2026-11-01): an image left out of one group's film plays in the others; Play undoes it; nothing else moves."""
+    st = {"groups": [{"id": "g1", "name": "Mine", "files": ["a", "b"]}]}
+    assert G.act(st, {"action": "skip", "key": "all", "files": ["a", "b"]})["ok"]
+    assert G.act(st, {"action": "skip", "key": "look:dark", "files": ["c"]})["ok"]
+    assert G.act(st, {"action": "skip", "key": "all", "files": ["a"]})["ok"], "again: no duplicate"
+    assert st["skips"] == {"all": ["a", "b"], "look:dark": ["c"]}
+    assert G.act(st, {"action": "skip", "key": "all", "files": ["a"], "skip": False})["ok"]
+    assert st["skips"] == {"all": ["b"], "look:dark": ["c"]} and st["groups"][0]["files"] == ["a", "b"], "Play: back; the group untouched"
+    G.act(st, {"action": "skip", "key": "all", "files": ["b"], "skip": False}); G.act(st, {"action": "skip", "key": "look:dark", "files": ["c"], "skip": False})
+    assert "skips" not in st, "nothing skipped: nothing stored"
+    assert not G.act(st, {"action": "skip", "key": "", "files": ["a"]})["ok"] and not G.act(st, {"action": "skip", "key": "x" * 400, "files": ["a"]})["ok"]
+    G.act(st, {"action": "skip", "key": "g:g1", "files": ["../etc/passwd", "a"]})
+    assert st["skips"] == {"g:g1": ["a"]}, "names only, never a path"
+
+
+def test_clean_skips_keeps_sound_entries_only():
+    assert G.clean_skips({"all": ["a", "a", "../x", ".hidden", 3], "": ["b"], "look:dark": [], "g:1": "nope", "x" * 301: ["c"]}) == {"all": ["a", "3"]}
+    assert G.clean_skips(None) == {} and G.clean_skips(["all"]) == {}

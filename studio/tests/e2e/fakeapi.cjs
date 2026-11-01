@@ -79,7 +79,7 @@ function start(state = makeState()) {
     switch (url.pathname) {
       case '/api/state': {
         const visible = new Set(state.plates.filter(p => !p.trashed).map(p => p.filename));
-        return send({ state_sig: librarySig(state), plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, groups: (state.groups || []).map(g => ({ ...g, files: g.files.filter(f => state.plates.some(p => p.filename === f)) })), edits: state.edits || [], path_runs: state.pathRuns || [], project: projectOf(state), krea_connected: true, kimi_configured: state.kimiConfigured !== false, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3' });
+        return send({ state_sig: librarySig(state), skips: state.skips || {}, plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, groups: (state.groups || []).map(g => ({ ...g, files: g.files.filter(f => state.plates.some(p => p.filename === f)) })), edits: state.edits || [], path_runs: state.pathRuns || [], project: projectOf(state), krea_connected: true, kimi_configured: state.kimiConfigured !== false, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3' });
       }
       case '/api/projects': {    // the projects (projects.py): list, switch, make one (the mark arrives as a PNG data URL), change one
         if (req.method === 'GET') return send({ ok: true, active: state.project, projects: state.projects });
@@ -195,7 +195,8 @@ function start(state = makeState()) {
           (state.moreWorlds || (state.moreWorlds = [])).push({ name: 'Fog & Vapor', brief: 'Weather.', n: 4, kept: 4, wildcard: true, origin: 'custom', prompt: body.direction });
         const run = body.target === 'path' ? `f${(state.runCount = (state.runCount || 0) + 1)}` : null, pa = body.path || {};
         if (run) (state.pathRuns || (state.pathRuns = [])).push({ run, n, shape: 'line', dir: pa.dir || 0, len: pa.len || 40, at: Date.now() / 1000, world: 'Fog & Vapor' });   // the server records a new run
-        return send({ ok: true, world: body.world && !body.world.startsWith('__') ? body.world : 'Fog & Vapor', ideas: Array.from({ length: n }, (_, i) => ({ title: `Fog ${i + 1}`, prompt: `fog scene ${i}`, guide: i % 2 ? 'light' : 'dark', world: body.world && !body.world.startsWith('__') ? body.world : 'Fog & Vapor', idea: 'idea', subject: `fog ${i}`,
+        const deal = body.deal ? String(body.deal).split(',') : null;      // Fill the gaps: the listed frames, one each (BatchPlan deal)
+        return send({ ok: true, world: body.world && !body.world.startsWith('__') ? body.world : 'Fog & Vapor', ideas: Array.from({ length: n }, (_, i) => ({ ...(deal ? { mark: deal[i % deal.length] === 'main' ? null : deal[i % deal.length] } : {}), title: `Fog ${i + 1}`, prompt: `fog scene ${i}`, guide: i % 2 ? 'light' : 'dark', world: body.world && !body.world.startsWith('__') ? body.world : 'Fog & Vapor', idea: 'idea', subject: `fog ${i}`,
           placement: run ? { kind: 'path', x: 50, y: 20 + i * 5, size: 18, path: { shape: 'line', dir: pa.dir || 0, len: pa.len || 40, i, n, run } } : null })) });
       }
       case '/api/upload-image': {               // your own image: the page sends it framed (a JPEG); it joins the end, uploaded
@@ -211,7 +212,7 @@ function start(state = makeState()) {
         if (state.failGen && state.failGen(state.genAttempts, body)) return send({ ok: false, error: `Krea 429: too many requests (${body.title})` }, 500);
         const name = `g${++state.genCount}`, qaOut = !!(state.qaFail && state.qaFail(state.genAttempts, body));   // qaFail: the mark check trashes it
         for (const q of state.sequences) q.order.push(name);
-        state.plates.push({ filename: name, url: `/assets/ai-plates/${name}.svg`, title: body.title, prompt: body.prompt, model: body.model, trashed: qaOut, trash_reason: qaOut ? 'Mark check' : null, qa_passed: true, qa_score: 90, qa_issues: [], world: body.world, placement: body.placement || null, box: body.placement ? { x: body.placement.x, y: body.placement.y, size: body.placement.size, ar: 1, rot: body.placement.rot || 0 } : null });
+        state.plates.push({ filename: name, url: `/assets/ai-plates/${name}.svg`, title: body.title, prompt: body.prompt, model: body.model, trashed: qaOut, trash_reason: qaOut ? 'Mark check' : null, qa_passed: true, qa_score: 90, qa_issues: [], world: body.world, mark: body.mark && body.mark !== 'main' ? body.mark : null, placement: body.placement || null, box: body.placement ? { x: body.placement.x, y: body.placement.y, size: body.placement.size, ar: 1, rot: body.placement.rot || 0 } : null });
         return send({ ok: true, qa_passed: !qaOut, trashed: qaOut, qa_issues: qaOut ? ['The mark is not at its place and size'] : [], filename: name, title: body.title });
       }
       case '/api/edits': {                     // the same rules as studio/edits.py
@@ -228,6 +229,13 @@ function start(state = makeState()) {
       }
       case '/api/groups': {                    // the same rules as studio/groups.py
         const gs = state.groups || (state.groups = []);
+        if (body.action === 'skip') {                                           // Skip / Back in film, per group key (groups.skip)
+          if (!body.key) return send({ ok: false, error: 'Which group?' }, 400);
+          const sk = state.skips || (state.skips = {}), now = sk[body.key] || [], files = body.files || [];
+          sk[body.key] = body.skip === false ? now.filter(f => !files.includes(f)) : [...new Set([...now, ...files])];
+          if (!sk[body.key].length) delete sk[body.key];
+          return send({ ok: true });
+        }
         const g = gs.find(x => x.id === body.id);
         const name = String(body.name || '').trim();
         if (body.action === 'create') { if (!name || gs.some(x => x.name.toLowerCase() === name.toLowerCase())) return send({ ok: false, error: name ? `There is already a group called “${name}”.` : 'A group needs a name.' }, 400); const ng = { id: `g${gs.length + 1}${Date.now() % 1000}`, name, files: body.rule ? [] : [...new Set(body.files || [])], ...(body.rule ? { rule: body.rule } : {}) }; gs.push(ng); return send({ ok: true, group: ng }); }
