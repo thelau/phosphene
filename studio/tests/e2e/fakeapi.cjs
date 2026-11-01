@@ -101,7 +101,7 @@ function start(state = makeState()) {
           else p.marks = marks.filter(m => m.id !== body.mark_id);
         } else if (body.action === 'update') {
           const p = projectOf(state);
-          Object.assign(p, { name: body.name, brief: body.brief, palette: body.palette }, p.fixed ? {} : { mark_name: body.mark_name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y });
+          Object.assign(p, { name: body.name, brief: body.brief, palette: body.palette, frames: body.frames === true }, p.fixed ? {} : { mark_name: body.mark_name, mark_size: body.mark_size, mark_x: body.mark_x, mark_y: body.mark_y });
           if (Array.isArray(body.marks)) p.marks = body.marks.map((m, i) => ({ id: m.id || `n${i + 1}`, name: m.name, size: m.size, x: m.x, y: m.y, shape: m.shape, noun: m.noun, ratio: 1, url: m.image || `/api/project-mark?p=${p.slug}&m=${m.id}` }));
         }
         return send({ ok: true, active: state.project, project: projectOf(state), projects: state.projects });

@@ -1195,3 +1195,10 @@ body.no-mark .place, body.no-mark .place-sep { display: none; }
 .ai-gap { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 9px; background: #24221F; font-size: 12px; line-height: 1.45; color: var(--text); }
 .ai-gap[hidden] { display: none; }
 .ai-gap .link-btn { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--text); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+
+/* the marks are frames of one animation (Project settings, under the marks) */
+.ps-frames { display: flex; align-items: flex-start; gap: 10px; margin: 6px 0 4px; padding: 10px 12px; border-radius: 10px; border: 1px solid #2E2C28; cursor: pointer; }
+.ps-frames input { margin-top: 2px; accent-color: var(--orange); }
+.ps-frames span { display: flex; flex-direction: column; gap: 2px; }
+.ps-frames b { font-size: 13px; font-weight: 600; color: var(--text); }
+.ps-frames small { font-size: 11px; line-height: 1.4; color: #8F8A7A; }

@@ -64,6 +64,7 @@ def load(slug: str) -> dict:
         "slug": slug,
         "name": str(raw.get("name") or slug)[:60],
         "mark_file": (ROOT_DIR / mark) if "/" in mark else base / mark,
+        "frames": raw.get("frames") is True,                    # its marks are frames of one animation, in their order (the user, 2026-11-01)
         "mark_size": float(raw.get("mark_size", 18)),          # % of the frame's width
         "mark_x": float(raw.get("mark_x", 50)),                # % from the left
         "mark_y": float(raw.get("mark_y", 50)),                # % from the top
@@ -138,7 +139,7 @@ def public(p: dict) -> dict:
     marks = [{"id": m["id"], "name": m["name"], "size": m["mark_size"], "x": m["mark_x"], "y": m["mark_y"], "shape": m["mark_shape"], "noun": m["mark_noun"], "ratio": mark_ratio(with_mark(p, m["id"])), "fixed": m["qa"] == "demo-tuned",
               "url": f"/api/project-mark?p={p['slug']}&m={m['id']}&t={int(m['mark_file'].stat().st_mtime) if m['mark_file'].exists() else 0}"} for m in p.get("marks") or []]
     return {"slug": p["slug"], "marks": marks, "mark_name": p["mark_name"], "has_mark": p.get("has_mark", True), "name": p["name"], "mark_size": p["mark_size"], "mark_x": p["mark_x"], "mark_y": p["mark_y"],
-            "mark_shape": p["own"]["mark_shape"], "mark_noun": p["own"]["mark_noun"], "brief": p["own"]["brief"], "palette": p["palette"],
+            "mark_shape": p["own"]["mark_shape"], "mark_noun": p["own"]["mark_noun"], "brief": p["own"]["brief"], "palette": p["palette"], "frames": p.get("frames", False),
             "mark_ratio": mark_ratio(p), "round": p.get("qa") == "demo-tuned", "fixed": p.get("qa") == "demo-tuned",
             "mark_url": f"/api/project-mark?p={p['slug']}&t={mtime}"}
 
@@ -345,6 +346,8 @@ def _fields(body: dict, raw: dict) -> dict:
             raw[k] = re.sub(r"\s+", " ", str(body[k] or "")).strip()[:200] or None
     if "palette" in body:
         raw["palette"] = [c for c in (clean_hex(x) for x in (body["palette"] or [])[:8]) if c]
+    if "frames" in body:                              # its marks are the frames of one animation, in their order (main first)
+        raw["frames"] = body["frames"] is True
     return raw
 
 
@@ -663,7 +666,7 @@ def import_zip(path: Path) -> dict:
         if int(raw.get("format", 1)) > PROJECT_FORMAT:
             raise ValueError("That project was made by a newer Phosphene: update the app (it offers it when it opens), then open it again.")
         try:                                          # the fields as create / update take them: numbers in their ranges, words, colours
-            raw = _fields({k: raw[k] for k in ("name", "mark_size", "mark_x", "mark_y", "mark_shape", "mark_noun", "mark_name", "brief", "palette") if k in raw},
+            raw = _fields({k: raw[k] for k in ("name", "mark_size", "mark_x", "mark_y", "mark_shape", "mark_noun", "mark_name", "brief", "palette", "frames") if k in raw},
                           {"v": 1, "qa": raw.get("qa") if raw.get("qa") == "demo-tuned" else "mark",
                            **({"created": str(raw["created"])[:30]} if raw.get("created") else {})})
         except (TypeError, ValueError, AttributeError):

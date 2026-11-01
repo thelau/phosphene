@@ -672,7 +672,7 @@
       const extras = edit ? (project.marks || []).map(m => ({ key: m.id, id: m.id, name: m.name, size: m.size, x: m.x ?? project.mark_x, y: m.y ?? project.mark_y,
         shape: m.shape, noun: m.noun, url: m.url, ar: m.ratio || 1, locked: !!m.fixed })) : [];   // Demo's orbital mark: locked wherever it sits
       projectForm = { kind: edit ? 'edit' : 'new', name: edit ? project.name : '', brief: edit ? project.brief : '', palette: edit ? [...(project.palette || [])] : [],
-        marks: main ? [main, ...extras] : [], def: main ? 'main' : null, sel: edit ? 'project' : null, fromKimi: false, typed: new Set(), noMark: !!(edit && !main) };
+        marks: main ? [main, ...extras] : [], def: main ? 'main' : null, sel: edit ? 'project' : null, fromKimi: false, typed: new Set(), noMark: !!(edit && !main), frames: !!(edit && project.frames) };
       document.getElementById('projectTitle').textContent = edit ? `${project.name} · Settings` : 'New project';
       document.getElementById('pfSave').textContent = edit ? 'Save' : 'Create project';
       document.getElementById('pfError').textContent = '';
@@ -747,7 +747,8 @@
       const add = pending ? '' : full ? '<span class="ps-full">Remove one to add another.</span>'
         : `<button type="button" class="ps-add" id="psAdd" onclick="psPick('add')"><span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>${psDrag ? `Drop ${psDrag} mark${psDrag > 1 ? 's' : ''} here` : 'Add marks'}</span><small>${psDrag ? `${n} → ${Math.min(PS_MAX, n + psDrag)} of ${PS_MAX}` : `${n} of ${PS_MAX} · drop here or choose`}</small></button>`;
       const rail = document.getElementById('psRail');
-      rail.innerHTML = `<span class="ps-rail-head">Project</span>${projRow}<span class="ps-rail-head"><span>Marks</span><span class="${n >= PS_MAX ? 'ps-count full' : 'ps-count'}">${n ? `${n} of ${PS_MAX}` : `up to ${PS_MAX}`}</span></span>${rows}${add}`;
+      const frames = n > 1 && !pending ? `<label class="ps-frames"><input type="checkbox" id="psFramesOn"${f.frames ? ' checked' : ''} onchange="psFrames(this.checked)" /><span><b>Frames of one animation</b><small>In this order (drag to change): AI order keeps them looping, cards say which frame</small></span></label>` : '';
+      rail.innerHTML = `<span class="ps-rail-head">Project</span>${projRow}<span class="ps-rail-head"><span>Marks</span><span class="${n >= PS_MAX ? 'ps-count full' : 'ps-count'}">${n ? `${n} of ${PS_MAX}` : `up to ${PS_MAX}`}</span></span>${rows}${frames}${add}`;
       const tile = document.getElementById('psAdd');
       if (tile) tile.classList.toggle('over', !!psDrag);
     }
@@ -849,6 +850,7 @@
       m[field] = v;
       if (['size', 'x', 'y'].includes(field)) { const b = document.getElementById(`psv-${field}`); if (b) b.textContent = `${v}%`; renderPSPreview(); }
       else m.typed = (m.typed || new Set()).add(field);
+      if (field === 'name') { m.autoName = null; psNumberNames(); }          // yours: never numbered again; the others renumbered (one left alone: no number)
       renderPSRail();
     }
     function psColour(i) { projectForm.palette.splice(i, 1); renderPS(); }
@@ -888,6 +890,13 @@
       if (f.def === m.key) f.def = psUsable()[0] ? psUsable()[0].key : (f.kind === 'edit' ? 'main' : null);
       if (!f.marks.some(x => x.reading || x.error || x.needsWords) && f.sel === 'tiles') f.sel = f.marks.length ? 'project' : null;
       renderPS();
+    }
+    function psFrames(on) { projectForm.frames = !!on; }                   // the marks are frames of one animation, in the rail's order
+    // marks Kimi calls the same (four frames of one striped sphere were all "Striped sphere") are numbered in the rail's order
+    function psNumberNames() {
+      const auto = projectForm.marks.filter(m => m.autoName && !m.error), by = {};
+      auto.forEach(m => (by[m.autoName] = by[m.autoName] || []).push(m));
+      Object.values(by).forEach(list => list.forEach((m, i) => { m.name = list.length > 1 ? `${m.autoName} ${i + 1}` : m.autoName; }));
     }
     function psSetWords(key, field, v) { const m = psMark(key); if (!m) return; m[field] = v; m.typed = (m.typed || new Set()).add(field); }
     function psRemove() {
@@ -956,7 +965,7 @@
       if (r && r.ok) {
         if (!typed.has('shape') && r.shape) m.shape = r.shape;
         if (!typed.has('noun') && r.noun) m.noun = r.noun;
-        if (!typed.has('name') && !m.name) m.name = cap(r.noun) || 'Mark';
+        if (!typed.has('name') && (!m.name || m.autoName)) { m.autoName = cap(r.noun) || 'Mark'; m.name = m.autoName; psNumberNames(); }
         if (first) {                                                          // the first mark of a new project: the project too
           if (!f.typed.has('name') && r.name) f.name = r.name;
           if (!f.typed.has('brief') && r.brand) f.brief = r.brand;
@@ -1021,7 +1030,7 @@
       }
       const def = psDefault(), others = usable.filter(m => m !== def);
       const fields = m => ({ name: m.name, size: +m.size, x: +m.x, y: +m.y, shape: m.shape || '', noun: m.noun || '' });
-      const body = { action: f.kind === 'new' ? 'create' : 'update', slug: project && f.kind === 'edit' ? project.slug : undefined, name: f.name, brief: f.brief, palette: f.palette,
+      const body = { action: f.kind === 'new' ? 'create' : 'update', slug: project && f.kind === 'edit' ? project.slug : undefined, name: f.name, brief: f.brief, palette: f.palette, frames: f.frames && psUsable().length > 1,
         mark_name: def.name, mark_size: +def.size, mark_x: +def.x, mark_y: +def.y, mark_shape: def.shape || '', mark_noun: def.noun || '',
         ...(def.image ? { mark: def.image } : {}),
         marks: others.map(m => ({ ...(m.id && m.id !== 'main' ? { id: m.id } : {}), ...fields(m), ...(m.image ? { image: m.image } : {}) })) };
@@ -2006,14 +2015,15 @@
       const c = choices.find(x => x[0] === (p.mark || 'main')) || ['main', (project && project.mark_name) || 'Main mark', project && project.mark_url];
       const name = c[0] === 'main' ? ((project && project.mark_name) || 'Main mark') : c[1];
       const pos = pl.path ? `${PATH_GLYPH[pl.path.dir] || '→'} ${pl.path.i + 1}/${pl.path.n}` : pl.kind === 'loose' ? 'Loose' : pl.kind === 'scattered' ? 'Scattered' : '';
-      const vals = [pos, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
+      const fr = project && project.frames && choices.length > 1 ? `${choices.findIndex(x => x[0] === c[0]) + 1}/${choices.length}` : '';   // frames of one animation: which one
+      const vals = [fr, pos, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
       if (!choices.length && !vals && !p.as_designed) return null;
       const box = p.box || pl, x = +(box.x != null ? box.x : (project ? project.mark_x : 50)), y = +(box.y != null ? box.y : (project ? project.mark_y : 50));
       const dx = ((x - 50) / 100 * 8).toFixed(1), dy = ((y - 50) / 100 * 14).toFixed(1);
       const frame = `<span class="cm-frame">${c[2] ? `<img class="pm-thumb" src="${escapeHtml(c[2])}" alt="" style="transform:translate(-50%,-50%) translate(${dx}px,${dy}px) rotate(${rot}deg) scale(${k})" />` : ''}</span>`;
       const where = pl.path ? `Path ${PATH_GLYPH[pl.path.dir] || '→'} ${pl.path.i + 1}/${pl.path.n}` : POSITION_NAMES[pl.kind || 'exact'] || 'On target';
-      const tip = [name, where, rot ? rotLabel(rot) : 'upright', k !== 1 ? sizeLabel(k) : 'own size', p.as_designed ? 'exact mark' : ''].filter(Boolean).join(' · ');
-      const words = [choices.length ? name : '', where, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
+      const tip = [fr ? `Frame ${fr} · ${name}` : name, where, rot ? rotLabel(rot) : 'upright', k !== 1 ? sizeLabel(k) : 'own size', p.as_designed ? 'exact mark' : ''].filter(Boolean).join(' · ');
+      const words = [fr ? `Frame ${fr} · ${name}` : choices.length ? name : '', where, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
       return { frame, vals, tip, words };
     }
     // the mark check's verdict, on the image as one solid pill (a dot at size S): red for QA flagged and Mark check, amber to check
@@ -4903,7 +4913,7 @@ Object.assign(window, {
   isBusy, setStatus,
   exportProject, importProject, importProjectPath, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
   downloadShown, setThumbSizeAt, openViewer, closeViewer, showRun, makeMissing, viewerStep, toggleTerrMenu, editRefine, clearRefine, closeGroupMenu, showNewGroupForm,
-  openProjectMenu, switchProject, openProjectForm, closeProjectForm, saveProject, psKey, psSelect, psSetProject, psSetMark, psColour, psColourAdd, psColourKey, psStar, psDrop1, psSetWords, psRemove, psPick, psFileChosen, psFilesChosen, psCancelRead,
+  openProjectMenu, switchProject, openProjectForm, closeProjectForm, saveProject, psKey, psSelect, psSetProject, psSetMark, psColour, psColourAdd, psColourKey, psStar, psDrop1, psSetWords, psFrames, psRemove, psPick, psFileChosen, psFilesChosen, psCancelRead,
   removeChange,
   startAiOrder,
   toggleAiPanel,

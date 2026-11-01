@@ -1700,6 +1700,29 @@ test('your own images: a drop on the grid; each framed to 9:16 here, joins the e
   await ctx.close();
 });
 
+test('frames of one animation: Project settings says so, names Kimi gives alike are numbered, cards say which frame', { skip }, async () => {
+  const ctx = await fresh({ setup: st => { st.projects[0].fixed = false; st.projects[0].marks = [{ id: 'n1', name: 'Bar', size: 18, x: 50, y: 50, shape: 'bar', noun: 'bar', ratio: 1, url: '/api/project-mark?p=demo&m=n1' }]; st.plates[1].mark = 'n1'; st.plates[1].mark_name = 'Bar'; } });
+  const card = i => page.locator(`.card[data-filename="${api.state.plates[i].filename}"]`);
+  assert.equal(await card(1).locator('.card-made .cm-vals').count(), 0, 'not frames: no frame on the card, as before');
+  await page.evaluate(() => openProjectForm('edit'));
+  assert.equal(await page.locator('#psFramesOn').isChecked(), false, 'off by default');
+  await page.check('#psFramesOn');
+  await page.click('#pfSave');
+  for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/projects' && c.body.action === 'update'); i++) await page.waitForTimeout(100);
+  assert.equal(api.state.calls.filter(c => c.path === '/api/projects' && c.body.action === 'update').pop().body.frames, true, 'saved with the project');
+  await page.waitForFunction(() => /2\/2/.test((document.querySelectorAll('.card')[1] || {}).textContent || ''), null, { timeout: 8000 });
+  assert.equal(await card(1).locator('.card-made .cm-vals').textContent(), '2/2', 'the card says which frame');
+  assert.match(await card(0).locator('.card-made').getAttribute('title'), /^Frame 1\/2 · /, 'the main mark is frame 1');
+  // a new project of four frames Kimi calls the same: numbered in their order
+  await page.evaluate(() => openProjectForm('new'));
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAHklEQVR4nGNgYGD4z0AEYBxVSF2Fo6EwGgqjoTA4AAD2dQf5kV0x5AAAAABJRU5ErkJggg==', 'base64');
+  await page.setInputFiles('#psFile', ['f1', 'f2', 'f3', 'f4'].map(n => ({ name: `stripes-${n}.png`, mimeType: 'image/png', buffer: png })));
+  await page.waitForFunction(() => document.querySelectorAll('.ps-mark').length === 4 && !document.querySelector('.ps-mark.reading'), null, { timeout: 8000 });
+  assert.deepEqual(await page.locator('.ps-mark .ps-row-text b').allTextContents(), ['Bar 1', 'Bar 2', 'Bar 3', 'Bar 4'], 'told apart, in their order');
+  assert.equal(await page.locator('#psFramesOn').isVisible(), true, 'and the switch, with several marks');
+  await ctx.close();
+});
+
 test('a project of your own images: New project › No mark; no mark target, no Mark menu, Generate says Add a mark and opens the settings', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(() => { kimiConfigured = true; openProjectForm('new'); });

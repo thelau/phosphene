@@ -509,3 +509,17 @@ def test_a_Demo_file_with_its_orbital_mark_in_the_list_travels_and_opens_so(pdir
     projects.export_zip("demo", out)
     p = projects.import_zip(out)
     assert p["qa"] == "mark" and p["demo"] and [(m["id"], m["qa"]) for m in p["marks"]] == [(mid, "demo-tuned")]
+
+
+def test_a_projects_marks_can_be_frames_of_one_animation_and_it_travels(pdir, tmp_path):
+    """Project settings' switch: the marks are frames of one animation, in their order; saved, given to the page, kept by .phos files."""
+    projects.create({"name": "Sphere"}, star_png())
+    assert projects.load("sphere")["frames"] is False and projects.public(projects.load("sphere"))["frames"] is False, "off by default, as every project before"
+    projects.add_mark("sphere", {"name": "Sphere 2"}, ring_png())
+    p = projects.update("sphere", {"frames": True})
+    assert p["frames"] is True and projects.public(p)["frames"] is True
+    assert projects.update("sphere", {"frames": "yes"})["frames"] is False, "only a true true"
+    projects.update("sphere", {"frames": True})
+    out = tmp_path / "s.phos"
+    projects.export_zip("sphere", out)
+    assert projects.import_zip(out)["frames"] is True

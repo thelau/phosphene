@@ -30,7 +30,7 @@ from PIL import Image, ImageDraw, ImageFont
 import features as F
 
 DEFAULT_WEIGHTS = {"flip": 1.0, "echo": 1.0, "hue": 0.6, "variety": 0.8, "arc": 1.0}
-MOVE_WEIGHTS = {"move": 0.6, "sweep": 0.4, "land": 0.5, "swap": 0.6, "spread": 0.8, "turn": 0.6, "path": 0.8, "grow": 0.5}   # used only when the set has what they weigh
+MOVE_WEIGHTS = {"move": 0.6, "sweep": 0.4, "land": 0.5, "swap": 0.6, "spread": 0.8, "turn": 0.6, "path": 0.8, "grow": 0.5, "frame": 1.0}   # used only when the set has what they weigh
 LOOK_KEYS = ("flip", "echo", "hue", "variety")                          # what Motion mode damps
 MOTION_KEYS = ("move", "sweep", "land", "turn", "path", "grow")         # and what it doubles
 
@@ -79,6 +79,14 @@ def path_score(ma: dict | None, mb: dict | None) -> float:
     return 1.0 if d == 1 else 0.5 if d == -1 else 0.0
 
 
+def frame_score(ma: dict | None, mb: dict | None) -> float:
+    """Marks that are frames of one animation: the next frame (looping) is the cut, strongly enough to hold the loop through the
+    whole edit; the same frame again, or a skip, is not (the user's striped sphere in four frames, 2026-11-01)."""
+    if not ma or not mb or "frame" not in ma or "frame" not in mb:
+        return 0.0
+    return 2.5 if mb["frame"] == (ma["frame"] + 1) % ma["frames"] else -1.0
+
+
 def size_step(ma: dict | None, mb: dict | None) -> float | None:
     """How much the mark grows across a cut (log of the ratio of its sizes); None when either has no mark."""
     if not ma or not mb or not ma.get("size") or not mb.get("size"):
@@ -101,6 +109,8 @@ def move_words(ma: dict | None, mb: dict | None) -> str:
         dx, dy = mb["x"] - ma["x"], mb["y"] - ma["y"]
         way = ("right" if dx > 0 else "left") if abs(dx) >= abs(dy) else ("down" if dy > 0 else "up")
         said.append(f"the mark moves {way} {d:.0f}%")
+    if frame_score(ma, mb) > 0:
+        said.insert(0, f"the mark's next frame ({mb['frame'] + 1}/{mb['frames']})")
     if path_score(ma, mb) == 1.0:
         said.insert(0, f"step {mb['path']['i'] + 1} of its path")
     if r is not None and abs(r) >= 1:
@@ -175,9 +185,10 @@ def order_images(items: list, brief: dict | None = None, length: int | None = No
     has = {"move": len(places) > 1, "sweep": len(places) > 1, "land": len(places) > 1,
            "swap": len({m.get("id") for m in marks if m}) > 1, "spread": any(m is None for m in marks) and any(marks),
            "turn": len({m.get("rot", 0) for m in marks if m}) > 1, "path": any((m or {}).get("path") for m in marks),
-           "grow": len({round(m["size"], 1) for m in marks if m}) > 1}
+           "grow": len({round(m["size"], 1) for m in marks if m}) > 1,
+           "frame": len({m.get("frame") for m in marks if m and "frame" in m}) > 1}   # the project's marks are frames of one animation
     w = {**DEFAULT_WEIGHTS, **{k: v if has[k] else 0.0 for k, v in MOVE_WEIGHTS.items()}}
-    w.update({k: float(v) for k, v in (brief.get("weights") or {}).items() if k in DEFAULT_WEIGHTS or (k in MOVE_WEIGHTS and has[k])})
+    w.update({k: float(v) for k, v in (brief.get("weights") or {}).items() if k != "frame" and (k in DEFAULT_WEIGHTS or (k in MOVE_WEIGHTS and has[k]))})   # frames are a rule, not Kimi's to weigh
     if brief.get("mode") == "motion":                                      # Motion: the mark's movement first, the look after
         w.update({k: w[k] * 0.35 for k in LOOK_KEYS})
         w.update({k: w[k] * 2.0 for k in MOTION_KEYS})
@@ -195,8 +206,14 @@ def order_images(items: list, brief: dict | None = None, length: int | None = No
             first = walk[0]
         if last is None and walk[-1] != first:
             last = walk[-1]
+    if has["frame"] and (first is None or (marks[first] or {}).get("frame") != 0):   # frames: the edit opens on the first frame, the strongest of them
+        first = next((i for i in by_impact if (marks[i] or {}).get("frame") == 0), first)
     if first is None:
         first = by_impact[0]
+    if has["frame"]:                                                       # frames: it closes on the last frame, a whole loop (Kimi's closer only if it is one)
+        nf = next(m["frames"] for m in marks if m and "frame" in m)
+        if last is None or (marks[last] or {}).get("frame") != nf - 1:
+            last = next((i for i in by_impact if i != first and (marks[i] or {}).get("frame") == nf - 1), last)
     if (last is None or last == first) and w["land"] > 0:                   # it lands: on the project's place
         last = next((i for i in by_impact if i != first and near_home(i)), None)
     if last is None or last == first:
@@ -232,6 +249,8 @@ def order_images(items: list, brief: dict | None = None, length: int | None = No
                         base[i, j] += w["grow"] * 0.5 * grow_score(size_step(marks[i], marks[j]))
                 elif marks[i] is None and marks[j] is None and (w["spread"] > 0):
                     base[i, j] -= w["spread"] * 0.6                      # two uploads side by side
+                if w["frame"]:
+                    base[i, j] += w["frame"] * frame_score(marks[i], marks[j])   # frames of one animation: the next one, looping
 
     # beam search: state = (score, sequence, remaining set)
     ups_total = sum(1 for i in pool if marks[i] is None) if w["spread"] else 0   # the uploads, spread along the film: due by each point
@@ -242,7 +261,15 @@ def order_images(items: list, brief: dict | None = None, length: int | None = No
         nxt = {}
         for score, seq, rest in states:
             prev = seq[-1]
-            cands = sorted(rest, key=lambda j: (-base[prev, j], j))[:14]
+            pool_now = rest
+            if w["frame"]:                                                 # frames: the next frame whenever one is left (an upload may come between)
+                seen = next((marks[x] for x in reversed(seq) if marks[x] and "frame" in marks[x]), None)
+                if seen:
+                    want = (seen["frame"] + 1) % seen["frames"]
+                    nxt_f = [j for j in rest if (marks[j] or {}).get("frame") == want]
+                    if nxt_f:
+                        pool_now = nxt_f + [j for j in rest if marks[j] is None]
+            cands = sorted(pool_now, key=lambda j: (-base[prev, j], j))[:14]
             for j in cands:
                 s = score + base[prev, j] + w["arc"] * (1 - abs(F.impact(fs[j]) - target)) * 0.8
                 k = kinds[prev, j]
@@ -354,9 +381,13 @@ def frames_note(marks: list, home: dict, names: dict | None = None) -> str:
             turned = f", turned {abs(m['rot'])}° {'clockwise' if m['rot'] > 0 else 'anticlockwise'}" if m.get("rot") else ""
             walk = f", step {m['path']['i'] + 1} of {m['path']['n']} of a path" if m.get("path") else ""
             lines.append(f"{i}: " + (f"the {names.get(m['id'], m['id'])} mark, " if m.get("id") else "") + f"at {m['x']:g}% across, {m['y']:g}% down, {m['size']:g}% wide{turned}{walk}")
+    frames = next((m for m in marks if m and "frame" in m), None)
+    order = ("The project's marks are the frames of one animation, " + ", ".join(names.get(i, i) if i else names.get("__main__", "the main mark") for i in names.get("__frames__", [])) +
+             f": the edit keeps them in order, looping (frame 1, 2 … {frames['frames']}, 1 …); choose everything else around that. Each image's frame:\n" +
+             "\n".join(f"{i}: frame {m['frame'] + 1}" for i, m in enumerate(marks) if m and "frame" in m) + "\n") if frames else ""
     if not lines:
-        return ""
-    return ("Where the mark sits (and how far it is turned), for the frames where it is not the main mark upright at its usual place "
+        return order
+    return order + ("Where the mark sits (and how far it is turned), for the frames where it is not the main mark upright at its usual place "
             f"({home['x']:g}% across, {home['y']:g}% down, {home.get('size', 18):g}% wide); every other frame has it there:\n" + "\n".join(lines) + "\n")
 
 

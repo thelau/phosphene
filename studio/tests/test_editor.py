@@ -491,3 +491,35 @@ def test_look_mode_is_as_before_when_nothing_moves():
     a = E.order_images(items, {"home": {"x": 50.0, "y": 50.0, "size": 18.0}})
     b = E.order_images(items, {"home": {"x": 50.0, "y": 50.0, "size": 18.0}, "mode": "look"})
     assert a["names"] == b["names"]
+
+
+def test_frames_of_one_animation_loop_in_order_whatever_kimi_and_the_mode_ask():
+    """The project's marks are frames (the user's striped sphere in four): the edit opens on frame 1, closes on the last, takes the
+    next frame at every cut (an upload may come between), in Look and Motion, and Kimi's opener, closer or weights cannot break it."""
+    ids = [None, "f2", "f3", "f4"]
+    for mode in ("look", "motion"):
+        items = flat_lib(13, seed=21)
+        frames = [0, 1, 2, 3] * 3
+        random.Random(7).shuffle(frames)
+        for it, f in zip(items, frames + [None]):
+            it["mark"] = None if f is None else {"x": 50.0, "y": 50.0, "size": 18.0, "id": ids[f], "rot": 0, "frame": f, "frames": 4}
+        upload = items[-1]["name"]
+        wrong = next(it["name"] for it in items if it["mark"] and it["mark"]["frame"] == 2)
+        brief = {"home": {"x": 50.0, "y": 50.0, "size": 18.0}, "mode": mode, "opener": wrong, "closer": wrong, "weights": {"frame": 0.0, "variety": 3.0, "flip": 3.0}}
+        r = E.order_images(items, brief)
+        seq = [next(it["mark"]["frame"] for it in items if it["name"] == n) for n in r["names"] if n != upload]
+        assert seq == [0, 1, 2, 3] * 3, f"{mode}: looping in order, opening on 1 and closing on 4: {seq}"
+        assert upload in r["names"], "the upload still plays"
+        assert any("next frame" in c["reason"] for c in r["cuts"])
+    note = E.frames_note([{"x": 50.0, "y": 50.0, "size": 18.0, "id": "f2", "rot": 0, "frame": 1, "frames": 4}], {"x": 50.0, "y": 50.0, "size": 18.0},
+                         {"f2": "Sphere 2", "__frames__": [None, "f2"], "__main__": "Sphere 1"})
+    assert "frames of one animation, Sphere 1, Sphere 2" in note and "0: frame 2" in note, note
+
+
+def test_plate_marks_numbers_the_frames_in_the_rail_order(srv, monkeypatch):
+    monkeypatch.setattr(srv, "PROJECT", {**srv.PROJECT, "mark_x": 50.0, "mark_y": 50.0, "mark_size": 18.0, "has_mark": True, "frames": True,
+                                         "marks": [{"id": "f2", "name": "S2", "mark_x": 50.0, "mark_y": 50.0, "mark_size": 18.0}, {"id": "f3", "name": "S3", "mark_x": 50.0, "mark_y": 50.0, "mark_size": 18.0}]})
+    m = srv.plate_marks({"marks_used": {"b.jpg": "f2", "c.jpg": "f3"}, "uploads": ["u.jpg"]}, ["a.jpg", "b.jpg", "c.jpg", "u.jpg"])
+    assert [(m[n]["frame"], m[n]["frames"]) for n in ("a.jpg", "b.jpg", "c.jpg")] == [(0, 3), (1, 3), (2, 3)] and m["u.jpg"] is None
+    monkeypatch.setattr(srv, "PROJECT", {**srv.PROJECT, "frames": False})
+    assert "frame" not in srv.plate_marks({}, ["a.jpg"])["a.jpg"], "not frames: as before"

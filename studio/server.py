@@ -1033,6 +1033,7 @@ def plate_marks(st: dict, names: list) -> dict:
     placed, uploads = st.get("placements", {}), set(st.get("uploads", []))
     mark_ids = {m["id"]: m for m in (PROJECT or {}).get("marks") or []}
     used = {k: v for k, v in st.get("marks_used", {}).items() if v in mark_ids}
+    order = [None, *mark_ids] if (PROJECT or {}).get("frames") and mark_ids else None   # frames of one animation: main first, then the list's order
     out = {}
     for n in names:
         if n in uploads or not PROJECT or not PROJECT.get("has_mark", True):
@@ -1043,7 +1044,8 @@ def plate_marks(st: dict, names: list) -> dict:
         own = pl if pl and (pl.get("kind") in ("loose", "scattered", "path") or pl.get("scale")) else None   # Angled's few, kind "exact": on target
         out[n] = {"x": float((own or {}).get("x", src["mark_x"])), "y": float((own or {}).get("y", src["mark_y"])),
                   "size": float((own or {}).get("size", src["mark_size"])), "id": mk, "rot": projects.clean_rot((pl or {}).get("rot")),
-                  **({"path": pl["path"]} if (pl or {}).get("path") else {})}
+                  **({"path": pl["path"]} if (pl or {}).get("path") else {}),
+                  **({"frame": order.index(mk), "frames": len(order)} if order else {})}
     return out
 
 
@@ -1065,7 +1067,7 @@ def build_ai_order(st: dict, call_llm, api_key: str, model: str, length: int | N
     note, brief_ok = "", True
     try:
         sheet = editor.contact_sheet(files)
-        where = editor.frames_note([marks[p.name] for p in files], home, {m["id"]: m["name"] for m in (PROJECT or {}).get("marks") or []})
+        where = editor.frames_note([marks[p.name] for p in files], home, {**{m["id"]: m["name"] for m in (PROJECT or {}).get("marks") or []}, "__frames__": [None, *(m["id"] for m in (PROJECT or {}).get("marks") or [])], "__main__": (PROJECT or {}).get("mark_name", "the main mark")})
         brief = editor.brief_to_names(editor.ask_brief(call_llm, api_key, model, sheet, len(files), direction, length, where, mode), [p.name for p in files])
     except Exception as e:                      # Kimi is optional here: the edit still works from the measurements alone
         print(f"[EDIT] brief failed, using measurements only: {e!r}", flush=True)

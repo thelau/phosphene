@@ -472,6 +472,15 @@ test('territories: Describe your own and Surprise me, no Mix it up; the one used
   assert.match(html, /<option value="__wildcard__">Surprise me/);
 });
 
+test('no element id shares the name of a function an inline handler calls (the frames switch, id "psFrames", called the checkbox, not psFrames())', () => {
+  const html = fs.readFileSync(WEB('index.html'), 'utf8');
+  const app = fs.readFileSync(WEB('src', 'app.js'), 'utf8');
+  const used = new Set();
+  for (const m of (html + app).matchAll(/\bon[a-z]+="([^"]*)"/g)) for (const c of m[1].matchAll(/(?<![\w.$'])([A-Za-z_]\w*)\(/g)) used.add(c[1]);
+  const ids = new Set([...(html + app).matchAll(/\bid="([A-Za-z_]\w*)"/g)].map(m => m[1]));
+  assert.deepEqual([...used].filter(n => ids.has(n)).sort(), []);
+});
+
 test('every inline handler in the markup and templates is exported on window', () => {
   const html = fs.readFileSync(WEB('index.html'), 'utf8');
   const app = fs.readFileSync(WEB('src', 'app.js'), 'utf8');
