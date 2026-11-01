@@ -4283,7 +4283,8 @@
       const done = prog.slots.filter(x => x === 'ok' || x === 'trash' || x === 'err' || x === 'blocked').length;
       const running = prog.slots.filter(x => x === 'run').length;
       const dots = prog.slots.map((st, i) => `<i class="slot ${st}" title="${escapeHtml((prog.titles[i] || '') + (prog.why && prog.why[i] ? ' — ' + prog.why[i] : ''))}"></i>`).join('');
-      const bar = prog.stage === 'invent' ? '<span class="slots indeterminate"><i></i></span>' : `<span class="slots">${dots}</span>`;
+      const n = prog.slots.length, fit = n > 24 ? ' tight' : n > 12 ? ' dense' : '';   // thinner gaps as the cells get thinner
+      const bar = prog.stage === 'invent' ? '<span class="slots indeterminate"><i></i></span>' : `<span class="slots${fit}">${dots}</span>`;
       const count = prog.stage === 'invent' ? '' : `<b>${done}/${prog.total}</b>`;
       el.innerHTML = `<div class="prog">
         <span class="prog-world">${escapeHtml(prog.world || 'New batch')}</span>${bar}${count}

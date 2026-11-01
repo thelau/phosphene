@@ -74,7 +74,7 @@ back, then it carries on by itself; no Krea credits (`stop`) stops it, and the i
 (same scenes, Kimi not asked again; `retryable` false for a moderation rejection); a moderation refusal (Krea said no twice, the second time to a softened prompt) is not a failure: nothing was made, so nothing goes to the Trash; its bar is grey (`blocked`) and it is counted on its own; the summary is one short line of counts (`Done · 1 added · 1 to Trash by the logo check · 1 refused by Krea's moderation`), each bar's hover gives that image's reason and the summary's hover all of them (`prog.detail`); Stop (in the status bar, it wakes a waiting batch) or
 a reload, quit or crash keeps what was not made on this computer (`studioPending:<slug>`), offered when the page opens: "N images of
 the last batch weren't made · Resume · Discard" (`offerPending`; images already made meanwhile, or still being made on the server (`making` in /api/state, `MAKING`), by title, are skipped; the server also refuses a second request for an image it is making, `duplicate`, 409, which the page counts as arriving by itself: a reload mid-batch then Resume had made three images twice). The status
-bar's buttons are `prog.actions`. The Mac app asks before quitting or closing the window while a job runs (`page-busy` event from the
+bar's buttons are `prog.actions`. Its bar is one width, 240 px, for any batch (`.slots`: the cells share it, thinner gaps past 12 and 24, `dense` / `tight`): 22 px a cell made 40 images ~1,040 px and cut the line beside it to "Re…" (the user, 2026-11-01). The Mac app asks before quitting or closing the window while a job runs (`page-busy` event from the
 page, `PAGE_BUSY`, `ask_before_quitting`: "Quit anyway" / "Keep working").
 
 ## Secrets

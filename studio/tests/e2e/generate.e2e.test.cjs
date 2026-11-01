@@ -317,3 +317,30 @@ test('many territories: one column, Describe your own and Surprise me first, the
   await page.keyboard.press('Escape');
   await ctx.close();
 });
+
+test('the status bar: 4 images or 40 share one bar of the same width, and the line beside it stays readable', { skip }, async () => {
+  const ctx = await fresh({ width: 1512, height: 945, delays: { invent: 100, generate: 4000 } });
+  const measure = () => page.evaluate(() => {
+    const bar = document.querySelector('#statusText .slots').getBoundingClientRect(), note = document.querySelector('#statusText .prog-note');
+    const cells = [...document.querySelectorAll('#statusText .slot')].map(e => e.getBoundingClientRect().width);
+    return { bar: bar.width, cells: cells.length, thinnest: Math.min(...cells), cut: note.scrollWidth > note.clientWidth, note: note.textContent };
+  });
+  const during = async n => {
+    await setCount(n);
+    await page.click('#generateBtn');
+    await page.waitForSelector('#statusText .slot.run');
+    const m = await measure();
+    await page.waitForFunction(() => /Done ·/.test(document.getElementById('statusText').textContent), null, { timeout: 120000 });
+    return m;
+  };
+  const four = await during(4);
+  await setCount(40); await page.click('#generateBtn'); await page.waitForSelector('#statusText .slot.run');
+  const forty = await measure();
+  await shot('38-status-40');
+  assert.equal(four.bar, forty.bar, `one width for any batch: ${four.bar} / ${forty.bar}`);
+  assert.ok(forty.bar <= 241, `the bar never grows with the count: ${forty.bar}`);
+  assert.equal(forty.cells, 40, 'still one cell per image (each its reason on hover)');
+  assert.ok(forty.thinnest >= 3, `40 cells stay visible: ${forty.thinnest}`);
+  assert.equal(forty.cut, false, `the line says what is rendering, not "Re…": ${forty.note}`);
+  await ctx.close();
+});
