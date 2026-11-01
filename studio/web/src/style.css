@@ -662,6 +662,12 @@
     body.target-on .card-thumb::before, body.target-on .viewer-frame::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
       background: linear-gradient(rgba(236, 84, 12, .55), rgba(236, 84, 12, .55)) center / 1px 100% no-repeat, linear-gradient(rgba(236, 84, 12, .55), rgba(236, 84, 12, .55)) center / 100% 1px no-repeat; }
     body.target-on .card-thumb::after, body.target-on .viewer-frame::after { content: ''; position: absolute; left: var(--mark-x); top: var(--mark-y); z-index: 1; width: var(--mark-w); aspect-ratio: 1 / var(--mark-ar); transform: translate(-50%, -50%) rotate(var(--mark-rot, 0deg)); box-sizing: border-box; border-radius: var(--mark-r); border: 1.5px dashed var(--text); outline: 1px solid rgba(0, 0, 0, .55); pointer-events: none; }   /* a cream dash over a dark hairline: it holds on light and dark images (Claude Design) */
+    /* M: the image's own mark over it, its shape in white inverting what is under it (seen on light and dark images alike), half
+       through, at the target's place, size and angle */
+    .mark-ghost { display: none; position: absolute; left: var(--mark-x); top: var(--mark-y); z-index: 1; width: var(--mark-w); aspect-ratio: 1 / var(--mark-ar); transform: translate(-50%, -50%) rotate(var(--mark-rot, 0deg)); pointer-events: none;
+      background: #fff; -webkit-mask: var(--mark-img) center / 100% 100% no-repeat; mask: var(--mark-img) center / 100% 100% no-repeat; mix-blend-mode: difference; opacity: .6; }
+    body.mark-on .mark-ghost:not([hidden]) { display: block; }
+    body.no-project .mark-ghost, .stage:fullscreen .mark-ghost { display: none !important; }
     body.target-on .pending-card .card-thumb::before, body.target-on .pending-card .card-thumb::after { display: none; }
     .card-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
     body:has(#tabTrash.on) .card-num { display: none; }   /* a place in the order means nothing in the Trash */

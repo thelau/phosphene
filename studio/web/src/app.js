@@ -1992,6 +1992,13 @@
       old.forEach(el => el.remove());
     }
     // an image with its own placement (a Loose batch): the logo target draws its box there (the project's otherwise)
+    // the mark an image was made with (its frame, for frames of one animation): drawn over it with M, as T draws its target box
+    function markImg(p) {
+      if (!p || p.uploaded || !project) return '';
+      return p.mark && p.mark !== 'main' ? ((project.marks || []).find(m => m.id === p.mark) || {}).url || '' : project.mark_url || '';
+    }
+    const ghostVar = url => (url ? `--mark-img:url('${url}')` : '');
+    const thumbStyle = p => [placeVars(p.box || p.placement), ghostVar(markImg(p))].filter(Boolean).join(';');
     function placeVars(pl) { return pl ? `--mark-x:${pl.x}%;--mark-y:${pl.y}%;--mark-w:${pl.size}%${pl.ar ? `;--mark-ar:${pl.ar}` : ''}${pl.rot ? `;--mark-rot:${pl.rot}deg` : ''}` : ''; }   // (box: also another mark's shape, and its angle)
     // why this image's mark is not on target: its batch asked for it (Loose / Scattered), and where
     function targetTip(pl) { return `${POSITION_NAMES[pl.kind] || 'Loose'}${pl.path ? ` (step ${pl.path.i + 1} of ${pl.path.n})` : ''}: made with the mark at ${pl.x}% across, ${pl.y}% down, ${pl.size}% wide (on purpose: its batch asked for it)`; }
@@ -2009,8 +2016,8 @@
              ondragend="onDragEnd(event)"
              onclick="cardClick(event, '${p.filename}')"
              ondblclick="openViewer(event, '${p.filename}')">
-          <div class="card-thumb"${p.box || p.placement ? ` style="${placeVars(p.box || p.placement)}"` : ''}>
-            <img src="${p.thumb || p.url}" loading="lazy" decoding="async" alt="" />
+          <div class="card-thumb"${thumbStyle(p) ? ` style="${escapeHtml(thumbStyle(p))}"` : ''}>
+            <img src="${p.thumb || p.url}" loading="lazy" decoding="async" alt="" />${markImg(p) ? '<i class="mark-ghost" aria-hidden="true"></i>' : ''}
             <span class="card-num"></span>${cardQa(p)}
             ${!showTrash && seenAtLoad && !seenAtLoad.has(p.filename) ? '<span class="card-new">New</span>' : ''}
             ${showTrash ? '<span class="card-pick" aria-hidden="true"></span>' : `<button type="button" class="card-pick" title="Pick (⌘-click) to add to a group" aria-label="Pick ${escapeHtml(p.title)}" onclick="pickClick(event, '${p.filename}')"></button>`}
@@ -2138,7 +2145,8 @@
       viewerAt = (viewerAt + list.length) % list.length;
       const p = list[viewerAt];
       document.getElementById('viewerImg').src = p.url;
-      document.getElementById('viewerFrame').setAttribute('style', placeVars(p.box || p.placement));   // the mark target (T) as on its card
+      document.getElementById('viewerFrame').setAttribute('style', thumbStyle(p));   // the mark target (T) and the mark (M) as on its card
+      document.getElementById('viewerGhost').hidden = !markImg(p);
       document.getElementById('viewerTitle').textContent = p.title || '';
       document.getElementById('viewerCount').textContent = `${viewerAt + 1} / ${list.length}${showTrash ? ' in the Trash' : ''}`;
       // the card's cluster spelled out, since there is room (Claude Design's ViewerFilm): which mark, where, the angle, the size, as designed
@@ -2333,6 +2341,7 @@
         if (key === 'ArrowRight' || key === 'ArrowLeft') viewerStep(key === 'ArrowRight' ? 1 : -1);
         else if (key === 'Escape' || key === ' ') closeViewer();
         else if (key === 't') toggleReticle();                               // the mark target: a universal key, seen on the image too
+        else if (key === 'm') toggleMarkOverlay();                           // and the mark itself
         return;
       }
       // everywhere
@@ -2342,11 +2351,12 @@
       if (cmd && key === 'a' && mode === 'curate' && !showTrash) { e.preventDefault(); pickAll(); return; }
       if (cmd || e.altKey) return;
       if (tasteShown() && (key === 'l' || key === 'd')) { e.preventDefault(); if (!e.repeat) tasteMark(key === 'l' ? 'like' : 'dislike'); return; }   // dev: judge by ear, in full screen too, without seeing the settings
-      if (e.repeat && ['Tab', 'f', 't', 'r', 's'].includes(key)) { e.preventDefault(); return; }   // a held key acts once
+      if (e.repeat && ['Tab', 'f', 't', 'm', 'r', 's'].includes(key)) { e.preventDefault(); return; }   // a held key acts once
       if (e.target && e.target.type === 'range' && key.startsWith('Arrow')) return;               // a slider with focus keeps its arrows
       if (key === 'Tab') { e.preventDefault(); if (e.target && e.target.blur) e.target.blur(); setMode(mode === 'film' ? 'curate' : 'film'); return; }
       if (key === ' ') { e.preventDefault(); if (mode === 'curate' && !miniOpen) toggleMini(true); togglePlay(); return; }
       if (key === 't') { e.preventDefault(); flash(mode === 'film' ? 'targetBtn' : 'gridTargetBtn'); toggleReticle(); return; }
+      if (key === 'm') { e.preventDefault(); flash(mode === 'film' ? 'markBtn' : 'gridMarkBtn'); toggleMarkOverlay(); return; }
       if (key === '?') { e.preventDefault(); toggleKeys(); return; }
       if (key === 'Escape') { document.getElementById('keysPanel').hidden = true; if (pickSel.size || trashSel.size) clearPicks(); if (rsSel !== null) { rsSel = null; renderRhythmStrip(); } return; }
       // the tab's own
@@ -3866,7 +3876,7 @@
     // the picture at cutPos: the stage image, its effects (while playing), the film strip mark and the time
     let shownTime = '';
     let aheadFrom = -1;
-    let shownBox = null;
+    let shownBox = null, shownGhost = null;
     function drawFrame() {
       const active = activePlates();
       const stageImg = document.getElementById('stageImg');
@@ -3878,6 +3888,8 @@
       const url = active[plan.plate].preview || active[plan.plate].url;
       const box = placeVars(active[plan.plate].box || active[plan.plate].placement);
       if (box !== shownBox) { shownBox = box; document.querySelector('#reticle .reticle-circle').style.cssText = box; }   // this image's own box
+      const ghost = markImg(active[plan.plate]);
+      if (box + ghost !== shownGhost) { shownGhost = box + ghost; const g = document.getElementById('stageMark'); g.style.cssText = [box, ghostVar(ghost)].filter(Boolean).join(';'); g.hidden = !ghost; }   // and its mark (M)
       if (plan.plate !== aheadFrom) { aheadFrom = plan.plate; preloadAhead(plan.plate); }
       let held = false;
       if (stageImg.getAttribute('src') !== url) {
@@ -3938,6 +3950,14 @@
       try { localStorage.setItem('studioTarget', on ? '1' : '0'); } catch (e) {}
     }
     try { if (localStorage.getItem('studioTarget') === '1') toggleReticle(true); } catch (e) {}
+    // M: each image's own mark over it, half see-through, at the place, size and angle it was made with (the cards, the viewer and the
+    // Film, as T): to see whether the render follows the mark, a frame's own frame included (the user, 2026-11-01). One switch, remembered
+    function toggleMarkOverlay(force) {
+      const on = document.body.classList.toggle('mark-on', force === undefined ? undefined : !!force);
+      for (const id of ['markBtn', 'gridMarkBtn', 'viewerMarkBtn']) document.getElementById(id).setAttribute('aria-pressed', String(on));
+      try { localStorage.setItem('studioMarkOverlay', on ? '1' : '0'); } catch (e) {}
+    }
+    try { if (localStorage.getItem('studioMarkOverlay') === '1') toggleMarkOverlay(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
     const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'rotSelect', 'sizeSelect', 'pathSelect'];   // keepCheck (Keep the mark exact) was removed on 2026-10-31: the user never used it
@@ -5023,6 +5043,7 @@ Object.assign(window, {
   restoreSelected,
   togglePromptOverlay,
   toggleReticle,
+  toggleMarkOverlay,
   toggleSettings,
   updateTempo,
   updateRhythm,

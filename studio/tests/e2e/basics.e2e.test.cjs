@@ -1749,6 +1749,39 @@ test('frames with fewer images than the others: Made with counts each frame and 
   await ctx.close();
 });
 
+test('M: each image\'s own mark over it, where T draws its target, on the cards, in the viewer and in Film; remembered', { skip }, async () => {
+  const ctx = await fresh({ setup: st => { st.projects[0].marks = [{ id: 'n1', name: 'Bar', size: 18, x: 50, y: 50, shape: 'bar', noun: 'bar', ratio: 1, url: '/api/project-mark?p=demo&m=n1' }]; Object.assign(st.plates[1], { mark: 'n1', mark_name: 'Bar', box: { x: 30, y: 40, size: 24, ar: 1, rot: 90 } }); st.plates[2].uploaded = true; } });
+  const card = i => page.locator(`.card[data-filename="${api.state.plates[i].filename}"]`);
+  assert.equal(await card(0).locator('.mark-ghost').isVisible(), false, 'off by default');
+  await page.keyboard.press('m');
+  assert.equal(await page.evaluate(() => document.body.classList.contains('mark-on')), true);
+  assert.equal(await page.locator('#gridMarkBtn').getAttribute('aria-pressed'), 'true', 'its button says so');
+  const ghost = i => card(i).locator('.mark-ghost').evaluate(g => { const s = getComputedStyle(g), a = getComputedStyle(g.parentElement, '::after'); return { img: s.webkitMaskImage || s.maskImage, blend: s.mixBlendMode, at: [s.left, s.top, s.width, s.transform], target: [a.left, a.top, a.width, a.transform] }; });
+  await page.keyboard.press('t');                                          // its target box, to compare
+  const main = await ghost(0), other = await ghost(1);
+  await page.keyboard.press('t');
+  assert.match(main.img, /project-mark\?p=demo"?\)/, 'the main mark');
+  assert.match(other.img, /m=n1/, 'the mark it was made with (a frame its own frame)');
+  assert.deepEqual(other.at, other.target, 'exactly where T draws its box: place, size and angle');
+  assert.equal(main.blend, 'difference', 'seen on light and dark images alike');
+  assert.equal(await card(2).locator('.mark-ghost').count(), 0, 'an upload has no mark');
+  await shot('40-mark-overlay');
+  await card(1).dblclick();
+  await page.waitForSelector('#viewer.open, .viewer.open', { timeout: 5000 }).catch(() => {});
+  assert.equal(await page.locator('#viewerGhost').isVisible(), true, 'in the viewer');
+  assert.equal(await page.locator('#viewerMarkBtn').getAttribute('aria-pressed'), 'true');
+  await page.keyboard.press('m');
+  assert.equal(await page.locator('#viewerGhost').isVisible(), false, 'M works there too');
+  await page.keyboard.press('m');
+  await page.keyboard.press('Escape');
+  await film();
+  assert.equal(await page.locator('#stageMark').isVisible(), true, 'and over the Film');
+  await page.reload(); await page.waitForSelector('.card', { state: 'attached' });
+  assert.equal(await page.evaluate(() => document.body.classList.contains('mark-on')), true, 'remembered');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('a project of your own images: New project › No mark; no mark target, no Mark menu, Generate says Add a mark and opens the settings', { skip }, async () => {
   const ctx = await fresh();
   await page.evaluate(() => { kimiConfigured = true; openProjectForm('new'); });
@@ -1805,7 +1838,7 @@ test('the Keys panel: ? opens a tidy list under the hint, Esc and a click elsewh
   const ctx = await fresh({ width: 1512, height: 945 });
   await page.keyboard.press('?');
   await page.waitForSelector('#keysPanel:not([hidden])');
-  assert.equal(await page.locator('#keysPanel dt:not(.app-only)').count(), 17);
+  assert.equal(await page.locator('#keysPanel dt:not(.app-only)').count(), 18);                         // M, the mark overlay, since 2026-11-01
   assert.deepEqual(await page.locator('#keysPanel h5').allTextContents(), ['Everywhere', 'Film', 'Curate'], 'universal keys, then each tab\'s own');
   assert.equal(await page.locator('#keysPanel dt.app-only').first().isVisible(), false, 'the app menu\'s shortcuts only in the app');
   await page.evaluate(() => document.body.classList.add('app'));                    // as in the app: its menu's keys too
