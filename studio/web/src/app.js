@@ -736,7 +736,8 @@
       const n = psUsable().length, full = n >= PS_MAX;
       const rows = f.marks.map(m => {
         const def = m.key === f.def;
-        const sub = m.error ? m.error : m.reading ? `Reading · ${psSecs(m)} s` : m.needsWords ? 'Type its words' : def ? `Main · ${+m.size}%` : `${+m.size}% · ${+m.x === 50 && +m.y === 50 ? 'centre' : `${+m.x} / ${+m.y}`}`;
+        const fno = f.frames && n > 1 && !m.error ? psUsable().indexOf(m) + 1 : 0;   // frames of one animation: which one, in the rail's order
+        const sub = m.error ? m.error : m.reading ? `Reading · ${psSecs(m)} s` : m.needsWords ? 'Type its words' : fno ? `Frame ${fno}${def ? ' · Main' : ''}` : def ? `Main · ${+m.size}%` : `${+m.size}% · ${+m.x === 50 && +m.y === 50 ? 'centre' : `${+m.x} / ${+m.y}`}`;
         const cls = m.error ? ' error' : m.reading ? ' reading' : m.needsWords ? ' warn' : '';
         const star = m.error ? '' : `<span class="ps-star${def ? ' on' : ''}" role="button" tabindex="0" data-key="${escapeHtml(m.key)}" onclick="psStar(event, this.dataset.key)" aria-pressed="${def}" aria-label="${def ? 'The main mark' : 'Make this the main mark'}" title="${def ? 'The main mark' : 'Make this the main mark'}">${STAR}</span>`;
         return `<div class="ps-row ps-mark${f.sel === m.key ? ' on' : ''}${cls}" role="button" tabindex="0" onclick="psSelect(this.dataset.key)" data-key="${escapeHtml(m.key)}" draggable="${m.locked || m.error ? 'false' : 'true'}">
@@ -747,6 +748,7 @@
       const add = pending ? '' : full ? '<span class="ps-full">Remove one to add another.</span>'
         : `<button type="button" class="ps-add" id="psAdd" onclick="psPick('add')"><span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>${psDrag ? `Drop ${psDrag} mark${psDrag > 1 ? 's' : ''} here` : 'Add marks'}</span><small>${psDrag ? `${n} → ${Math.min(PS_MAX, n + psDrag)} of ${PS_MAX}` : `${n} of ${PS_MAX} · drop here or choose`}</small></button>`;
       const rail = document.getElementById('psRail');
+      rail.classList.toggle('frames', !!(f.frames && n > 1));                // the grips show: the order is the animation's
       const frames = n > 1 && !pending ? `<label class="ps-frames"><input type="checkbox" id="psFramesOn"${f.frames ? ' checked' : ''} onchange="psFrames(this.checked)" /><span><b>Frames of one animation</b><small>In this order (drag to change): AI order keeps them looping, cards say which frame</small></span></label>` : '';
       rail.innerHTML = `<span class="ps-rail-head">Project</span>${projRow}<span class="ps-rail-head"><span>Marks</span><span class="${n >= PS_MAX ? 'ps-count full' : 'ps-count'}">${n ? `${n} of ${PS_MAX}` : `up to ${PS_MAX}`}</span></span>${rows}${frames}${add}`;
       const tile = document.getElementById('psAdd');
@@ -891,7 +893,7 @@
       if (!f.marks.some(x => x.reading || x.error || x.needsWords) && f.sel === 'tiles') f.sel = f.marks.length ? 'project' : null;
       renderPS();
     }
-    function psFrames(on) { projectForm.frames = !!on; }                   // the marks are frames of one animation, in the rail's order
+    function psFrames(on) { projectForm.frames = !!on; renderPSRail(); }                   // the marks are frames of one animation, in the rail's order
     // marks Kimi calls the same (four frames of one striped sphere were all "Striped sphere") are numbered in the rail's order
     function psNumberNames() {
       const auto = projectForm.marks.filter(m => m.autoName && !m.error), by = {};

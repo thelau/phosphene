@@ -1036,6 +1036,7 @@
 .ps-row > svg { flex: none; color: #8F8A7A; }
 .ps-grip { flex: none; width: 10px; color: #6F6B5F; font-size: 11px; line-height: 1; cursor: grab; opacity: 0; }
 .ps-mark:hover .ps-grip { opacity: 1; }
+#psRail.frames .ps-grip { opacity: 1; }   /* frames of one animation: the order matters, the grips always show */
 .ps-mark[draggable="false"] .ps-grip { visibility: hidden; }
 .ps-star { flex: none; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: #6F6B5F; cursor: pointer; }
 .ps-star svg { fill: none; }

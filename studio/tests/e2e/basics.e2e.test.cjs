@@ -1707,6 +1707,8 @@ test('frames of one animation: Project settings says so, names Kimi gives alike 
   await page.evaluate(() => openProjectForm('edit'));
   assert.equal(await page.locator('#psFramesOn').isChecked(), false, 'off by default');
   await page.check('#psFramesOn');
+  assert.deepEqual(await page.locator('.ps-mark .ps-row-text small').allTextContents(), ['Frame 1 · Main', 'Frame 2'], 'each row says its frame, in the rail\'s order');
+  assert.equal(await page.locator('.ps-mark .ps-grip').first().evaluate(e => getComputedStyle(e).opacity), '1', 'the grips show: the order is the animation\'s');
   await page.click('#pfSave');
   for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/projects' && c.body.action === 'update'); i++) await page.waitForTimeout(100);
   assert.equal(api.state.calls.filter(c => c.path === '/api/projects' && c.body.action === 'update').pop().body.frames, true, 'saved with the project');
