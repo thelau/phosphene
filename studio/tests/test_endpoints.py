@@ -840,12 +840,19 @@ def test_project_export_and_import_over_http_and_kimi_reads_a_mark(live, srv, mo
     assert len([p for p in state["plates"] if not p["trashed"]]) == 3, "with its images"
     assert live("POST", "/api/project-import", raw=b"nope, not a zip at all")[0] == 400
     calls = []
-    monkeypatch.setattr(srv, "call_kimi_llm", lambda prompt, *a, **k: calls.append(k.get("images")) or _json.dumps({"name": "Arrowhead", "brand": "Arrowhead, a trail-running brand", "shape": "angular arrow mark", "noun": "arrow", "palette": ["#123456", "bad"]}))
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda prompt, *a, **k: calls.append(k.get("images")) or _json.dumps({"recognised": True, "name": "Arrowhead", "brand": "Arrowhead, a trail-running brand", "shape": "angular arrow mark", "noun": "arrow", "palette": ["#123456", "bad"]}))
     status, d = live("POST", "/api/describe-mark", {"mark": "data:image/png;base64," + base64.b64encode(star_png()).decode()})
     assert status == 200 and d["shape"] == "angular arrow mark" and d["noun"] == "arrow" and d["suggested"] == ["#123456"]
     assert d["name"] == "Arrowhead" and d["brand"] == "Arrowhead, a trail-running brand", "Kimi names it and says who it is for"
     assert d["colours"] == ["#F03C14"] and calls and calls[0][0][:2] == b"\xff\xd8", "its own colour, and Kimi saw it as an image"
     assert live("POST", "/api/describe-mark", {"mark": "data:image/png;base64,AAAA"})[0] == 400
+    # a lookalike (a striped sphere read as AT&T): unsure, so no brand line; the prompt asks for its shape exactly and a made-up name
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda prompt, *a, **k: calls.append(prompt) or _json.dumps({"recognised": False, "name": "Stripe Orb", "brand": "AT&T, a telecom company", "shape": "sphere of 9 horizontal black stripes", "noun": "striped sphere"}))
+    _, d = live("POST", "/api/describe-mark", {"mark": "data:image/png;base64," + base64.b64encode(star_png()).decode()})
+    assert (d["name"], d["brand"], d["shape"]) == ("Stripe Orb", "", "sphere of 9 horizontal black stripes"), "a resemblance is no brand"
+    assert "A resemblance is not enough" in calls[-1] and "with counts" in calls[-1]
+    monkeypatch.setattr(srv, "call_kimi_llm", lambda prompt, *a, **k: _json.dumps({"name": "Nike", "brand": "Nike, sportswear", "shape": "swoosh"}))
+    assert live("POST", "/api/describe-mark", {"mark": "data:image/png;base64," + base64.b64encode(star_png()).decode()})[1]["brand"] == "", "not said sure: no brand"
 
 
 def test_with_no_project_the_server_runs_says_so_and_a_double_clicked_file_opens(live, srv, tmp_path, monkeypatch):

@@ -1301,15 +1301,19 @@ EXPORT_FRAMES_MAX = 200000                 # about 1 h 50 at 30 fps
 
 DESCRIBE_MARK = (
     "This is a mark (a logo, a symbol or a shape), shown on grey. It will sit at the same place in every shot of a film of AI images, physically part of each "
-    "scene. Describe it for an image model. Return ONLY raw JSON: {\"name\": \"the name of the brand or project if you recognise the mark or can read it, else a short "
-    "fitting project name\", \"brand\": \"one line on who or what it is for, e.g. Nike, a global sportswear brand (empty if unknown)\", \"shape\": \"2-6 words naming its shape and kind, e.g. circular orbital logo, "
-    "angular monogram, horizontal wordmark\", \"noun\": \"1-3 words to call it in a sentence, e.g. circular mark, monogram, wordmark\", "
+    "scene. Describe it for an image model, precisely. Many marks look like a famous logo without being it (a striped sphere is not automatically AT&T, a "
+    "swoosh not Nike, an apple not Apple): treat it as a brand ONLY if its name is written in it, or it is exactly that brand's mark, the same geometry, number "
+    "of parts, proportions and colours. A resemblance is not enough; when in doubt, it is not a brand. Return ONLY raw JSON: {\"recognised\": true only when "
+    "you are certain whose mark this is (as above), else false, \"name\": \"if recognised, the brand or project's name; else a short fitting project name "
+    "made up from what the mark looks like, never a real brand's name\", \"brand\": \"if recognised, one line on who it is for, e.g. Nike, a global sportswear "
+    "brand; else empty\", \"shape\": \"3-10 words naming exactly what it is made of, with counts where they matter, e.g. sphere of 9 horizontal black "
+    "stripes, circular orbital logo, angular two-letter monogram\", \"noun\": \"1-3 words to call it in a sentence, e.g. striped sphere, monogram, wordmark\", "
     "\"palette\": [\"2 or 3 hex colours that would suit films around this mark, besides its own\"]}"
 )
 
 
 def describe_mark(img, api_key: str, model: str) -> dict:
-    """Kimi's words for a mark (its shape, what to call it) and colours to go with it."""
+    """Kimi's words for a mark (its shape, precisely, what to call it) and colours to go with it; a brand only when it is sure whose it is."""
     tile = Image.new("RGB", (512, 512), (128, 128, 128))
     m = img.convert("RGBA")
     m.thumbnail((400, 400))
@@ -1317,7 +1321,8 @@ def describe_mark(img, api_key: str, model: str) -> dict:
     buf = io.BytesIO(); tile.save(buf, "JPEG", quality=90)
     data = parse_llm_json(call_kimi_llm(DESCRIBE_MARK, api_key, model, images=[buf.getvalue()], timeout=60, attempts=1), "{")
     clean = lambda v, n: re.sub(r"\s+", " ", str(v or "")).strip()[:n]
-    return {"name": clean(data.get("name"), 60), "brand": clean(data.get("brand"), 200), "shape": clean(data.get("shape"), 80), "noun": clean(data.get("noun"), 40),
+    sure = data.get("recognised") is True                                    # a lookalike is no brand (a striped sphere was named AT&T): unsure, no brand line
+    return {"name": clean(data.get("name"), 60), "brand": clean(data.get("brand"), 200) if sure else "", "shape": clean(data.get("shape"), 80), "noun": clean(data.get("noun"), 40),
             "suggested": [c for c in (projects.clean_hex(x) for x in (data.get("palette") or [])[:3]) if c]}
 
 
