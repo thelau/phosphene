@@ -107,7 +107,7 @@ function start(state = makeState()) {
         return send({ ok: true, active: state.project, project: projectOf(state), projects: state.projects });
       }
       case '/api/describe-mark': if (state.describeFails) return void send({ ok: false, error: 'Kimi could not read it' });
-        return void setTimeout(() => send({ ok: true, colours: ['#F0A020'], name: 'Owl Bar', brand: 'Owl Bar, a bar', shape: 'horizontal bar mark', noun: 'bar', suggested: ['#1A1A1A'] }), state.delays.describe || 0);
+        return void setTimeout(() => send({ ok: true, colours: ['#F0A020'], name: 'Owl Bar', brand: 'Owl Bar, a bar', shape: 'horizontal bar mark', noun: 'bar', suggested: ['#1A1A1A', '#C9A227'], palette_note: 'Night bar mood: ink and brass' }), state.delays.describe || 0);
       case '/api/project-export': return send({ ok: true, url: '/api/download-zip?id=0123456789abcdef0123456789abcdef&name=p.zip', filename: 'Demo-project.zip', bytes: 9e7 });
       case '/api/project-import': {
         if (!req.raw.length || req.raw[0] !== 0x50) return send({ ok: false, error: 'That is not a project file (a .zip made by Export project).' }, 400);

@@ -794,7 +794,7 @@
           <label class="ps-field"><span>About${tag('From Kimi')}</span><input type="text" id="psBrief" maxlength="200" value="${escapeHtml(f.brief)}" oninput="psSetProject('brief', this.value)" placeholder="Who or what these films are for: a brand, a project, an event… e.g. Kestrel Air, the Hong Kong airline" autocomplete="off" /></label>
           <div class="ps-field"><span>Colours${tag('Suggested')}</span><div class="ps-colours">${f.palette.map((c, i) => `<span class="ps-chip"><i style="background:${escapeHtml(c)}"></i>${escapeHtml(c)}<button type="button" aria-label="Remove ${escapeHtml(c)}" onclick="psColour(${i})">×</button></span>`).join('')}
             <input type="text" id="psColourNew" class="ps-chip-add" maxlength="7" placeholder="+ #hex" aria-label="Add a colour" onkeydown="psColourKey(event, this)" onblur="psColourAdd(this)" autocomplete="off" /></div>
-            <small>Kimi colours the scenes with these. Every mark shares them.</small></div>`;
+            <small>${f.paletteNote ? `${escapeHtml(f.paletteNote)}. ` : ''}Kimi colours the scenes with these. Every mark shares them.</small></div>`;
         return;
       }
       if (!m) { d.innerHTML = ''; return; }
@@ -960,7 +960,10 @@
         if (first) {                                                          // the first mark of a new project: the project too
           if (!f.typed.has('name') && r.name) f.name = r.name;
           if (!f.typed.has('brief') && r.brand) f.brief = r.brand;
-          if (!f.palette.length) f.palette = [...new Set([...(r.colours || []), ...(r.suggested || [])])].slice(0, 8);
+          if (!f.palette.length) {                                            // the films' colours: Kimi's (a brand's system, or what suits the mark), the mark's own only if none
+            f.palette = (r.suggested && r.suggested.length ? r.suggested : r.colours || []).slice(0, 8);
+            f.paletteNote = r.suggested && r.suggested.length ? r.palette_note || '' : '';
+          }
           f.fromKimi = true;
           f.sel = 'project';
         }

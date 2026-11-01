@@ -1308,7 +1308,10 @@ DESCRIBE_MARK = (
     "made up from what the mark looks like, never a real brand's name\", \"brand\": \"if recognised, one line on who it is for, e.g. Nike, a global sportswear "
     "brand; else empty\", \"shape\": \"3-10 words naming exactly what it is made of, with counts where they matter, e.g. sphere of 9 horizontal black "
     "stripes, circular orbital logo, angular two-letter monogram\", \"noun\": \"1-3 words to call it in a sentence, e.g. striped sphere, monogram, wordmark\", "
-    "\"palette\": [\"2 or 3 hex colours that would suit films around this mark, besides its own\"]}"
+    "\"palette\": [\"3 or 4 hex colours for the films' scenes (the mark keeps its own colours): if recognised, the brand's own colour system, its primary and "
+    "secondary colours as the brand uses them around its mark; else colours chosen with care for what this mark is and how it looks, a mood that suits its "
+    "shape and character, your own choice for this mark, not its own black, white or grey again\"], \"palette_note\": \"a few words on why: for a "
+    "brand which of its colours, e.g. Nike's black, volt and white; else the mood and the colours you chose\"}"
 )
 
 
@@ -1323,7 +1326,7 @@ def describe_mark(img, api_key: str, model: str) -> dict:
     clean = lambda v, n: re.sub(r"\s+", " ", str(v or "")).strip()[:n]
     sure = data.get("recognised") is True                                    # a lookalike is no brand (a striped sphere was named AT&T): unsure, no brand line
     return {"name": clean(data.get("name"), 60), "brand": clean(data.get("brand"), 200) if sure else "", "shape": clean(data.get("shape"), 80), "noun": clean(data.get("noun"), 40),
-            "suggested": [c for c in (projects.clean_hex(x) for x in (data.get("palette") or [])[:3]) if c]}
+            "suggested": [c for c in (projects.clean_hex(x) for x in (data.get("palette") or [])[:4]) if c], "palette_note": clean(data.get("palette_note"), 90)}
 
 
 def zips_folder() -> Path:

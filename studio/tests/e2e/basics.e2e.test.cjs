@@ -580,11 +580,12 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   assert.equal(await page.locator('#psName').inputValue(), 'Owl Bar', 'Kimi names it');
   assert.equal(await page.locator('#psBrief').inputValue(), 'Owl Bar, a bar');
   assert.deepEqual(await page.locator('.ps-tag').allTextContents(), ['From Kimi', 'Suggested']);
-  assert.deepEqual(await page.locator('.ps-chip').allTextContents(), ['#F0A020×', '#1A1A1A×'], 'the mark\'s own colours, then Kimi\'s');
+  assert.deepEqual(await page.locator('.ps-chip').allTextContents(), ['#1A1A1A×', '#C9A227×'], 'the films\' colours, Kimi\'s (a brand\'s system, or what suits the mark), not the mark\'s own');
+  assert.equal(await page.getByText(/^Night bar mood: ink and brass\. Kimi colours the scenes/).count(), 1, 'and why');
   await page.fill('#psName', 'Night Owl');
   await page.fill('#psColourNew', '#223344'); await page.keyboard.press('Enter');
   await page.click('.ps-chip button');                                                // one removed
-  assert.deepEqual(await page.locator('.ps-chip').allTextContents(), ['#1A1A1A×', '#223344×']);
+  assert.deepEqual(await page.locator('.ps-chip').allTextContents(), ['#C9A227×', '#223344×']);
   await page.click('.ps-mark');
   assert.equal(await page.locator('#psMarkName').inputValue(), 'Bar', 'the mark named from what Kimi calls it');
   assert.equal(await text('.ps-default'), '★ The main mark');
@@ -600,7 +601,7 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   await page.waitForFunction(() => document.getElementById('projectName').textContent === 'Night Owl', null, { timeout: 10000 });
   await page.waitForSelector('#loader', { state: 'detached' });
   const sent = api.state.calls.filter(c => c.path === '/api/projects').pop().body;
-  assert.deepEqual([sent.action, sent.name, sent.mark_size, sent.mark_y, sent.mark_shape, sent.mark_noun, sent.mark_name, sent.palette], ['create', 'Night Owl', 30, 40, 'owl wordmark', 'owl', 'Bar', ['#1A1A1A', '#223344']]);
+  assert.deepEqual([sent.action, sent.name, sent.mark_size, sent.mark_y, sent.mark_shape, sent.mark_noun, sent.mark_name, sent.palette], ['create', 'Night Owl', 30, 40, 'owl wordmark', 'owl', 'Bar', ['#C9A227', '#223344']]);
   assert.match(api.state.markSent, /^data:image\/png;base64,/, 'the mark goes as a PNG');
   assert.deepEqual(await page.evaluate(async u => { const i = new Image(); i.src = u; await i.decode(); return [i.width, i.height]; }, api.state.markSent), [120, 60], 'trimmed to the mark itself');
   assert.equal(await page.locator('.card').count(), 0, 'a new project starts empty');
