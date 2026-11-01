@@ -1161,7 +1161,7 @@
       const e = editOf(currentEdit);
       closeEditMenu();
       if (!e || !editDirty()) return;
-      if (!(await askConfirm(`Replace “${e.name}”?`, 'The snapshot takes the film as it is now: its group and every setting. Undo (⌘Z) puts the old one back.', 'Replace'))) return;
+      if (!(await askConfirm(`Replace “${e.name}”?`, 'Replace with the current film. ⌘Z to undo.', 'Replace'))) return;
       commitSettings();
       const before = { group: e.group, settings: e.settings }, after = editSnap();
       if (!await editsCall({ action: 'update', id: e.id, ...after })) return;
@@ -3282,7 +3282,7 @@
       d.hidden = true;
       if (kind !== 'label') {
         d.type = 'button';
-        d.setAttribute('aria-label', kind === 'point' ? 'A point of the speed: drag sideways for where, up or down for the speed' : 'The curve of this change: drag up or down');
+        d.setAttribute('aria-label', kind === 'point' ? 'Speed point · drag to move' : 'Curve · drag up or down');
         rsListen(d, kind);
       }
       const ref = document.getElementById('rsRemove');                       // under the × and the tooltip

@@ -341,30 +341,30 @@
             <button onclick="restartPlay()" id="restartBtn" class="icon-btn" title="Back to the start (0)" aria-label="Back to the start">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6"></path><path d="M4 4v4h4"></path></svg>
             </button>
-            <button onclick="toggleReticle()" id="targetBtn" class="icon-btn" title="Show where the mark sits (T)" aria-label="Show the mark target" aria-pressed="false">
+            <button onclick="toggleReticle()" id="targetBtn" class="icon-btn" title="Mark target (T)" aria-label="Show the mark target" aria-pressed="false">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 1v4M12 19v4M1 12h4M19 12h4"></path></svg>
             </button>
             <span class="timecode" id="timecode">0:00.0 <span>/ 0:00.0 · cut 1 / 0</span></span>
           </div>
             <span class="grow"></span>
-            <select id="filmGroup" onchange="setGroup(this.value)" title="Which images the film plays: all, one of your groups, or an automatic one"></select>
-            <button class="icon-btn refresh-btn" id="refreshFilmBtn" onclick="refreshLibrary(true)" title="Check for new images now: the film and the library refresh together" aria-label="Refresh the film"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
+            <select id="filmGroup" onchange="setGroup(this.value)" title="Images to play"></select>
+            <button class="icon-btn refresh-btn" id="refreshFilmBtn" onclick="refreshLibrary(true)" title="Refresh" aria-label="Refresh the film"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
           </div>
           <div class="filmstrip" id="filmstrip" onclick="filmstripClick(event)"></div>
           <div class="rstrip" id="rhythmStrip">
             <div class="tl-fields">
-              <div class="vfield" id="tempoField" role="spinbutton" tabindex="0" aria-valuemin="40" aria-valuemax="1200" title="The tempo: the music's cut length, and the speed before a change. Drag up or down (Shift: finer), double-click to type (BPM or ms), arrows to step." aria-label="Tempo"><span class="vf-lbl">Tempo</span><span class="vf-val" id="tempoVal">136 BPM</span><span class="vf-sub" id="tempoMs">441 ms</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div>
-              <label class="lock" title="Lock the tempo: Random keeps it (and adds no change of speed)">
+              <div class="vfield" id="tempoField" role="spinbutton" tabindex="0" aria-valuemin="40" aria-valuemax="1200" title="Tempo · drag, or double-click to type" aria-label="Tempo"><span class="vf-lbl">Tempo</span><span class="vf-val" id="tempoVal">136 BPM</span><span class="vf-sub" id="tempoMs">441 ms</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div>
+              <label class="lock" title="Keep the tempo on Random">
                 <input type="checkbox" id="bpmLock" onchange="saveSettings()" aria-label="Lock the tempo" />
                 <svg class="lk-open" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 7.5-2"></path></svg>
                 <svg class="lk-shut" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
               </label>
-              <div class="vfield mult" id="multField" role="spinbutton" tabindex="0" title="Picture cuts per music cut. Drag up or down, double-click to type, arrows to step." aria-label="Multiple"><span class="vf-lbl">Multiple</span><span class="vf-val" id="multVal">×4</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div>
-              <label class="check-line tl-follow" title="Unchecked: the Multiple only cuts the pictures faster, and the music stays on its cuts. Checked: the pump, hits and arpeggio fall on every picture cut too.">
+              <div class="vfield mult" id="multField" role="spinbutton" tabindex="0" title="Picture cuts per music cut" aria-label="Multiple"><span class="vf-lbl">Multiple</span><span class="vf-val" id="multVal">×4</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div>
+              <label class="check-line tl-follow" title="Music hits on every picture cut">
                 <input type="checkbox" id="followCuts" onchange="updateTempo()" /> <span>Also changes the music</span>
               </label>
               <span class="grow"></span>
-              <div class="vfield mult" id="repeatField" role="spinbutton" tabindex="0" title="How many times the images go round: a longer film, the music as long. Drag up or down, double-click to type, arrows to step." aria-label="Repeat"><span class="vf-lbl">Repeat</span><span class="vf-val" id="repeatVal">×1</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div>
+              <div class="vfield mult" id="repeatField" role="spinbutton" tabindex="0" title="Times the images repeat" aria-label="Repeat"><span class="vf-lbl">Repeat</span><span class="vf-val" id="repeatVal">×1</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div>
               <span class="rhythm-src" hidden>
                 <input type="range" id="bpmInput" min="40" max="1200" step="1" value="136" oninput="updateTempo()" />
                 <select id="multSelect" onchange="updateTempo()">
@@ -402,12 +402,12 @@
                   <svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true"><polygon id="rsArea" points=""></polygon><line id="rsLinear" x1="0" y1="0" x2="0" y2="0" hidden></line><polyline id="rsCurve" points=""></polyline></svg>
                   <div class="rs-hover" id="rsHover" hidden><i></i><span class="rs-hover-dot"></span><span class="rs-hover-tip">Click to add a change</span></div>
                   <div class="rs-guides" id="rsGuides" hidden><i class="gx"></i><i class="gy"></i></div>
-                  <button type="button" class="rs-curve" id="rsCurveHandle" hidden aria-label="The curve of the change: drag up or down"></button>
-                  <button type="button" class="rs-point" id="rsStart" hidden aria-label="Start of the change: drag sideways for where, up or down for the speed"></button>
+                  <button type="button" class="rs-curve" id="rsCurveHandle" hidden aria-label="Curve · drag up or down"></button>
+                  <button type="button" class="rs-point" id="rsStart" hidden aria-label="Start · drag to move"></button>
                   <span class="rs-plabel" id="rsStartL" hidden></span>
-                  <button type="button" class="rs-point" id="rsEnd" hidden aria-label="End of the change: drag sideways for where, up or down for the speed"></button>
+                  <button type="button" class="rs-point" id="rsEnd" hidden aria-label="End · drag to move"></button>
                   <span class="rs-plabel" id="rsEndL" hidden></span>
-                  <button type="button" class="rs-x" id="rsRemove" hidden aria-label="Remove this point (of two, the change)" onclick="removeChange(event)"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+                  <button type="button" class="rs-x" id="rsRemove" hidden aria-label="Remove point" onclick="removeChange(event)"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
                   <span class="rs-tip" id="rsTip" role="tooltip" hidden></span>
                 </div>
                 <svg class="rs-beats" viewBox="0 0 1000 14" preserveAspectRatio="none" aria-hidden="true"><path id="rsBeats" d=""></path></svg>
@@ -422,17 +422,17 @@
 
       <aside class="inspector" aria-label="Inspector">
         <div class="edit-bar" aria-label="Edits">
-          <button type="button" class="edit-btn" id="editBtn" onclick="openEditMenu(event)" title="Your snapshots of this film: switch between them, replace, rename" aria-haspopup="menu">
+          <button type="button" class="edit-btn" id="editBtn" onclick="openEditMenu(event)" title="Snapshots" aria-haspopup="menu">
             <span class="edit-lbl">Snapshot</span><span class="edit-name untitled" id="editName">No snapshot yet</span><i class="edit-dirty" id="editDirty" title="Changed since the snapshot" hidden></i>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
           </button>
-          <button type="button" class="edit-save" id="editSaveBtn" onclick="snapshotEdit()" title="Keep the film as it is now as a new snapshot: its group and every setting (⌘S)">＋ Snapshot</button>
+          <button type="button" class="edit-save" id="editSaveBtn" onclick="snapshotEdit()" title="Save snapshot (⌘S)">＋ Snapshot</button>
         </div>
         <div class="group-menu edit-menu" id="editMenu" role="menu" hidden></div>
         <div class="look-bar" aria-label="Type and Random">
-            <div class="type-random" role="group" aria-label="Random, inside a type">
+            <div class="type-random" role="group" aria-label="Random">
             <label class="look-char"><span class="type-lbl">Type</span>
-              <select id="characterSelect" onchange="pickCharacter()" title="What Random may make. Any: anything that works. A type: only that kind of film, modelled on the references. Choosing one rolls at once.">
+              <select id="characterSelect" onchange="pickCharacter()" title="Kind of film Random makes">
                 <option value="any">Any</option>
                 <option value="landing">Landing · fast, then slows</option>
                 <option value="build">Build · slow, then fast</option>
@@ -444,7 +444,7 @@
                 <option value="machine">Machine · very fast</option>
               </select>
             </label>
-            <button onclick="randomAll()" id="randomAllBtn" class="look-random" title="Rhythm, look and sound again, inside the type (Any: anything), the sound matched to the speed (R)">
+            <button onclick="randomAll()" id="randomAllBtn" class="look-random" title="New rhythm, look and sound (R)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg>
               Random
             </button>
@@ -461,25 +461,25 @@
             <h2>Look</h2>
             <div class="lb-grid">
               <div class="row"><span class="lbl">Invert</span>
-                <select id="invertSelect" class="seg-src" onchange="updateFx()" title="Soiltone-style: every image is followed by an inverted copy of itself (same hold)">
+                <select id="invertSelect" class="seg-src" onchange="updateFx()" title="Each image followed by its inverted copy">
                   <option value="off">Off</option>
                   <option value="mono">Grey</option>
                   <option value="colour">Colour</option>
                 </select>
               </div>
               <div class="row"><span class="lbl">Zoom</span>
-                <select id="zoomSelect" class="seg-src" onchange="updateFx()" title="Moverunion-style: a slow zoom inside every cut">
+                <select id="zoomSelect" class="seg-src" onchange="updateFx()" title="Slow zoom in each cut">
                   <option value="off">Off</option>
                   <option value="out">Out</option>
                   <option value="in">In</option>
                 </select>
               </div>
               <label class="row" id="trailRow"><span class="lbl">Trail</span>
-                <input type="range" id="trailRange" min="0" max="60" step="1" value="0" oninput="updateFx()" title="After each cut the previous image lingers for a few frames: a soft overprint. 0 is off." />
+                <input type="range" id="trailRange" min="0" max="60" step="1" value="0" oninput="updateFx()" title="Previous image fades over the next" />
                 <span class="val" id="trailVal">Off</span>
               </label>
               <label class="row" id="zoomAmtRow"><span class="lbl">Amount</span>
-                <input type="range" id="zoomAmt" min="0.2" max="6" step="0.1" value="0.6" oninput="updateFx()" title="How far the zoom travels inside a cut" />
+                <input type="range" id="zoomAmt" min="0.2" max="6" step="0.1" value="0.6" oninput="updateFx()" title="Zoom amount" />
                 <span class="val" id="zoomAmtVal">0.6%</span>
               </label>
             </div>
@@ -488,23 +488,23 @@
           <!-- Sound -->
           <section class="card-sec" aria-label="Sound">
             <div class="sec-head"><h2>Sound</h2>
-              <button id="randomBtn" onclick="randomMusic()" class="small-btn" title="A new sound for the same cut: tuning, chord, layers, notes, room (S)">
+              <button id="randomBtn" onclick="randomMusic()" class="small-btn" title="New sound (S)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3.5"></rect><circle cx="9" cy="9" r="1.2" fill="currentColor"></circle><circle cx="15" cy="15" r="1.2" fill="currentColor"></circle><circle cx="15" cy="9" r="1.2" fill="currentColor"></circle><circle cx="9" cy="15" r="1.2" fill="currentColor"></circle></svg>
                 Random sound</button>
             </div>
             <div class="row"><span class="lbl">Source</span>
-              <select id="musicSelect" class="seg-src" onchange="updateMusic()" title="Synthesized: a dark drone that follows the cuts, in the preview and the export. No sound? Off, then Synthesized again: the sound starts afresh.">
+              <select id="musicSelect" class="seg-src" onchange="updateMusic()" title="A drone that follows the cuts. No sound? Switch it off and on.">
                 <option value="off">Off</option>
                 <option value="on">Synthesized</option>
               </select>
             </div>
             <div id="synthBox" hidden>
               <label class="row"><span class="lbl">Style</span>
-                <select id="styleSelect" onchange="pickStyle()" title="A whole way of playing the sound. Any: Random picks one each time. A style: Random stays in it. Choosing one makes a new sound at once">
+                <select id="styleSelect" onchange="pickStyle()" title="Sound style. Any lets Random choose.">
                   <option value="any" selected>Any · Drone now</option>
                   <option value="0">Drone · the dark bed</option>
-                  <option value="5">Hypnotic · a rolling bass, a sequence</option>
-                  <option value="6">Run · a running bass, brass in a big room</option>
+                  <option value="5">Hypnotic · rolling bass and sequence</option>
+                  <option value="6">Run · running bass and brass</option>
                 </select>
               </label>
               <input type="hidden" id="styleVal" value="0" />
@@ -517,26 +517,26 @@
               <input type="hidden" id="soundGroupVal" value="bed" />
 
               <div class="sgroup" id="groupBed" data-group="bed">
-                <label class="row"><span class="lbl">Pulse</span><input type="range" id="pulseRange" min="0" max="100" value="50" oninput="updateMusic()" title="How much the music breathes with every cut" /><span class="val" id="pulseVal">50</span></label>
+                <label class="row"><span class="lbl">Pulse</span><input type="range" id="pulseRange" min="0" max="100" value="50" oninput="updateMusic()" title="Pump on each cut" /><span class="val" id="pulseVal">50</span></label>
                 <label class="row"><span class="lbl">Low end</span><input type="range" id="lowRange" min="0" max="100" value="70" oninput="updateMusic()" title="How much sub-bass" /><span class="val" id="lowVal">70</span></label>
-                <label class="row"><span class="lbl">Power</span><input type="range" id="powerRange" min="0" max="100" value="60" oninput="updateMusic()" title="Thicker and heavier: a stack of detuned voices and saturation" /><span class="val" id="powerVal">60</span></label>
-                <label class="row"><span class="lbl">Space</span><input type="range" id="spaceRange" min="0" max="100" value="60" oninput="updateMusic()" title="How much room: the reverb's length and amount" /><span class="val" id="spaceVal">60</span></label>
+                <label class="row"><span class="lbl">Power</span><input type="range" id="powerRange" min="0" max="100" value="60" oninput="updateMusic()" title="Thicker, heavier sound" /><span class="val" id="powerVal">60</span></label>
+                <label class="row"><span class="lbl">Space</span><input type="range" id="spaceRange" min="0" max="100" value="60" oninput="updateMusic()" title="Reverb amount" /><span class="val" id="spaceVal">60</span></label>
                 <label class="row"><span class="lbl">Room</span>
-                  <select id="roomSelect" onchange="updateMusic()" title="What kind of room the sound is in">
+                  <select id="roomSelect" onchange="updateMusic()" title="Reverb type">
                     <option value="0">Room · as measured</option>
                     <option value="1">Booth · small and dry</option>
                     <option value="2">Hall · huge and dark</option>
                     <option value="3">Bloom · swells in</option>
                   </select>
                 </label>
-                <label class="row"><span class="lbl">Bright</span><input type="range" id="brightRange" min="0" max="100" value="30" oninput="updateMusic()" title="How far the tone opens up above the bass" /><span class="val" id="brightVal">30</span></label>
+                <label class="row"><span class="lbl">Bright</span><input type="range" id="brightRange" min="0" max="100" value="30" oninput="updateMusic()" title="Brightness" /><span class="val" id="brightVal">30</span></label>
                 <label class="row"><span class="lbl">Width</span><input type="range" id="widthRange" min="0" max="100" value="60" oninput="updateMusic()" title="Stereo spread" /><span class="val" id="widthVal">60</span></label>
               </div>
 
               <div class="sgroup" id="groupTone" data-group="tone" hidden>
-                <label class="row"><span class="lbl">Pitch</span><input type="range" id="pitchRange" min="0" max="100" value="50" oninput="updateMusic()" title="The root of the drone, 38 to 71 Hz" /><span class="val" id="pitchVal">50</span></label>
+                <label class="row"><span class="lbl">Pitch</span><input type="range" id="pitchRange" min="0" max="100" value="50" oninput="updateMusic()" title="Root note (38–71 Hz)" /><span class="val" id="pitchVal">50</span></label>
                 <label class="row"><span class="lbl">Chord</span>
-                  <select id="chordSelect" onchange="updateMusic()" title="The tonal layer above the sub">
+                  <select id="chordSelect" onchange="updateMusic()" title="Chord">
                     <option value="0">Dark cluster</option>
                     <option value="1">Open fifth</option>
                     <option value="2">Minor</option>
@@ -544,7 +544,7 @@
                   </select>
                 </label>
                 <label class="row"><span class="lbl">Mode</span>
-                  <select id="modeSelect" onchange="updateMusic()" title="The key everything plays in: the pad's chords, the changes and the arpeggio's notes">
+                  <select id="modeSelect" onchange="updateMusic()" title="Musical mode">
                     <option value="0">Minor</option>
                     <option value="1">Dorian · warmer</option>
                     <option value="2">Phrygian · darkest</option>
@@ -552,7 +552,7 @@
                   </select>
                 </label>
                 <label class="row"><span class="lbl">Changes</span>
-                  <select id="progSelect" onchange="updateMusic()" title="Chord changes in the mode's key: the bed moves to another chord every few cuts and comes round; the arpeggio stays in the key above it. With changes on, Minor plays suspended and the Dark cluster an open fifth, so every chord stays in key.">
+                  <select id="progSelect" onchange="updateMusic()" title="Chord changes every few cuts">
                     <option value="0">Off · one chord</option>
                     <option value="1">Descend · stepping down</option>
                     <option value="2">Lift · up and back</option>
@@ -561,54 +561,54 @@
                   </select>
                 </label>
                 <label class="row" id="progEveryRow"><span class="lbl">Every</span>
-                  <select id="progEverySelect" onchange="updateMusic()" title="How many of the music's cuts each chord lasts">
+                  <select id="progEverySelect" onchange="updateMusic()" title="Cuts per chord">
                     <option value="0">2 cuts</option>
                     <option value="1" selected>4 cuts</option>
                     <option value="2">8 cuts</option>
                     <option value="3">16 cuts</option>
                   </select>
                 </label>
-                <label class="row"><span class="lbl">Pad</span><input type="range" id="padRange" min="0" max="100" value="0" oninput="updateMusic()" title="A warm analog pad: detuned saws, chorus, a slow filter, playing the chords in the key (each chord of the changes voiced as it should be)" /><span class="val" id="padVal">0</span></label>
+                <label class="row"><span class="lbl">Pad</span><input type="range" id="padRange" min="0" max="100" value="0" oninput="updateMusic()" title="Warm pad playing the chords" /><span class="val" id="padVal">0</span></label>
                 <label class="row"><span class="lbl">Pad tone</span>
-                  <select id="padToneSelect" onchange="updateMusic()" title="The pad's colour: warm as before, glassy (folded), or hollow (a moving band)">
+                  <select id="padToneSelect" onchange="updateMusic()" title="Pad tone">
                     <option value="0">Warm · as before</option>
                     <option value="1">Glass · folded, glassier</option>
                     <option value="2">Hollow · a moving band</option>
                   </select>
                 </label>
                 <label class="row"><span class="lbl">Sub wave</span>
-                  <select id="subWaveSelect" onchange="updateMusic()" title="The wave of the deep bass">
+                  <select id="subWaveSelect" onchange="updateMusic()" title="Sub wave">
                     <option value="0">Sine · clean</option>
                     <option value="1">Triangle · rounder</option>
                     <option value="2">Square · hollow, heavy</option>
-                    <option value="3">Pulse · its width breathes</option>
+                    <option value="3">Pulse</option>
                   </select>
                 </label>
                 <label class="row"><span class="lbl">Pad wave</span>
-                  <select id="padWaveSelect" onchange="updateMusic()" title="The wave of the layer above the sub">
+                  <select id="padWaveSelect" onchange="updateMusic()" title="Pad wave">
                     <option value="0">Saw · bright, thick</option>
                     <option value="1">Square · hollow</option>
                     <option value="2">Triangle · soft</option>
                     <option value="3">Pulse · nasal, reedy</option>
                   </select>
                 </label>
-                <label class="row"><span class="lbl">Movement</span><input type="range" id="movementRange" min="0" max="100" value="50" oninput="updateMusic()" title="How fast the layers drift and breathe" /><span class="val" id="movementVal">50</span></label>
+                <label class="row"><span class="lbl">Movement</span><input type="range" id="movementRange" min="0" max="100" value="50" oninput="updateMusic()" title="Modulation speed" /><span class="val" id="movementVal">50</span></label>
               </div>
 
               <div class="sgroup" id="groupTexture" data-group="texture" hidden>
-                <label class="row"><span class="lbl">Echo</span><input type="range" id="echoRange" min="0" max="100" value="0" oninput="updateMusic()" title="A dark echo, timed to the cuts" /><span class="val" id="echoVal">0</span></label>
-                <label class="row"><span class="lbl">Wash</span><input type="range" id="washRange" min="0" max="100" value="0" oninput="updateMusic()" title="A slow wash of noise, drifting" /><span class="val" id="washVal">0</span></label>
-                <label class="row"><span class="lbl">Ring</span><input type="range" id="ringRange" min="0" max="100" value="0" oninput="updateMusic()" title="A metallic ring: bell-like partials" /><span class="val" id="ringVal">0</span></label>
-                <label class="row"><span class="lbl">Shimmer</span><input type="range" id="shimmerRange" min="0" max="100" value="0" oninput="updateMusic()" title="High partials trembling and beating between the sides" /><span class="val" id="shimmerVal">0</span></label>
-                <label class="row"><span class="lbl">Tape</span><input type="range" id="tapeRange" min="0" max="100" value="0" oninput="updateMusic()" title="Tape haze over everything: wow and flutter, saturation, a darker top, a little dust" /><span class="val" id="tapeVal">0</span></label>
-                <label class="row"><span class="lbl">Choir</span><input type="range" id="choirRange" min="0" max="100" value="0" oninput="updateMusic()" title="Low voices under the drone, through drifting vowels" /><span class="val" id="choirVal">0</span></label>
-                <label class="row"><span class="lbl">Industrial</span><input type="range" id="industrialRange" min="0" max="100" value="0" oninput="updateMusic()" title="Metal: a burst of noise on every other cut, a harder edge" /><span class="val" id="industrialVal">0</span></label>
+                <label class="row"><span class="lbl">Echo</span><input type="range" id="echoRange" min="0" max="100" value="0" oninput="updateMusic()" title="Echo on the cuts" /><span class="val" id="echoVal">0</span></label>
+                <label class="row"><span class="lbl">Wash</span><input type="range" id="washRange" min="0" max="100" value="0" oninput="updateMusic()" title="Noise wash" /><span class="val" id="washVal">0</span></label>
+                <label class="row"><span class="lbl">Ring</span><input type="range" id="ringRange" min="0" max="100" value="0" oninput="updateMusic()" title="Metallic ring" /><span class="val" id="ringVal">0</span></label>
+                <label class="row"><span class="lbl">Shimmer</span><input type="range" id="shimmerRange" min="0" max="100" value="0" oninput="updateMusic()" title="Shimmering high tones" /><span class="val" id="shimmerVal">0</span></label>
+                <label class="row"><span class="lbl">Tape</span><input type="range" id="tapeRange" min="0" max="100" value="0" oninput="updateMusic()" title="Tape warmth and wobble" /><span class="val" id="tapeVal">0</span></label>
+                <label class="row"><span class="lbl">Choir</span><input type="range" id="choirRange" min="0" max="100" value="0" oninput="updateMusic()" title="Low choir" /><span class="val" id="choirVal">0</span></label>
+                <label class="row"><span class="lbl">Industrial</span><input type="range" id="industrialRange" min="0" max="100" value="0" oninput="updateMusic()" title="Industrial noise hits" /><span class="val" id="industrialVal">0</span></label>
               </div>
 
               <div class="sgroup" id="groupNotes" data-group="notes" hidden>
                 <div class="subhead">Hits</div>
                 <label class="row"><span class="lbl">Type</span>
-                  <select id="hitTypeSelect" onchange="updateMusic()" title="A percussive impact on the cuts">
+                  <select id="hitTypeSelect" onchange="updateMusic()" title="Hits on the cuts">
                     <option value="0">None</option>
                     <option value="1">Thud · a sub drop</option>
                     <option value="2">Knock · short, dull</option>
@@ -616,7 +616,7 @@
                     <option value="4">Noise · dark burst</option>
                   </select>
                 </label>
-                <label class="row"><span class="lbl">Impact</span><input type="range" id="hitRange" min="0" max="100" value="60" oninput="updateMusic()" title="How hard the hits land" /><span class="val" id="hitVal">60</span></label>
+                <label class="row"><span class="lbl">Impact</span><input type="range" id="hitRange" min="0" max="100" value="60" oninput="updateMusic()" title="Hit level" /><span class="val" id="hitVal">60</span></label>
                 <label class="row"><span class="lbl">On</span>
                   <select id="hitOnSelect" onchange="updateMusic()" title="Which cuts get a hit">
                     <option value="0">Every cut</option>
@@ -626,9 +626,9 @@
                   </select>
                 </label>
                 <div class="subhead">Arpeggio</div>
-                <label class="row"><span class="lbl">Amount</span><input type="range" id="arpRange" min="0" max="100" value="0" oninput="updateMusic()" title="A short pattern of plucked notes that repeats, in the chord's notes" /><span class="val" id="arpVal">0</span></label>
+                <label class="row"><span class="lbl">Amount</span><input type="range" id="arpRange" min="0" max="100" value="0" oninput="updateMusic()" title="Repeating note pattern" /><span class="val" id="arpVal">0</span></label>
                 <label class="row"><span class="lbl">Mood</span>
-                  <select id="arpMoodSelect" onchange="updateMusic()" title="The feeling of the notes: their scale, register, sound and shape">
+                  <select id="arpMoodSelect" onchange="updateMusic()" title="Arpeggio mood">
                     <option value="0">Pluck · bright, restless</option>
                     <option value="1">Dark · low, falling</option>
                     <option value="2">Phase · two loops drifting</option>
@@ -640,7 +640,7 @@
                   </select>
                 </label>
                 <label class="row"><span class="lbl">Pattern</span>
-                  <select id="arpStepsSelect" onchange="updateMusic()" title="How many notes before the pattern repeats">
+                  <select id="arpStepsSelect" onchange="updateMusic()" title="Pattern length">
                     <option value="0">4 notes</option>
                     <option value="1">6 notes</option>
                     <option value="2" selected>8 notes</option>
@@ -648,7 +648,7 @@
                   </select>
                 </label>
                 <label class="row"><span class="lbl">Speed</span>
-                  <select id="arpRateSelect" onchange="updateMusic()" title="Notes per cut: it speeds up and slows down with the cuts">
+                  <select id="arpRateSelect" onchange="updateMusic()" title="Notes per cut">
                     <option value="0">1 note per 2 cuts</option>
                     <option value="1">1 note per cut</option>
                     <option value="2" selected>2 notes per cut</option>
@@ -658,9 +658,9 @@
                   </select>
                 </label>
                 <div class="subhead">Bassline</div>
-                <label class="row"><span class="lbl">Amount</span><input type="range" id="bassRange" min="0" max="100" value="0" oninput="updateMusic()" title="A sequenced bassline on the cuts, an octave over the sub: root, fifth and octave, so it stays in key" /><span class="val" id="bassVal">0</span></label>
+                <label class="row"><span class="lbl">Amount</span><input type="range" id="bassRange" min="0" max="100" value="0" oninput="updateMusic()" title="Bassline on the cuts" /><span class="val" id="bassVal">0</span></label>
                 <label class="row"><span class="lbl">Pattern</span>
-                  <select id="bassPatternSelect" onchange="updateMusic()" title="The bassline's four steps">
+                  <select id="bassPatternSelect" onchange="updateMusic()" title="Bass pattern">
                     <option value="0">Pulse · the root</option>
                     <option value="1">Octave · up and down</option>
                     <option value="2">Fifths · root, fifth, octave</option>
@@ -668,7 +668,7 @@
                   </select>
                 </label>
                 <label class="row"><span class="lbl">Speed</span>
-                  <select id="bassRateSelect" onchange="updateMusic()" title="Bass notes per cut of the music">
+                  <select id="bassRateSelect" onchange="updateMusic()" title="Bass notes per cut">
                     <option value="0">1 note per cut</option>
                     <option value="1" selected>2 notes per cut</option>
                     <option value="2">4 notes per cut</option>
@@ -676,7 +676,7 @@
                 </label>
                 <div class="subhead">Shape</div>
                 <label class="row"><span class="lbl">Arrangement</span>
-                  <select id="arrangeSelect" onchange="updateMusic()" title="How the arpeggio, the bassline and the hits come and go over the film (the drone stays)">
+                  <select id="arrangeSelect" onchange="updateMusic()" title="How parts come and go">
                     <option value="0">Off · all at once</option>
                     <option value="1">Build-up · in one by one</option>
                     <option value="2">Sections · sparse and full</option>
@@ -685,7 +685,7 @@
                 </label>
 
                 <label class="row"><span class="lbl">Dynamics</span>
-                  <select id="dynSelect" onchange="updateMusic()" title="Off: steady. Rise / Fall: the notes climb or sink over the whole clip. Follows the speed: higher and brighter while the cuts are fast (with Variable speed).">
+                  <select id="dynSelect" onchange="updateMusic()" title="How the notes change over the film">
                     <option value="0">Off · steady</option>
                     <option value="1">Rise · climb, sharpen</option>
                     <option value="2">Fall · sink, soften</option>
@@ -694,7 +694,7 @@
                 </label>
               </div>
             </div>
-            <p class="sound-off-note" id="soundOffNote">The film is silent. Choose Synthesized to add the drone.</p>
+            <p class="sound-off-note" id="soundOffNote">No sound. Choose Synthesized to add it.</p>
           </section>
           </div>
         </div>
@@ -709,7 +709,7 @@
           </div>
           <div class="exp-busy">
             <div class="exp-bar"><i></i><span id="musicState">Exporting…</span></div>
-            <span class="exp-meta">The file downloads by itself when it is ready</span>
+            <span class="exp-meta">Downloads when ready</span>
           </div>
           <div class="exp-ready">
             <div class="exp-done">

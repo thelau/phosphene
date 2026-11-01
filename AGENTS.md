@@ -82,7 +82,7 @@ page, `PAGE_BUSY`, `ask_before_quitting`: "Quit anyway" / "Keep working").
 - The Kimi API key lives in `studio/.secrets.json` (gitignored) or `KIMI_API_KEY` / `MOONSHOT_API_KEY`. Never write it into `curation_state.json` or any committed file.
 
 ## Conventions
-- **Copy in the app is plain, never AI-sounding** (the user, 2026-11-01): labels 1-3 words; a tooltip says what the control does in about 6 words or fewer; a key in brackets only for its shortcut "(T)"; no colon that explains ("Sign in: images are made with…"), no aside in brackets, no "its…" fragments, no poetic verbs (breathes, lingers, drifting), no names of reference films (Soiltone, Moverunion); one sentence where two say the same. Rewritten on these lines for Curate, the Mark menu, New project and Settings; the Film and Sound tooltips are next.
+- **Copy in the app is plain, never AI-sounding** (the user, 2026-11-01): labels 1-3 words; a tooltip says what the control does in about 6 words or fewer; a key in brackets only for its shortcut "(T)"; no colon that explains ("Sign in: images are made with…"), no aside in brackets, no "its…" fragments, no poetic verbs (breathes, lingers, drifting), no names of reference films (Soiltone, Moverunion); one sentence where two say the same. Rewritten on these lines across Curate, the Mark menu, New project, Settings, Film and Sound (2026-11-01).
 - Prompts must keep the logo at dead-center, 18% width, with no extra rings or duplicate logos.
 - Brand palette: orange #EC540C, pink #F64570, blue #5D8FF4, oxblood #381313, ink #1A1A1A, cream #FEFFE7.
 - Default image model is `google/nano-banana-pro`; other Krea models are built in `build_model_input`.
