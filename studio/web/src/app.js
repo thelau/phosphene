@@ -1717,12 +1717,11 @@
         b.title = off ? 'Nothing moves in these images' : '';
       });
       document.getElementById('aiShown').textContent = `Reorders the ${n} image${n === 1 ? '' : 's'} shown.`;
-      const line = document.getElementById('aiLine');
+      const line = document.getElementById('aiLine');                         // Motion only: what the order follows in these images (Look's card says it all)
       line.classList.toggle('motion', aiMode === 'motion');
-      document.getElementById('aiLineK').textContent = aiMode === 'motion' ? 'Motion' : 'Look';
-      document.getElementById('aiLineT').textContent = aiMode === 'motion' ? motionLine()
-        : !moves ? 'Nothing moves in these images. Try Path or a few angles.'   // why, in the panel, not only in a tooltip
-        : 'Light to dark, by shape and colour.';
+      line.hidden = aiMode !== 'motion';
+      document.getElementById('aiLineK').textContent = 'Motion';
+      document.getElementById('aiLineT').textContent = aiMode === 'motion' ? motionLine() : '';
       document.getElementById('aiDirection').placeholder = aiMode === 'motion' ? 'e.g. slow at the start, spin at the end' : 'e.g. light to dark, then a burst of colour';
       // a path run being ordered with gaps: said here, in Motion, where a gap becomes a jump (Claude Design's PathMissing); it never blocks
       const gap = document.getElementById('aiGap'), shownRuns = new Set(activePlates().filter(p => !p.trashed).map(MADE_BY.run).filter(Boolean));

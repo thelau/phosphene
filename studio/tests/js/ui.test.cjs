@@ -2720,6 +2720,5 @@ test('AI order: Motion says what it will do with the images shown (their path, a
   await settle(); await settle();
   h2.$('aiPanel').hidden = true; h2.run('toggleAiPanel()');
   h2.run("setAiMode('motion')");
-  assert.equal(h2.$('aiLineK').textContent, 'Look', 'nothing moves: Motion stays off');
-  assert.match(h2.$('aiLineT').textContent, /^Nothing moves in these images/);
+  assert.equal(h2.$('aiLine').hidden, true, 'nothing moves: Motion stays off, and Look needs no line under its card');
 });

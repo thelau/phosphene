@@ -904,6 +904,7 @@
     span.ai-draw i { width: 22px; height: 38px; border-radius: 3px; }
     .ai-line { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; border-radius: 8px; background: #1A1918; font-size: 12px; line-height: 1.45; color: var(--text-2); }
     .ai-line.motion { background: #211A15; color: #F2D3BF; }
+    .ai-line[hidden] { display: none; }
     .ai-line-k { flex: none; padding-top: 2px; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
     #aiGo { transition: none; background: var(--text); border-color: var(--text); color: #1A1A1A; }   /* Re-order: cream (orange fill is Generate's only) */
     .ai-panel h4 { font-size: 15px; }
