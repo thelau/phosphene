@@ -372,7 +372,10 @@
     // the marks ticked, in the project's order ('main' and ids, kept as "main,bird" in #markSelect); "mix" (before the ticks) is all of them; none: the main one
     function markTicks(marks = (project && project.marks) || []) {
       const ids = ['main', ...marks.map(m => m.id)], v = document.getElementById('markSelect').value || 'main';
-      if (framesOn()) return ids;                                            // frames of one animation: every batch uses every frame, in order
+      if (framesOn()) {                                                      // frames: their own ticks (#framesSelect; empty: every frame), in order
+        const f = String(document.getElementById('framesSelect').value || '').split(',').filter(x => ids.includes(x));
+        return f.length ? ids.filter(x => f.includes(x)) : ids;
+      }
       const on = v === 'mix' ? ids : v.split(',');
       const out = ids.filter(x => on.includes(x));
       return out.length ? out : ['main'];
@@ -551,7 +554,8 @@
       if (ev) {                                                              // Fill the gaps: the tiles say it; a line only when more remain
         if (ev.total > ev.ids.length) parts.push(`${ev.total - ev.ids.length} more after this batch`);
       } else if (fr && st.t !== 'path') {
-        parts.push(`Frames take turns: ${st.on.map((_, i) => i + 1).join(', ')}, 1…`);
+        const nums = st.on.map(c => st.choices.indexOf(c) + 1);               // the ticked frames' own numbers
+        parts.push(`Frames take turns: ${nums.join(', ')}, ${nums[0]}…`);
         if (a > 1) parts.push(n >= a ? `${a} angles, ${each(a)} each` : `${n} of ${a} angles`);
         if (!st.sizeOff && z > 1) parts.push(n >= z ? `${z} sizes, ${each(z)} each` : `${n} of ${z} sizes`);
       } else if (st.t === 'path') {                                                 // along a path the ticks are motion (Claude Design's PathSteps)
@@ -573,8 +577,9 @@
       for (let i = 0; i < n; i++) {
         const di = ev ? st.choices.findIndex(c => c[0] === ev.ids[i]) : -1;   // Fill the gaps: image i's frame, as the server deals it (angles then sizes take turns)
         const mk = ev ? st.choices[di] : st.on[i % m], ang = ev ? st.rots[i % a] : st.rots[Math.floor(i / m) % a], sz = ev ? es[Math.floor(i / a) % es.length] : es[Math.floor(i / (m * a)) % es.length];
-        const fno = fr ? `<span class="mm-cfn">${ev ? di + 1 : (i % m) + 1}</span>` : '';   // frames: each cell says its frame
-        if (fr && !st.sizeOff && st.t !== 'path') { cells += `<span class="mm-cell mm-cellf" style="width:${cw}px;height:${ch}px">${ev ? di + 1 : (i % m) + 1}</span>`; continue; }   // its number only (Claude Design): four frames look alike that small
+        const fnum = ev ? di + 1 : st.choices.indexOf(st.on[i % m]) + 1;
+        const fno = fr ? `<span class="mm-cfn">${fnum}</span>` : '';         // frames: each cell says its frame
+        if (fr && !st.sizeOff && st.t !== 'path') { cells += `<span class="mm-cell mm-cellf" style="width:${cw}px;height:${ch}px">${fnum}</span>`; continue; }   // its number only (Claude Design): four frames look alike that small
         if (st.sizeOff) {                                                    // the place and size the server picked for image i, to scale (the mark twice as big, to read)
           const pl = places && places[i];
           if (!pl) { cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px">${fno}</span>`; continue; }
@@ -599,8 +604,8 @@
       let html = '';
       if (framesOn()) {                                                      // frames: one tile a frame, its count in the group shown, not ticks
         const counts = frameCounts(), fp = fillOn() ? fillPlan() : null;
-        html += `<div class="mm-sec mm-grid"><div class="mm-label mm-flabel"><span>Frames</span><small>in ${escapeHtml(groupLabel())}</small></div><div class="mm-tiles mm-ftiles">${st.choices.map(([v, name, url], i) => { const k = counts[i] || 0, add = fp ? fp.per[i] : 0;
-          return `<div class="mm-ftile" title="${escapeHtml(`${name}: ${k} image${k === 1 ? '' : 's'}${add ? `, ${add} to make` : ''}`)}"><span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span><span class="mm-fcount">${k}${add ? `<b class="mm-fadd"> +${add}</b>` : ''}</span></div>`; }).join('')}</div></div>`;
+        html += `<div class="mm-sec mm-grid"><div class="mm-label mm-flabel"><span>Frames</span><small>in ${escapeHtml(groupLabel())}</small></div><div class="mm-tiles mm-ftiles">${st.choices.map(([v, name, url], i) => { const k = counts[i] || 0, add = fp ? fp.per[i] : 0, on = st.ticks.includes(v);
+          return `<button type="button" class="mm-ftile${on && m === 1 ? ' last' : ''}" data-list="mark" data-v="${escapeHtml(v)}" aria-pressed="${on}"${fp ? ' aria-disabled="true"' : ''} title="${escapeHtml(fp ? `${name}: ${k} image${k === 1 ? '' : 's'}${add ? `, ${add} to make` : ''}` : `${tickTip(name, on, m, 'frame')} · ${k} image${k === 1 ? '' : 's'}`)}"><span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span><span class="mm-fcount">${k}${add ? `<b class="mm-fadd"> +${add}</b>` : ''}</span></button>`; }).join('')}</div></div>`;   // ticks (the user: "weird not to be able"); Fill the gaps makes the missing ones whatever is ticked
       } else if (st.choices.length) {                                       // the Mark row: only with 2+ marks
         html += `<div class="mm-sec mm-grid">${head('Mark', m)}<div class="mm-tiles">${st.choices.map(([v, name, url], i) => { const on = st.ticks.includes(v);
           return `<button type="button" class="mm-tile${on && m === 1 ? ' last' : ''}" data-list="mark" data-v="${escapeHtml(v)}" aria-pressed="${on}" title="${escapeHtml(tickTip(name, on, m, 'mark'))}">${i === 0 ? '<span class="mm-main">MAIN</span>' : ''}${on ? '<span class="mm-tick"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>' : ''}<span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span></button>`; }).join('')}</div></div>`;
@@ -664,9 +669,12 @@
     }
     function choosePlace(list, v) {
       if (list === 'mark') {
+        if (framesOn() && fillOn()) return;                                  // Fill the gaps decides the frames
         const t = markTicks(), on = t.includes(v) ? t.filter(x => x !== v) : [...t, v];
         if (!on.length) return;                                              // one mark at least
-        setv('markSelect', markChoices().map(c => c[0]).filter(x => on.includes(x)).join(','));
+        const all = markChoices().map(c => c[0]), keep = all.filter(x => on.includes(x));
+        if (framesOn()) setv('framesSelect', keep.length === all.length ? '' : keep.join(','));   // frames: every one ticked is stored as none (the default)
+        else setv('markSelect', keep.join(','));
       }
       else if (list === 'pshape-open') pathShapeOpen = !pathShapeOpen;
       else if (list === 'fillgaps') fillGaps = !fillGaps;
@@ -3012,7 +3020,7 @@
     // Not in it: permanent deletes and generation (they say so when you start them), the mode and the views.
     const history = [], future = [];
     let applyingHistory = false;
-    const NOT_UNDONE = ['targetSelect', 'markSelect', 'rotSelect', 'sizeSelect', 'pathSelect', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
+    const NOT_UNDONE = ['targetSelect', 'markSelect', 'framesSelect', 'rotSelect', 'sizeSelect', 'pathSelect', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
     function pushStep(step) { if (!step.settings) commitSettings(); history.push(step); if (history.length > 100) history.shift(); future.length = 0; showUndo(); return step; }
     function showUndo() {
       const b = document.getElementById('undoRandomBtn');
@@ -4089,7 +4097,7 @@
     try { if (localStorage.getItem('studioMarkOverlay') === '1') toggleMarkOverlay(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'rotSelect', 'sizeSelect', 'pathSelect'];   // keepCheck (Keep the mark exact) was removed on 2026-10-31: the user never used it
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'framesSelect', 'rotSelect', 'sizeSelect', 'pathSelect'];   // keepCheck (Keep the mark exact) was removed on 2026-10-31: the user never used it
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
     // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved
@@ -4137,7 +4145,7 @@
     // the project the server has open: its film in the controls (only when it is another than the one they hold)
     // the Mark menu of a project with nothing saved for it (new, or saved before Angle and Size): on target, its main mark, upright, its
     // own size; never the last project's ticks (opening Halo after Arc Resonance showed Arc's four angles)
-    const PLACE_DEFAULTS = { targetSelect: 'exact', markSelect: 'main', rotSelect: '0', sizeSelect: '1', pathSelect: 'line:0:40:12' };
+    const PLACE_DEFAULTS = { targetSelect: 'exact', markSelect: 'main', framesSelect: '', rotSelect: '0', sizeSelect: '1', pathSelect: 'line:0:40:12' };
     function useProjectFilm(slug) {
       if (!slug || slug === filmSlug) return;
       filmSlug = slug;

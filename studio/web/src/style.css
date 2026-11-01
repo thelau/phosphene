@@ -123,6 +123,11 @@
     .mm-even[aria-pressed="true"] .mm-ebox { border-color: var(--text); background: var(--text); }
     .mm-emiss { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--muted); }
     .mm-ftiles { flex-wrap: nowrap; gap: 8px; }
+    #placeMenu .mm-ftile[aria-pressed="true"] { border-color: var(--orange); }   /* ticked: taking turns, as the Mark row's tiles */
+    .mm-ftile[aria-pressed="false"] .mm-well .pm-thumb { opacity: .6; }
+    .mm-ftile[aria-pressed="false"] .mm-name { color: var(--muted); }
+    #placeMenu .mm-ftile:not(.last):not([aria-disabled="true"]):hover { background: #1E1D1B; }
+    #placeMenu .mm-ftile.last, #placeMenu .mm-ftile[aria-disabled="true"] { cursor: default; }
     .mm-ftile { flex: 1 1 0; min-width: 0; box-sizing: border-box; padding: 8px 8px 9px; display: flex; flex-direction: column; align-items: center; gap: 5px; border-radius: var(--r-tile); border: 1px solid var(--line-2); background: #121110; color: var(--text); }
     .mm-ftile .mm-name { font-weight: 600; }
     .mm-fcount { font-family: var(--mono); font-size: 12px; color: #C9C4B0; }

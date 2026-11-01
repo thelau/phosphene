@@ -2829,3 +2829,19 @@ test('Fill the gaps asks Kimi once per territory and look, each with only its ga
   assert.deepEqual(asks, [['Editorial Print', 'b', 1], ['Harbor & Signal', 'b', 1]], 'one request per territory, each with only its gaps');
   void done;
 });
+
+
+test('frames tick like marks, from their own setting: every frame by default, whatever the Mark row had; a batch uses the ticked ones in order', async () => {
+  const h = framesPage(['main', 'b', 'c']);
+  await settle(); await settle(); await h.run('loadState()');
+  h.run("document.getElementById('markSelect').value = 'main'");             // a tick saved before frames
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(markTicks())')), ['main', 'b', 'c'], 'every frame');
+  h.run("document.getElementById('framesSelect').value = 'c,main'");
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(markTicks())')), ['main', 'c'], 'the ticked ones, in frame order');
+  h.run("document.getElementById('framesSelect').value = 'gone'");
+  assert.deepEqual(JSON.parse(h.run('JSON.stringify(markTicks())')), ['main', 'b', 'c'], 'nothing known ticked: every frame');
+  const h2 = framesPage(['main', 'b'], { frames: false });
+  await settle(); await settle(); await h2.run('loadState()');
+  h2.run("document.getElementById('markSelect').value = 'b'; document.getElementById('framesSelect').value = 'main'");
+  assert.deepEqual(JSON.parse(h2.run('JSON.stringify(markTicks())')), ['b'], "not frames: the Mark row's ticks, as before");
+});

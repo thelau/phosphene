@@ -1720,7 +1720,7 @@ test('frames of one animation: Project settings says so, names Kimi gives alike 
   await ctx.close();
 });
 
-test('animation frames: the FRAMES tiles count the group shown; Fill the gaps makes one image per gap, each lands in its gap, then unticks; never with Path', { skip }, async () => {
+test('animation frames: the FRAMES tiles count the group shown and tick like marks; Fill the gaps makes one image per gap, each lands in its gap, then unticks; never with Path', { skip }, async () => {
   const bar = id => ({ id, name: 'Striped sphere', size: 18, x: 50, y: 50, shape: 'sphere', noun: 'sphere', ratio: 1, url: `/api/project-mark?p=demo&m=${id}` });
   const ctx = await fresh({ setup: st => { Object.assign(st.projects[0], { frames: true, marks: [bar('n1'), bar('n2')] }); st.plates[1].mark = 'n1'; st.plates[2].mark = 'n1'; } });
   await page.evaluate(() => { document.getElementById('markSelect').value = 'main'; });   // a tick saved before frames: every frame is used anyway
@@ -1735,6 +1735,17 @@ test('animation frames: the FRAMES tiles count the group shown; Fill the gaps ma
   assert.equal(await page.locator('#placeMenu .mm-fbar').count(), 0, 'no bars');
   assert.equal(await page.locator('#placeMenu .mm-tile').count(), 0, 'no Mark row');
   assert.match(await page.locator('#placeMenu .mm-sharer').textContent(), /^Frames take turns: 1, 2, 3, 1…/);
+  assert.deepEqual(await page.locator('#placeMenu .mm-ftile').evaluateAll(e => e.map(x => x.getAttribute('aria-pressed'))), ['true', 'true', 'true'], 'every frame ticked by default (a Mark tick saved before frames does not narrow it)');
+  await page.click('#placeMenu .mm-ftile[data-v="n1"]');                      // untick Frame 2: the batch takes turns over 1 and 3
+  assert.equal(await page.locator('#placeMenu .mm-ftile[data-v="n1"]').getAttribute('aria-pressed'), 'false');
+  assert.match(await page.locator('#placeMenu .mm-sharer').textContent(), /^Frames take turns: 1, 3, 1…/, 'the frames\' own numbers');
+  assert.deepEqual((await page.locator('#placeMenu .mm-cellf').allTextContents()).slice(0, 4), ['1', '3', '1', '3']);
+  await page.click('#placeMenu .mm-ftile[data-v="main"]');
+  assert.equal(await page.locator('#placeMenu .mm-ftile[data-v="n2"]').getAttribute('aria-pressed'), 'true');
+  await page.click('#placeMenu .mm-ftile[data-v="n2"]');
+  assert.equal(await page.locator('#placeMenu .mm-ftile[data-v="n2"]').getAttribute('aria-pressed'), 'true', 'one frame stays ticked');
+  await page.click('#placeMenu .mm-ftile[data-v="main"]'); await page.click('#placeMenu .mm-ftile[data-v="n1"]');   // all three again
+  assert.equal(await page.inputValue('#framesSelect'), '', 'all ticked: stored as the default');
   assert.equal(await page.locator('#placeMenu .mm-even').textContent(), 'Fill the gaps', 'no number on the chip');
   await page.click('#placeMenu .mm-even');
   assert.equal(await page.locator('#placeMenu .mm-even').getAttribute('aria-pressed'), 'true');
