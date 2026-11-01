@@ -411,7 +411,7 @@ test('many groups: those that do not fit go behind "+N more" (never the chosen o
     for (const name of ['Night city reflections', 'Paper and print', 'Brushed metal', 'Studio still lifes', 'Water and glass', 'Concrete and stone', 'Grain and strata', 'Editorial print', 'Screens and interfaces', 'Out of home', 'Last one here'])
       await fetch('/api/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', name, files: ['k1', 'k2'] }) });
   });
-  await page.click('#refreshBtn');
+  await page.evaluate(() => refreshLibrary());
   await page.waitForSelector('#moreChip:not([hidden])');
   const row = await page.locator('#groupRow').boundingBox(), auto = await page.locator('#autoMenus').boundingBox(), all = await page.locator('#groupAll').boundingBox();
   const shown = await page.locator('#groupBar .chip:not(.out):not(.chip-overflow)').evaluateAll(b => b.map(x => ({ key: x.dataset.key, left: x.getBoundingClientRect().left, right: x.getBoundingClientRect().right })));
@@ -668,7 +668,7 @@ test('no project (a first launch): the usual page, empty, says where to start; t
   await page.click('#projectBtn');
   await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');
   assert.equal(await page.evaluate(() => document.getElementById('projectMenu').firstElementChild.tagName), 'BUTTON');
-  api.state.kimiConfigured = false; await page.evaluate(() => refreshLibrary(true)); await page.waitForTimeout(200);
+  api.state.kimiConfigured = false; await page.evaluate(() => refreshLibrary()); await page.waitForTimeout(200);
   await page.locator('#projectMenu .gm-item', { hasText: 'New project…' }).click();
   assert.equal(await page.locator('#settingsPopover').isVisible(), true, 'a real click: Settings opens and stays open on the key');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'kimiKeyInput');
@@ -678,7 +678,7 @@ test('no project (a first launch): the usual page, empty, says where to start; t
   await page.click('#generateBtn');
   await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');                // no project: Generate opens the project menu
   assert.equal(await page.locator('#settingsPopover').isVisible(), false);
-  api.state.kimiConfigured = true; await page.evaluate(() => refreshLibrary(true)); await page.waitForTimeout(200);
+  api.state.kimiConfigured = true; await page.evaluate(() => refreshLibrary()); await page.waitForTimeout(200);
   await page.waitForSelector('#projectMenu:not([hidden]) .gm-item');
   await page.locator('#projectMenu .gm-item', { hasText: 'New project…' }).click();
   assert.equal(await page.locator('#projectModal').isVisible(), true);
@@ -1254,21 +1254,16 @@ test('Curate: thumbnail sizes, trash from the grid with Undo, restore picked ima
   await ctx.close();
 });
 
-test('refresh: the Curate and Film buttons pick up new images at once, and the film follows', { skip }, async () => {
+test('no Refresh button: a new image on the server shows by itself in Curate and in the Film', { skip }, async () => {
   const ctx = await fresh();
+  assert.equal(await page.locator('#refreshBtn, #refreshFilmBtn').count(), 0, 'the page follows by itself (the user, 2026-11-01)');
+  assert.deepEqual(await page.locator('.tool-group button').evaluateAll(b => b.map(x => x.id)), ['downloadBtn', 'gridTargetBtn', 'gridMarkBtn'], 'Download · Target · Mark overlay');
   api.state.plates.push({ ...api.state.plates[0], filename: 'k9', title: 'Plate k9', url: '/assets/ai-plates/k9.svg' });
   api.state.sequences[0].order.push('k9');
-  await page.click('#refreshBtn');
-  await page.waitForSelector('.card[data-filename="k9"]');
+  await page.waitForSelector('.card[data-filename="k9"]', { timeout: 8000 });
   assert.match(await text('#toast'), /\+1 new image/);
   await film();
   assert.equal(await page.locator('#filmstrip button').count(), 4, 'the film has it too');
-  api.state.plates.push({ ...api.state.plates[0], filename: 'k10', title: 'Plate k10', url: '/assets/ai-plates/k10.svg' });
-  api.state.sequences[0].order.push('k10');
-  await page.click('#refreshFilmBtn');
-  await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length === 5);
-  await curate();
-  assert.equal(await page.locator('.card[data-filename="k10"]').count(), 1, 'and the library, from the Film button');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
@@ -1278,7 +1273,7 @@ test('the grid only touches what changed: a refresh, a reorder or a new image ke
   const tag = () => page.evaluate(() => document.querySelectorAll('.card[data-filename]').forEach(el => { el.__kept = el.dataset.filename; }));
   const kept = () => page.evaluate(() => [...document.querySelectorAll('.card[data-filename]')].map(el => (el.__kept ? el.dataset.filename : '-' + el.dataset.filename)));
   await tag();
-  await page.click('#refreshBtn'); await page.waitForTimeout(300);
+  await page.evaluate(() => refreshLibrary()); await page.waitForTimeout(300);
   assert.deepEqual(await kept(), ['k1', 'k2', 'k3'], 'nothing changed: every card kept');
   await page.locator('.card').nth(2).dragTo(page.locator('.card').nth(0));
   await page.waitForFunction(() => document.querySelector('.card').dataset.filename === 'k3');
@@ -1286,7 +1281,7 @@ test('the grid only touches what changed: a refresh, a reorder or a new image ke
   assert.deepEqual(await page.locator('.card-num').allTextContents(), ['01', '02', '03'], 'and the numbers follow');
   api.state.plates.push({ ...api.state.plates[0], filename: 'k9', title: 'Plate k9', url: '/assets/ai-plates/k9.svg' });
   api.state.sequences[0].order.push('k9');
-  await page.click('#refreshBtn');
+  await page.evaluate(() => refreshLibrary());
   await page.waitForSelector('.card[data-filename="k9"]');
   assert.deepEqual(await kept(), ['k3', 'k1', 'k2', '-k9'], 'a new image adds one card');
   await tag();
@@ -1294,7 +1289,7 @@ test('the grid only touches what changed: a refresh, a reorder or a new image ke
   await page.click('#tabSelection'); await page.waitForSelector('#tabSelection.on');
   assert.deepEqual(await kept(), ['k3', 'k1', 'k2', 'k9'], 'to the Trash and back: the same cards, not rebuilt');
   await page.locator('.card[data-filename="k1"] .info-btn').click({ force: true });
-  await page.click('#refreshBtn'); await page.waitForTimeout(300);
+  await page.evaluate(() => refreshLibrary()); await page.waitForTimeout(300);
   assert.equal(await page.locator('.card[data-filename="k1"] .prompt-overlay.open').count(), 1, 'an open info panel stays open through a refresh');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
@@ -1707,7 +1702,7 @@ test('frames of one animation: Project settings says so, names Kimi gives alike 
   await page.evaluate(() => openProjectForm('edit'));
   assert.equal(await page.locator('#psFramesOn').isChecked(), false, 'off by default');
   await page.check('#psFramesOn');
-  assert.deepEqual(await page.locator('.ps-mark .ps-row-text small').allTextContents(), ['Frame 1 · Main', 'Frame 2'], 'each row says its frame, in the rail\'s order');
+  assert.deepEqual(await page.locator('.ps-mark .ps-row-text b').allTextContents(), ['Frame 1', 'Frame 2'], 'each row reads its frame, in the rail\'s order');
   assert.equal(await page.locator('.ps-mark .ps-grip').first().evaluate(e => getComputedStyle(e).opacity), '1', 'the grips show: the order is the animation\'s');
   await page.click('#pfSave');
   for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/projects' && c.body.action === 'update'); i++) await page.waitForTimeout(100);
@@ -1725,26 +1720,48 @@ test('frames of one animation: Project settings says so, names Kimi gives alike 
   await ctx.close();
 });
 
-test('frames with fewer images than the others: Made with counts each frame and Make N fills them; AI order says when the loop gives way', { skip }, async () => {
-  const ctx = await fresh({ setup: st => { Object.assign(st.projects[0], { frames: true, marks: [{ id: 'n1', name: 'Bar', size: 18, x: 50, y: 50, shape: 'bar', noun: 'bar', ratio: 1, url: '/api/project-mark?p=demo&m=n1' }] }); st.plates[1].mark = 'n1'; st.plates[1].mark_name = 'Bar'; } });
-  const main = api.state.plates.filter(p => !p.trashed && (p.mark || 'main') === 'main').length;
-  await page.evaluate(() => openMadeWith());
-  await page.waitForSelector('#madePanel .mw-frames');
-  assert.equal((await page.locator('#madePanel .mw-fn').textContent()).replace(/\s/g, ''), `${main}·1`, 'each frame its count, in order');
-  assert.equal(await page.locator('#madePanel .mw-fn .short').textContent(), '1', 'the short frame in amber');
-  assert.equal(await page.locator('#madePanel [data-make-frames]').textContent(), `Make ${main - 1}`);
-  await shot('39-made-frames');
-  await page.evaluate(() => { document.getElementById('targetSelect').value = 'path'; });   // a Path in the row: frames made to fill the loop are no run's steps
-  await page.click('#madePanel [data-make-frames]');
+test('animation frames (Claude Design): the Mark menu shows each frame and its count, Even out makes the missing ones and unticks; Made with says Frames; AI order says one sentence', { skip }, async () => {
+  const bar = id => ({ id, name: 'Striped sphere', size: 18, x: 50, y: 50, shape: 'sphere', noun: 'sphere', ratio: 1, url: `/api/project-mark?p=demo&m=${id}` });
+  const ctx = await fresh({ setup: st => { Object.assign(st.projects[0], { frames: true, marks: [bar('n1'), bar('n2')] }); st.plates[1].mark = 'n1'; st.plates[2].mark = 'n1'; st.markSel = 'main'; } });
+  await page.evaluate(() => { document.getElementById('markSelect').value = 'main'; });   // a tick saved before frames: every frame is used anyway
+  await page.click('#placeBtn');
+  await page.waitForSelector('#placeMenu .mm-ftile');
+  assert.deepEqual(await page.locator('#placeMenu .mm-ftile .mm-name').allTextContents(), ['Frame 1', 'Frame 2', 'Frame 3'], 'Frame 1 … N, not ticks');
+  assert.deepEqual(await page.locator('#placeMenu .mm-ftile .mm-fcount').allTextContents(), ['1', '2', '0'], 'each frame its count in the Selection');
+  assert.deepEqual(await page.locator('#placeMenu .mm-ftile').evaluateAll(e => e.map(x => x.className.replace('mm-ftile', '').trim())), ['short', '', 'short empty']);
+  assert.equal(await page.locator('#placeMenu .mm-tile').count(), 0, 'no Mark row');
+  assert.match(await page.locator('#placeMenu .mm-sharer').textContent(), /^Frames take turns: 1, 2, 3, 1…/);
+  assert.equal(await page.locator('#placeMenu .mm-even').textContent(), 'Even out3', 'Even out and the missing count');
+  await shot('42-frames-menu');
+  await page.click('#placeMenu .mm-even');
+  assert.equal(await page.locator('#placeMenu .mm-even').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('#placeMenu .mm-countfake').textContent(), '3', 'the count greyed, showing what Even out makes');
+  assert.equal(await page.locator('#placeMenu .mm-sharer').textContent(), '1 of frame 1, 2 of frame 3. All will have 2.');
+  assert.deepEqual(await page.locator('#placeMenu .mm-cell .mm-cfn').allTextContents(), ['3', '1', '3'], 'shortest first, each cell its frame');
+  assert.equal(await summary(), '3 images · Even out · On target');
+  await shot('42b-frames-even-out');
+  await page.click('#placeMenu .mm-seg [data-v="path"]');
+  assert.equal(await page.locator('#placeMenu .mm-even').count(), 0, 'never with Path');
+  await page.click('#placeMenu .mm-seg [data-v="exact"]');
+  await page.evaluate(() => togglePlaceMenu(null, false));
+  await page.click('#generateBtn');
   for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/invent-prompts'); i++) await page.waitForTimeout(100);
   const sent = api.state.calls.find(c => c.path === '/api/invent-prompts').body;
-  assert.deepEqual([sent.deal, sent.count, sent.target], [Array(main - 1).fill('n1').join(','), main - 1, 'exact'], 'the short frame, as many as it lacks, on target');
+  assert.deepEqual([sent.deal, sent.count, sent.mark], ['n2,main,n2', 3, 'main,n1,n2'], 'exactly those, one each; every frame ticked');
   await page.waitForFunction(() => /Done ·/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
-  await page.evaluate(() => { document.getElementById('targetSelect').value = 'exact'; closeMadeWith(); });
+  await page.click('#placeBtn');
+  assert.equal(await page.locator('#placeMenu .mm-even[aria-pressed="true"]').count(), 0, 'a one-off: unticked when its batch ends');
+  await page.evaluate(() => togglePlaceMenu(null, false));
+  await page.evaluate(() => openMadeWith());
+  await page.waitForSelector('#madePanel .mw-row');
+  assert.equal(await page.locator('#madePanel .mw-label').first().textContent(), 'Frames');
+  assert.match(await page.locator('#madePanel .mw-chip').first().textContent(), /^Frame 1/);
+  assert.equal(await page.locator('#madePanel [data-make-frames], #madePanel .mw-frames').count(), 0, 'filters only: no Make there');
+  await page.evaluate(() => closeMadeWith());
   await page.click('#aiBtn');
   await page.waitForSelector('#aiPanel:not([hidden])');
-  assert.equal(await page.locator('#aiGap').isVisible(), true);
-  assert.match(await page.locator('#aiGap').textContent(), /Frame 2 has \d+ images?, the others \d+\. The loop holds for \d+ rounds?\./);
+  assert.match(await page.locator('#aiGap').textContent(), /^\s*The frame loop (ends after \d+ rounds?|never completes)\. Even out frames in the Mark menu\.\s*$/);
+  assert.equal(await page.locator('#aiGap button, #aiGap a').count(), 0, 'no link');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
@@ -1908,7 +1925,7 @@ test('dropdowns in the app style: open below or above depending on room, pick wi
   assert.equal(await page.locator('.csel[data-for="chordSelect"] .csel-face').textContent(), v);
   // while the film plays (the film strip scrolls by itself) an open menu stays open; scrolling its own panel closes it
   for (let i = 0; i < 40; i++) { const f = `m${i}`; api.state.plates.push({ ...api.state.plates[0], filename: f, title: `Plate ${f}`, url: `/assets/ai-plates/${f}.svg` }); api.state.sequences[0].order.push(f); }
-  await page.click('#refreshFilmBtn'); await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length > 40);
+  await page.evaluate(() => refreshLibrary()); await page.waitForFunction(() => document.querySelectorAll('#filmstrip button').length > 40);
   await page.locator('#filmstrip button').nth(14).click();                         // near the strip's right edge: it has to scroll as it plays
   await page.click('#playBtn');
   await page.click('.csel[data-for="characterSelect"]');
@@ -2262,7 +2279,7 @@ test('guards: another window opens another project → this page shows it; New p
   await page.waitForTimeout(150);
   assert.equal(api.state.lease, 0, 'and lets go when it ends');
   api.state.project = 'nike';                                                           // another window switched
-  await page.evaluate(() => refreshLibrary(true));
+  await page.evaluate(() => refreshLibrary());
   await page.waitForFunction(() => document.getElementById('projectName').textContent === 'Nike', null, { timeout: 10000 });
   assert.deepEqual(consoleErrors, []);
   await ctx.close();

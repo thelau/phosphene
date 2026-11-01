@@ -173,15 +173,13 @@
       if (isPlaying && activePlates().length !== lengthBefore) musicChanged();   // trash, undo, a new image: the film is longer or shorter, the sound follows
     }
 
-    // Refresh: the library and the film together (the two refresh buttons call the same thing, so they always agree).
-    // By itself the page only asks the server for a cheap fingerprint (/api/version, every 1.5 s) and fetches the library when it moved,
-    // at most every 15 s; the buttons fetch at once.
+    // The library and the film together, kept up to date by themselves (no Refresh button since 2026-11-01: the user found it unneeded):
+    // the page asks the server for a cheap fingerprint (/api/version, every 1.5 s) and fetches the library when it moved, at most every 5 s.
     let serverSig = null, lastAutoRefresh = 0, refreshing = false;
-    async function refreshLibrary(manual) {
+    async function refreshLibrary() {                                        // the library as the server has it now (no button: it follows by itself)
       if (refreshing) return;
-      if (!manual && (document.hidden || draggedFilename || document.querySelector('.prompt-overlay.open'))) return;
+      if (document.hidden || draggedFilename || document.querySelector('.prompt-overlay.open')) return;
       refreshing = true;
-      ['refreshBtn', 'refreshFilmBtn'].forEach(id => document.getElementById(id).classList.add('spinning'));
       try {
         const known = new Set(plates.map(p => p.filename));
         const grid = document.getElementById('grid'), top = grid.scrollTop;
@@ -189,19 +187,16 @@
         grid.scrollTop = top;
         const added = plates.filter(p => !known.has(p.filename) && !p.trashed).length;
         if (added && !prog.timer) setStatus(`+${added} new image${added === 1 ? '' : 's'}`);
-        else if (manual) setStatus('Up to date.');
       } catch (e) {
-        if (manual) setStatus(window.__TAURI__ ? 'Phosphene is restarting its engine. Try again in a moment.' : 'Could not reach the server. Is it running?');
       } finally {
         refreshing = false;
-        ['refreshBtn', 'refreshFilmBtn'].forEach(id => document.getElementById(id).classList.remove('spinning'));
       }
     }
     function libraryMoved(sig) {
       if (!sig || serverSig === null || sig === serverSig || generating || aiRunning) return;     // a running job refreshes as it goes
-      if (Date.now() - lastAutoRefresh < 15000) return;
+      if (Date.now() - lastAutoRefresh < 5000) return;                     // at most every 5 s (15 while Refresh existed)
       lastAutoRefresh = Date.now();
-      refreshLibrary(false);
+      refreshLibrary();
     }
 
     // the images in the edit: the shown ones (AI order's "best N" cut was removed on request: every image plays)
@@ -321,6 +316,7 @@
     // the marks ticked, in the project's order ('main' and ids, kept as "main,bird" in #markSelect); "mix" (before the ticks) is all of them; none: the main one
     function markTicks(marks = (project && project.marks) || []) {
       const ids = ['main', ...marks.map(m => m.id)], v = document.getElementById('markSelect').value || 'main';
+      if (framesOn()) return ids;                                            // frames of one animation: every batch uses every frame, in order
       const on = v === 'mix' ? ids : v.split(',');
       const out = ids.filter(x => on.includes(x));
       return out.length ? out : ['main'];
@@ -358,7 +354,7 @@
     }
     const pathOn = () => document.getElementById('targetSelect').value === 'path';
     // how many images Generate makes: the count's (in the Mark menu's share box), or with a Path its steps
-    function batchCount() { return pathOn() ? pathSet().steps : Math.min(40, Math.max(1, parseInt(document.getElementById('batchCountSelect').value, 10) || 4)); }
+    function batchCount() { return pathOn() ? pathSet().steps : evenOn() ? evenPlan().ids.length : Math.min(40, Math.max(1, parseInt(document.getElementById('batchCountSelect').value, 10) || 4)); }
     const ROTATIONS = [-135, -90, -45, 0, 45, 90, 135, 180];                // degrees clockwise, as a dial from left to right
     const rotLabel = r => (r === 180 || r === -180 ? '180°' : r < 0 ? `−${-r}°` : `${r}°`);
     // the angles ticked (kept as "0,45" in #rotSelect): one or more, they take turns as the marks do; none known: upright
@@ -377,10 +373,28 @@
     // Angle and Size sit under "More" (the user: someone who just wants images should not meet every option); it opens by itself
     // whenever one of them is set, and stays as it was left
     let placeMore = (() => { try { return localStorage.getItem('studioPlaceMore') === '1'; } catch (e) { return false; } })();
+    // frames of one animation (Claude Design's "Animation frames · counts in the Mark menu", 2026-11-01): the marks read Frame 1 … N
+    const framesOn = () => !!(project && project.frames && (project.marks || []).length);
     function markChoices() {
       const marks = (project && project.marks) || [];
-      return marks.length ? [['main', 'Main mark', project.mark_url], ...marks.map(m => [m.id, m.name, m.url])] : [];
+      const all = marks.length ? [['main', 'Main mark', project.mark_url], ...marks.map(m => [m.id, m.name, m.url])] : [];
+      return framesOn() ? all.map((c, i) => [c[0], `Frame ${i + 1}`, c[2]]) : all;
     }
+    // Even out (one control, in the Mark menu's IMAGES row): a one-off batch of exactly the images the short frames lack, never with a
+    // Path; up to 40, shortest frames first (each next image goes to the frame with the fewest). Unticked when its batch ends
+    let evenOut = false;
+    function evenPlan() {
+      const fv = framesOn() && !pathOn() ? frameView() : null;
+      if (!fv || !fv.need.length) return null;
+      const have = fv.n.slice(), ids = [];
+      while (ids.length < Math.min(40, fv.need.length)) {
+        let k = -1;
+        have.forEach((c, i) => { if (c < fv.most && (k < 0 || c < have[k])) k = i; });
+        have[k]++; ids.push(fv.order[k]);
+      }
+      return { ids, total: fv.need.length, most: fv.most, per: fv.order.map(id => ids.filter(x => x === id).length) };
+    }
+    const evenOn = () => evenOut && !!evenPlan();
     // the Mark button and menu (Claude Design's 31 Oct pass, MM-States / MarkMenu): the button a fixed 260 × 46, the ticked marks'
     // thumbnails and "N marks · take turns" only when 2+ are ticked, then the summary (position, angles, sizes) and a glyph for As
     // designed, cut with an ellipsis and whole on hover; the menu in rows (Mark, Position with its Path panel, More: angle and size),
@@ -400,7 +414,8 @@
       const ang = st.rots.length > 1 ? (path ? 'spin' : `${st.rots.length} angles`) : st.rots[0] ? rotLabel(st.rots[0]) : '';
       const siz = st.sizeOff ? '' : st.zs.length > 1 ? (path ? 'pulse' : `${st.zs.length} sizes`) : st.zs[0] !== 1 ? sizeLabel(st.zs[0]) : '';
       const count = path ? `${st.n} steps` : `${st.n} image${st.n === 1 ? '' : 's'}`;   // how many first (the count lives in the menu; Claude Design's review)
-      return { count, rest: [pos, ang, siz].filter(Boolean).join(' · '), text: [count, pos, ang, siz].filter(Boolean).join(' · ') };
+      const even = !path && evenOn() ? 'Even out' : '';                     // "13 images · Even out · On target"
+      return { count, rest: [even, pos, ang, siz].filter(Boolean).join(' · '), text: [count, even, pos, ang, siz].filter(Boolean).join(' · ') };
     }
     function showSummary(st) {
       const sm = placeSummary(st);
@@ -413,7 +428,7 @@
     let placeSeed = newSeed(), placePreview = { key: '', places: null };
     function previewPlaces(st) {
       if (!st.sizeOff || !project) return null;
-      const q = { target: st.t, mark: document.getElementById('markSelect').value || 'main', rot: st.rots.join(','), n: st.n, seed: placeSeed };
+      const q = { target: st.t, mark: markTicks().join(','), rot: st.rots.join(','), n: st.n, seed: placeSeed };
       const key = `${project.slug}|${new URLSearchParams(q)}`;
       if (placePreview.key === key) return placePreview.places;
       placePreview = { key, places: null };
@@ -463,8 +478,15 @@
       const m = st.on.length, a = st.rots.length, z = st.zs.length, n = st.n;
       const img = (url, style = '') => (url ? `<img class="pm-thumb" src="${escapeHtml(url)}" alt=""${style ? ` style="${style}"` : ''} />` : '');
       const each = k => (n % k === 0 ? String(n / k) : `${Math.floor(n / k)}–${Math.ceil(n / k)}`);
-      const parts = [];
-      if (st.t === 'path') {                                                 // along a path the ticks are motion (Claude Design's PathSteps)
+      const parts = [], fr = framesOn(), ev = evenOn() ? evenPlan() : null;
+      if (ev) {                                                              // Even out: what it makes, frame by frame
+        parts.push(ev.total > ev.ids.length ? `Makes ${ev.ids.length} of the ${ev.total}, shortest frames first. ${ev.total - ev.ids.length} left for the next batch.`
+          : `${ev.per.map((k, i) => (k ? `${k} of frame ${i + 1}` : '')).filter(Boolean).join(', ')}. All will have ${ev.most}.`);
+      } else if (fr && st.t !== 'path') {
+        parts.push(`Frames take turns: ${st.on.map((_, i) => i + 1).join(', ')}, 1…`);
+        if (a > 1) parts.push(n >= a ? `${a} angles, ${each(a)} each` : `${n} of ${a} angles`);
+        if (!st.sizeOff && z > 1) parts.push(n >= z ? `${z} sizes, ${each(z)} each` : `${n} of ${z} sizes`);
+      } else if (st.t === 'path') {                                                 // along a path the ticks are motion (Claude Design's PathSteps)
         parts.push(`The mark travels ${{ 0: 'across', 90: 'down', 45: 'down to the right', '-45': 'up to the right' }[st.ps.dir] || 'across'}${{ through: ' through its target', lands: ' and lands on its target', leaves: ' from its target' }[st.ps.anchor] || ''}`);
         if (m > 1) parts.push(`${m} marks take turns`);
         if (a > 1) parts.push(`${a} angles spin in order`);
@@ -474,28 +496,30 @@
         if (a > 1) parts.push(n >= a ? `${a} angles, ${each(a)} each` : `${n} of ${a} angles`);
         if (!st.sizeOff && z > 1) parts.push(n >= z ? `${z} sizes, ${each(z)} each` : `${n} of ${z} sizes`);
       }
-      if (st.sizeOff) parts.push(st.t === 'loose' ? 'each a little off target, as drawn' : 'each anywhere in the frame, as drawn');
+      if (st.sizeOff && !ev) parts.push(st.t === 'loose' ? 'each a little off target, as drawn' : 'each anywhere in the frame, as drawn');
       if (!parts.length) parts.push('Same mark, place, angle and size');
       parts[0] = parts[0][0].toUpperCase() + parts[0].slice(1);              // the sentence under the count row starts it
       const big = n > 20, cw = big ? 12 : 18, ch = big ? 21 : 32, es = st.effSizes, L = st.t === 'path' ? pathLine(st.ps) : null;
       let cells = '';
       const places = previewPlaces(st);
       for (let i = 0; i < n; i++) {
-        const mk = st.on[i % m], ang = st.rots[Math.floor(i / m) % a], sz = es[Math.floor(i / (m * a)) % es.length];
+        const di = ev ? st.choices.findIndex(c => c[0] === ev.ids[i]) : -1;   // Even out: image i's frame, as the server deals it (angles then sizes take turns)
+        const mk = ev ? st.choices[di] : st.on[i % m], ang = ev ? st.rots[i % a] : st.rots[Math.floor(i / m) % a], sz = ev ? es[Math.floor(i / a) % es.length] : es[Math.floor(i / (m * a)) % es.length];
+        const fno = fr ? `<span class="mm-cfn">${ev ? di + 1 : (i % m) + 1}</span>` : '';   // frames: each cell says its frame
         if (st.sizeOff) {                                                    // the place and size the server picked for image i, to scale (the mark twice as big, to read)
           const pl = places && places[i];
-          if (!pl) { cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px"></span>`; continue; }
+          if (!pl) { cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px">${fno}</span>`; continue; }
           const px = Math.max(4, Math.round(cw * pl.size / 100 * 2.2)), dx = cw * (pl.x / 100 - 0.5), dy = ch * (pl.y / 100 - 0.5);
-          cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px" title="${Math.round(pl.x)}% across, ${Math.round(pl.y)}% down, ${pl.size}% wide">${img(mk[2], `width:${px}px;height:${px}px;transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px) rotate(${ang}deg)`)}</span>`;
+          cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px" title="${Math.round(pl.x)}% across, ${Math.round(pl.y)}% down, ${pl.size}% wide">${img(mk[2], `width:${px}px;height:${px}px;transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px) rotate(${ang}deg)`)}${fno}</span>`;
           continue;
         }
         let dx = 0, dy = 0;
         if (L) { const u = L.ends[0] + (n > 1 ? i / (n - 1) : 0.5); dx = cw * ((L.x + L.ca * u * L.ln) / 100 - 0.5); dy = ch * ((L.y + L.sa * u * L.ln) / 100 - 0.5); }   // its step in the cell, where the server puts it
         const px = Math.round((big ? 7 : 10) * sz);
         if (L) { dx = Math.max(-(cw - px) / 2, Math.min((cw - px) / 2, dx)); dy = Math.max(-(ch - px) / 2, Math.min((ch - px) / 2, dy)); }   // drawn bigger than life to read: kept whole in its cell
-        cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px">${img(mk[2], `width:${px}px;height:${px}px;transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px) rotate(${ang}deg)`)}</span>`;
+        cells += `<span class="mm-cell" style="width:${cw}px;height:${ch}px">${img(mk[2], `width:${px}px;height:${px}px;transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px) rotate(${ang}deg)`)}${fno}</span>`;
       }
-      const sitOut = n < m ? st.on.slice(n).map(c => c[1]) : [];
+      const sitOut = n < m && !ev ? st.on.slice(n).map(c => c[1]) : [];
       return { text: parts.join(' · '), cells, sit: sitOut.length ? `<span class="mm-sit">${escapeHtml(sitOut.join(', '))} ${sitOut.length > 1 ? 'sit' : 'sits'} out this batch: fewer images than marks.</span>` : '' };
     }
     function placeMenuHtml(st) {
@@ -504,7 +528,11 @@
       const head = (label, turns) => `<div class="mm-label"><span>${label}</span>${turns > 1 ? `<span class="mm-turns">${turns} take turns</span>` : ''}</div>`;
       const glyph = st.on[0][2];
       let html = '';
-      if (st.choices.length) {                                              // the Mark row: only with 2+ marks
+      if (framesOn()) {                                                      // frames: one tile a frame with its count in the Selection, not ticks
+        const fv = frameView(), most = fv ? fv.most : 0;
+        html += `<div class="mm-sec mm-grid"><div class="mm-label"><span>Frames</span></div><div class="mm-tiles mm-ftiles">${st.choices.map(([v, name, url], i) => { const k = fv ? fv.n[i] : 0, short = fv && k < most;
+          return `<div class="mm-ftile${short ? ' short' : ''}${fv && !k ? ' empty' : ''}" title="${escapeHtml(`${name}: ${k} image${k === 1 ? '' : 's'}`)}"><span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span><span class="mm-fcount">${k}</span><span class="mm-fbar"><i style="width:${most ? Math.round(100 * k / most) : 0}%"></i></span></div>`; }).join('')}</div></div>`;
+      } else if (st.choices.length) {                                       // the Mark row: only with 2+ marks
         html += `<div class="mm-sec mm-grid">${head('Mark', m)}<div class="mm-tiles">${st.choices.map(([v, name, url], i) => { const on = st.ticks.includes(v);
           return `<button type="button" class="mm-tile${on && m === 1 ? ' last' : ''}" data-list="mark" data-v="${escapeHtml(v)}" aria-pressed="${on}" title="${escapeHtml(tickTip(name, on, m, 'mark'))}">${i === 0 ? '<span class="mm-main">MAIN</span>' : ''}${on ? '<span class="mm-tick"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>' : ''}<span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span></button>`; }).join('')}</div></div>`;
       }
@@ -546,9 +574,12 @@
       html += '</div>';
       const sh = shareParts(st);
       // the share box: how many (the count lives here, the user's call: not another control in the row; a Path's steps are set in its panel)
+      const plan = st.t !== 'path' ? evenPlan() : null, even = !!(plan && evenOut);
+      const chip = plan ? `<button type="button" class="mm-even" data-list="evenout" data-v="1" aria-pressed="${even}" title="${even ? 'Back to your own count' : 'Make the images the short frames lack'}"><span class="mm-ebox">${even ? '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#121110" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>' : ''}</span>Even out<span class="mm-emiss">${plan.total}</span></button>` : '';
       const countRow = st.t === 'path'
         ? `<span class="mm-steps-n">${n} steps</span><span class="mm-help">set by Steps</span>`
-        : '<span class="mm-countslot"></span><span class="mm-help">1 to 40</span>';   // one value field, ⌃⌄ as the Film's Tempo (the user preferred it to − and +)
+        : even ? `<span class="mm-countfake" aria-label="${n} images">${n}</span>${chip}`      // the count set by Even out: the field greyed, showing it
+        : `<span class="mm-countslot"></span>${chip || '<span class="mm-help">1 to 40</span>'}`;   // one value field, ⌃⌄ as the Film's Tempo (the user preferred it to − and +)
       html += `<div class="mm-share"><div class="mm-grid mm-countrow"><div class="mm-label"><span>Images</span></div><div class="mm-countc">${countRow}</div></div>
         <div class="mm-sharec"><span class="mm-sharet mm-sharer">${sh.text}</span><div class="mm-strip" role="img" aria-label="How the images take turns">${sh.cells}</div><span class="mm-sitw">${sh.sit}</span></div></div>`;
       return html;
@@ -569,6 +600,7 @@
         setv('markSelect', markChoices().map(c => c[0]).filter(x => on.includes(x)).join(','));
       }
       else if (list === 'pshape-open') pathShapeOpen = !pathShapeOpen;
+      else if (list === 'evenout') evenOut = !evenOut;
       else if (list === 'pshape' || list === 'pdir' || list === 'plen' || list === 'psteps' || list === 'panchor') {
         pathShapeOpen = false;
         const p = pathSet();
@@ -737,13 +769,13 @@
       const rows = f.marks.map(m => {
         const def = m.key === f.def;
         const fno = f.frames && n > 1 && !m.error ? psUsable().indexOf(m) + 1 : 0;   // frames of one animation: which one, in the rail's order
-        const sub = m.error ? m.error : m.reading ? `Reading · ${psSecs(m)} s` : m.needsWords ? 'Type its words' : fno ? `Frame ${fno}${def ? ' · Main' : ''}` : def ? `Main · ${+m.size}%` : `${+m.size}% · ${+m.x === 50 && +m.y === 50 ? 'centre' : `${+m.x} / ${+m.y}`}`;
+        const sub = m.error ? m.error : m.reading ? `Reading · ${psSecs(m)} s` : m.needsWords ? 'Type its words' : def ? `Main · ${+m.size}%` : `${+m.size}% · ${+m.x === 50 && +m.y === 50 ? 'centre' : `${+m.x} / ${+m.y}`}`;
         const cls = m.error ? ' error' : m.reading ? ' reading' : m.needsWords ? ' warn' : '';
         const star = m.error ? '' : `<span class="ps-star${def ? ' on' : ''}" role="button" tabindex="0" data-key="${escapeHtml(m.key)}" onclick="psStar(event, this.dataset.key)" aria-pressed="${def}" aria-label="${def ? 'The main mark' : 'Make this the main mark'}" title="${def ? 'The main mark' : 'Make this the main mark'}">${STAR}</span>`;
         return `<div class="ps-row ps-mark${f.sel === m.key ? ' on' : ''}${cls}" role="button" tabindex="0" onclick="psSelect(this.dataset.key)" data-key="${escapeHtml(m.key)}" draggable="${m.locked || m.error ? 'false' : 'true'}">
           <span class="ps-grip" aria-hidden="true">⋮⋮</span>
           <span class="ps-thumb">${m.error ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F7A3B6" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"></path><path d="M10 12l4 4M14 12l-4 4"></path></svg>' : `<img src="${escapeHtml(m.url)}" alt="" />`}${m.reading ? '<span class="spin"></span>' : ''}</span>
-          <span class="ps-row-text"><b>${escapeHtml(m.reading || m.error || m.needsWords ? (m.file || m.name || 'Mark') : m.name)}</b><small>${escapeHtml(sub)}</small></span>${m.locked ? lock : ''}${star}</div>`;
+          <span class="ps-row-text"><b>${escapeHtml(m.reading || m.error || m.needsWords ? (m.file || m.name || 'Mark') : fno ? `Frame ${fno}` : m.name)}</b><small>${escapeHtml(sub)}</small></span>${m.locked ? lock : ''}${star}</div>`;
       }).join('');
       const add = pending ? '' : full ? '<span class="ps-full">Remove one to add another.</span>'
         : `<button type="button" class="ps-add" id="psAdd" onclick="psPick('add')"><span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>${psDrag ? `Drop ${psDrag} mark${psDrag > 1 ? 's' : ''} here` : 'Add marks'}</span><small>${psDrag ? `${n} → ${Math.min(PS_MAX, n + psDrag)} of ${PS_MAX}` : `${n} of ${PS_MAX} · drop here or choose`}</small></button>`;
@@ -1321,7 +1353,7 @@
         if (vals.size < 2 && !ticked.length) return null;                   // a row only where the images differ
         const others = Object.fromEntries(Object.entries(rule).filter(([k]) => k !== kind)), base = shown.filter(madeMatch(others));
         const list = [...vals].sort((a, b) => ((order[kind].indexOf(a) + 1) || 99) - ((order[kind].indexOf(b) + 1) || 99));
-        return { kind, label, chips: list.map(v => ({ v, name: madeName(kind, v), n: base.filter(p => by(p) === v).length, on: ticked.includes(v), img: kind === 'mark' ? (markChoices().find(c => c[0] === v) || [])[2] : null })) };
+        return { kind, label: kind === 'mark' && framesOn() ? 'Frames' : label, chips: list.map(v => ({ v, name: madeName(kind, v), n: base.filter(p => by(p) === v).length, on: ticked.includes(v), img: kind === 'mark' ? (markChoices().find(c => c[0] === v) || [])[2] : null })) };
       }).filter(Boolean);
     }
     function madeSummary(rule) {
@@ -1390,14 +1422,6 @@
       if (!most) return null;
       return { order, n, most, rounds: Math.min(...n), need: order.flatMap((id, i) => Array(most - n[i]).fill(id)) };
     }
-    async function makeFrames() {                                             // Make N: the short frames, in the row's territory and choices
-      const v = frameView();
-      if (!v || !v.need.length) return;
-      const job = generateImages({ deal: v.need });
-      if (madeOpen()) renderMadeWith();                                       // its button greys out while they are made
-      await job;
-      if (madeOpen()) renderMadeWith();
-    }
     function openMadeWith(e, edit) {
       if (e && e.stopPropagation) e.stopPropagation();
       const panel = document.getElementById('madePanel');
@@ -1426,11 +1450,7 @@
           ${v.missing && !(makingRun && makingRun.run === v.r.run) ? `<button type="button" class="mw-make" data-make="${escapeHtml(v.r.run)}"${generating ? ' disabled title="Wait until the batch ends"' : ''}>Make ${v.missing}</button>` : ''}</div>`).join('')}
           ${views.length > 4 ? `<button type="button" class="mw-more-runs" data-runs-all="1">${madeRunsAll ? 'Fewer runs' : `+ ${views.length - 4} more run${views.length - 4 > 1 ? 's' : ''}`}</button>` : ''}</div>`;
       };
-      const fv = frameView();
-      const framesHtml = () => !fv || !fv.need.length ? '' : `<div class="mw-frames"><span class="mw-when">Frames</span><span class="mw-fn">${fv.n.map((k, i) => `<span class="${k < fv.most ? 'short' : ''}" title="Frame ${i + 1}: ${k} of ${fv.most}">${k}</span>`).join('<i>·</i>')}</span><span class="mw-fill"></span>
-          <button type="button" class="mw-make" data-make-frames="1"${generating ? ' disabled title="Wait until the batch ends"' : ` title="Frames ${fv.order.map((id, i) => fv.n[i] < fv.most ? i + 1 : 0).filter(Boolean).join(', ')} up to ${fv.most}"`}>Make ${fv.need.length}</button></div>`;
-      const body = rows.map(r => `<div class="mw-row"><span class="mw-label">${r.label}</span><div class="mw-chips">${r.chips.map(c => `<button type="button" class="mw-chip" data-kind="${r.kind}" data-v="${escapeHtml(c.v)}" aria-pressed="${c.on}">${c.img ? `<img class="pm-thumb" src="${escapeHtml(c.img)}" alt="" />` : ''}${escapeHtml(c.name)}<span class="mw-n">${c.n}</span>${r.kind === 'pos' && c.v === 'path' && short ? '<span class="mw-short" title="A path run is missing steps"></span>' : ''}</button>`).join('')}</div></div>${r.kind === 'pos' && (rule.pos || []).includes('path') && views.length ? runsHtml() : ''}${r.kind === 'mark' ? framesHtml() : ''}`).join('')
-        || (rows.length ? '' : framesHtml())                                  // one frame made so far: no Mark row, the frames line alone
+      const body = rows.map(r => `<div class="mw-row"><span class="mw-label">${r.label}</span><div class="mw-chips">${r.chips.map(c => `<button type="button" class="mw-chip" data-kind="${r.kind}" data-v="${escapeHtml(c.v)}" aria-pressed="${c.on}">${c.img ? `<img class="pm-thumb" src="${escapeHtml(c.img)}" alt="" />` : ''}${escapeHtml(c.name)}<span class="mw-n">${c.n}</span>${r.kind === 'pos' && c.v === 'path' && short ? '<span class="mw-short" title="A path run is missing steps"></span>' : ''}</button>`).join('')}</div></div>${r.kind === 'pos' && (rule.pos || []).includes('path') && views.length ? runsHtml() : ''}`).join('')
         || '<p class="mw-empty">All the images here were made the same way: nothing to filter by yet.</p>';
       const empty = !Object.keys(rule).length;
       const foot = g ? `<button type="button" class="mw-del" onclick="madeDelete()">Delete group</button><button type="button" class="mw-done" onclick="closeMadeWith()">Done</button>`
@@ -1493,7 +1513,6 @@
         e.stopPropagation();
         const make = e.target.closest('[data-make]'), all = e.target.closest('[data-runs-all]'), run = e.target.closest('.mw-run'), c = e.target.closest('.mw-chip');
         if (make) makeMissing(make.dataset.make);
-        if (e.target.closest('[data-make-frames]')) makeFrames();
         else if (all) { madeRunsAll = !madeRunsAll; renderMadeWith(); }
         else if (run) madeRun(run.dataset.run);
         else if (c) madeTick(c.dataset.kind, c.dataset.v);
@@ -1728,10 +1747,8 @@
       const short = aiMode === 'motion' ? pathRuns.filter(r => shownRuns.has(r.run)).map(runView).filter(v => v.missing).sort((a, b) => b.r.at - a.r.at) : [];
       const fv = frameView(activePlates()), fshort = fv ? fv.n.map((k, i) => [i + 1, k]).filter(([, k]) => k < fv.most) : [];
       gap.hidden = !short.length && !fshort.length;
-      if (!short.length && fshort.length) {                                   // frames of one animation, uneven: the loop gives way when the fewest run out (Look and Motion)
-        const which = fshort.length > 1 ? `Frames ${fshort.slice(0, -1).map(x => x[0]).join(', ')} and ${fshort[fshort.length - 1][0]} have ${fshort.slice(0, -1).map(x => x[1]).join(', ')} and ${fshort[fshort.length - 1][1]} images` : `Frame ${fshort[0][0]} has ${fshort[0][1]} image${fshort[0][1] === 1 ? '' : 's'}`;
-        gap.innerHTML = `<span>${which}, the others ${fv.most}. The loop holds for ${fv.rounds} round${fv.rounds === 1 ? '' : 's'}.</span>
-          <button type="button" class="link-btn" onclick="event.stopPropagation(); document.getElementById('aiPanel').hidden = true; openMadeWith()" title="Made with, where Make fills them">Show frames</button>`;
+      if (!short.length && fshort.length) {                                   // frames uneven: one sentence, where it's fixed (Claude Design)
+        gap.innerHTML = `<span>${fv.rounds ? `The frame loop ends after ${fv.rounds} round${fv.rounds === 1 ? '' : 's'}.` : 'The frame loop never completes.'} Even out frames in the Mark menu.</span>`;
       }
       if (short.length) {
         const v = short[0], at = v.gaps.map(i => i + 1), list = at.length > 4 ? `${at.length} steps` : at.length > 1 ? `steps ${at.slice(0, -1).join(', ')} and ${at[at.length - 1]}` : `step ${at[0]}`;
@@ -2049,7 +2066,7 @@
       if (p.uploaded) return null;
       const choices = markChoices(), pl = p.placement || {}, rot = cardRot(p), k = cardScale(p);
       const c = choices.find(x => x[0] === (p.mark || 'main')) || ['main', (project && project.mark_name) || 'Main mark', project && project.mark_url];
-      const name = c[0] === 'main' ? ((project && project.mark_name) || 'Main mark') : c[1];
+      const name = framesOn() ? c[1] : c[0] === 'main' ? ((project && project.mark_name) || 'Main mark') : c[1];
       const pos = pl.path ? `${PATH_GLYPH[pl.path.dir] || '→'} ${pl.path.i + 1}/${pl.path.n}` : pl.kind === 'loose' ? 'Loose' : pl.kind === 'scattered' ? 'Scattered' : '';
       const fr = project && project.frames && choices.length > 1 ? `${choices.findIndex(x => x[0] === c[0]) + 1}/${choices.length}` : '';   // frames of one animation: which one
       const vals = [fr, pos, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
@@ -2058,8 +2075,8 @@
       const dx = ((x - 50) / 100 * 8).toFixed(1), dy = ((y - 50) / 100 * 14).toFixed(1);
       const frame = `<span class="cm-frame">${c[2] ? `<img class="pm-thumb" src="${escapeHtml(c[2])}" alt="" style="transform:translate(-50%,-50%) translate(${dx}px,${dy}px) rotate(${rot}deg) scale(${k})" />` : ''}</span>`;
       const where = pl.path ? `Path ${PATH_GLYPH[pl.path.dir] || '→'} ${pl.path.i + 1}/${pl.path.n}` : POSITION_NAMES[pl.kind || 'exact'] || 'On target';
-      const tip = [fr ? `Frame ${fr} · ${name}` : name, where, rot ? rotLabel(rot) : 'upright', k !== 1 ? sizeLabel(k) : 'own size', p.as_designed ? 'exact mark' : ''].filter(Boolean).join(' · ');
-      const words = [fr ? `Frame ${fr} · ${name}` : choices.length ? name : '', where, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
+      const tip = [fr ? `Frame ${fr}` : name, where, rot ? rotLabel(rot) : 'upright', k !== 1 ? sizeLabel(k) : 'own size', p.as_designed ? 'exact mark' : ''].filter(Boolean).join(' · ');
+      const words = [fr ? `Frame ${fr}` : choices.length ? name : '', where, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
       return { frame, vals, tip, words };
     }
     // the mark check's verdict, on the image as one solid pill (a dot at size S): red for QA flagged and Mark check, amber to check
@@ -4336,14 +4353,14 @@
       const count = prog.stage === 'invent' ? '' : `<b>${done}/${prog.total}</b>`;
       el.innerHTML = `<div class="prog">
         <span class="prog-world">${escapeHtml(prog.world || 'New batch')}</span>${bar}${count}
-        <span class="prog-note"${prog.summary && prog.detail ? ` title="${escapeHtml(prog.detail)}"` : ''}>${escapeHtml(prog.summary || prog.note)}</span>${prog.summary && prog.run ? `<button type="button" class="prog-run" onclick="event.stopPropagation(); showRun(this.dataset.run)" data-run="${escapeHtml(prog.run.id)}" title="Show the run in Made with">${escapeHtml(prog.run.text)}</button>` : ''}
+        <span class="prog-note"${prog.summary && prog.detail ? ` title="${escapeHtml(prog.detail)}"` : ''}>${escapeHtml(prog.summary || (prog.evening && prog.stage !== 'invent' && !/Connection|online|Stopping/.test(prog.note) ? 'Evening out frames' : prog.note))}</span>${prog.summary && prog.run ? `<button type="button" class="prog-run" onclick="event.stopPropagation(); showRun(this.dataset.run)" data-run="${escapeHtml(prog.run.id)}" title="Show the run in Made with">${escapeHtml(prog.run.text)}</button>` : ''}
         ${(prog.actions || []).map((x, i) => `<button type="button" class="small-btn prog-act" data-act="${i}">${escapeHtml(x.label)}</button>`).join('')}
         ${prog.timer ? `<span class="prog-time">${fmtElapsed(Date.now() - prog.t0)}${running ? ` · ${running} ${prog.world === 'AI order' ? 'working' : 'rendering'}` : ''}</span>` : ''}
       </div>`;
     }
     function progStart(count) {
       prog.t0 = Date.now(); prog.slots = []; prog.titles = []; prog.worlds = []; prog.marks = []; prog.positions = []; prog.why = []; prog.world = ''; prog.stage = 'invent';
-      prog.total = count; prog.summary = ''; prog.detail = ''; prog.run = null; prog.note = `Choosing a territory and writing ${count} scenes…`;
+      prog.total = count; prog.summary = ''; prog.detail = ''; prog.run = null; prog.evening = false; prog.note = `Choosing a territory and writing ${count} scenes…`;
       document.getElementById('statusText').dataset.idle = '';
       clearInterval(prog.timer); prog.timer = setInterval(progRender, 1000); progRender();
     }
@@ -4619,8 +4636,8 @@
       ]);
     }
     const rowTarget = deal => { const t = document.getElementById('targetSelect').value || 'exact'; return deal && t === 'path' ? 'exact' : t; };   // frames made to fill the loop are no run's steps
-    async function generateImages(over) {                                    // over: { deal: [mark ids] } for Make N of frames
-      const deal = over && Array.isArray(over.deal) && over.deal.length ? over.deal : null;
+    async function generateImages() {
+      const deal = evenOn() ? evenPlan().ids : null;                          // Even out: the short frames' images, one each
       if (blockedByAi()) return;
       if (!project) { setStatus('Make a project or import one first: the project menu, at the top.'); openProjectMenu(); return; }
       if (project.has_mark === false) { openProjectForm('edit'); return; }   // no mark yet: Project settings, where + Add a mark is
@@ -4639,13 +4656,14 @@
       }
       setGenerating(true);
       progStart(count);
+      prog.evening = !!deal;
       let ran = false;
 
       try {
         const invRes = await fetch('/api/invent-prompts', {
           method: 'POST',
           headers: forProject({'Content-Type': 'application/json'}),
-          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: rowTarget(deal), mark: document.getElementById('markSelect').value || 'main', rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed, ...(deal ? { deal: deal.join(',') } : {}) })
+          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: rowTarget(deal), mark: markTicks().join(','), rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed, ...(deal ? { deal: deal.join(',') } : {}) })
         });
         const invData = await invRes.json();
         if (invData.needs_kimi_key) {
@@ -4675,6 +4693,7 @@
         progStop(plainError(e));
       } finally {
         setGenerating(false);
+        if (deal) { evenOut = false; renderPlace(); }                       // a one-off: done, stopped or failed
       }
     }
 
@@ -5014,7 +5033,6 @@ Object.assign(window, {
   filmstripClick,
   rhythmStripClick,
   setThumbSize,
-  refreshLibrary,
   setGroup,
   openEditMenu,
   openEdit,
@@ -5042,6 +5060,7 @@ Object.assign(window, {
   restoreSelected,
   togglePromptOverlay,
   toggleReticle,
+  refreshLibrary,                     // no button since 2026-11-01: the tests reload the library with it
   toggleMarkOverlay,
   toggleSettings,
   updateTempo,

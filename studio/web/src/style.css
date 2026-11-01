@@ -113,6 +113,26 @@
     .vfield.mm-count .vf-input { width: 34px; text-align: left; font-size: 14px; }
     .mm-steps-n { font-family: var(--mono); font-size: 14px; font-weight: 600; }
     .mm-sharec { display: flex; flex-direction: column; gap: 8px; padding-left: 96px; }   /* under the control column */
+    /* frames of one animation (Claude Design's "Animation frames · counts in the Mark menu"): Even out beside the count, the count greyed while it decides */
+    .mm-countfake { width: 76px; height: 32px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2); font-family: var(--mono); font-size: 14px; font-weight: 600; opacity: .45; }
+    #placeMenu .mm-even { height: 32px; padding: 0 12px; display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box; border-radius: 8px; border: 1px solid #3A3732; background: transparent; color: var(--text); font-size: 13px; font-weight: 600; }
+    #placeMenu .mm-even:hover { background: #1E1D1B; }
+    #placeMenu .mm-even[aria-pressed="true"] { border-color: var(--orange); background: #2A1F18; }
+    .mm-ebox { width: 13px; height: 13px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; border: 1.5px solid #6F6B5F; }
+    .mm-even[aria-pressed="true"] .mm-ebox { border-color: var(--text); background: var(--text); }
+    .mm-emiss { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--muted); }
+    .mm-ftiles { flex-wrap: nowrap; gap: 8px; }
+    .mm-ftile { flex: 1 1 0; min-width: 0; box-sizing: border-box; padding: 8px 8px 9px; display: flex; flex-direction: column; align-items: center; gap: 5px; border-radius: var(--r-tile); border: 1px solid var(--line-2); background: #121110; color: var(--text); }
+    .mm-ftile .mm-name { font-weight: 600; }
+    .mm-fcount { font-family: var(--mono); font-size: 12px; color: #C9C4B0; }
+    .mm-fbar { width: 100%; height: 3px; border-radius: 2px; background: #2A2825; overflow: hidden; }
+    .mm-fbar i { display: block; height: 100%; background: #6F6B5F; }
+    .mm-ftile.short .mm-fcount { color: var(--amber); }
+    .mm-ftile.short .mm-fbar i { background: var(--amber); }
+    .mm-ftile.empty { border: 1px dashed var(--amber); }
+    .mm-ftile.empty .mm-well .pm-thumb { opacity: .35; }
+    .mm-cell { position: relative; }
+    .mm-cfn { position: absolute; bottom: 1px; left: 0; right: 0; text-align: center; font-family: var(--mono); font-size: 8px; line-height: 1; color: var(--muted); }   /* each cell's frame */
     #countHome[hidden] { display: none; }
     /* the Mark menu: which mark (with several), where it goes, and Keep it as designed: one button, sections inside */
     /* the Mark button and menu (Claude Design's 31 Oct pass: MM-States, MarkMenu) */
@@ -737,9 +757,6 @@
     .grid-empty[hidden] { display: none; }
     body:has(#tabTrash.on) .mini, body:has(#tabTrash.on) .mini-pill { display: none; }   /* the film preview has nothing to do with the Trash */
     .grid-hint { font-size: 12px; color: var(--faint); white-space: nowrap; }
-    .refresh-btn { width: 34px; height: 34px; }
-    .tl-head .refresh-btn { width: 28px; height: 28px; border-color: var(--line-3); border-radius: 6px; }
-    .refresh-btn.spinning svg { animation: spin .8s linear infinite; }
     /* the tools, one bordered group; then the size slider */
     .tool-group { display: inline-flex; align-items: center; height: 32px; border-radius: 8px; border: 1px solid #34312C; }
     .tool-group button { width: 34px; height: 30px; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text-2); }
@@ -1200,10 +1217,6 @@ body.no-mark .place, body.no-mark .place-sep { display: none; }
 .mw-of { width: 56px; flex: none; font-family: var(--mono); font-size: 11px; color: #C9C4B0; }
 .mw-of.full { color: #8F8A7A; }
 .mw-of.short { color: var(--amber); }
-.mw-frames { height: 36px; display: flex; align-items: center; gap: 12px; padding: 0 10px; margin: -4px 0 2px; }   /* frames of one animation, uneven: each frame's count and Make N */
-.mw-fn { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; color: #C9C4B0; }
-.mw-fn i { font-style: normal; color: #6F6B5F; }
-.mw-fn .short { color: var(--amber); }
 .mw-make { height: 26px; padding: 0 12px; border-radius: 7px; border: 1px solid #5E5A50; background: transparent; font-size: 12px; font-weight: 600; color: var(--text); }
 .mw-make:hover:not(:disabled) { border-color: var(--text-2); background: #24221F; }
 .mw-more-runs { align-self: flex-start; height: 28px; padding: 0 12px; border: 0; background: transparent; font-size: 12px; color: #8F8A7A; }

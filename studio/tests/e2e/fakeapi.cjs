@@ -40,6 +40,7 @@ function addAi(st, order, { summary = null, cut_off = null } = {}) {
   const seq = { id: `s${++seqCounter}`, name: 'AI', kind: 'ai', order: [...new Set(order)], original: [...new Set(order)], summary, cut_off };
   st.sequences.push(seq); st.active = seq.id; return seq;
 }
+const librarySig = state => `${state.plates.length}:${state.plates.filter(p => p.trashed).length}:${state.sequences[0].order.join(',')}`;
 function orderedPlates(st) {
   const order = activeSeq(st).order, by = Object.fromEntries(st.plates.map(p => [p.filename, p]));
   const names = [...order.filter(n => by[n]), ...st.plates.map(p => p.filename).filter(n => !order.includes(n))];
@@ -78,7 +79,7 @@ function start(state = makeState()) {
     switch (url.pathname) {
       case '/api/state': {
         const visible = new Set(state.plates.filter(p => !p.trashed).map(p => p.filename));
-        return send({ plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, groups: (state.groups || []).map(g => ({ ...g, files: g.files.filter(f => state.plates.some(p => p.filename === f)) })), edits: state.edits || [], path_runs: state.pathRuns || [], project: projectOf(state), krea_connected: true, kimi_configured: state.kimiConfigured !== false, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3' });
+        return send({ state_sig: librarySig(state), plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, groups: (state.groups || []).map(g => ({ ...g, files: g.files.filter(f => state.plates.some(p => p.filename === f)) })), edits: state.edits || [], path_runs: state.pathRuns || [], project: projectOf(state), krea_connected: true, kimi_configured: state.kimiConfigured !== false, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3' });
       }
       case '/api/projects': {    // the projects (projects.py): list, switch, make one (the mark arrives as a PNG data URL), change one
         if (req.method === 'GET') return send({ ok: true, active: state.project, projects: state.projects });
@@ -122,7 +123,7 @@ function start(state = makeState()) {
         return res.end(`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="16" fill="none" stroke="${state.markColour || '#FEFFE7'}" stroke-width="4"/></svg>`);
       case '/api/worlds':
         return send({ ok: true, worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', n: 7, kept: 3, wildcard: false }, { name: 'Matter & Elements', brief: 'Fluids and fire.', n: 10, kept: 2, wildcard: false, origin: 'core' }, ...(state.moreWorlds || [])] });
-      case '/api/version': return send({ boot: state.boot || 'fake', html: 0 });
+      case '/api/version': return send({ boot: state.boot || 'fake', html: 0, state: librarySig(state) });   // the library's fingerprint, as the server's state_sig
       case '/api/net': return send({ ok: true, online: state.online !== false });
       case '/api/busy': if (req.method === 'POST') state.lease = body.for; return send({ ok: true, busy: !!body.for });
       case '/api/stats': return send({ ok: true, models: {} });

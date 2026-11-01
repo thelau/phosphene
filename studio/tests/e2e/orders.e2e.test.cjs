@@ -68,7 +68,7 @@ test('a restored image lands at the end of the order, and the re-order tool hide
 test('one of your groups keeps its own order: a drag there moves only the group, All stays as it was', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945 });
   await page.evaluate(() => fetch('/api/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', name: 'Night', files: ['k3', 'k1'] }) }));
-  await page.click('#refreshBtn');
+  await page.evaluate(() => refreshLibrary());
   const all = await names();
   await page.waitForSelector('#groupBar .chip.own');
   await page.click('#groupBar .chip.own');

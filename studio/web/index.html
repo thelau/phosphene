@@ -236,7 +236,6 @@
             <button onclick="toggleMarkOverlay()" id="gridMarkBtn" title="Mark overlay (M)" aria-label="Show the mark over each image" aria-pressed="false">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"></path><path d="M3 13l9 5 9-5"></path></svg>
             </button>
-            <button class="refresh-btn" id="refreshBtn" onclick="refreshLibrary(true)" title="Refresh" aria-label="Refresh the library"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
           </div>
           <!-- thumbnail size: five steps on a slider with a tick each (a pinch on the grid steps too) -->
           <label class="size-ctl" title="Thumbnail size">
@@ -356,7 +355,6 @@
           </div>
             <span class="grow"></span>
             <select id="filmGroup" onchange="setGroup(this.value)" title="Images to play"></select>
-            <button class="icon-btn refresh-btn" id="refreshFilmBtn" onclick="refreshLibrary(true)" title="Refresh" aria-label="Refresh the film"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
           </div>
           <div class="filmstrip" id="filmstrip" onclick="filmstripClick(event)"></div>
           <div class="rstrip" id="rhythmStrip">
