@@ -4,6 +4,7 @@ Everything the Mac app carries, gathered in app/build/resources (what Tauri bund
   server/    studio/server.py frozen with PyInstaller (Python, Pillow and the studio's modules: nothing to install)
   web/       the built page (npm run build)
   bin/ffmpeg a self-contained ffmpeg (from imageio-ffmpeg: only macOS's own frameworks), for the MP4 export
+  licenses/ the third-party notices and license texts (FFmpeg's GPL, the fonts' OFL)
   No project: the app is the tool, projects are documents (Demo travels as a .phosphene file: Export project / Import)
 
 Run: .venv/bin/python app/build.py   (then: cd app && npx tauri build)
@@ -44,6 +45,8 @@ def main() -> None:
     ff = subprocess.run([str(PY), "-c", "import imageio_ffmpeg as f; print(f.get_ffmpeg_exe())"], capture_output=True, text=True, check=True).stdout.strip()
     (OUT / "bin").mkdir()
     shutil.copy2(ff, OUT / "bin" / "ffmpeg")
+    step("licenses")                                     # what the app carries under other licenses: FFmpeg (GPL), the fonts (OFL)
+    shutil.copytree(ROOT / "app" / "licenses", OUT / "licenses")
 
     size = sum(f.stat().st_size for f in OUT.rglob("*") if f.is_file()) / 1e6
     print(f"   everything the app carries: {size:.0f} MB (no project: Demo travels as a .phosphene file)")

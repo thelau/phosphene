@@ -31,7 +31,8 @@
     "resources": {
       "../build/resources/server/": "server/",
       "../build/resources/web/": "web/",
-      "../build/resources/bin/": "bin/"
+      "../build/resources/bin/": "bin/",
+      "../build/resources/licenses/": "licenses/"
     },
     "macOS": {
       "minimumSystemVersion": "13.0",
