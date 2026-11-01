@@ -24,7 +24,7 @@
       <svg class="brand-mark" width="26" height="22" viewBox="0 0 130 112" aria-hidden="true"><g fill="#FEFFE7"><rect x="0" y="14" width="5" height="84"></rect><rect x="8" y="14" width="5" height="84"></rect><rect x="16" y="14" width="5" height="84"></rect><rect x="32" y="14" width="5" height="84"></rect><rect x="40.8" y="14" width="5" height="84"></rect><rect x="50.8" y="14" width="5" height="84"></rect><rect x="62.8" y="14" width="5" height="84"></rect><rect x="78" y="14" width="5" height="84"></rect><rect x="98" y="14" width="5" height="84"></rect><rect x="124.8" y="14" width="5" height="84"></rect></g><rect x="23.6" y="0" width="5.6" height="112" fill="#EC540C"></rect></svg>
       <span>Phosphene</span>
       <span class="brand-sep" aria-hidden="true">/</span>
-      <button type="button" class="project-btn" id="projectBtn" onclick="openProjectMenu(event)" aria-haspopup="menu" title="The project: the marks these films are made around">
+      <button type="button" class="project-btn" id="projectBtn" onclick="openProjectMenu(event)" aria-haspopup="menu" title="Project">
         <img id="projectMark" alt="" /><span id="projectName">Demo</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
       </button>
@@ -136,7 +136,7 @@
 
       <div class="setting-row">
         <div class="setting-label"><span>Krea</span></div>
-        <div class="setting-note">Sign in to your own Krea account: images are made with its credits. The sign-in stays on this computer.</div>
+        <div class="setting-note">Images use your Krea credits.</div>
         <div class="krea-actions"><button onclick="reconnectKrea()" id="kreaConnectBtn">Connect Krea</button><button onclick="signOutKrea()" id="kreaSignOutBtn" hidden>Sign out of Krea</button></div>
       </div>
     </div>
@@ -182,7 +182,7 @@
             </select>
             
             <div class="place-menu" id="placeMenu" role="dialog" aria-label="Mark" hidden></div>
-            <div id="countHome" hidden><div class="vfield mm-count" id="countField" role="spinbutton" tabindex="0" aria-valuemin="1" aria-valuemax="40" aria-valuenow="4" aria-label="Images in this batch" title="How many images: 1 to 40. Drag up or down, double-click to type, arrows to step."><span class="vf-val" id="countVal">×4</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div></div>
+            <div id="countHome" hidden><div class="vfield mm-count" id="countField" role="spinbutton" tabindex="0" aria-valuemin="1" aria-valuemax="40" aria-valuenow="4" aria-label="Images in this batch" title="Images (1–40)"><span class="vf-val" id="countVal">×4</span><svg width="10" height="14" viewBox="0 0 10 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3"></path><path d="M2 9l3 3 3-3"></path></svg></div></div>
           </span>
           <input type="hidden" id="batchCountSelect" value="4" />
           <span class="gen-sep"></span>
@@ -208,9 +208,9 @@
             <span class="tool-sep"></span>
           </div>
           <div class="order-tools" id="seqBox">
-            <button id="aiBtn" onclick="toggleAiPanel(event)" title="Let the AI rearrange your order (⌘Z puts it back)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>AI order…</button>
+            <button id="aiBtn" onclick="toggleAiPanel(event)" title="Reorder with AI"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>AI order…</button>
             <div class="ai-panel" id="aiPanel" hidden onclick="event.stopPropagation()">
-              <div class="ai-head"><h4>AI order</h4><p class="ai-panel-note" id="aiShown">Rearranges the images shown. ⌘Z puts them back.</p></div>
+              <div class="ai-head"><h4>AI order</h4><p class="ai-panel-note" id="aiShown">Reorders the images shown.</p></div>
               <div class="ai-mode" role="radiogroup" aria-label="Order by">
                 <button type="button" role="radio" data-mode="look" onclick="setAiMode('look')"><span class="ai-draw" aria-hidden="true"><i style="background:linear-gradient(180deg,#F3EFD9,#C8B48A)"></i><i style="background:linear-gradient(180deg,#C8743A,#6A3418)"></i><i style="background:linear-gradient(180deg,#3A4A6A,#12161E)"></i><i style="background:linear-gradient(180deg,#2A2825,#0C0B0A)"></i></span><b>Look</b><small>From light to dark, by shape and colour</small></button>
                 <button type="button" role="radio" data-mode="motion" onclick="setAiMode('motion')"><svg class="ai-draw" width="96" height="38" viewBox="0 0 96 38" aria-hidden="true"><line x1="8" y1="30" x2="88" y2="8" stroke="#FEFFE7" stroke-width="1" stroke-dasharray="1 3"></line><rect x="4" y="25" width="9" height="9" fill="none" stroke="#FEFFE7" stroke-width="1.3"></rect><rect x="30" y="17" width="10" height="10" fill="none" stroke="#FEFFE7" stroke-width="1.3" transform="rotate(30 35 22)"></rect><rect x="56" y="10" width="11" height="11" fill="none" stroke="#FEFFE7" stroke-width="1.3" transform="rotate(60 61.5 15.5)"></rect><rect x="81" y="2" width="12" height="12" fill="#EC540C" transform="rotate(90 87 8)"></rect></svg><b>Motion</b><small>The mark travels, spins, grows</small></button>
@@ -226,16 +226,16 @@
             </div>
           </div>
           <div class="tool-group" role="toolbar" aria-label="Grid tools">
-            <button onclick="downloadShown()" id="downloadBtn" title="Download the images shown, full size, in their order (a zip)" aria-label="Download the images shown">
+            <button onclick="downloadShown()" id="downloadBtn" title="Download as zip" aria-label="Download the images shown">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"></path><path d="M7 10l5 5 5-5"></path><path d="M5 20h14"></path></svg>
             </button>
-            <button onclick="toggleReticle()" id="gridTargetBtn" title="Show where the mark sits on every image (T)" aria-label="Show the mark target" aria-pressed="false">
+            <button onclick="toggleReticle()" id="gridTargetBtn" title="Mark target (T)" aria-label="Show the mark target" aria-pressed="false">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 1v4M12 19v4M1 12h4M19 12h4"></path></svg>
             </button>
-            <button class="refresh-btn" id="refreshBtn" onclick="refreshLibrary(true)" title="Check for new images now (the page also checks by itself every so often). Film refreshes with it." aria-label="Refresh the library"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
+            <button class="refresh-btn" id="refreshBtn" onclick="refreshLibrary(true)" title="Refresh" aria-label="Refresh the library"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"></path><path d="M20 4v4h-4"></path></svg></button>
           </div>
           <!-- thumbnail size: five steps on a slider with a tick each (a pinch on the grid steps too) -->
-          <label class="size-ctl" title="Thumbnail size (pinch the grid also works)">
+          <label class="size-ctl" title="Thumbnail size">
             <svg width="8" height="12" viewBox="0 0 8 12" aria-hidden="true"><rect x="0.75" y="0.75" width="6.5" height="10.5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"></rect></svg>
             <span class="size-track"><i></i><i></i><i></i><i></i><i></i><input type="range" id="thumbRange" min="0" max="4" step="1" value="1" aria-label="Thumbnail size" oninput="setThumbSizeAt(this.value)" /></span>
             <svg width="12" height="20" viewBox="0 0 12 20" aria-hidden="true"><rect x="0.75" y="0.75" width="10.5" height="18.5" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.5"></rect></svg>
@@ -270,7 +270,7 @@
         <div class="lock-banner" id="aiLock" role="status" hidden>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EC540C" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
           <b>Ordering with AI</b>
-          <span>The selection is locked until it finishes: no trashing, dragging or generating.</span>
+          <span>Editing is paused until the order is done.</span>
         </div>
         <div class="grid-col" id="grid" data-size="M"></div>
         <p class="grid-empty" id="gridEmpty" hidden></p>
@@ -729,7 +729,7 @@
     <div class="drop-dim"></div>
     <div class="drop-tray">
       <svg width="84" height="72" viewBox="0 0 26 22" fill="none" stroke="#FEFFE7" stroke-width="0.9" aria-hidden="true"><rect x="1" y="4" width="10" height="17" rx="1.2" transform="rotate(-8 6 12)"></rect><rect x="8" y="2" width="10" height="17" rx="1.2" fill="#1E1D1B"></rect><rect x="15" y="3" width="10" height="17" rx="1.2" fill="#1E1D1B" transform="rotate(8 20 11)"></rect><rect x="18.6" y="9.6" width="3" height="3" stroke="#EC540C" stroke-dasharray="0.8 0.6" transform="rotate(8 20 11)"></rect></svg>
-      <span class="drop-words"><b id="dropTitle">Add images</b><span>They land at the end of Selection.</span></span>
+      <span class="drop-words"><b id="dropTitle">Add images</b><span>Added to the end of Selection.</span></span>
     </div>
   </div>
   <div class="toast" id="toast" role="status"></div>

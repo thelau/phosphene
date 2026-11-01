@@ -475,7 +475,7 @@
         if (!st.sizeOff && z > 1) parts.push(n >= z ? `${z} sizes, ${each(z)} each` : `${n} of ${z} sizes`);
       }
       if (st.sizeOff) parts.push(st.t === 'loose' ? 'each a little off target, as drawn' : 'each anywhere in the frame, as drawn');
-      if (!parts.length) parts.push('All the same: same mark, place, angle and size');
+      if (!parts.length) parts.push('Same mark, place, angle and size');
       parts[0] = parts[0][0].toUpperCase() + parts[0].slice(1);              // the sentence under the count row starts it
       const big = n > 20, cw = big ? 12 : 18, ch = big ? 21 : 32, es = st.effSizes, L = st.t === 'path' ? pathLine(st.ps) : null;
       let cells = '';
@@ -524,7 +524,7 @@
           <div class="mm-prow"><span>Reach</span><span class="mm-btns" role="radiogroup" aria-label="Reach">${PATH_LENS.map(([v]) => { const real = Math.round(pathLine({ ...st.ps, len: v }).ln);   // what it really covers here: shortened to fit, it says so
             return `<button type="button" class="mm-reach" role="radio" data-list="plen" data-v="${v}" aria-checked="${st.ps.len === v}" title="${real}% of the frame${real < v ? ` (${v}% would leave it)` : ''}"><span class="mm-bar"><i style="left:${(100 - real) / 2}%;width:${real}%"></i></span><span>${real}%</span></button>`; }).join('')}</span></div>
           <div class="mm-prow"><span class="mm-strong">Steps</span><span class="mm-steps" role="radiogroup" aria-label="Steps">${PATH_STEPS.map(v => `<button type="button" class="mm-step" role="radio" data-list="psteps" data-v="${v}" aria-checked="${st.ps.steps === v}" title="${v} images, one a step">${v}</button>`).join('')}</span></div>
-          <span class="mm-help">Reach is how much of the frame the path covers. Steps is one image each: more steps, smoother motion.</span></div></div>`;
+          <span class="mm-help">More steps, smoother motion.</span></div></div>`;
       }
       html += '</div></div>';
       // More: angle and size, folded until used (open by itself while either is set)
@@ -547,7 +547,7 @@
       const sh = shareParts(st);
       // the share box: how many (the count lives here, the user's call: not another control in the row; a Path's steps are set in its panel)
       const countRow = st.t === 'path'
-        ? `<span class="mm-steps-n">${n} steps</span><span class="mm-help">one per step · set by Steps above</span>`
+        ? `<span class="mm-steps-n">${n} steps</span><span class="mm-help">set by Steps</span>`
         : '<span class="mm-countslot"></span><span class="mm-help">1 to 40</span>';   // one value field, ⌃⌄ as the Film's Tempo (the user preferred it to − and +)
       html += `<div class="mm-share"><div class="mm-grid mm-countrow"><div class="mm-label"><span>Images</span></div><div class="mm-countc">${countRow}</div></div>
         <div class="mm-sharec"><span class="mm-sharet mm-sharer">${sh.text}</span><div class="mm-strip" role="img" aria-label="How the images take turns">${sh.cells}</div><span class="mm-sitw">${sh.sit}</span></div></div>`;
@@ -616,8 +616,8 @@
         + list.map(x => { const here = project && x.slug === project.slug; return `<button type="button" class="gm-item${here ? ' on' : ''}" data-slug="${escapeHtml(x.slug)}" onclick="switchProject(this.dataset.slug)"${here ? '' : off}><img src="${escapeHtml(x.mark_url)}" alt="" />${escapeHtml(x.name)}</button>`; }).join('')
         + (list.length ? '<hr>' : '') + `<button type="button" class="gm-item" onclick="openProjectForm('new')"${off}>New project…</button>`
         + (project ? `<button type="button" class="gm-item" onclick="openProjectForm('edit')"${off}>Project settings…</button>` : '')
-        + '<hr>' + (project ? '<button type="button" class="gm-item" onclick="exportProject()" title="This project as one file (.phos): its mark, settings, images, groups and snapshots, to send or keep">Export project…</button>' : '')
-        + `<button type="button" class="gm-item" onclick="closeProjectMenu(); chooseProjectFile()" title="Open a .phos file someone exported: it comes in as a new project"${off}>Import project…</button>`
+        + '<hr>' + (project ? '<button type="button" class="gm-item" onclick="exportProject()" title="Save the whole project as a .phos file">Export project…</button>' : '')
+        + `<button type="button" class="gm-item" onclick="closeProjectMenu(); chooseProjectFile()" title="Open a .phos file as a new project"${off}>Import project…</button>`
         + (project ? `<hr><button type="button" class="gm-item danger-text" onclick="deleteProject()" title="This project's folder goes to the Trash: it can be put back until the Trash is emptied"${off}>Delete project…</button>` : '');
       m.querySelectorAll('img').forEach(fitMarkTone);
       const a = btn.getBoundingClientRect();
@@ -664,7 +664,7 @@
       if (isBusy()) { setStatus('Wait until the running job ends, then open the project settings.'); return; }   // also from the Mac menu (⌘N), which skips the greyed-out menu
       if (!edit && !kimiConfigured) {                                         // a new project starts from Kimi reading the mark: the key first
         openSettingsOn('kimiKeyInput');
-        setStatus('Add your Kimi API key to create a project: Kimi reads your mark and fills in the project for you.');
+        setStatus('Add your Kimi key in Settings to create a project.');
         return;
       }
       const main = edit && project.has_mark !== false ? { key: 'main', id: 'main', name: project.mark_name || 'Main mark', size: project.mark_size, x: project.mark_x, y: project.mark_y,
@@ -759,7 +759,7 @@
     function renderPSDrop(d, f) {
       const n = psDrag, places = [0, 1, 2, 3, 4, 5].map(i => `<span class="ps-place${i === 0 ? ' main' : ''}${i < n ? ' filled' : ''}"><span>${i < n ? '<svg width="22" height="26" viewBox="0 0 22 26" fill="none" stroke="#FEFFE7" stroke-width="1.5" aria-hidden="true"><path d="M2 1h12l6 6v18H2z"></path><path d="M14 1v6h6"></path></svg>' : ''}</span><small>${i === 0 ? 'MAIN' : i + 1}</small></span>`).join('');
       d.innerHTML = `<div class="ps-drop${n ? ' over' : ''}" id="psDrop"><b>${n ? `${n} mark${n > 1 ? 's' : ''}` : 'Drop your marks'}</b><div class="ps-places">${places}</div>
-          <span class="ps-drop-line">${n ? 'Release to add them. The first by file name becomes the main mark.' : 'One mark, or a few at once. The first by file name leads; you can change that after.'}</span>
+          <span class="ps-drop-line">${n ? 'Drop to add.' : 'One or several marks. The first file is the main one.'}</span>
           ${n ? '' : `<button type="button" class="solid" onclick="psPick('new')">Choose files…</button><span class="ps-drop-mono">Up to ${PS_MAX} · PNG or SVG · a transparent background is best</span>`}</div>
         ${n ? '' : '<button type="button" class="link-btn ps-nomark" onclick="psNoMark()">No mark? Start with your own images</button>'}`;
     }
@@ -768,7 +768,7 @@
       const title = reading ? `Kimi is reading ${reading} mark${reading > 1 ? 's' : ''}` : `${psUsable().length} mark${psUsable().length === 1 ? '' : 's'}, ${need} need${need === 1 ? 's' : ''} you`;
       const tiles = f.marks.map(m => {
         const def = m.key === f.def, first = f.kind === 'new' && m === psUsable()[0];
-        const sub = m.error ? `${m.error}: PNG or SVG only` : m.reading ? (first ? 'Fills in the project too' : 'Name, shape and words') : m.needsWords ? 'Kimi couldn’t read it. Type its words:' : 'Read';
+        const sub = m.error ? `${m.error}: PNG or SVG only` : m.reading ? (first ? 'Fills in the project too' : 'Name, shape and words') : m.needsWords ? 'Couldn’t read this one. Describe it:' : 'Read';
         return `<div class="ps-tile${m.error ? ' error' : m.needsWords ? ' warn' : ''}" data-key="${escapeHtml(m.key)}">
           <span class="ps-well">${m.error ? '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#F7A3B6" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"></path><path d="M10 12l4 4M14 12l-4 4"></path></svg>' : `<img src="${escapeHtml(m.url)}" alt="" />`}
             ${def && !m.error ? `<span class="ps-mainb">${STAR}Main</span>` : ''}${m.reading ? `<span class="ps-secsb"><span class="spin"></span><span class="ps-secs" data-key="${escapeHtml(m.key)}">${psSecs(m)} s</span></span>` : ''}</span>
@@ -805,7 +805,7 @@
         const skel = (f.kind === 'new' && m === f.marks[0] ? ['Name', 'About', 'Its shape', 'Called'] : ['Name', 'Its shape', 'Called']);
         d.innerHTML = `<div class="ps-reading"><span class="ps-big-thumb"><img src="${escapeHtml(m.url)}" alt="The mark being read" /></span>
             <div><b><span class="spin"></span>Kimi is reading the mark <span class="ps-secs">${psSecs(m)} s</span></b>
-            <span>${f.kind === 'new' && m === f.marks[0] ? 'It fills in the name, what it is about, the shape, the words and suggests colours.' : 'It fills in the name, the shape and the words. All stay editable.'}</span>
+            <span>${f.kind === 'new' && m === f.marks[0] ? 'Kimi fills in the details.' : 'Kimi fills in the details.'}</span>
             <button type="button" class="link-btn" onclick="psCancelRead(this.dataset.key)" data-key="${escapeHtml(m.key)}">Cancel</button></div></div>`
           + skel.map(l => `<div class="ps-field"><span>${l}</span><i class="ps-skel"></i></div>`).join('');
         return;
@@ -815,7 +815,7 @@
       d.innerHTML = (m.locked ? `<div class="ps-locked"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>This mark of ${escapeHtml(project ? project.name : '')}'s is fixed: its image, size, place and words, and its own mark check, wherever it sits.</div>` : '')
         + `<div class="ps-mark-head"><div class="ps-big"><span class="ps-big-thumb"><img src="${escapeHtml(m.url)}" alt="${escapeHtml(m.name)}" /></span>${m.locked ? '' : `<button type="button" class="link-btn" onclick="psPick('replace')">Replace…</button>`}</div>
           <div class="ps-mark-name"><label class="ps-field"><span>Name</span><input type="text" id="psMarkName" maxlength="30" value="${escapeHtml(m.name)}" oninput="psSetMark('name', this.value)" autocomplete="off"${dis} /></label>
-          <span class="ps-main-note">${def ? '<span class="ps-default">★ The main mark</span>: used unless a batch picks others.' : 'The star in the list makes a mark the main one.'}</span></div></div>
+          <span class="ps-main-note">${def ? '<span class="ps-default">★ The main mark</span>' : '★ sets the main mark.'}</span></div></div>
         <div class="ps-group"><span class="ps-group-head">Place in the frame</span>${slider('Width', 'size', 4, 60)}${slider('Across', 'x', 10, 90)}${slider('Down', 'y', 10, 90)}</div>
         <div class="ps-group"><span class="ps-group-head">In the prompts <small>the words Kimi uses for this mark</small></span>
           <div class="ps-two"><label class="ps-field"><span>Its shape</span><input type="text" maxlength="80" value="${escapeHtml(m.shape || '')}" oninput="psSetMark('shape', this.value)" autocomplete="off"${dis} /></label>
@@ -834,7 +834,7 @@
         return `<span class="ps-pv ${on ? 'on' : 'other'}" style="${style}"><img src="${escapeHtml(m.url)}" alt="" />${on && !m.reading ? '<i></i>' : ''}</span>`;
       }).join('') + (marks.length ? '' : '<span class="ps-pv empty" style="left:50%;top:50%;width:18%;aspect-ratio:1"></span>');
       cap.textContent = !marks.length ? 'Your main mark appears here once it\'s read' : focus && focus.reading ? 'Placing it once it\'s read'
-        : marks.length > 1 ? 'Selected mark solid, others ghosted' : 'As every image will place it';
+        : '';
     }
     function psKey(e) { if (e.key === 'Escape') { e.preventDefault(); closeProjectForm(); } }   // Esc: as Cancel
     function psNoMark() { projectForm.noMark = true; projectForm.sel = 'project'; renderPS(); const n = document.getElementById('psName'); if (n) n.focus(); }   // a project of your own images: named by hand
@@ -1061,7 +1061,7 @@
         const r = await (await fetch('/api/project-export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug: project && project.slug }) })).json();
         if (!r.ok) throw new Error(r.error || 'it was not made');
         const a = document.createElement('a'); a.href = r.url; a.download = r.filename; document.body.appendChild(a); a.click(); a.remove();
-        setStatus(`Downloading ${r.filename} (${Math.round(r.bytes / 1e6)} MB): send it; a double-click (or Import project) opens it as it is.`);
+        setStatus(`Downloading ${r.filename} (${Math.round(r.bytes / 1e6)} MB) to Downloads.`);
       } catch (e) { setStatus(`Could not export the project: ${e.message}`); }
     }
     // Import project…: in the Mac app the macOS file dialog (WebKit there opens no window for a hidden file field) and the file is
@@ -1079,7 +1079,7 @@
       if (!project) return;
       if (isBusy()) { setStatus('Wait until the running job ends, then delete.'); return; }
       const n = plates.length, name = project.name;
-      if (!(await askConfirm(`Delete ${name}?`, `Its ${n} image${n === 1 ? '' : 's'}, groups and snapshots go to the Trash, with its mark and settings. You can put the folder back from the Trash until you empty it; Export project… first keeps a copy.`, 'Delete'))) return;
+      if (!(await askConfirm(`Delete ${name}?`, `The project and its ${n} image${n === 1 ? '' : 's'} move to the Trash. You can restore it from there.`, 'Delete'))) return;
       cover(`Deleting ${name}…`);
       try {
         const r = await projectsCall({ action: 'delete', slug: project.slug });
@@ -1255,8 +1255,7 @@
     // Curate's group row: All and your own groups as chips (those that do not fit behind "+N more", never the chosen one), then on
     // the right the automatic groups in two menus, Look and Territory (a chosen one shows in its button: "Look: Warm ×")
     const AUTO_MENUS = [['look', 'Look'], ['terr', 'Territory']];          // then Made with: one panel for everything about how images were made
-    const AUTO_TIPS = { look: 'Automatic groups by look', terr: 'Automatic groups, one per territory with 6+ images', mark: 'Automatic groups: the images made with each of your marks',
-      pos: 'Automatic groups: On target, Loose, Scattered', rot: 'Automatic groups: how far each image\'s mark was turned', size: 'Automatic groups: the size each image\'s mark was made at', src: 'Automatic groups: the images made here and the ones you added' };
+    const AUTO_TIPS = { look: 'By look', terr: 'By territory', mark: 'By mark', pos: 'By position', rot: 'By angle', size: 'By size', src: 'By source' };
     const LOOK_SWATCH = { warm: '#C8743A', cold: '#4C7BD1', mono: '#8A877C', dark: '#1A1A1A', bright: '#F3EFD9' };
     function autoKinds() {
       const { auto } = groupChips();
@@ -1694,13 +1693,13 @@
         b.setAttribute('aria-checked', String(on)); b.disabled = off;
         b.title = off ? 'Nothing moves in these images' : '';
       });
-      document.getElementById('aiShown').textContent = `Rearranges the ${n} image${n === 1 ? '' : 's'} shown. ⌘Z puts them back.`;
+      document.getElementById('aiShown').textContent = `Reorders the ${n} image${n === 1 ? '' : 's'} shown.`;
       const line = document.getElementById('aiLine');
       line.classList.toggle('motion', aiMode === 'motion');
       document.getElementById('aiLineK').textContent = aiMode === 'motion' ? 'Motion' : 'Look';
       document.getElementById('aiLineT').textContent = aiMode === 'motion' ? motionLine()
-        : !moves ? `Motion needs images that differ in place, angle or size. These ${n} share all three: try Path or more angles in the Mark menu.`   // why, in the panel, not only in a tooltip
-        : 'From light to dark, by shape and colour, with an arc from the hook to the landing.';
+        : !moves ? 'Nothing moves in these images. Try Path or a few angles.'   // why, in the panel, not only in a tooltip
+        : 'Light to dark, by shape and colour.';
       document.getElementById('aiDirection').placeholder = aiMode === 'motion' ? 'e.g. slow at the start, spin at the end' : 'e.g. light to dark, then a burst of colour';
       // a path run being ordered with gaps: said here, in Motion, where a gap becomes a jump (Claude Design's PathMissing); it never blocks
       const gap = document.getElementById('aiGap'), shownRuns = new Set(activePlates().filter(p => !p.trashed).map(MADE_BY.run).filter(Boolean));
@@ -1784,7 +1783,7 @@
       const n = activePlates().length, shown = showTrash ? visiblePlates().length : n;   // the images shown: All, the group, or the Trash
       const dl = document.getElementById('downloadBtn');
       dl.disabled = !shown || downloading;
-      dl.title = shown ? `Download the ${shown} image${shown === 1 ? '' : 's'} shown, full size, in their order (a zip)` : 'No images to download';
+      dl.title = shown ? `Download ${shown} image${shown === 1 ? '' : 's'} as zip` : 'No images to download';
       syncAiBtn();
       for (const id of ['playBtn', 'fsPlayBtn', 'miniPlayBtn']) document.getElementById(id).disabled = !n;
       if (!n && isPlaying) togglePlay();                                     // the last image went (trashed, another group): stop
@@ -1792,7 +1791,7 @@
     function syncAiBtn() {                                                   // nothing to order under two images
       const b = document.getElementById('aiBtn'), few = activePlates().length < 2;
       b.disabled = aiRunning || generating || few;
-      b.title = few ? 'AI re-order needs at least two images' : 'Let the AI rearrange your order (⌘Z puts it back)';
+      b.title = few ? 'AI re-order needs at least two images' : 'Reorder with AI';
     }
     // the images shown in Curate (All or the chosen group, in their order), full size, in one zip; the browser saves it
     let downloading = false;
@@ -1880,7 +1879,7 @@
     }
     function showBusy(msg) { document.getElementById('busyMsg').textContent = msg; document.getElementById('busy').hidden = false; }
     function hideBusy() { document.getElementById('busy').hidden = true; }
-    const KEEPS_LEARNING = 'The images are removed from disk for good. Your keep/trash history stays, so suggestions keep learning from them.';
+    const KEEPS_LEARNING = 'Your choices still guide new images.';
     async function purge(payload, title, body, yesLabel) {
       if (blockedByAi()) return;
       if (exporting) { setStatus('Wait until the export ends: it reads the images as it goes.'); return; }   // emptied mid-export, the film failed partway
@@ -2001,7 +2000,7 @@
           </div>
           <div class="card-title" title="${escapeHtml(p.title)}"><span class="ct-text">${escapeHtml(p.title)}</span>${made ? `<span class="ct-frame" title="${escapeHtml(made.tip)}">${made.frame}</span>` : ''}</div>
           <div class="card-meta">
-            <span class="card-model${p.uploaded ? ' uploaded" title="One of your own images: it is not checked for the mark' : ''}">${p.uploaded ? 'Uploaded' : escapeHtml(formatModelShort(p.model))}</span>${made ? `<span class="card-made" title="${escapeHtml(made.tip)}">${made.frame}${made.vals ? `<span class="cm-vals">${escapeHtml(made.vals)}</span>` : ''}${p.as_designed ? '<span class="cm-designed" aria-label="Exact mark" title="Exact mark"><i></i></span>' : ''}</span>` : ''}
+            <span class="card-model${p.uploaded ? ' uploaded" title="Uploaded · not checked' : ''}">${p.uploaded ? 'Uploaded' : escapeHtml(formatModelShort(p.model))}</span>${made ? `<span class="card-made" title="${escapeHtml(made.tip)}">${made.frame}${made.vals ? `<span class="cm-vals">${escapeHtml(made.vals)}</span>` : ''}${p.as_designed ? '<span class="cm-designed" aria-label="Exact mark" title="Exact mark"><i></i></span>' : ''}</span>` : ''}
           </div>
         </div>`;
     }
@@ -4068,13 +4067,13 @@
         say = 'Choose a territory';
       } else if (v === '__custom__') {
         input.placeholder = 'what is it? e.g. fog, clouds, rain, lightning, or paste a whole brief';
-        say = 'Describe your own: a few words or a whole brief. It becomes a territory that keeps your words as written: every batch of it follows them.';
+        say = 'Describe a territory in your own words.';
       } else if (v === '__sampler__') {
         input.placeholder = 'e.g. dark, daylight, rain (every territory follows it)';   // a light, mood or weather works anywhere; a subject would fight most territories
-        say = 'Sampler: one image from each of as many territories as images, the ones you have tried least first.';
+        say = 'One image from each of several territories.';
       } else if (v === '__wildcard__') {
         input.placeholder = 'a hint for Kimi, if you like';
-        say = 'Surprise me: Kimi invents a territory we don\'t cover yet.';
+        say = 'Kimi invents a new territory.';
       } else {
         const opt = sel.selectedOptions[0];
         const eg = opt && opt.dataset.examples;                                   // the territory's own subjects: what typed here changes
@@ -4898,7 +4897,7 @@
           const v = await (await fetch('/api/version', { cache: 'no-store' })).json();
           const sig = v.boot + ':' + v.html;
           if (seen && sig !== seen) {
-            if (isBusy()) setStatus('The server restarted. Your running job continues; the page will reload when it ends.');
+            if (isBusy()) setStatus('Server restarted. The page reloads when the job ends.');
             else location.reload();
           }
           if (seen === null || !isBusy()) seen = sig;   // while busy keep the old signature so the reload still happens afterwards

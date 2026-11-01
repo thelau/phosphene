@@ -626,17 +626,17 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
 test('Download in Curate: the images shown (All, the group or the Trash), in their order, as one zip', { skip }, async () => {
   const ctx = await fresh({ width: 1512, height: 945 });
   assert.equal(await page.locator('#downloadBtn').isVisible(), true);
-  assert.match(await page.locator('#downloadBtn').getAttribute('title'), /Download the 3 images shown/);
+  assert.match(await page.locator('#downloadBtn').getAttribute('title'), /Download 3 images as zip/);
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#downloadBtn')]);
   assert.equal(dl.suggestedFilename(), 'x.zip', 'the browser saves it');
   assert.deepEqual(api.state.zipAsked, { files: ['k1', 'k2', 'k3'], label: 'All' });
   await page.click('#auto-look'); await page.click('#groupMenu .gm-item[data-key="look:warm"]');
-  await page.waitForFunction(() => /Download the 2 images/.test(document.getElementById('downloadBtn').title));
+  await page.waitForFunction(() => /Download 2 images/.test(document.getElementById('downloadBtn').title));
   await Promise.all([page.waitForEvent('download'), page.click('#downloadBtn')]);
   assert.deepEqual(api.state.zipAsked, { files: ['k2', 'k3'], label: 'Warm' }, 'just the group, named after it');
   await page.click('#tabTrash');
   await page.waitForSelector('#trashBar:not([hidden])');
-  await page.waitForFunction(() => /Download the 4 images/.test(document.getElementById('downloadBtn').title));
+  await page.waitForFunction(() => /Download 4 images/.test(document.getElementById('downloadBtn').title));
   await Promise.all([page.waitForEvent('download'), page.click('#downloadBtn')]);
   assert.equal(api.state.zipAsked.label, 'Trash', 'the Trash too, named so');
   assert.equal(api.state.zipAsked.files.length, 4);
@@ -1424,7 +1424,7 @@ test('several marks: added in Project settings, then the generation row offers w
   const heads = () => page.locator('#placeMenu .mm-grid:not(.mm-countrow) > .mm-label > span:first-child').allTextContents();   // the choices (the count's row apart)
   assert.deepEqual(await heads(), ['Position'], 'no Mark row with one mark; Angle and Size wait under More');
   assert.match(await text('#placeMenu .mm-morebtn'), /More: angle and size\s*Upright · its own size/);
-  assert.match(await text('#placeMenu .mm-sharet'), /^All the same/);
+  assert.match(await text('#placeMenu .mm-sharet'), /^Same mark, place/);
   await page.click('#placeMenu .mm-morebtn');
   assert.deepEqual(await heads(), ['Position', 'Angle', 'Size']);
   assert.equal(await page.locator('#placeMenu [data-list="angle"]').count(), 8, 'eight angles in one strip');
@@ -2154,7 +2154,7 @@ test('Delete project…: asked first (Cancel keeps it), then the project goes an
   await page.locator('#projectMenu .gm-item', { hasText: 'Delete project…' }).click();
   assert.equal(await page.locator('#confirmModal').isVisible(), true);
   assert.match(await text('#confirmTitle'), /^Delete Demo\?$/);
-  assert.match(await text('#confirmBody'), /^Its 7 images, groups and snapshots go to the Trash/, 'every image it has, the Trash\'s too');
+  assert.match(await text('#confirmBody'), /^The project and its 7 images move to the Trash/, 'every image it has, the Trash\'s too');
   await page.locator('#confirmModal button', { hasText: 'Cancel' }).click();
   assert.equal(api.state.deleted, undefined, 'Cancel deletes nothing');
   await page.click('#projectBtn');

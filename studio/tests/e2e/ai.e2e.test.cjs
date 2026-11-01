@@ -119,7 +119,7 @@ test('AI order: Look or Motion; Motion only when the marks move, turn or change 
   await page.click('#aiBtn');
   assert.equal(await page.locator('#aiPanel .ai-mode button[data-mode="motion"]').isDisabled(), true, 'all on target: nothing to move');
   assert.equal(await page.locator('#aiPanel .ai-mode button[data-mode="look"]').getAttribute('aria-checked'), 'true');
-  assert.match(await text('#aiLine'), /Motion needs images that differ in place, angle or size/, 'why, in the panel');
+  assert.match(await text('#aiLine'), /Nothing moves in these images/, 'why, in the panel');
   await ctx.close();
   ctx = await fresh({ setup: st => { st.plates[1].placement = { kind: 'exact', x: 50, y: 50, size: 18, rot: 90 }; st.plates[1].box = { x: 50, y: 50, size: 18, ar: 1, rot: 90 }; } });
   await page.click('#aiBtn');

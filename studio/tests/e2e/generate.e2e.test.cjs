@@ -149,7 +149,7 @@ test('Path: Steps decide how many; a run left with gaps says so after its batch,
   assert.equal(await page.locator('#placeMenu [data-list="psteps"]').count(), 5, 'Steps: 8 · 12 · 16 · 24 · 32');
   await page.click('#placeMenu [data-list="psteps"][data-v="8"]');
   assert.equal(await summary(), '8 steps · Path → 40%', 'the Mark button says the steps');
-  assert.match(await text('#placeMenu .mm-countrow'), /^Images\s*8 steps\s*one per step · set by Steps above$/i, 'with a Path: a read-out of the steps');
+  assert.match(await text('#placeMenu .mm-countrow'), /^Images\s*8 steps\s*set by Steps$/i, 'with a Path: a read-out of the steps');
   assert.match(await text('#placeMenu .mm-sharet'), /^The mark travels across through its target/);
   assert.equal(await page.locator('#placeMenu .mm-sharet #countField').count(), 0, 'with a Path the count is the steps, set in its panel');
   assert.equal(await page.locator('#placeMenu .mm-path circle').count(), 8, 'the frame draws a dot a step, the last in orange');
@@ -220,7 +220,7 @@ test('a server restart during a batch does not reload the page underneath it', {
   await page.waitForSelector('#statusText .slot.run');
   for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/version'); i++) await page.waitForTimeout(100);     // the page has recorded the server it started with
   api.state.boot = 'restarted';                                                       // the dev runner restarted the server
-  await page.waitForFunction(() => /The server restarted/.test(document.getElementById('toast').textContent), null, { timeout: 6000 });
+  await page.waitForFunction(() => /Server restarted/.test(document.getElementById('toast').textContent), null, { timeout: 6000 });
   assert.equal(await page.evaluate(() => window.__marker), 'still here');             // no reload happened
   await page.waitForFunction(() => /Done · 2 added/.test(document.getElementById('statusText').textContent), null, { timeout: 20000 });
   await page.waitForFunction(() => window.__marker === undefined, null, { timeout: 8000 });     // the reload happens afterwards, once idle
@@ -245,7 +245,7 @@ test('closing or reloading the page during a batch asks first (and not when idle
 test('the count: any number from 1 to 40, a value field in the Mark menu; the Mark button says it; it sends the number chosen and is remembered', { skip }, async () => {
   const ctx = await fresh({ delays: { invent: 50, generate: 20 } });
   await page.click('#placeBtn');                                                 // the count: in the Mark menu's share box
-  assert.equal(await text('#placeMenu .mm-sharet'), 'All the same: same mark, place, angle and size');
+  assert.equal(await text('#placeMenu .mm-sharet'), 'Same mark, place, angle and size');
   assert.equal(await page.locator('#placeMenu .mm-countrow #countField').count(), 1, 'how many: its own row at the top of the share box, one value field');
   assert.equal(await page.locator('#placeMenu .mm-countrow #countField svg').isVisible(), true, 'with its ⌃⌄, as the Film\'s Tempo (no − and +)');
   await page.dblclick('#countField');                                          // double-click to type: the number fits its box

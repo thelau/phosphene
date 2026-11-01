@@ -751,7 +751,7 @@ test('deleting selected asks first, and cancelling deletes nothing', async () =>
   assert.equal(h.$('confirmModal').classList.contains('open'), true);
   assert.match(h.$('confirmTitle').textContent, /Delete 2 images permanently\?/);
   assert.match(h.$('confirmBody').textContent, /can't be undone/);
-  assert.match(h.$('confirmBody').textContent, /keep\/trash history stays/);
+  assert.match(h.$('confirmBody').textContent, /Your choices still guide new images/);
   assert.equal(h.$('confirmYes').textContent, 'Delete 2');
   h.run('confirmAnswer(false)');
   await p;
@@ -2057,7 +2057,7 @@ test('New project needs the Kimi key: without it Settings opens on the key, not 
   await settle(); await settle();
   h.run("openProjectForm('new')");
   assert.equal(h.$('settingsPopover').classList.contains('open'), true);
-  assert.match(h.$('toast').textContent, /Add your Kimi API key to create a project/);
+  assert.match(h.$('toast').textContent, /Add your Kimi key in Settings to create a project/);
   assert.equal(h.$('projectModal').classList.contains('open'), false, 'the form stays closed');
 });
 
@@ -2713,7 +2713,7 @@ test('AI order: Motion says what it will do with the images shown (their path, a
   assert.equal(h.$('aiLineK').textContent, 'Motion');
   assert.equal(h.$('aiLineT').textContent, 'A path of 3 steps, top to bottom · 2 angles. The order follows the mark along the path and turning.');
   assert.match(h.$('aiDirection').placeholder, /spin at the end/);
-  assert.equal(h.$('aiShown').textContent, 'Rearranges the 4 images shown. ⌘Z puts them back.');
+  assert.equal(h.$('aiShown').textContent, 'Reorders the 4 images shown.');
   const r2 = baseRoutes();
   r2['/api/state'] = { plates: [mkPlate('a.jpg'), mkPlate('b.jpg'), { ...mkPlate('u.jpg'), uploaded: true }] };
   const h2 = load({ routes: r2 });
@@ -2721,5 +2721,5 @@ test('AI order: Motion says what it will do with the images shown (their path, a
   h2.$('aiPanel').hidden = true; h2.run('toggleAiPanel()');
   h2.run("setAiMode('motion')");
   assert.equal(h2.$('aiLineK').textContent, 'Look', 'nothing moves: Motion stays off');
-  assert.match(h2.$('aiLineT').textContent, /^Motion needs images that differ in place, angle or size\. These 3 share all three/);
+  assert.match(h2.$('aiLineT').textContent, /^Nothing moves in these images/);
 });
