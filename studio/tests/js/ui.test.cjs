@@ -2199,7 +2199,7 @@ test('Space in Curate plays and opens the floating preview if it was closed (so 
   assert.equal(h.run('isPlaying'), true);
 });
 
-test('the image viewer: a double-click opens what the grid shows, the arrows go round, Esc closes; the keys act on nothing behind it', async () => {
+test('the image viewer: a double-click opens what the grid shows, the arrows stop at the ends, Esc closes; the keys act on nothing behind it', async () => {
   const h = await playerWith();
   h.run("setMode('curate')");
   const n = h.run('visiblePlates().length');
@@ -2209,7 +2209,9 @@ test('the image viewer: a double-click opens what the grid shows, the arrows go 
   assert.equal(h.$('viewerCount').textContent, `2 / ${n}`);
   const key = k => h.ctx.onKey({ key: k, target: { tagName: 'BODY' }, preventDefault() {} });
   key('ArrowLeft'); key('ArrowLeft');
-  assert.equal(h.$('viewerCount').textContent, `${n} / ${n}`, 'round from the first to the last');
+  assert.equal(h.$('viewerCount').textContent, `1 / ${n}`, 'the first: ← stops there (it went round to the last, which read as a jump)');
+  for (let i = 0; i < n + 2; i++) key('ArrowRight');
+  assert.equal(h.$('viewerCount').textContent, `${n} / ${n}`, 'the last: → stops there');
   key('t'); key('Tab');
   assert.equal(h.run('mode'), 'curate', 'nothing behind the viewer moves');
   key('Escape');

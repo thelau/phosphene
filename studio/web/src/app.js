@@ -167,6 +167,7 @@
       refreshIdle();
       renderView();
       renderFilmstrip();
+      if (document.getElementById('viewer').hidden === false) showViewer();                                        // an open viewer keeps its image, or takes its place's if it left
       applyLocks();                                                          // nothing to export or trash when there are no images
       restartLoop();
       if (!isPlaying) drawFrame();
@@ -2230,21 +2231,31 @@
     })();
     // the image viewer: a double-click on a card shows it as large as the window allows, ← → the next ones of what the grid shows
     // (the group, or the Trash), Esc, Space or a click closes it. Nothing else in it: trashing stays on the cards
-    let viewerAt = -1;
+    // the viewer follows an image, not a place in the list (the user, 2026-11-02: ← went "to the first one or some unclear picture" when
+    // the list changed under it, a new image or a refresh); ← → stop at the ends; the small picture shows at once, the full one replaces it
+    let viewerAt = -1, viewerFile = null, viewerShown = null;
     const viewerOpen = () => document.getElementById('viewer').hidden === false;
     function openViewer(e, filename) {
       if (e && e.target && e.target.closest && e.target.closest('button, .prompt-overlay')) return;   // a double-click on a card's own buttons
       viewerAt = visiblePlates().findIndex(p => p.filename === filename);
       if (viewerAt < 0) return;
+      viewerFile = filename; viewerShown = null;
       document.getElementById('viewer').hidden = false;
       showViewer();
     }
     function showViewer() {
       const list = visiblePlates();
       if (!list.length) { closeViewer(); return; }
-      viewerAt = (viewerAt + list.length) % list.length;
+      const at = list.findIndex(x => x.filename === viewerFile);             // gone (trashed elsewhere): the one now in its place
+      viewerAt = at >= 0 ? at : Math.min(Math.max(viewerAt, 0), list.length - 1);
       const p = list[viewerAt];
-      document.getElementById('viewerImg').src = p.url;
+      viewerFile = p.filename;
+      if (viewerShown !== p.filename) {                                       // a new image: its small picture at once, the full one when loaded
+        viewerShown = p.filename;
+        const img = document.getElementById('viewerImg');
+        img.src = p.thumb || p.url;
+        if (p.thumb && window.Image) { const full = new Image(); full.onload = () => { if (viewerShown === p.filename) img.src = p.url; }; full.src = p.url; }
+      }
       document.getElementById('viewerFrame').setAttribute('style', thumbStyle(p));   // the mark target (T) and the mark (M) as on its card
       document.getElementById('viewerGhost').hidden = !markImg(p);
       document.getElementById('viewerTitle').textContent = p.title || '';
@@ -2262,10 +2273,22 @@
       document.getElementById('viewerRestoreBtn').hidden = !p.trashed;
       const info = document.getElementById('viewerInfo');
       if (!info.hidden) info.innerHTML = promptInfoHtml(p) + `<button type="button" class="po-copy" onclick="copyPromptText(event, '${p.filename}')">Copy prompt</button>`;
-      for (const d of [1, -1]) { const q = list[(viewerAt + d + list.length) % list.length]; if (q && window.Image) new Image().src = q.url; }   // the next ones ready
+      for (const d of [1, -1]) { const q = list[viewerAt + d]; if (q && window.Image) new Image().src = q.url; }   // the next ones ready
     }
-    function viewerStep(d) { viewerAt += d; showViewer(); }
-    function closeViewer() { document.getElementById('viewer').hidden = true; viewerAt = -1; }
+    function viewerStep(d) {
+      const list = visiblePlates(), i = list.findIndex(x => x.filename === viewerFile), j = i + d;
+      if (i < 0 || j < 0 || j >= list.length) return;                        // the ends: no wrapping round
+      viewerFile = list[j].filename;
+      showViewer();
+    }
+    function closeViewer() { document.getElementById('viewer').hidden = true; viewerAt = -1; viewerFile = viewerShown = null; }
+    // after an image leaves the viewer's list (Trash, Restore): the next one, or the previous at the end; none left, the grid
+    function viewerAfterLeaving(list, filename) {
+      const i = list.findIndex(x => x.filename === filename), next = list[i + 1] || list[i - 1];
+      if (!next) { closeViewer(); return; }
+      viewerFile = next.filename;
+      if (viewerOpen()) showViewer();
+    }
     // the card's Info and Trash in the viewer (the user's ask: check or delete while looking); Info stays open from image to image
     function toggleViewerInfo() {
       const info = document.getElementById('viewerInfo');
@@ -2274,22 +2297,22 @@
       showViewer();
     }
     async function viewerTrash() {
-      const p = visiblePlates()[viewerAt];
+      const list = visiblePlates(), p = list.find(x => x.filename === viewerFile);
       if (!p || p.trashed) return;
       await setTrash({ stopPropagation() {} }, p.filename, true);           // the same as the card's: one undo step, the toast
-      if (viewerOpen()) showViewer();                                       // the next image takes its place
+      viewerAfterLeaving(list, p.filename);                                 // the next, or the previous at the end
     }
     async function viewerSkip() {
-      const p = visiblePlates()[viewerAt];
+      const p = visiblePlates().find(x => x.filename === viewerFile);
       if (!p || p.trashed) return;
       await setSkip([p.filename], !skipSet().has(p.filename));
       if (viewerOpen()) showViewer();                                       // it stays: a skipped image keeps its place
     }
     async function viewerRestore() {
-      const p = visiblePlates()[viewerAt];
+      const list = visiblePlates(), p = list.find(x => x.filename === viewerFile);
       if (!p || !p.trashed) return;
       await setTrash({ stopPropagation() {} }, p.filename, false);          // the same as the card's Restore: one undo step
-      if (viewerOpen()) showViewer();                                       // the next image of the Trash takes its place
+      viewerAfterLeaving(list, p.filename);                                 // the next of the Trash, or the previous at the end
     }
     // the floating film preview in Curate: the same stage, moved here, so there is one player and one sound
     let miniOpen = true;

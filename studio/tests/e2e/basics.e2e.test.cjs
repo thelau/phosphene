@@ -1192,7 +1192,7 @@ test('Curate: thumbnail sizes, trash from the grid with Undo, restore picked ima
   await page.keyboard.press('t'); await shot('20b-viewer-info-target'); await page.keyboard.press('t');
   const shownNowT = await text('#viewerTitle'), shownNow = api.state.plates.find(x => x.title === shownNowT);
   assert.ok((await text('#viewerInfo')).includes((shownNow.prompt || shownNow.title).slice(0, 20)), 'its prompt');
-  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowLeft');                                         // the last one: back (the ends do not wrap)
   const nextNowT = await text('#viewerTitle'), nextNow = api.state.plates.find(x => x.title === nextNowT);
   assert.notEqual(nextNow.filename, shownNow.filename);
   const before = await text('#viewerCount');
@@ -1885,6 +1885,44 @@ test('Show missing frames: a switch that never moves, on by default; ghosts in t
   assert.deepEqual([Math.round((await sw.boundingBox()).width), Math.round((await sw.boundingBox()).x)], [Math.round(w), Math.round(x)], 'it never moves');
   await page.reload(); await page.waitForSelector('.card', { state: 'attached' });
   assert.equal(await page.locator('#gapsSw').getAttribute('aria-checked'), 'false', 'remembered for the project');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
+test('the viewer follows its image: ← → go to its real neighbours even when the list changes, stop at the ends; Trash shows the next, the previous at the end, and closes on the empty grid', { skip }, async () => {
+  const ctx = await fresh();
+  const title = () => text('#viewerTitle');
+  await page.locator('.card[data-filename="k2"] .card-thumb').dblclick();
+  await page.waitForSelector('#viewer:not([hidden])');
+  assert.equal(await title(), 'Plate k2');
+  // a new image arrives at the front while the viewer is open: it keeps its image, and ← goes to its true previous
+  api.state.plates.push({ ...api.state.plates[0], filename: 'k0', title: 'Plate k0', url: '/assets/ai-plates/k0.svg' });
+  api.state.sequences[0].order.unshift('k0');
+  await page.evaluate(() => refreshLibrary());
+  await page.waitForFunction(() => /\/ 4/.test(document.getElementById('viewerCount').textContent));
+  assert.deepEqual([await title(), await text('#viewerCount')], ['Plate k2', '3 / 4'], 'the same image, its new place');
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await title(), 'Plate k1', 'its real previous, not what sits at its old place');
+  await page.keyboard.press('ArrowLeft'); await page.keyboard.press('ArrowLeft');
+  assert.equal(await title(), 'Plate k0', 'the first');
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await title(), 'Plate k0', 'no wrapping round to the last');
+  for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowRight');
+  assert.equal(await title(), 'Plate k3', 'the last; → stops there');
+  // Trash: in the middle the next takes its place; at the end, the previous; the last one gone, the grid
+  await page.keyboard.press('ArrowLeft'); await page.keyboard.press('ArrowLeft');   // k1
+  await page.click('#viewerTrashBtn');
+  await page.waitForFunction(() => document.getElementById('viewerTitle').textContent === 'Plate k2');
+  assert.equal(await text('#viewerCount'), '2 / 3', 'the next one');
+  await page.keyboard.press('ArrowRight');                                          // k3, the last
+  await page.click('#viewerTrashBtn');
+  await page.waitForFunction(() => document.getElementById('viewerTitle').textContent === 'Plate k2');
+  assert.equal(await text('#viewerCount'), '2 / 2', 'at the end: the previous one');
+  await page.click('#viewerTrashBtn');
+  await page.waitForFunction(() => document.getElementById('viewerTitle').textContent === 'Plate k0');
+  await page.click('#viewerTrashBtn');
+  await page.waitForSelector('#viewer[hidden]', { state: 'attached' });
+  assert.equal(await page.locator('#gridEmpty').isVisible(), true, 'none left: the viewer closes on the empty grid');
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
