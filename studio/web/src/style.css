@@ -834,7 +834,7 @@
     .chip-overflow[hidden] { display: none; }
     .auto-menus { flex: none; display: flex; align-items: center; gap: 6px; }
     .auto-label, .group-label { flex: none; align-self: center; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #6F6B5F; margin: 0 2px 0 10px; }   /* the kinds apart by a quiet label, not a line (Claude Design) */
-    .group-all { flex: none; display: flex; }
+    .group-all { flex: none; display: flex; gap: 6px; }   /* All, and New beside it (the gap the other chips have) */
     .group-sep { display: none; }
     .group-sep[hidden], .group-label[hidden], .auto-menus:empty { display: none; }
     .auto-btn { display: inline-flex; align-items: center; height: 30px; box-sizing: border-box; border-radius: 7px; border: 1px solid #34312C; }

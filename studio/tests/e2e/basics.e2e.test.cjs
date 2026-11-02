@@ -1936,6 +1936,8 @@ test('New: the images that arrived since the page opened, as a chip after All (o
   await page.waitForSelector('#groupAll .chip[data-key="new"]');
   assert.equal((await page.locator('#groupAll .chip[data-key="new"]').innerText()).replace(/\s+/g, ' '), 'New 1');
   assert.deepEqual(await page.locator('#groupAll .chip').evaluateAll(e => e.map(x => x.dataset.key)), ['all', 'new'], 'right after All');
+  const gap = await page.locator('#groupAll .chip').evaluateAll(e => e[1].getBoundingClientRect().left - e[0].getBoundingClientRect().right);
+  assert.equal(Math.round(gap), 6, 'apart, as the other chips (they touched)');
   await page.click('#groupAll .chip[data-key="new"]');
   assert.deepEqual(await page.locator('#grid .card[data-filename]').evaluateAll(e => e.map(x => x.dataset.filename)), ['k9'], 'only the new ones');
   await page.locator('.card[data-filename="k9"] .card-thumb').dblclick();
