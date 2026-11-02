@@ -254,8 +254,8 @@
           <i class="group-sep" id="ownSep"></i>
           <span class="group-label" id="ownLabel" hidden></span>
           <div class="group-bar" id="groupBar"></div>
-          <button type="button" class="new-only" id="lastBatchBtn" aria-pressed="false" onclick="toggleLastBatch()" title="Only the images of the last batch" hidden>Last batch <span id="lastBatchN"></span></button>
-          <button type="button" class="gaps-sw" id="gapsSw" role="switch" aria-checked="true" onclick="toggleMissingFrames()" title="A ghost where a frame is missing" hidden><span class="ls-track" aria-hidden="true"><i></i></span><span class="ls-label">Show missing frames</span></button>
+          <button type="button" class="gaps-sw" id="lastBatchBtn" role="switch" aria-checked="false" onclick="toggleLastBatch()" title="Only the images of the last batch" hidden><span class="ls-track" aria-hidden="true"><i></i></span><span class="ls-label">Last batch</span><span class="ls-n" id="lastBatchN"></span></button>
+          <button type="button" class="gaps-sw" id="gapsSw" role="switch" aria-checked="true" onclick="toggleMissingFrames()" title="A ghost where a frame is missing" hidden><span class="ls-track" aria-hidden="true"><i></i></span><span class="ls-label">Missing frames</span></button>
         </div>
         <!-- picking floats at the bottom, never over the chips -->
         <div class="pick-bar" id="pickBar" role="toolbar" aria-label="Picked images" hidden>

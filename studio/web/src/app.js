@@ -1396,7 +1396,7 @@
       const nLast = groupPlates().filter(p => lastBatch.has(p.filename)).length, nb = document.getElementById('lastBatchBtn');   // Last batch: the view's own button, at the row's right end
       if (!nLast && lastOnly) lastOnly = false;
       nb.hidden = !nLast || showTrash;
-      nb.setAttribute('aria-pressed', String(lastOnly));
+      nb.setAttribute('aria-checked', String(lastOnly));                   // a switch, as Show missing frames: a view of Curate, not a group
       document.getElementById('lastBatchN').textContent = String(nLast);
       const own = chips.slice(1), smart = own.filter(c => c.smart), manual = own.filter(c => !c.smart);
       bar.innerHTML = (smart.length ? '<span class="group-label">Smart</span>' + smart.map(chip).join('') : '') + (manual.length ? '<span class="group-label">Manual</span>' + manual.map(chip).join('') : '')

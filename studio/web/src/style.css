@@ -711,12 +711,8 @@
     .card:hover .card-new, body.picking .card-new { display: none; }
     .viewer-new { align-self: center; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--orange); color: #1A1A1A; }   /* as on its card */
     .viewer-new[hidden] { display: none; }
-    /* Last batch: a view of the grid, not a group (the Film never sees it): a toggle at the row's right end, beside Show missing frames */
-    .new-only { flex: none; height: 30px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; box-sizing: border-box; border-radius: 8px; border: 1px solid #2E2C28; background: transparent; color: var(--text); font-size: 13px; font-weight: 600; white-space: nowrap; }
-    .new-only[hidden] { display: none; }
-    .new-only span { min-width: 2ch; font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--orange); }
-    .new-only:hover { background: #1E1D1B; }
-    .new-only[aria-pressed="true"] { border-color: var(--orange); background: var(--ticked-bg); }
+    /* Last batch: a view of the grid, not a group (the Film never sees it): the same switch as Show missing frames, with its count */
+    .gaps-sw .ls-n { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--muted); }
     .card-actions { position: absolute; left: 6px; right: 6px; bottom: 6px; display: flex; gap: 4px; opacity: 0; transition: opacity .12s; z-index: 6; }
     .card:hover .card-actions, .card:focus-within .card-actions { opacity: 1; }
     .drag-handle { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: rgba(18, 17, 16, .8); color: var(--text-2); cursor: grab; }

@@ -1844,7 +1844,7 @@ test('Show missing frames: a switch that never moves, on by default; ghosts in t
   const flow = () => page.locator('#grid > *').evaluateAll(e => e.map(x => x.classList.contains('ghost-card') ? `ghost:${x.querySelector('.g-name').textContent}` : x.dataset.filename));
   const sw = page.locator('#gapsSw');
   assert.equal(await sw.getAttribute('aria-checked'), 'true', 'on by default');
-  assert.equal(await sw.textContent(), 'Show missing frames', 'no count');
+  assert.equal(await sw.textContent(), 'Missing frames', 'no count; short, beside Last batch');
   const w = (await sw.boundingBox()).width, x = (await sw.boundingBox()).x;
   assert.ok(w < 230, `it fits its words: ${w}`);
   assert.deepEqual(await flow(), ['f1', 'f2', 'f3', 'ghost:Frame 1 missing', 'f4', 'f5', 'f6']);
@@ -1944,9 +1944,11 @@ test('Last batch: the images of the latest batch, kept across a reload; a view o
   const sent = api.state.calls.filter(c => c.path === '/api/generate-image').map(c => c.body.batch);
   assert.ok(sent[0] && sent[0] === sent[1], 'one id for the batch, sent with each image');
   await page.waitForSelector('#lastBatchBtn:not([hidden])');
-  assert.equal((await page.locator('#lastBatchBtn').innerText()).replace(/\s+/g, ' '), 'Last batch 2');
+  assert.equal((await page.locator('#lastBatchBtn').innerText()).replace(/\s+/g, ' ').trim(), 'Last batch 2');
   assert.equal(await page.locator('#groupAll .chip').count(), 1, 'not a group chip');
+  assert.deepEqual([await page.locator('#lastBatchBtn').getAttribute('role'), await page.locator('#lastBatchBtn .ls-track').count()], ['switch', 1], 'a switch, as Show missing frames (it looked like a group)');
   await page.click('#lastBatchBtn');
+  assert.equal(await page.locator('#lastBatchBtn').getAttribute('aria-checked'), 'true');
   assert.deepEqual(await page.locator('#grid .card[data-filename]').evaluateAll(e => e.map(x => x.dataset.filename)), ['g1', 'g2'], 'only the last batch');
   await page.locator('.card[data-filename="g1"] .card-thumb').dblclick();
   assert.equal(await page.locator('#viewerNew').isVisible(), true, 'the viewer says New, as its card');
@@ -1956,7 +1958,7 @@ test('Last batch: the images of the latest batch, kept across a reload; a view o
   assert.equal(await page.locator('#filmGroup option[value="new"]').count(), 0);
   await page.reload(); await page.waitForSelector('.card', { state: 'attached' });
   await curate();
-  assert.equal((await page.locator('#lastBatchBtn').innerText()).replace(/\s+/g, ' '), 'Last batch 2', 'after a reload, still there (New was not)');
+  assert.equal((await page.locator('#lastBatchBtn').innerText()).replace(/\s+/g, ' ').trim(), 'Last batch 2', 'after a reload, still there (New was not)');
   assert.equal(await page.locator('.card-new').count(), 0, 'the cards\' New is for this visit');
   await page.click('#lastBatchBtn');
   assert.equal(await page.locator('#grid .card[data-filename]').count(), 2);
