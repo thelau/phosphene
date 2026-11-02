@@ -1432,6 +1432,7 @@
       const sw = document.getElementById('gapsSw');                           // Show missing frames: only in a frames project, at the row's right end
       sw.hidden = !framesOn() || showTrash;
       sw.setAttribute('aria-checked', String(showMissing));
+      if (!sw.hidden) document.getElementById('gapsN').textContent = String(groupGaps().length);   // how many gaps the group shown has, as Last batch says its count
     }
     // ---- the Made with panel (Claude Design's GroupsMade): rows Mark, Position, Angle, Size, Source, each value a chip with its count
     // (the images matching it together with the other rows' ticks); ticks in a row widen (or), rows narrow (and); the grid filters live.

@@ -1844,7 +1844,7 @@ test('Show missing frames: a switch that never moves, on by default; ghosts in t
   const flow = () => page.locator('#grid > *').evaluateAll(e => e.map(x => x.classList.contains('ghost-card') ? `ghost:${x.querySelector('.g-name').textContent}` : x.dataset.filename));
   const sw = page.locator('#gapsSw');
   assert.equal(await sw.getAttribute('aria-checked'), 'true', 'on by default');
-  assert.equal(await sw.textContent(), 'Missing frames', 'no count; short, beside Last batch');
+  assert.equal(await sw.textContent(), 'Missing frames1', 'its count: the gaps in the group shown (one Frame 1 here), as Last batch says its count');
   const w = (await sw.boundingBox()).width, x = (await sw.boundingBox()).x;
   assert.ok(w < 230, `it fits its words: ${w}`);
   assert.deepEqual(await flow(), ['f1', 'f2', 'f3', 'ghost:Frame 1 missing', 'f4', 'f5', 'f6']);
