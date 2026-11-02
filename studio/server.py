@@ -1689,7 +1689,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 "kimi_model": st.get("kimi_model", "kimi-k3"),
                 "sequences": sequences.public(st, {p["filename"] for p in plates if not p["trashed"]}),
                 "groups": groups.public(st, {p["filename"] for p in plates}),
-                "skips": groups.skips_for(st, {p["filename"] for p in plates}),   # Skip, per group key: the images that still exist
+                "skips": groups.skips_for(st, {p["filename"] for p in plates}),
+                "last_batch": [f for f in ((st.get("last_batch") or {}).get("files") or []) if isinstance(f, str)] if isinstance(st.get("last_batch"), dict) else [],   # Skip, per group key: the images that still exist
                 "edits": edits.public(st),
                 "active_sequence": st.get("active_sequence"),
                 "path_runs": [{k: r[k] for k in ("run", "n", "shape", "dir", "len", "anchor", "at", "world")} for r in path_runs(st).values()],   # each Path run: the page counts its steps
@@ -2313,6 +2314,14 @@ class StudioHandler(SimpleHTTPRequestHandler):
                             st["as_designed"] = sorted(set(st.get("as_designed", [])) | {filename})
                         if title not in st.setdefault("history", []):
                             st["history"].append(title)
+                        batch = str(body.get("batch") or "")[:40]      # the last batch's images (Curate's Last batch, after a reload too)
+                        if re.fullmatch(r"[0-9a-z]{1,40}", batch):
+                            lb = st.get("last_batch") if isinstance(st.get("last_batch"), dict) else {}
+                            if lb.get("id") != batch:
+                                lb = {"id": batch, "files": []}
+                            if filename not in lb["files"]:
+                                lb["files"].append(filename)
+                            st["last_batch"] = lb
 
                         # If Logo QA flags the image, send it to Trash instead of deleting/hiding it!
                         if not qa["qa_passed"]:

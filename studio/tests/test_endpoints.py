@@ -1281,3 +1281,19 @@ def test_skip_per_group_through_the_server_and_in_the_state(live):
     assert [p["filename"] for p in st["plates"]] == names, "nothing moved, nothing trashed"
     live("POST", "/api/groups", {"action": "skip", "key": "all", "files": [names[0]], "skip": False})
     assert live("GET", "/api/state")[1]["skips"] == {"look:dark": [names[1]]}
+
+
+def test_the_last_batch_is_remembered_across_reloads(live):
+    """Curate's Last batch: the images of the latest batch (the page sends its id with each), kept by the server; a Retry of the same
+    batch adds to it, the next batch replaces it; no id (an old page), nothing changes."""
+    names = lambda: [p["filename"] for p in live("GET", "/api/state")[1]["plates"]]
+    live("POST", "/api/generate-image", {"title": "A1", "prompt": "p", "model": "m", "batch": "b1"})
+    live("POST", "/api/generate-image", {"title": "A2", "prompt": "p", "model": "m", "batch": "b1"})
+    first = names()
+    assert live("GET", "/api/state")[1]["last_batch"] == first
+    live("POST", "/api/generate-image", {"title": "B1", "prompt": "p", "model": "m", "batch": "b2"})
+    assert live("GET", "/api/state")[1]["last_batch"] == [n for n in names() if n not in first], "the next batch replaces it"
+    before = live("GET", "/api/state")[1]["last_batch"]
+    live("POST", "/api/generate-image", {"title": "C1", "prompt": "p", "model": "m"})
+    live("POST", "/api/generate-image", {"title": "C2", "prompt": "p", "model": "m", "batch": "../x"})
+    assert live("GET", "/api/state")[1]["last_batch"] == before, "no id, or a strange one: unchanged"

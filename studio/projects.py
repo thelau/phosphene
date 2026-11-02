@@ -792,6 +792,13 @@ def _clean_state(f: Path) -> None:
         st["path_runs"] = runs
     elif "path_runs" in st:
         del st["path_runs"]
+    if "last_batch" in st:                             # the last batch's images: an id, bare file names only
+        lb = st["last_batch"] if isinstance(st["last_batch"], dict) else {}
+        files = [n for n in lb.get("files") or [] if isinstance(n, str) and _bare(n)] if isinstance(lb.get("files"), list) else []
+        if isinstance(lb.get("id"), str) and re.fullmatch(r"[0-9a-z]{1,40}", lb["id"]) and files:
+            st["last_batch"] = {"id": lb["id"], "files": files}
+        else:
+            del st["last_batch"]
     if "skips" in st:                                  # Skip, per group: keys short text, bare file names only
         import groups as _groups
         st["skips"] = {k: [n for n in v if _bare(n)] for k, v in _groups.clean_skips(st["skips"]).items()}

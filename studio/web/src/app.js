@@ -125,6 +125,7 @@
       if (call !== stateCalls) return;                                       // a newer request is on its way: an older answer must not win
       const lengthBefore = activePlates().length;
       skips = data.skips && typeof data.skips === 'object' ? data.skips : {};   // before anything draws: Skip, per group
+      lastBatch = new Set(Array.isArray(data.last_batch) ? data.last_batch : []);
       if (project && (!data.project || data.project.slug !== project.slug)) {   // another window (or a file opened from Finder) changed the project: show that one
         reopen(data.project ? data.project.name : '');
         return;
@@ -1307,13 +1308,17 @@
       run: p => (p.placement && p.placement.path && p.placement.path.run) || null,   // one Path run (Made with › Path lists them)
     };
     // the members of a group key ('all', 'g:<id>', 'look:<tag>', 'world:<name>', 'mark:<id>', 'pos:<kind>', 'src:<kind>'), or null when there is no such group
-    // New: the images that arrived since the page opened (their cards say New), as a group: a fill scatters its images through the grid
-    // (the user, 2026-11-02); its chip shows after All only while there are some
+    // the cards' New: the images that arrived since the page opened
     const isNew = p => !!(seenAtLoad && !seenAtLoad.has(p.filename));
+    // Last batch: the images the latest batch made, kept by the server (a reload keeps it: "New" since the page opened did not, the user,
+    // 2026-11-02). A view of Curate's grid, not a group: the Film, AI order and the export never see it; on, the group's images from that
+    // batch only, in their places, no ghosts
+    let lastBatch = new Set(), lastOnly = false;
+    function toggleLastBatch(on) { lastOnly = on === undefined ? !lastOnly : !!on; pickSel = new Set(); renderGroups(); renderGrid(); }
+    const newBatchId = () => Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
     function groupMembers(key) {
       if (key === 'all') return 'all';
       const shown = plates.filter(p => !p.trashed);
-      if (key === 'new') { const set = new Set(shown.filter(isNew).map(p => p.filename)); return set.size ? set : null; }
       if (key.startsWith('g:')) { const g = groups.find(x => x.id === key.slice(2)); return !g ? null : g.rule ? new Set(shown.filter(madeMatch(g.rule)).map(p => p.filename)) : new Set(g.files); }
       if (key.startsWith('f:')) { const rule = filterRule(key); return rule ? new Set(shown.filter(madeMatch(rule)).map(p => p.filename)) : null; }   // a Made with filter, not saved (empty: none match)
       if (key.startsWith('look:')) { const set = new Set(shown.filter(p => (p.look || []).includes(key.slice(5))).map(p => p.filename)); return set.size ? set : null; }
@@ -1386,9 +1391,13 @@
       const pencil = '<button type="button" class="chip-edit" id="groupMenuBtn" onclick="openMadeWith(event, true)" title="Edit its choices" aria-label="Edit this smart group\'s choices"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L20 8l-4-4L4 16z"></path></svg></button>';
       // a smart group (a saved Made with filter) carries a funnel, and chosen, a pencil that opens its rule; a manual one its ⋯ (rename, delete)
       const chip = c => `<button type="button" class="chip${c.key === currentGroup ? ' on' : ''}${c.own ? ' own' : ''}${c.smart ? ' smart' : ''}" data-key="${escapeHtml(c.key)}" onclick="setGroup(this.dataset.key)">${c.smart ? funnel : ''}${escapeHtml(c.name)} <span>${c.n}</span></button>${c.own && c.key === currentGroup ? (c.smart ? pencil : menu) : ''}`;
-      const nNew = plates.filter(p => !p.trashed && isNew(p)).length;
-      if (currentGroup === 'new' && !nNew) { setGroup('all'); return; }     // none new (a reload): back to All
-      document.getElementById('groupAll').innerHTML = chip(chips[0]) + (nNew ? chip({ key: 'new', name: 'New', n: nNew }).replace('class="chip', 'class="chip chip-new') : '');
+      if (currentGroup === 'new') { setGroup('all'); return; }              // a group key from the first build of New
+      document.getElementById('groupAll').innerHTML = chip(chips[0]);
+      const nLast = groupPlates().filter(p => lastBatch.has(p.filename)).length, nb = document.getElementById('lastBatchBtn');   // Last batch: the view's own button, at the row's right end
+      if (!nLast && lastOnly) lastOnly = false;
+      nb.hidden = !nLast || showTrash;
+      nb.setAttribute('aria-pressed', String(lastOnly));
+      document.getElementById('lastBatchN').textContent = String(nLast);
       const own = chips.slice(1), smart = own.filter(c => c.smart), manual = own.filter(c => !c.smart);
       bar.innerHTML = (smart.length ? '<span class="group-label">Smart</span>' + smart.map(chip).join('') : '') + (manual.length ? '<span class="group-label">Manual</span>' + manual.map(chip).join('') : '')
         + '<button type="button" class="chip chip-overflow" id="moreChip" onclick="openGroupMenu(event, \'more\')" aria-haspopup="menu" hidden></button>';
@@ -1414,7 +1423,7 @@
       // the same choice in Film, as a dropdown above the film strip: your groups, then Look, then Territory
       const fg = document.getElementById('filmGroup');
       const opt = c => `<option value="${escapeHtml(c.key)}">${escapeHtml(c.name)} (${c.n})</option>`;
-      fg.innerHTML = chips.map(opt).join('') + (nNew ? opt({ key: 'new', name: 'New', n: nNew }) : '') + AUTO_MENUS.map(([kind, label]) => (kinds[kind].length ? `<optgroup label="${label}">${kinds[kind].map(opt).join('')}</optgroup>` : '')).join('')
+      fg.innerHTML = chips.map(opt).join('') + AUTO_MENUS.map(([kind, label]) => (kinds[kind].length ? `<optgroup label="${label}">${kinds[kind].map(opt).join('')}</optgroup>` : '')).join('')
         + (rule ? `<optgroup label="Made with"><option value="${escapeHtml(currentGroup)}">${escapeHtml(madeSummary(rule))} (${(groupMembers(currentGroup) || new Set()).size})</option></optgroup>` : '');
       fg.value = currentGroup;
       syncSelects();
@@ -1779,7 +1788,7 @@
       return showTrash
         // newest trashed first; plates trashed before timestamps existed fall back to creation number
         ? plates.filter(p => p.trashed).sort((a, b) => (b.trashed_at || 0) - (a.trashed_at || 0) || num(b) - num(a))
-        : groupPlates();                                                     // the group's images, the skipped ones too (dimmed)
+        : lastOnly ? groupPlates().filter(p => lastBatch.has(p.filename)) : groupPlates();   // the group's images, the skipped ones too (dimmed); Last batch: its ones
     }
 
     // ---- trash: select, delete selected, empty ----
@@ -2046,7 +2055,7 @@
       const visible = visiblePlates();
       if (seenAtLoad === null && plates.length) seenAtLoad = new Set(plates.map(p => p.filename));
       const items = [];
-      const ghosts = !showTrash && framesOn() && showMissing, choices = ghosts ? markChoices() : [];
+      const ghosts = !showTrash && !lastOnly && framesOn() && showMissing, choices = ghosts ? markChoices() : [];
       let g = 0;
       (ghosts ? withGhosts(visible) : visible).forEach(p => {
         if (p.ghost !== undefined) {                                          // a missing frame: no number, not draggable or pickable, never in the Film
@@ -4694,7 +4703,7 @@
             const genRes = await fetch('/api/generate-image', {
               method: 'POST',
               headers: forProject({'Content-Type': 'application/json'}),
-              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, target: item.target || 'exact', placement: item.placement || null, mark: item.mark || null, keep: !!item.keep, model })
+              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, target: item.target || 'exact', placement: item.placement || null, mark: item.mark || null, keep: !!item.keep, model, batch: item.batch || undefined })
             });
             genData = await genRes.json();
           } catch (e) {
@@ -4840,7 +4849,8 @@
         if (!ideas.length) throw stopped || new Error('Prompt generation failed');
         placeSeed = newSeed();
         prog.fillAt = ideas.map(it => (it.gap !== undefined ? `${plan.ids[it.gap]}|${plan.gaps[it.gap].before}` : null));   // each one shows in its gap while made
-        await runBatch(ideas.map(i => ({ ...i, target })), model, (item, filename) => { if (item.gap !== undefined) made.push({ filename, gi: item.gap }); });
+        const batch = newBatchId();
+        await runBatch(ideas.map(i => ({ ...i, target, batch })), model, (item, filename) => { if (item.gap !== undefined) made.push({ filename, gi: item.gap }); });
         await placeFilled(plan, made, ownId);
         if (stopped) {                                                         // the gaps Kimi did not get to stay ghosts: say so, offer the rest
           progStop(`${prog.summary || 'Done'} · ${left} gap${left === 1 ? '' : 's'} left: ${plainError(stopped)}`);
@@ -4898,7 +4908,8 @@
 
         ran = true;
         const target = rowTarget(false);                                         // each image keeps the batch's choices and the place its scene was written for (a Resume too)
-        await runBatch(invData.ideas.map(i => ({ ...i, target })), model);
+        const batch = newBatchId();                                              // its images are the Last batch (a Retry or Resume adds to it)
+        await runBatch(invData.ideas.map(i => ({ ...i, target, batch })), model);
         if (worldChoice === '__custom__' && invData.world) {                     // your territory exists now: the next batch carries on in it
           await loadWorlds();
           const sel = document.getElementById('worldSelect');
@@ -5282,6 +5293,7 @@ Object.assign(window, {
   refreshLibrary,                     // no button since 2026-11-01: the tests reload the library with it
   toggleMarkOverlay,
   toggleMissingFrames,
+  toggleLastBatch,
   skipCard,
   skipPicked,
   ghostOver,

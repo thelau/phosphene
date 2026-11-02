@@ -79,7 +79,7 @@ function start(state = makeState()) {
     switch (url.pathname) {
       case '/api/state': {
         const visible = new Set(state.plates.filter(p => !p.trashed).map(p => p.filename));
-        return send({ state_sig: librarySig(state), skips: state.skips || {}, plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, groups: (state.groups || []).map(g => ({ ...g, files: g.files.filter(f => state.plates.some(p => p.filename === f)) })), edits: state.edits || [], path_runs: state.pathRuns || [], project: projectOf(state), krea_connected: true, kimi_configured: state.kimiConfigured !== false, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3' });
+        return send({ state_sig: librarySig(state), skips: state.skips || {}, last_batch: state.lastBatch ? state.lastBatch.files : [], plates: orderedPlates(state), sequences: state.sequences.map(q => ({ id: q.id, name: q.name, kind: q.kind, count: q.order.filter(n => visible.has(n)).length, summary: q.summary, cut_off: q.cut_off || null, edited: q.kind === 'ai' && JSON.stringify(q.order) !== JSON.stringify(q.original) })), active_sequence: state.active, groups: (state.groups || []).map(g => ({ ...g, files: g.files.filter(f => state.plates.some(p => p.filename === f)) })), edits: state.edits || [], path_runs: state.pathRuns || [], project: projectOf(state), krea_connected: true, kimi_configured: state.kimiConfigured !== false, kimi_key_masked: 'sk-abc••••xyz', kimi_model: 'kimi-k3' });
       }
       case '/api/projects': {    // the projects (projects.py): list, switch, make one (the mark arrives as a PNG data URL), change one
         if (req.method === 'GET') return send({ ok: true, active: state.project, projects: state.projects });
@@ -212,6 +212,7 @@ function start(state = makeState()) {
         state.genAttempts = (state.genAttempts || 0) + 1;
         if (state.failGen && state.failGen(state.genAttempts, body)) return send({ ok: false, error: `Krea 429: too many requests (${body.title})` }, 500);
         const name = `g${++state.genCount}`, qaOut = !!(state.qaFail && state.qaFail(state.genAttempts, body));   // qaFail: the mark check trashes it
+        if (body.batch) { if (!state.lastBatch || state.lastBatch.id !== body.batch) state.lastBatch = { id: body.batch, files: [] }; state.lastBatch.files.push(name); }   // the last batch, as the server keeps it
         for (const q of state.sequences) q.order.push(name);
         state.plates.push({ filename: name, url: `/assets/ai-plates/${name}.svg`, title: body.title, prompt: body.prompt, model: body.model, trashed: qaOut, trash_reason: qaOut ? 'Mark check' : null, qa_passed: true, qa_score: 90, qa_issues: [], world: body.world, mark: body.mark && body.mark !== 'main' ? body.mark : null, placement: body.placement || null, box: body.placement ? { x: body.placement.x, y: body.placement.y, size: body.placement.size, ar: 1, rot: body.placement.rot || 0 } : null });
         return send({ ok: true, qa_passed: !qaOut, trashed: qaOut, qa_issues: qaOut ? ['The mark is not at its place and size'] : [], filename: name, title: body.title });

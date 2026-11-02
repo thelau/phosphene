@@ -1879,6 +1879,13 @@ test('Show missing frames: a switch that never moves, on by default; ghosts in t
   await page.waitForFunction(() => /Done ·/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   await page.waitForFunction(() => [...document.querySelectorAll('#grid .card[data-filename]')].map(e => e.dataset.filename).join() === 'f1,f2,f3,g1,f4,f5,f6', null, { timeout: 8000 });
   assert.equal(await page.locator('.ghost-card').count(), 0, 'filled, in its place');
+  await page.locator('.card[data-filename="f5"]').hover(); await page.locator('.card[data-filename="f5"] .skip-btn').click();   // back in film: a gap again
+  await page.locator('.card[data-filename="f3"]').hover(); await page.locator('.card[data-filename="f3"] .trash-btn').click();
+  await page.waitForSelector('.ghost-card');
+  await page.click('#lastBatchBtn');
+  assert.equal(await page.locator('.ghost-card').count(), 0, 'Last batch shows no ghosts: it is not the film');
+  assert.deepEqual(await page.locator('#grid .card[data-filename]').evaluateAll(e => e.map(x => x.dataset.filename)), ['g1']);
+  await page.click('#lastBatchBtn');
   await sw.click();
   assert.equal(await sw.getAttribute('aria-checked'), 'false');
   assert.equal(await page.locator('.ghost-card').count(), 0, 'off: a normal grid');
@@ -1927,36 +1934,32 @@ test('the viewer follows its image: ← → go to its real neighbours even when 
   await ctx.close();
 });
 
-test('New: the images that arrived since the page opened, as a chip after All (only while there are some); the viewer says New too; a reload starts again', { skip }, async () => {
+test('Last batch: the images of the latest batch, kept across a reload; a view of Curate (a toggle at the row\'s right end), never the Film; the cards and the viewer say New while new', { skip }, async () => {
   const ctx = await fresh();
-  assert.equal(await page.locator('#groupAll .chip').count(), 1, 'nothing new: All only');
-  api.state.plates.push({ ...api.state.plates[0], filename: 'k9', title: 'Plate k9', url: '/assets/ai-plates/k9.svg' });
-  api.state.sequences[0].order.splice(1, 0, 'k9');                                  // landed in a gap, between k1 and k2
-  await page.evaluate(() => refreshLibrary());
-  await page.waitForSelector('#groupAll .chip[data-key="new"]');
-  assert.equal((await page.locator('#groupAll .chip[data-key="new"]').innerText()).replace(/\s+/g, ' '), 'New 1');
-  assert.deepEqual(await page.locator('#groupAll .chip').evaluateAll(e => e.map(x => x.dataset.key)), ['all', 'new'], 'right after All');
-  const gap = await page.locator('#groupAll .chip').evaluateAll(e => e[1].getBoundingClientRect().left - e[0].getBoundingClientRect().right);
-  assert.equal(Math.round(gap), 6, 'apart, as the other chips (they touched)');
-  await page.click('#groupAll .chip[data-key="new"]');
-  assert.deepEqual(await page.locator('#grid .card[data-filename]').evaluateAll(e => e.map(x => x.dataset.filename)), ['k9'], 'only the new ones');
-  await page.locator('.card[data-filename="k9"] .card-thumb').dblclick();
+  assert.equal(await page.locator('#lastBatchBtn').isVisible(), false, 'no batch yet: no button');
+  await page.click('#placeBtn'); await page.dblclick('#countField'); await page.keyboard.press('Meta+a'); await page.keyboard.type('2'); await page.keyboard.press('Enter');
+  await page.evaluate(() => togglePlaceMenu(null, false));
+  await page.click('#generateBtn');
+  await page.waitForFunction(() => /Done · 2 added/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  const sent = api.state.calls.filter(c => c.path === '/api/generate-image').map(c => c.body.batch);
+  assert.ok(sent[0] && sent[0] === sent[1], 'one id for the batch, sent with each image');
+  await page.waitForSelector('#lastBatchBtn:not([hidden])');
+  assert.equal((await page.locator('#lastBatchBtn').innerText()).replace(/\s+/g, ' '), 'Last batch 2');
+  assert.equal(await page.locator('#groupAll .chip').count(), 1, 'not a group chip');
+  await page.click('#lastBatchBtn');
+  assert.deepEqual(await page.locator('#grid .card[data-filename]').evaluateAll(e => e.map(x => x.dataset.filename)), ['g1', 'g2'], 'only the last batch');
+  await page.locator('.card[data-filename="g1"] .card-thumb').dblclick();
   assert.equal(await page.locator('#viewerNew').isVisible(), true, 'the viewer says New, as its card');
   await page.keyboard.press('Escape');
-  await page.click('#groupAll .chip[data-key="all"]');
-  await page.locator('.card[data-filename="k1"] .card-thumb').dblclick();
-  assert.equal(await page.locator('#viewerNew').isVisible(), false, 'not on an image that was here');
-  await page.keyboard.press('ArrowRight');
-  assert.equal(await page.locator('#viewerNew').isVisible(), true, 'k9, next in the order: New');
-  await page.keyboard.press('Escape');
-  await page.click('#groupAll .chip[data-key="new"]');
   await film();
-  assert.equal(await page.locator('#filmstrip button').count(), 1, 'the Film plays them');
-  assert.equal(await page.inputValue('#filmGroup'), 'new', 'and its group list has New');
+  assert.equal(await page.locator('#filmstrip button').count(), 5, 'the Film plays the whole group');
+  assert.equal(await page.locator('#filmGroup option[value="new"]').count(), 0);
   await page.reload(); await page.waitForSelector('.card', { state: 'attached' });
   await curate();
-  assert.equal(await page.locator('#groupAll .chip').count(), 1, 'a reload: nothing is new');
-  assert.equal(await page.locator('#grid .card[data-filename]').count(), 4, 'back on All');
+  assert.equal((await page.locator('#lastBatchBtn').innerText()).replace(/\s+/g, ' '), 'Last batch 2', 'after a reload, still there (New was not)');
+  assert.equal(await page.locator('.card-new').count(), 0, 'the cards\' New is for this visit');
+  await page.click('#lastBatchBtn');
+  assert.equal(await page.locator('#grid .card[data-filename]').count(), 2);
   assert.deepEqual(consoleErrors, []);
   await ctx.close();
 });
