@@ -74,7 +74,7 @@ async function fresh(opts = {}) {
   api.state.delays = { purge: 0, generate: 0, invent: 0, export: 0, ai: 600, ...opts.delays };
   api.state.jobs = [];
   api.state.boot = 'fake'; api.state.failGen = opts.failGen || null; api.state.qaFail = opts.qaFail || null; api.state.genAttempts = 0;
-  api.state.aiFail = opts.aiFail || null;
+  api.state.aiFail = opts.aiFail || null; api.state.inventFail = null;
   api.state.genCount = 0;
   api.state.calls.length = 0;
   const ctx = await env.browser.newContext({ viewport: { width: opts.width || 1500, height: opts.height || 900 } });

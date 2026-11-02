@@ -184,6 +184,7 @@ function start(state = makeState()) {
       }
       case '/api/invent-prompts': {
         await sleep(state.delays.invent);
+        if (state.inventFail) return send({ ok: false, error: state.inventFail }, 500);   // Kimi refusing (out of credits)
         if (body.fill) {                         // Make N: the run's missing steps (the server's run_fill), in the same run
           const r = (state.pathRuns || []).find(x => x.run === body.fill), have = new Set(state.plates.filter(p => !p.trashed && p.placement && p.placement.path && p.placement.path.run === body.fill).map(p => p.placement.path.i));
           const steps = r ? Array.from({ length: r.n }, (_, i) => i).filter(i => !have.has(i)) : [];

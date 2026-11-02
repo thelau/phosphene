@@ -20,7 +20,8 @@
       if (/did not answer/i.test(s)) return 'Phosphene\'s server did not answer: is it still running?';
       if (/timed out|timeout/i.test(s)) return `${it} took too long to answer: try again.`;
       if (/nodename nor servname|name or service not known|network is unreachable|could not be reached|urlopen error|failed to fetch|networkerror|load failed|connection (refused|reset|aborted)|no route to host|name resolution/i.test(s)) return 'No internet connection: check it, then try again.';
-      if (/insufficient.?credits|out of credits/i.test(s)) return 'Krea is out of credits: add some at krea.ai.';
+      if (/insufficient.?credits|out of credits/i.test(s) && who !== 'Kimi') return 'Krea is out of credits: add some at krea.ai.';
+      if (/credit balance|recharge|insufficient.?(balance|credits)|out of credits|exceeded.{0,30}quota|billing/i.test(s) && who === 'Kimi') return 'Kimi is out of credits. Top up, then try again.';   // before the key: its 429 came with another endpoint's refusal (2026-11-02)
       if (/extra data|expecting value|unterminated string|invalid json|not valid json|could not parse/i.test(s)) return 'Kimi\'s answer could not be read: try again.';
       if (/content.?policy|moderation/i.test(s)) return 'Refused by Krea\'s moderation.';
       if (/\b401\b|unauthori[sz]ed|invalid.{0,12}key|incorrect api key/i.test(s)) return who === 'Krea' ? 'Krea needs you to sign in again: Settings › Connect Krea.' : 'Kimi refused the key: check it in Settings.';
@@ -4822,22 +4823,32 @@
         const sets = new Map();
         plan.gaps.forEach((g, i) => { const k = `${g.world}|${g.look}`; if (!sets.has(k)) sets.set(k, []); sets.get(k).push(i); });
         const ideas = [];
+        let stopped = null, left = 0;                                         // Kimi stopping partway: what it wrote is still made
         for (const idx of sets.values()) {
+          if (stopped) { left += idx.length; continue; }
           const g0 = plan.gaps[idx[0]];
+          try {
           const res = await (await fetch('/api/invent-prompts', { method: 'POST', headers: forProject({ 'Content-Type': 'application/json' }), body: JSON.stringify({
             count: idx.length, pair: false, kimi_model: kimiModel, world: g0.world, direction: [refine, LOOK_WORDS[g0.look]].filter(Boolean).join(', '),
             target, mark: markTicks().join(','), rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed, deal: idx.map(i => plan.ids[i]).join(',') }) })).json();
           if (res.needs_kimi_key) { progStop(''); ensureKimiReady(); return; }
           if (!res.ok || !res.ideas) throw new Error(res.error || 'Prompt generation failed');
-          const left = [...idx];                                              // each scene to a gap of its frame, in the gaps' order
-          res.ideas.forEach(it => { const k = left.findIndex(i => plan.ids[i] === (it.mark || 'main')); if (k >= 0) { it.gap = left[k]; left.splice(k, 1); } ideas.push(it); });
+          const open = [...idx];                                              // each scene to a gap of its frame, in the gaps' order
+          res.ideas.forEach(it => { const k = open.findIndex(i => plan.ids[i] === (it.mark || 'main')); if (k >= 0) { it.gap = open[k]; open.splice(k, 1); } ideas.push(it); });
+          } catch (e) { stopped = e; left += idx.length; }
         }
+        if (!ideas.length) throw stopped || new Error('Prompt generation failed');
         placeSeed = newSeed();
         prog.fillAt = ideas.map(it => (it.gap !== undefined ? `${plan.ids[it.gap]}|${plan.gaps[it.gap].before}` : null));   // each one shows in its gap while made
         await runBatch(ideas.map(i => ({ ...i, target })), model, (item, filename) => { if (item.gap !== undefined) made.push({ filename, gi: item.gap }); });
         await placeFilled(plan, made, ownId);
+        if (stopped) {                                                         // the gaps Kimi did not get to stay ghosts: say so, offer the rest
+          progStop(`${prog.summary || 'Done'} · ${left} gap${left === 1 ? '' : 's'} left: ${plainError(stopped)}`);
+          batchActions([...(prog.actions || []), { label: 'Try again', run: () => { batchActions([]); makeFill(fillPlan()); } }]);   // beside any Retry of Krea's failures
+        }
       } catch (e) {
         progStop(plainError(e));
+        batchActions([{ label: 'Try again', run: () => { batchActions([]); makeFill(plan); } }]);   // nothing was made: the same fill again
       } finally {
         prog.fillAt = null;
         setGenerating(false);
@@ -4899,6 +4910,7 @@
         }
       } catch (e) {
         progStop(plainError(e));
+        if (!ran) batchActions([{ label: 'Try again', run: () => { batchActions([]); generateImages(); } }]);   // nothing was made: the same batch again, never a quit
       } finally {
         setGenerating(false);
       }

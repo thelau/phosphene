@@ -344,3 +344,18 @@ test('the status bar: 4 images or 40 share one bar of the same width, and the li
   assert.equal(forty.cut, false, `the line says what is rendering, not "Re…": ${forty.note}`);
   await ctx.close();
 });
+
+
+test('Kimi out of credits: the bar says so and offers Try again, which runs the same batch once topped up (never a quit)', { skip }, async () => {
+  const ctx = await fresh();
+  api.state.inventFail = 'Kimi API call failed (HTTP 429 (kimi-k3 @ api.moonshot.ai): Your credit balance is running low, please recharge immediately) | HTTP 401 (kimi-k2.7-code @ api.moonshot.ai): invalid key';
+  await page.click('#generateBtn');
+  await page.waitForFunction(() => /Kimi is out of credits/.test(document.getElementById('statusText').textContent), null, { timeout: 10000 });
+  assert.equal(await page.locator('#statusText .prog-act').textContent(), 'Try again');
+  assert.equal(await page.locator('#generateBtn').isEnabled(), true, 'nothing stuck: Generate works too');
+  api.state.inventFail = null;                                                       // topped up
+  await page.click('#statusText .prog-act');
+  await page.waitForFunction(() => /Done · \d+ added/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
+  assert.equal(api.state.calls.filter(c => c.path === '/api/invent-prompts').length, 2, 'the same batch, asked again');
+  await ctx.close();
+});

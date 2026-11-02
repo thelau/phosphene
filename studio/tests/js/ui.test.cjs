@@ -2726,13 +2726,13 @@ test('AI order: Motion says what it will do with the images shown (their path, a
 });
 
 // ---- Whole loops and ghosts (Claude Design, 2026-11-01): frames of one animation ----
-function framesPage(seq, extra = {}, more = () => ({})) {
+function framesPage(seq, extra = {}, more = () => ({}), routes = {}) {
   const r = baseRoutes();
   const plates = seq.map((m, i) => ({ ...mkPlate(`f${i + 1}`), ...(m === 'up' ? { uploaded: true } : { mark: m === 'main' ? null : m }), ...more(i) }));
   r['/api/state'] = { plates, project: { slug: 'sphere', name: 'Sphere', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', frames: true, marks: [{ id: 'b', name: 'B', url: '/b' }, { id: 'c', name: 'C', url: '/c' }], ...extra }, krea_connected: true, kimi_configured: true };
   r['/api/invent-prompts'] = body => ({ ok: true, ideas: String(body.deal || 'main').split(',').map((m, i) => ({ title: `${body.world} ${i}`, prompt: 'p', guide: 'dark', world: body.world, mark: m === 'main' ? null : m })) });
   r['/api/generate-image'] = body => ({ ok: true, qa_passed: true, filename: `new-${body.title}`, title: body.title });
-  return load({ routes: r });
+  return load({ routes: { ...r, ...routes } });
 }
 const names = list => JSON.parse(list).map(p => p.ghost !== undefined ? `ghost${p.ghost + 1}` : p.filename);
 
@@ -2846,4 +2846,27 @@ test('frames tick like marks, from their own setting: every frame by default, wh
   await settle(); await settle(); await h2.run('loadState()');
   h2.run("document.getElementById('markSelect').value = 'b'; document.getElementById('framesSelect').value = 'main'");
   assert.deepEqual(JSON.parse(h2.run('JSON.stringify(markTicks())')), ['b'], "not frames: the Mark row's ticks, as before");
+});
+
+
+test('Kimi out of credits is said so, not as a refused key; a batch Kimi could not write offers Try again', async () => {
+  const h = load({ routes: baseRoutes() });
+  await settle(); await settle();
+  const raw = 'Kimi API call failed (HTTP 429 (kimi-k3 @ api.moonshot.ai): {"error":{"message":"Your credit balance is running low for account <org-x>, please recharge immediately"}} | HTTP 401 (kimi-k2.7-code @ api.moonshot.ai): invalid key';
+  assert.equal(h.run(`plainError(${JSON.stringify(raw)})`), 'Kimi is out of credits. Top up, then try again.');
+  assert.equal(h.run(`plainError('Krea: insufficient credits')`), 'Krea is out of credits: add some at krea.ai.', 'Krea\'s own still says Krea');
+  assert.equal(h.run(`plainError('HTTP 401 (kimi-k3 @ api.moonshot.ai): Invalid Authentication')`), 'Kimi refused the key: check it in Settings.', 'a real refusal still says so');
+});
+
+test('Fill the gaps: when Kimi stops partway, what it wrote is made and placed, the rest stay gaps, and Try again is offered', async () => {
+  const worlds = ['Editorial Print', 'Editorial Print', 'Harbor & Signal', 'Harbor & Signal'];
+  let asked = 0;
+  const h = framesPage(['main', 'c', 'main', 'c'], {}, i => ({ world: worlds[i], look: [] }), { '/api/invent-prompts': body => (++asked === 1 ? { ok: true, ideas: [{ title: 'A', prompt: 'p', guide: 'dark', world: body.world, mark: 'b' }] } : { ok: false, error: 'Kimi API call failed (HTTP 429 (kimi-k3 @ api.moonshot.ai): Your credit balance is running low, please recharge)' }) });
+  await settle(); await settle(); await h.run('loadState()'); await h.run('loadWorlds()');
+  const plan = h.run('fillPlan()');
+  await h.run(`makeFill(${JSON.stringify(plan)})`);
+  for (let i = 0; i < 20; i++) await settle();
+  assert.equal(h.calls.filter(c => c.url === '/api/generate-image').length, 1, 'the scene Kimi wrote is made');
+  assert.match(h.run('prog.summary'), /1 gap left: Kimi is out of credits/);
+  assert.ok(h.run('prog.actions.map(a => a.label)').includes('Try again'));
 });
