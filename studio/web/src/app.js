@@ -488,7 +488,7 @@
       const ang = st.rots.length > 1 ? (path ? 'spin' : `${st.rots.length} angles`) : st.rots[0] ? rotLabel(st.rots[0]) : '';
       const siz = st.sizeOff ? '' : st.zs.length > 1 ? (path ? 'pulse' : `${st.zs.length} sizes`) : st.zs[0] !== 1 ? sizeLabel(st.zs[0]) : '';
       const count = path ? `${st.n} steps` : `${st.n} image${st.n === 1 ? '' : 's'}`;   // how many first (the count lives in the menu; Claude Design's review)
-      const even = !path && fillOn() ? 'Fill the gaps' : '';               // "37 images · Fill the gaps · On target"
+      const even = !path && fillOn() ? (currentGroup === 'all' ? 'Fill the gaps' : `Fill the gaps in ${groupLabel()}`) : '';   // "6 images · Fill the gaps in Mono · On target"
       return { count, rest: [even, pos, ang, siz].filter(Boolean).join(' · '), text: [count, even, pos, ang, siz].filter(Boolean).join(' · ') };
     }
     function showSummary(st) {
@@ -516,6 +516,7 @@
     function renderPlace() {
       const st = placeState(), m = st.on.length, multi = st.choices.length > 0 && m > 1;
       const summary = showSummary(st);
+      renderTerrBtn();                                                       // Fill the gaps locks the territory
       const gaps = groupGaps().length, dot = document.getElementById('placeDot');   // the group shown misses frames: an amber dot, before opening anything
       dot.hidden = !gaps;
       dot.title = gaps ? `${gaps} missing frame${gaps === 1 ? '' : 's'} · Fill the gaps` : '';
@@ -1615,7 +1616,7 @@
       currentGroup = key;
       try { localStorage.setItem('studioGroup', key); } catch (e) {}
       pickSel = new Set();
-      renderGroups(); renderGrid(); renderFilmstrip(); renderEditBar(); renderSequences();
+      renderGroups(); renderGrid(); renderFilmstrip(); renderEditBar(); renderSequences(); renderPlace();   // the gaps (and Fill the gaps) are the group's
       cutPos = 0; clockPos = null; currentIdx = 0;                           // a new film: from its first image
       if (isPlaying && droneLive.playing) droneLive.restart(synthParams(), synthStartsSec());
       musicChanged();
@@ -4312,7 +4313,7 @@
         say = opt && opt.dataset.prompt ? `${v}, in your words: ${opt.dataset.prompt}` : `${v}: ${(opt && opt.dataset.brief) || ''}`;
       }
       sel.title = say;
-      document.getElementById('terrBtn').title = say;
+      input.dataset.hint = input.placeholder;                                // renderTerrBtn's while filling, this after
       renderGen();
     }
 
@@ -4320,6 +4321,7 @@
     const ICON_WORLD = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EC540C" stroke-width="2"><rect x="7" y="3" width="10" height="18" rx="2"></rect><circle cx="12" cy="12" r="2" fill="#EC540C" stroke="none"></circle></svg>';
     const ICON_PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>';
     const ICON_SAMPLER = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg>';
+    const ICON_LOCK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>';
     const ICON_SPARK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>';
     let refineEditing = false;
     function namedWorlds() { return [...document.getElementById('worldSelect').options].filter(o => o.value && !o.value.startsWith('__')); }
@@ -4332,12 +4334,7 @@
     function renderGen() {
       showCount();
       renderPlace();
-      const v = document.getElementById('worldSelect').value, custom = v === '__custom__';
-      const opt = document.getElementById('worldSelect').selectedOptions[0];
-      const [icon, name] = v === '' ? ['', 'Choose a territory'] : custom ? [ICON_PLUS, 'Describe your own'] : v === '__wildcard__' ? [ICON_SPARK, 'Surprise me'] : v === '__sampler__' ? [ICON_SAMPLER, 'Sampler'] : [ICON_WORLD, v];   // just the name (the counts are in the list)
-      const ic = document.getElementById('terrIcon');
-      if (ic.dataset.v !== v) { ic.innerHTML = icon; ic.dataset.v = v; }
-      document.getElementById('terrName').textContent = name;
+      const filling = renderTerrBtn(), custom = document.getElementById('worldSelect').value === '__custom__' && !filling;   // filling: the field is Refine, whatever it holds
       const input = document.getElementById('directionInput'), text = input.value.trim();
       const r = document.getElementById('refine');
       r.dataset.state = custom || refineEditing ? 'edit' : text ? 'set' : 'empty';
@@ -4356,6 +4353,21 @@
         g.disabled = aiRunning || (custom && !text && !noMark);
         g.title = noMark ? 'This project has no mark yet: add one to generate images around it' : custom && !text ? 'Describe your territory first' : '';   // a tooltip only to say why it is off
       }
+    }
+    // the territory button: the territory chosen, or, while Fill the gaps is ticked, locked ("Mixed, per gap", a lock: the user's words): each gap takes the
+    // territory beside it (the user, 2026-11-02: it ignored the row's territory without saying so)
+    function renderTerrBtn() {
+      const sel = document.getElementById('worldSelect'), v = sel.value, filling = fillOn();
+      const [icon, name] = filling ? [ICON_LOCK, 'Mixed, per gap'] : v === '' ? ['', 'Choose a territory'] : v === '__custom__' ? [ICON_PLUS, 'Describe your own'] : v === '__wildcard__' ? [ICON_SPARK, 'Surprise me'] : v === '__sampler__' ? [ICON_SAMPLER, 'Sampler'] : [ICON_WORLD, v];   // just the name (the counts are in the list)
+      const ic = document.getElementById('terrIcon'), key = filling ? '__filling__' : v, btn = document.getElementById('terrBtn');
+      if (ic.dataset.v !== key) { ic.innerHTML = icon; ic.dataset.v = key; }
+      document.getElementById('terrName').textContent = name;
+      btn.disabled = filling || generating || aiRunning;
+      btn.title = filling ? 'Each new image takes the territory beside its gap' : sel.title;
+      const input = document.getElementById('directionInput');               // Refine stays: what it can do here
+      input.placeholder = filling ? 'every gap follows it, e.g. rain, dusk, daylight' : input.dataset.hint || input.placeholder;
+      if (filling) toggleTerrMenu(null, false);
+      return filling;
     }
     function editRefine() {
       if (generating || aiRunning) return;
@@ -4556,8 +4568,9 @@
       const T = window.__TAURI__;                                            // (not TAURI: declared further down, and this runs early)
       if (T && T.event && isBusy() !== toldBusy) { toldBusy = isBusy(); T.event.emit('page-busy', toldBusy).catch(() => {}); }   // the Mac app asks before quitting mid-job
       const lockGen = generating || aiRunning;
-      ['worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'placeBtn', 'batchCountSelect', 'modelSelect', 'generateBtn', 'terrBtn', 'refineOpen', 'refineSet', 'refineClear'].forEach(id => { document.getElementById(id).disabled = lockGen; });
+      ['worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'placeBtn', 'batchCountSelect', 'modelSelect', 'generateBtn', 'refineOpen', 'refineSet', 'refineClear'].forEach(id => { document.getElementById(id).disabled = lockGen; });
       document.getElementById('countField').setAttribute('aria-disabled', String(!!lockGen));
+      document.getElementById('terrBtn').disabled = lockGen || fillOn();     // Fill the gaps: each gap its own territory (renderTerrBtn)
       genRunningLabel();
       syncAiBtn();
       document.getElementById('exportBtn').disabled = aiRunning || !activePlates().length;
@@ -4826,7 +4839,7 @@
       if (!plan || !plan.gaps.length || blockedByAi()) return;
       if (!ensureKimiReady() || !ensureKreaReady()) return;
       const model = document.getElementById('modelSelect').value, kimiModel = document.getElementById('kimiModelSelect').value;
-      const refine = document.getElementById('worldSelect').value === '__custom__' ? '' : document.getElementById('directionInput').value.trim();
+      const refine = document.getElementById('directionInput').value.trim();     // shown as Refine while filling, Describe's words too
       const ownId = manualGroup() && manualGroup().id, target = rowTarget(true), made = [];
       setGenerating(true);
       progStart(plan.gaps.length);

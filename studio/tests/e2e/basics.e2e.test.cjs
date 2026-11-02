@@ -1722,7 +1722,7 @@ test('frames of one animation: Project settings says so, names Kimi gives alike 
 
 test('animation frames: the FRAMES tiles count the group shown and tick like marks; Fill the gaps makes one image per gap, each lands in its gap, then unticks; never with Path', { skip }, async () => {
   const bar = id => ({ id, name: 'Striped sphere', size: 18, x: 50, y: 50, shape: 'sphere', noun: 'sphere', ratio: 1, url: `/api/project-mark?p=demo&m=${id}` });
-  const ctx = await fresh({ setup: st => { Object.assign(st.projects[0], { frames: true, marks: [bar('n1'), bar('n2')] }); st.plates[1].mark = 'n1'; st.plates[2].mark = 'n1'; } });
+  const ctx = await fresh({ setup: st => { Object.assign(st.projects[0], { frames: true, marks: [bar('n1'), bar('n2')] }); st.plates[1].mark = 'n1'; st.plates[2].mark = 'n1'; st.groups = [{ id: 't2', name: 'test 2', files: ['k2', 'k1'] }]; } });
   await page.evaluate(() => { document.getElementById('markSelect').value = 'main'; });   // a tick saved before frames: every frame is used anyway
   // k1 frame 1, k2 frame 2, k3 frame 2: frames 3 and 1 missing before k3
   assert.equal(await page.locator('#placeDot').isVisible(), true, 'the dot: the group shown misses frames');
@@ -1759,6 +1759,17 @@ test('animation frames: the FRAMES tiles count the group shown and tick like mar
   assert.equal((await page.locator('#placeMenu .mm-sharer').textContent()).trim(), '', 'no sentence');
   assert.deepEqual(await page.locator('#placeMenu .mm-cellf').allTextContents(), ['3', '1'], 'each cell its frame, in the gaps\' order');
   assert.equal(await summary(), '2 images · Fill the gaps · On target');
+  assert.deepEqual([await text('#terrName'), await page.locator('#terrBtn').isDisabled(), await page.locator('#terrBtn').getAttribute('title')],
+    ['Mixed, per gap', true, 'Each new image takes the territory beside its gap'], 'the territory locked: each gap takes its neighbours\'');
+  assert.equal(await page.locator('#terrIcon path').getAttribute('d'), 'M8 11V8a4 4 0 0 1 8 0v3', 'a lock');
+  assert.equal(await page.getAttribute('#directionInput', 'placeholder'), 'every gap follows it, e.g. rain, dusk, daylight', 'Refine says what it does here');
+  await page.evaluate(() => setGroup('g:t2'));                                       // in a group: its own gaps, and the Mark button names it
+  assert.match(await summary(), /^\d+ images? · Fill the gaps in test 2 · On target$/);
+  await page.evaluate(() => setGroup('all'));
+  await page.locator('.mm-even').click();                                           // unticked: the territory as it was
+  assert.notEqual(await page.getAttribute('#directionInput', 'placeholder'), 'every gap follows it, e.g. rain, dusk, daylight');
+  assert.deepEqual([await text('#terrName'), await page.locator('#terrBtn').isDisabled()], ['Editorial Print', false]);
+  await page.locator('.mm-even').click();
   await shot('44-fill-the-gaps');
   await page.click('#placeMenu .mm-seg [data-v="path"]');
   assert.equal(await page.locator('#placeMenu .mm-even').count(), 0, 'never with Path');
@@ -1771,6 +1782,7 @@ test('animation frames: the FRAMES tiles count the group shown and tick like mar
   await page.waitForFunction(() => /Done ·/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   await page.waitForFunction(() => [...document.querySelectorAll('#grid .card[data-filename]')].map(e => e.dataset.filename).join() === 'k1,k2,g1,g2,k3', null, { timeout: 8000 });
   assert.equal(await page.locator('.ghost-card').count(), 0, 'filled: no gap left');
+  assert.deepEqual([await text('#terrName'), await page.locator('#terrBtn').isDisabled()], ['Editorial Print', false], 'filled: unlocked');
   await page.click('#placeBtn');
   assert.equal(await page.locator('#placeMenu .mm-even').count(), 0, 'a one-off, and nothing left to fill');
   assert.deepEqual(await page.locator('#placeMenu .mm-ftile').evaluateAll(t => t.map(e => e.getAttribute('aria-pressed'))), ['true', 'true', 'false'], 'the ticks back as they were');
