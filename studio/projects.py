@@ -224,6 +224,42 @@ def mark_alpha(img: Image.Image) -> Image.Image:
     return a.crop(box)
 
 
+DARK_MARK = 0.3                                    # a mark this dark or darker (its pixels' mean luminance, 0-1) is drawn dark in every guide
+
+
+def mark_tone(path) -> float:
+    """How light the mark is: its pixels' mean luminance (0 black, 1 white), weighted by how opaque each is, as the page's
+    fitMarkTone measures it. A dark mark drawn cream on the dark guide came back with its stripes and gaps swapped (Strata Sphere:
+    9 kept of 311 made with that guide, 104 of 217 with the light one; the user, 2026-11-02)."""
+    path = Path(path)
+    key = (str(path), path.stat().st_mtime)
+    if key not in _TONES:
+        im = Image.open(path).convert("RGBA")
+        im.thumbnail((96, 96))
+        a = im.split()[3]
+        if a.getextrema()[0] > 250:                   # opaque: the mark is what differs from the corners, as mark_alpha reads it
+            rgb = im.convert("RGB"); w, h = rgb.size
+            corners = [rgb.getpixel(xy) for xy in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1))]
+            bg = tuple(sum(c[i] for c in corners) // 4 for i in range(3))
+            a = ImageChops.difference(rgb, Image.new("RGB", rgb.size, bg)).convert("L").point(lambda v: 255 if v > 40 else int(v * 255 / 40))
+        lum, wts = im.convert("L").getdata(), a.getdata()
+        total = sum(wts)
+        _TONES[key] = sum(l * w for l, w in zip(lum, wts)) / total / 255 if total else 1.0
+    return _TONES[key]
+
+
+_TONES: dict = {}
+
+
+def guide_kind(p: dict, asked: str) -> str:
+    """The guide an image gets: the one its scene asked for ('dark' or 'light'), except that a dark mark always gets the light
+    guide (ink on cream): the dark one draws it cream, and the model paints what it is shown."""
+    try:
+        return "light" if mark_tone(p["mark_file"]) <= DARK_MARK else asked
+    except Exception:
+        return asked
+
+
 def mark_box(p: dict, width_px: float | None = None) -> tuple[int, int, int, int]:
     """(left, top, width, height) of the mark in a 1080 x 1920 frame at the project's size and place."""
     a = mark_alpha(Image.open(p["mark_file"]))

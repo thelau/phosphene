@@ -1297,3 +1297,19 @@ def test_the_last_batch_is_remembered_across_reloads(live):
     live("POST", "/api/generate-image", {"title": "C1", "prompt": "p", "model": "m"})
     live("POST", "/api/generate-image", {"title": "C2", "prompt": "p", "model": "m", "batch": "../x"})
     assert live("GET", "/api/state")[1]["last_batch"] == before, "no id, or a strange one: unchanged"
+
+
+def test_generate_image_gives_a_dark_mark_the_light_guide_and_logs_it(live, srv, monkeypatch):
+    seen = []
+    real = srv.generate_plate_via_krea_mcp
+
+    def spy(**kw):
+        seen.append(kw.get("guide_type"))
+        return real(**kw)
+    monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", spy)
+    live("POST", "/api/generate-image", {"title": "Cream One", "prompt": "p", "guide": "dark", "model": "m"})
+    assert seen[-1] == "dark", "Demo's cream mark: the guide its scene asked for"
+    monkeypatch.setattr(srv.projects, "mark_tone", lambda path: 0.0)
+    live("POST", "/api/generate-image", {"title": "Black One", "prompt": "p", "guide": "dark", "model": "m"})
+    assert seen[-1] == "light", "a black mark: never drawn cream"
+    assert [e for e in gen_log.read(None) if e.get("event") == "image_start"][-1]["guide"] == "light"

@@ -2227,6 +2227,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             mark_id = pick_mark(body.get("mark")) if body.get("mark") != "mix" else None   # another of the project's marks (the main one: None)
             keep = bool(body.get("keep"))                                     # Keep it as designed: its artwork, colours and details
             proj = projects.with_mark(PROJECT, mark_id)
+            guide_type = projects.guide_kind(proj, guide_type)                # a dark mark: always the light guide, never drawn cream
             pl = placement.clean(body.get("placement")) or placement.choose(body.get("target") or "exact", proj)   # Loose: the place its scene was written for
             if pl:
                 guide_kw = {"guide": placement.guide(proj, pl, keep)}

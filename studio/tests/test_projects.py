@@ -544,3 +544,24 @@ def test_a_projects_marks_can_be_frames_of_one_animation_and_it_travels(pdir, tm
     out = tmp_path / "s.phos"
     projects.export_zip("sphere", out)
     assert projects.import_zip(out)["frames"] is True
+
+
+def test_a_dark_mark_always_gets_the_light_guide_the_others_the_one_their_scene_asks(tmp_path):
+    # the dark guide draws the mark cream on near-black: a black striped sphere came back with its stripes and gaps swapped
+    # (Strata Sphere, 2026-11-02: 3 kept of 309 with the dark guide, 105 of 219 with the light one)
+    def mark(name, colour, opaque_bg=None):
+        im = Image.new("RGBA", (200, 200), opaque_bg or (0, 0, 0, 0))
+        d = ImageDraw.Draw(im)
+        for y in range(20, 180, 40):
+            d.rectangle((20, y, 180, y + 20), fill=colour)
+        im.save(tmp_path / name)
+        return {"mark_file": tmp_path / name}
+    black, cream, orange = mark("black.png", (0, 0, 0, 255)), mark("cream.png", (254, 255, 231, 255)), mark("orange.png", (236, 84, 12, 255))
+    on_white = mark("on-white.png", (10, 10, 10, 255), opaque_bg=(255, 255, 255, 255))     # no transparency: the corners are the ground
+    assert projects.mark_tone(black["mark_file"]) < 0.05 and projects.mark_tone(on_white["mark_file"]) < 0.2
+    assert projects.mark_tone(cream["mark_file"]) > 0.9
+    for p in (black, on_white):
+        assert projects.guide_kind(p, "dark") == "light" and projects.guide_kind(p, "light") == "light"
+    for p in (cream, orange):                                                    # light or coloured marks: as before
+        assert projects.guide_kind(p, "dark") == "dark" and projects.guide_kind(p, "light") == "light"
+    assert projects.guide_kind({"mark_file": tmp_path / "missing.png"}, "dark") == "dark", "unreadable: as asked"
