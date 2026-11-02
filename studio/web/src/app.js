@@ -1306,9 +1306,13 @@
       run: p => (p.placement && p.placement.path && p.placement.path.run) || null,   // one Path run (Made with › Path lists them)
     };
     // the members of a group key ('all', 'g:<id>', 'look:<tag>', 'world:<name>', 'mark:<id>', 'pos:<kind>', 'src:<kind>'), or null when there is no such group
+    // New: the images that arrived since the page opened (their cards say New), as a group: a fill scatters its images through the grid
+    // (the user, 2026-11-02); its chip shows after All only while there are some
+    const isNew = p => !!(seenAtLoad && !seenAtLoad.has(p.filename));
     function groupMembers(key) {
       if (key === 'all') return 'all';
       const shown = plates.filter(p => !p.trashed);
+      if (key === 'new') { const set = new Set(shown.filter(isNew).map(p => p.filename)); return set.size ? set : null; }
       if (key.startsWith('g:')) { const g = groups.find(x => x.id === key.slice(2)); return !g ? null : g.rule ? new Set(shown.filter(madeMatch(g.rule)).map(p => p.filename)) : new Set(g.files); }
       if (key.startsWith('f:')) { const rule = filterRule(key); return rule ? new Set(shown.filter(madeMatch(rule)).map(p => p.filename)) : null; }   // a Made with filter, not saved (empty: none match)
       if (key.startsWith('look:')) { const set = new Set(shown.filter(p => (p.look || []).includes(key.slice(5))).map(p => p.filename)); return set.size ? set : null; }
@@ -1381,7 +1385,9 @@
       const pencil = '<button type="button" class="chip-edit" id="groupMenuBtn" onclick="openMadeWith(event, true)" title="Edit its choices" aria-label="Edit this smart group\'s choices"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L20 8l-4-4L4 16z"></path></svg></button>';
       // a smart group (a saved Made with filter) carries a funnel, and chosen, a pencil that opens its rule; a manual one its ⋯ (rename, delete)
       const chip = c => `<button type="button" class="chip${c.key === currentGroup ? ' on' : ''}${c.own ? ' own' : ''}${c.smart ? ' smart' : ''}" data-key="${escapeHtml(c.key)}" onclick="setGroup(this.dataset.key)">${c.smart ? funnel : ''}${escapeHtml(c.name)} <span>${c.n}</span></button>${c.own && c.key === currentGroup ? (c.smart ? pencil : menu) : ''}`;
-      document.getElementById('groupAll').innerHTML = chip(chips[0]);
+      const nNew = plates.filter(p => !p.trashed && isNew(p)).length;
+      if (currentGroup === 'new' && !nNew) { setGroup('all'); return; }     // none new (a reload): back to All
+      document.getElementById('groupAll').innerHTML = chip(chips[0]) + (nNew ? chip({ key: 'new', name: 'New', n: nNew }).replace('class="chip', 'class="chip chip-new') : '');
       const own = chips.slice(1), smart = own.filter(c => c.smart), manual = own.filter(c => !c.smart);
       bar.innerHTML = (smart.length ? '<span class="group-label">Smart</span>' + smart.map(chip).join('') : '') + (manual.length ? '<span class="group-label">Manual</span>' + manual.map(chip).join('') : '')
         + '<button type="button" class="chip chip-overflow" id="moreChip" onclick="openGroupMenu(event, \'more\')" aria-haspopup="menu" hidden></button>';
@@ -1407,7 +1413,7 @@
       // the same choice in Film, as a dropdown above the film strip: your groups, then Look, then Territory
       const fg = document.getElementById('filmGroup');
       const opt = c => `<option value="${escapeHtml(c.key)}">${escapeHtml(c.name)} (${c.n})</option>`;
-      fg.innerHTML = chips.map(opt).join('') + AUTO_MENUS.map(([kind, label]) => (kinds[kind].length ? `<optgroup label="${label}">${kinds[kind].map(opt).join('')}</optgroup>` : '')).join('')
+      fg.innerHTML = chips.map(opt).join('') + (nNew ? opt({ key: 'new', name: 'New', n: nNew }) : '') + AUTO_MENUS.map(([kind, label]) => (kinds[kind].length ? `<optgroup label="${label}">${kinds[kind].map(opt).join('')}</optgroup>` : '')).join('')
         + (rule ? `<optgroup label="Made with"><option value="${escapeHtml(currentGroup)}">${escapeHtml(madeSummary(rule))} (${(groupMembers(currentGroup) || new Set()).size})</option></optgroup>` : '');
       fg.value = currentGroup;
       syncSelects();
@@ -2259,6 +2265,7 @@
       document.getElementById('viewerFrame').setAttribute('style', thumbStyle(p));   // the mark target (T) and the mark (M) as on its card
       document.getElementById('viewerGhost').hidden = !markImg(p);
       document.getElementById('viewerTitle').textContent = p.title || '';
+      document.getElementById('viewerNew').hidden = showTrash || !isNew(p);    // New, as on its card
       document.getElementById('viewerCount').textContent = `${viewerAt + 1} / ${list.length}${showTrash ? ' in the Trash' : ''}`;
       // the card's cluster spelled out, since there is room (Claude Design's ViewerFilm): which mark, where, the angle, the size, as designed
       const made = cardMade(p), mEl = document.getElementById('viewerMade');

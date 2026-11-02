@@ -709,6 +709,9 @@
     .card:hover button.card-pick, body.picking button.card-pick, .card.sel button.card-pick { opacity: 1; }
     button.card-pick:hover { background: rgba(18, 17, 16, .85); border-color: #fff; }
     .card:hover .card-new, body.picking .card-new { display: none; }
+    .viewer-new { align-self: center; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--orange); color: #1A1A1A; }   /* as on its card */
+    .viewer-new[hidden] { display: none; }
+    .chip.chip-new span { color: var(--orange); }
     .card-actions { position: absolute; left: 6px; right: 6px; bottom: 6px; display: flex; gap: 4px; opacity: 0; transition: opacity .12s; z-index: 6; }
     .card:hover .card-actions, .card:focus-within .card-actions { opacity: 1; }
     .drag-handle { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: rgba(18, 17, 16, .8); color: var(--text-2); cursor: grab; }

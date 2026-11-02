@@ -1927,6 +1927,38 @@ test('the viewer follows its image: ← → go to its real neighbours even when 
   await ctx.close();
 });
 
+test('New: the images that arrived since the page opened, as a chip after All (only while there are some); the viewer says New too; a reload starts again', { skip }, async () => {
+  const ctx = await fresh();
+  assert.equal(await page.locator('#groupAll .chip').count(), 1, 'nothing new: All only');
+  api.state.plates.push({ ...api.state.plates[0], filename: 'k9', title: 'Plate k9', url: '/assets/ai-plates/k9.svg' });
+  api.state.sequences[0].order.splice(1, 0, 'k9');                                  // landed in a gap, between k1 and k2
+  await page.evaluate(() => refreshLibrary());
+  await page.waitForSelector('#groupAll .chip[data-key="new"]');
+  assert.equal((await page.locator('#groupAll .chip[data-key="new"]').innerText()).replace(/\s+/g, ' '), 'New 1');
+  assert.deepEqual(await page.locator('#groupAll .chip').evaluateAll(e => e.map(x => x.dataset.key)), ['all', 'new'], 'right after All');
+  await page.click('#groupAll .chip[data-key="new"]');
+  assert.deepEqual(await page.locator('#grid .card[data-filename]').evaluateAll(e => e.map(x => x.dataset.filename)), ['k9'], 'only the new ones');
+  await page.locator('.card[data-filename="k9"] .card-thumb').dblclick();
+  assert.equal(await page.locator('#viewerNew').isVisible(), true, 'the viewer says New, as its card');
+  await page.keyboard.press('Escape');
+  await page.click('#groupAll .chip[data-key="all"]');
+  await page.locator('.card[data-filename="k1"] .card-thumb').dblclick();
+  assert.equal(await page.locator('#viewerNew').isVisible(), false, 'not on an image that was here');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('#viewerNew').isVisible(), true, 'k9, next in the order: New');
+  await page.keyboard.press('Escape');
+  await page.click('#groupAll .chip[data-key="new"]');
+  await film();
+  assert.equal(await page.locator('#filmstrip button').count(), 1, 'the Film plays them');
+  assert.equal(await page.inputValue('#filmGroup'), 'new', 'and its group list has New');
+  await page.reload(); await page.waitForSelector('.card', { state: 'attached' });
+  await curate();
+  assert.equal(await page.locator('#groupAll .chip').count(), 1, 'a reload: nothing is new');
+  assert.equal(await page.locator('#grid .card[data-filename]').count(), 4, 'back on All');
+  assert.deepEqual(consoleErrors, []);
+  await ctx.close();
+});
+
 test('M: each image\'s own mark over it, where T draws its target, on the cards, in the viewer and in Film; remembered', { skip }, async () => {
   const ctx = await fresh({ setup: st => { st.projects[0].marks = [{ id: 'n1', name: 'Bar', size: 18, x: 50, y: 50, shape: 'bar', noun: 'bar', ratio: 1, url: '/api/project-mark?p=demo&m=n1' }]; Object.assign(st.plates[1], { mark: 'n1', mark_name: 'Bar', box: { x: 30, y: 40, size: 24, ar: 1, rot: 90 } }); st.plates[2].uploaded = true; } });
   const card = i => page.locator(`.card[data-filename="${api.state.plates[i].filename}"]`);
