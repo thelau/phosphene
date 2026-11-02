@@ -1902,6 +1902,17 @@ test('the viewer follows its image: ← → go to its real neighbours even when 
   await page.locator('.card[data-filename="k2"] .card-thumb').dblclick();
   await page.waitForSelector('#viewer:not([hidden])');
   assert.equal(await title(), 'Plate k2');
+  // in the Mac app the window's buttons sit at the top left: the header starts after them, unless in full screen
+  const headLeft = () => page.evaluate(() => {
+    const h = document.querySelector('.viewer-head'), first = [...h.children].find(c => c.getBoundingClientRect().width);
+    return first.getBoundingClientRect().left;
+  });
+  assert.ok(await headLeft() < 40, 'in a browser, from the edge');
+  await page.evaluate(() => document.body.classList.add('app'));
+  assert.ok(await headLeft() >= 96, 'in the app, clear of the window\'s buttons');
+  await page.evaluate(() => document.body.classList.add('fullscreen'));
+  assert.ok(await headLeft() < 40, 'in full screen they hide');
+  await page.evaluate(() => document.body.classList.remove('app', 'fullscreen'));
   // a new image arrives at the front while the viewer is open: it keeps its image, and ← goes to its true previous
   api.state.plates.push({ ...api.state.plates[0], filename: 'k0', title: 'Plate k0', url: '/assets/ai-plates/k0.svg' });
   api.state.sequences[0].order.unshift('k0');
