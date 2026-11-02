@@ -1746,8 +1746,12 @@ test('animation frames: the FRAMES tiles count the group shown and tick like mar
   assert.equal(await page.locator('#placeMenu .mm-ftile[data-v="n2"]').getAttribute('aria-pressed'), 'true', 'one frame stays ticked');
   await page.click('#placeMenu .mm-ftile[data-v="main"]'); await page.click('#placeMenu .mm-ftile[data-v="n1"]');   // all three again
   assert.equal(await page.inputValue('#framesSelect'), '', 'all ticked: stored as the default');
+  await page.click('#placeMenu .mm-ftile[data-v="n2"]');                            // a subset ticked: Fill the gaps picks among all anyway
+  assert.equal(await page.inputValue('#framesSelect'), 'main,n1');
   assert.equal(await page.locator('#placeMenu .mm-even').textContent(), 'Fill the gaps', 'no number on the chip');
   await page.click('#placeMenu .mm-even');
+  assert.deepEqual(await page.locator('#placeMenu .mm-ftile').evaluateAll(t => t.map(e => e.getAttribute('aria-pressed'))), ['false', 'false', 'false'], 'filling: no ticks, the + says what it makes');
+  assert.equal(await page.locator('#placeStack .pb-n').textContent(), '2', 'the Mark button: the frames it makes, not the ticks');
   assert.equal(await page.locator('#placeMenu .mm-even').getAttribute('aria-pressed'), 'true');
   assert.equal(await page.locator('#placeMenu .mm-countfake').textContent(), '2', 'the count greyed, showing what it makes');
   assert.deepEqual(await page.locator('#placeMenu .mm-ftile .mm-fcount').allTextContents(), ['1 +1', '2', '0 +1'], 'the answer on the tiles');
@@ -1763,12 +1767,13 @@ test('animation frames: the FRAMES tiles count the group shown and tick like mar
   await page.click('#generateBtn');
   for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/invent-prompts'); i++) await page.waitForTimeout(100);
   const sent = api.state.calls.find(c => c.path === '/api/invent-prompts').body;
-  assert.deepEqual([sent.deal, sent.count, sent.mark], ['n2,main', 2, 'main,n1,n2'], 'one image per gap; every frame ticked');
+  assert.deepEqual([sent.deal, sent.count], ['n2,main', 2], 'one image per gap, n2 included though unticked');
   await page.waitForFunction(() => /Done ·/.test(document.getElementById('statusText').textContent), null, { timeout: 15000 });
   await page.waitForFunction(() => [...document.querySelectorAll('#grid .card[data-filename]')].map(e => e.dataset.filename).join() === 'k1,k2,g1,g2,k3', null, { timeout: 8000 });
   assert.equal(await page.locator('.ghost-card').count(), 0, 'filled: no gap left');
   await page.click('#placeBtn');
   assert.equal(await page.locator('#placeMenu .mm-even').count(), 0, 'a one-off, and nothing left to fill');
+  assert.deepEqual(await page.locator('#placeMenu .mm-ftile').evaluateAll(t => t.map(e => e.getAttribute('aria-pressed'))), ['true', 'true', 'false'], 'the ticks back as they were');
   await page.evaluate(() => togglePlaceMenu(null, false));
   await page.evaluate(() => openMadeWith());
   await page.waitForSelector('#madePanel .mw-row');

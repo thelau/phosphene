@@ -476,7 +476,9 @@
     function placeState() {
       const t = document.getElementById('targetSelect').value || 'exact', ticks = markTicks(), rots = rotTicks(), zs = sizeTicks();
       const choices = markChoices(), sizeOff = t === 'loose' || t === 'scattered';
-      const on = choices.length ? choices.filter(c => ticks.includes(c[0])) : [['main', (project && project.mark_name) || 'Mark', project && project.mark_url]];
+      const fp = fillOn() ? fillPlan() : null;                               // Fill the gaps picks its frames among all: those it makes, never the ticks
+      const on = !choices.length ? [['main', (project && project.mark_name) || 'Mark', project && project.mark_url]]
+        : fp ? choices.filter((c, i) => fp.per[i]) : choices.filter(c => ticks.includes(c[0]));
       return { t, ticks, rots, zs, choices, sizeOff, on, effSizes: sizeOff ? [1] : zs, ps: pathSet(),
         n: batchCount() };
     }
@@ -607,8 +609,8 @@
       let html = '';
       if (framesOn()) {                                                      // frames: one tile a frame, its count in the group shown, not ticks
         const counts = frameCounts(), fp = fillOn() ? fillPlan() : null;
-        html += `<div class="mm-sec mm-grid"><div class="mm-label mm-flabel"><span>Frames</span><small>in ${escapeHtml(groupLabel())}</small></div><div class="mm-tiles mm-ftiles">${st.choices.map(([v, name, url], i) => { const k = counts[i] || 0, add = fp ? fp.per[i] : 0, on = st.ticks.includes(v);
-          return `<button type="button" class="mm-ftile${on && m === 1 ? ' last' : ''}" data-list="mark" data-v="${escapeHtml(v)}" aria-pressed="${on}"${fp ? ' aria-disabled="true"' : ''} title="${escapeHtml(fp ? `${name}: ${k} image${k === 1 ? '' : 's'}${add ? `, ${add} to make` : ''}` : `${tickTip(name, on, m, 'frame')} · ${k} image${k === 1 ? '' : 's'}`)}"><span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span><span class="mm-fcount">${k}${add ? `<b class="mm-fadd"> +${add}</b>` : ''}</span></button>`; }).join('')}</div></div>`;   // ticks (the user: "weird not to be able"); Fill the gaps makes the missing ones whatever is ticked
+        html += `<div class="mm-sec mm-grid"><div class="mm-label mm-flabel"><span>Frames</span><small>in ${escapeHtml(groupLabel())}</small></div><div class="mm-tiles mm-ftiles">${st.choices.map(([v, name, url], i) => { const k = counts[i] || 0, add = fp ? fp.per[i] : 0, on = !fp && st.ticks.includes(v);   // filling: no ticks, the + says what it makes
+          return `<button type="button" class="mm-ftile${on && m === 1 ? ' last' : ''}" data-list="mark" data-v="${escapeHtml(v)}" aria-pressed="${on}"${fp ? ' aria-disabled="true"' : ''} title="${escapeHtml(fp ? `${name}: ${k} image${k === 1 ? '' : 's'}${add ? `, ${add} to make` : ''}` : `${tickTip(name, on, m, 'frame')} · ${k} image${k === 1 ? '' : 's'}`)}"><span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span><span class="mm-fcount">${k}${add ? `<b class="mm-fadd"> +${add}</b>` : ''}</span></button>`; }).join('')}</div></div>`;   // ticks (the user: "weird not to be able"); Fill the gaps makes the missing ones whatever is ticked, so they show unticked meanwhile (the user, 2026-11-02)
       } else if (st.choices.length) {                                       // the Mark row: only with 2+ marks
         html += `<div class="mm-sec mm-grid">${head('Mark', m)}<div class="mm-tiles">${st.choices.map(([v, name, url], i) => { const on = st.ticks.includes(v);
           return `<button type="button" class="mm-tile${on && m === 1 ? ' last' : ''}" data-list="mark" data-v="${escapeHtml(v)}" aria-pressed="${on}" title="${escapeHtml(tickTip(name, on, m, 'mark'))}">${i === 0 ? '<span class="mm-main">MAIN</span>' : ''}${on ? '<span class="mm-tick"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>' : ''}<span class="mm-well">${img(url)}</span><span class="mm-name">${escapeHtml(name)}</span></button>`; }).join('')}</div></div>`;
