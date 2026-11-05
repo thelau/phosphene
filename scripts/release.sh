@@ -28,6 +28,7 @@ echo "== Build"
 B=app/src-tauri/target/release/bundle
 DMG=$(ls "$B"/dmg/Phosphene_"$VERSION"_*.dmg)
 TAR="$B/macos/Phosphene.app.tar.gz"
+codesign --verify --deep --strict "$B/macos/Phosphene.app"   # an error here means a downloaded copy reads as "damaged": nothing is published
 SIG=$(cat "$TAR.sig")
 URL="https://github.com/$REPO/releases/download/v$VERSION"
 .venv/bin/python - "$VERSION" "$NOTES" "$SIG" "$URL/Phosphene.app.tar.gz" > "$B/latest.json" <<'PY'

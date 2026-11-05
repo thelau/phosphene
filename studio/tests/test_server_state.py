@@ -289,10 +289,10 @@ def test_saving_and_reading_the_curation_at_once_never_loses_it(srv):
     """Parallel image saves, polling and trash clicks: a reader never sees half a file, so never starts the curation over."""
     import threading
     srv.save_state({"trashed": ["keep.jpg"], "order": [f"{i}.jpg" for i in range(3000)], "titles": {f"{i}.jpg": "t" * 40 for i in range(3000)}})
-    bad, stop = [], threading.Event()
+    bad, writes, stop = [], [], threading.Event()
     def writer():
         while not stop.is_set():
-            st = srv.load_state(); st["order"] = list(reversed(st["order"])); srv.save_state(st)
+            st = srv.load_state(); st["sequences"][0]["order"].reverse(); srv.save_state(st); writes.append(1)   # the order lives in sequences (st["order"] crashed these threads at once: nothing was written)
     def reader():
         for _ in range(150):
             if srv.load_state()["trashed"] != ["keep.jpg"]:
@@ -302,6 +302,7 @@ def test_saving_and_reading_the_curation_at_once_never_loses_it(srv):
     for t in rs: t.join()
     stop.set()
     for t in ws: t.join()
+    assert writes, "the writers really wrote while the readers read"
     assert bad == [] and not list(srv.CURATION_FILE.parent.glob("*.damaged-*")), "never read half-written, never reset"
 
 
