@@ -44,6 +44,19 @@ def slugify(name: str) -> str:
     return s or "project"
 
 
+def clean_canvas(v) -> dict | None:
+    """Where a mark sat on the file it came from, in that file's pixels: the canvas (w, h), the mark's box on it (x, y, mw, mh). Frames of
+    one animation drawn on one canvas keep their sizes and places from it (the form's "follow"); a mark is still trimmed to itself."""
+    if not isinstance(v, dict):
+        return None
+    try:
+        c = {k: int(v[k]) for k in ("w", "h", "x", "y", "mw", "mh")}
+    except (KeyError, TypeError, ValueError):
+        return None
+    ok = 0 < c["w"] <= 20000 and 0 < c["h"] <= 20000 and c["mw"] > 0 and c["mh"] > 0 and c["x"] >= 0 and c["y"] >= 0 and c["x"] + c["mw"] <= c["w"] and c["y"] + c["mh"] <= c["h"]
+    return c if ok else None
+
+
 def clean_hex(c) -> str | None:
     s = str(c or "").strip().upper()
     if re.fullmatch(r"#[0-9A-F]{3}", s):
@@ -65,6 +78,8 @@ def load(slug: str) -> dict:
         "name": str(raw.get("name") or slug)[:60],
         "mark_file": (ROOT_DIR / mark) if "/" in mark else base / mark,
         "frames": raw.get("frames") is True,                    # its marks are frames of one animation, in their order (the user, 2026-11-01)
+        "frames_hand": raw.get("frames_hand") is True,          # each frame's size and place set by hand, not following the main one
+        "mark_canvas": clean_canvas(raw.get("mark_canvas")),    # the main mark's place on its file (one made before has none)
         "mark_size": float(raw.get("mark_size", 18)),          # % of the frame's width
         "mark_x": float(raw.get("mark_x", 50)),                # % from the left
         "mark_y": float(raw.get("mark_y", 50)),                # % from the top
@@ -98,7 +113,7 @@ def load(slug: str) -> dict:
             size = p["mark_size"]
         at = lambda k, d: min(90.0, max(10.0, float(m[k]))) if isinstance(m.get(k), (int, float)) else d   # its own place (the default's, before)
         p["marks"].append({"id": m["id"], "name": str(m.get("name") or m["id"])[:30], "mark_file": base / f"mark-{m['id']}.png", "mark_size": size,
-                           "mark_x": at("x", p["mark_x"]), "mark_y": at("y", p["mark_y"]),
+                           "mark_x": at("x", p["mark_x"]), "mark_y": at("y", p["mark_y"]), "canvas": clean_canvas(m.get("canvas")),
                            "mark_shape": str(m.get("shape") or "logo mark")[:80], "mark_noun": str(m.get("noun") or "mark")[:40],
                            # Demo's orbital mark when another mark is its default: its tuned check, words and lock go with it
                            "qa": "demo-tuned" if m.get("qa") == "demo-tuned" and p["qa"] != "demo-tuned" else "mark"})
@@ -136,10 +151,10 @@ def mark_ratio(p: dict) -> float:
 def public(p: dict) -> dict:
     """What the page needs to know about a project."""
     mtime = int(p["mark_file"].stat().st_mtime) if p["mark_file"].exists() else 0
-    marks = [{"id": m["id"], "name": m["name"], "size": m["mark_size"], "x": m["mark_x"], "y": m["mark_y"], "shape": m["mark_shape"], "noun": m["mark_noun"], "ratio": mark_ratio(with_mark(p, m["id"])), "fixed": m["qa"] == "demo-tuned",
+    marks = [{"id": m["id"], "name": m["name"], "size": m["mark_size"], "x": m["mark_x"], "y": m["mark_y"], "canvas": m.get("canvas"), "shape": m["mark_shape"], "noun": m["mark_noun"], "ratio": mark_ratio(with_mark(p, m["id"])), "fixed": m["qa"] == "demo-tuned",
               "url": f"/api/project-mark?p={p['slug']}&m={m['id']}&t={int(m['mark_file'].stat().st_mtime) if m['mark_file'].exists() else 0}"} for m in p.get("marks") or []]
     return {"slug": p["slug"], "marks": marks, "mark_name": p["mark_name"], "has_mark": p.get("has_mark", True), "name": p["name"], "mark_size": p["mark_size"], "mark_x": p["mark_x"], "mark_y": p["mark_y"],
-            "mark_shape": p["own"]["mark_shape"], "mark_noun": p["own"]["mark_noun"], "brief": p["own"]["brief"], "palette": p["palette"], "frames": p.get("frames", False),
+            "mark_shape": p["own"]["mark_shape"], "mark_noun": p["own"]["mark_noun"], "brief": p["own"]["brief"], "palette": p["palette"], "frames": p.get("frames", False), "frames_hand": p.get("frames_hand", False), "mark_canvas": p.get("mark_canvas"),
             "mark_ratio": mark_ratio(p), "round": p.get("qa") == "demo-tuned", "fixed": p.get("qa") == "demo-tuned",
             "mark_url": f"/api/project-mark?p={p['slug']}&t={mtime}"}
 
@@ -384,6 +399,14 @@ def _fields(body: dict, raw: dict) -> dict:
         raw["palette"] = [c for c in (clean_hex(x) for x in (body["palette"] or [])[:8]) if c]
     if "frames" in body:                              # its marks are the frames of one animation, in their order (main first)
         raw["frames"] = body["frames"] is True
+    if "frames_hand" in body:                         # each frame set by hand, not following the main one
+        raw["frames_hand"] = body["frames_hand"] is True
+    if "mark_canvas" in body:
+        c = clean_canvas(body["mark_canvas"])
+        if c:
+            raw["mark_canvas"] = c
+        else:
+            raw.pop("mark_canvas", None)
     return raw
 
 
@@ -493,6 +516,12 @@ def _mark_fields(body: dict, m: dict) -> dict:
     for k in ("shape", "noun"):
         if k in body:
             m[k] = re.sub(r"\s+", " ", str(body[k] or "")).strip()[:80 if k == "shape" else 40] or None
+    if "canvas" in body:                               # its place on its file; none: an image that has no known canvas
+        c = clean_canvas(body["canvas"])
+        if c:
+            m["canvas"] = c
+        else:
+            m.pop("canvas", None)
     return m
 
 
@@ -565,10 +594,14 @@ def make_default(slug: str, mark_id: str) -> str:
     shutil.move(str(main_file), str(tmp)); shutil.move(str(other), str(main_file)); shutil.move(str(tmp), str(other))
     old = {"id": mark_id, "name": raw.get("mark_name") or "Main mark", "size": raw.get("mark_size", 18), "x": raw.get("mark_x", 50),
            "y": raw.get("mark_y", 50), "shape": raw.get("mark_shape"), "noun": raw.get("mark_noun"),
+           **({"canvas": raw["mark_canvas"]} if raw.get("mark_canvas") else {}),
            **({"qa": "demo-tuned"} if raw.get("qa") == "demo-tuned" else {})}
     raw["qa"] = "demo-tuned" if m.get("qa") == "demo-tuned" else "mark"
     raw.update({"mark_name": m.get("name"), "mark_size": m.get("size", raw.get("mark_size", 18)), "mark_x": m.get("x", raw.get("mark_x", 50)),
                 "mark_y": m.get("y", raw.get("mark_y", 50)), "mark_shape": m.get("shape"), "mark_noun": m.get("noun")})
+    raw.pop("mark_canvas", None)
+    if m.get("canvas"):
+        raw["mark_canvas"] = m["canvas"]
     raw["marks"] = [old if x is m else x for x in marks]
     _write(slug, raw)
     q = load(slug)
@@ -702,7 +735,7 @@ def import_zip(path: Path) -> dict:
         if int(raw.get("format", 1)) > PROJECT_FORMAT:
             raise ValueError("That project was made by a newer Phosphene: update the app (it offers it when it opens), then open it again.")
         try:                                          # the fields as create / update take them: numbers in their ranges, words, colours
-            raw = _fields({k: raw[k] for k in ("name", "mark_size", "mark_x", "mark_y", "mark_shape", "mark_noun", "mark_name", "brief", "palette", "frames") if k in raw},
+            raw = _fields({k: raw[k] for k in ("name", "mark_size", "mark_x", "mark_y", "mark_shape", "mark_noun", "mark_name", "brief", "palette", "frames", "frames_hand", "mark_canvas") if k in raw},
                           {"v": 1, "qa": raw.get("qa") if raw.get("qa") == "demo-tuned" else "mark",
                            **({"created": str(raw["created"])[:30]} if raw.get("created") else {})})
         except (TypeError, ValueError, AttributeError):
@@ -713,7 +746,7 @@ def import_zip(path: Path) -> dict:
         for m in (json.loads(z.read(f"{top}/project.json")).get("marks") or [])[:MAX_MARKS]:   # the other marks, checked as add_mark checks them
             if isinstance(m, dict) and MARK_ID.match(str(m.get("id") or "")) and m["id"] != "main" and f"{top}/mark-{m['id']}.png" in names:
                 try:
-                    extra.append(_mark_fields({k: m[k] for k in ("name", "size", "x", "y", "shape", "noun") if k in m}, {"id": m["id"], "name": m["id"], "size": raw["mark_size"],
+                    extra.append(_mark_fields({k: m[k] for k in ("name", "size", "x", "y", "shape", "noun", "canvas") if k in m}, {"id": m["id"], "name": m["id"], "size": raw["mark_size"],
                                                                                                                         **({"qa": "demo-tuned"} if m.get("qa") == "demo-tuned" and raw.get("qa") != "demo-tuned" and not any(x.get("qa") for x in extra) else {})}))
                 except ValueError:
                     pass

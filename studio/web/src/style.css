@@ -1161,6 +1161,7 @@
 .ps-group-head { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #8F8A7A; }
 .ps-group-head small { font-family: inherit; font-size: 12px; letter-spacing: 0; text-transform: none; color: #7E796C; margin-left: 8px; font-family: 'Schibsted Grotesk', sans-serif; }
 .ps-slider { display: grid; grid-template-columns: 64px minmax(0, 1fr) 52px; align-items: center; gap: 12px; min-height: 30px; font-size: 13px; color: #C9C4B0; }
+.ps-group.following input[type="range"] { opacity: .4; }
 .ps-slider b { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--text); text-align: right; }
 .ps-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .ps-remove { margin-top: auto; padding-top: 14px; border-top: 1px solid #2A2824; display: flex; align-items: center; gap: 12px; font-size: 12px; color: #8F8A7A; }
@@ -1275,7 +1276,10 @@ body.no-mark .place, body.no-mark .place-sep { display: none; }
 .ai-gap .link-btn { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--text); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
 
 /* the marks are frames of one animation (Project settings, under the marks) */
-.ps-frames { display: flex; align-items: flex-start; gap: 10px; margin: 6px 0 4px; padding: 10px 12px; border-radius: 10px; border: 1px solid #2E2C28; cursor: pointer; }
+.ps-framebox { margin: 6px 0 4px; border-radius: 10px; border: 1px solid #2E2C28; }
+.ps-frames { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; cursor: pointer; }
+.ps-frames + .ps-frames { border-top: 1px solid #2E2C28; }
+.ps-frames-note { display: block; padding: 8px 12px 10px; border-top: 1px solid #2E2C28; font-size: 11px; line-height: 1.4; color: var(--amber); }
 .ps-frames input { margin-top: 2px; accent-color: var(--orange); }
 .ps-frames span { display: flex; flex-direction: column; gap: 2px; }
 .ps-frames b { font-size: 13px; font-weight: 600; color: var(--text); }

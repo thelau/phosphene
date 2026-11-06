@@ -1326,3 +1326,48 @@ def test_generate_image_gives_a_dark_mark_the_light_guide_and_logs_it(live, srv,
     live("POST", "/api/generate-image", {"title": "Black One", "prompt": "p", "guide": "dark", "model": "m"})
     assert seen[-1] == "light", "a black mark: never drawn cream"
     assert [e for e in gen_log.read(None) if e.get("event") == "image_start"][-1]["guide"] == "light"
+
+
+
+def _walk_project(live, srv, n=2):
+    """A frames project, open, with `n` images on target of its second frame and one of its main frame."""
+    import base64
+    from test_projects import star_png
+    png = "data:image/png;base64," + base64.b64encode(star_png()).decode()
+    status, res = live("POST", "/api/projects", {"action": "create", "name": "Walk", "mark": png, "mark_size": 18, "frames": True, "marks": [{"name": "Two", "size": 18, "image": png}]})
+    assert status == 200 and res["ok"], res
+    p = res["project"]
+    second = p["marks"][0]["id"]
+    made = [live("POST", "/api/generate-image", {"title": f"T{i}", "prompt": "p", "guide": "dark", "mark": second})[1]["filename"] for i in range(n)]
+    made.append(live("POST", "/api/generate-image", {"title": "Main", "prompt": "p", "guide": "dark"})[1]["filename"])
+    return p, second, made
+
+
+def test_changing_a_frames_size_keeps_the_images_already_made_at_theirs(live, srv):
+    p, second, made = _walk_project(live, srv)
+    before = {x["filename"]: x for x in live("GET", "/api/state")[1]["plates"]}
+    measured = len(live.calls.get("qa", []))
+    status, res = live("POST", "/api/projects", {"action": "update", "slug": p["slug"], "mark_size": 18, "marks": [{"id": second, "size": 10.5, "x": 48, "y": 50.3}]})
+    assert status == 200 and res["ok"], res
+    st = srv.load_state()
+    assert st["placements"][made[0]] == {"kind": "exact", "x": 50.0, "y": 50.0, "size": 18.0, "held": 1}, "the frame moved: the image stays as made"
+    assert made[2] not in st["placements"], "the main frame did not change"
+    after = {x["filename"]: x for x in live("GET", "/api/state")[1]["plates"]}
+    assert after[made[0]]["box"]["size"] == 18.0 and after[made[0]]["box"]["x"] == 50.0, "its target stays on it"
+    assert after[made[0]]["qa_passed"] == before[made[0]]["qa_passed"]
+    assert srv.get_cached_qa(srv.PLATES_DIR / made[0], st["placements"][made[0]], second) == srv.QA_CACHE[srv._plate_key(srv.PLATES_DIR / made[0], st["placements"][made[0]], second)], "carried, not measured again"
+    new = live("POST", "/api/generate-image", {"title": "New", "prompt": "p", "guide": "dark", "mark": second})[1]["filename"]
+    assert new not in srv.load_state().get("placements", {}), "a new image takes the new size"
+    assert next(x for x in live("GET", "/api/state")[1]["plates"] if x["filename"] == new)["box"]["size"] == 10.5
+
+
+def test_a_save_that_changes_no_size_holds_nothing(live, srv):
+    p, second, made = _walk_project(live, srv)
+    assert live("POST", "/api/projects", {"action": "update", "slug": p["slug"], "mark_size": 18, "name": "Walk 2", "marks": [{"id": second, "size": 18}]})[1]["ok"]
+    assert not srv.load_state().get("placements")
+
+
+def test_a_project_that_is_not_frames_works_as_before_when_a_size_changes(live, srv):
+    p, second, made = _walk_project(live, srv)
+    assert live("POST", "/api/projects", {"action": "update", "slug": p["slug"], "frames": False, "mark_size": 18, "marks": [{"id": second, "size": 30}]})[1]["ok"]
+    assert not srv.load_state().get("placements"), "images read the mark's size, as ever"

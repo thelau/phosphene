@@ -120,7 +120,8 @@ def clean(pl) -> dict | None:
     if not isinstance(pl, dict) or pl.get("kind") not in KINDS:
         return None
     rot, scale = projects.clean_rot(pl.get("rot")), projects.clean_scale(pl.get("scale"))
-    if pl["kind"] == "exact" and not rot and scale == 1:
+    held = pl.get("held") == 1                                                 # the size it was made at, kept when its frame's size changed
+    if pl["kind"] == "exact" and not rot and scale == 1 and not held:
         return None
     path = clean_path(pl.get("path")) if pl["kind"] == "path" else None
     if pl["kind"] == "path" and not path:
@@ -133,7 +134,7 @@ def clean(pl) -> dict | None:
     if not (0 < x < 100 and 0 < y < 100 and lo <= size <= hi):
         return None
     return {"kind": pl["kind"], "x": round(x, 1), "y": round(y, 1), "size": round(size, 1), **({"rot": rot} if rot else {}),
-            **({"scale": scale} if scale != 1 and pl["kind"] in ("exact", "path") else {}), **({"path": path} if path else {})}
+            **({"scale": scale} if scale != 1 and pl["kind"] in ("exact", "path") else {}), **({"path": path} if path else {}), **({"held": 1} if held else {})}
 
 
 def as_project(project: dict, pl: dict | None) -> dict:

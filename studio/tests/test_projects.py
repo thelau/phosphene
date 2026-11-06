@@ -1,6 +1,7 @@
 """Projects: one per brand mark. A new project keeps its mark, guides, plates and curation in its own folder; DEMO stays as it was."""
 
 import io
+import json
 
 import pytest
 from PIL import Image, ImageDraw
@@ -565,3 +566,43 @@ def test_a_dark_mark_always_gets_the_light_guide_the_others_the_one_their_scene_
     for p in (cream, orange):                                                    # light or coloured marks: as before
         assert projects.guide_kind(p, "dark") == "dark" and projects.guide_kind(p, "light") == "light"
     assert projects.guide_kind({"mark_file": tmp_path / "missing.png"}, "dark") == "dark", "unreadable: as asked"
+
+
+
+CANVAS = {"w": 980, "h": 980, "x": 270, "y": 128, "mw": 427, "mh": 798}
+
+
+def test_a_canvas_is_checked():
+    assert projects.clean_canvas(CANVAS) == CANVAS
+    assert projects.clean_canvas({**CANVAS, "x": "270"}) == CANVAS, "numbers as text"
+    for bad in (None, 3, {}, {**CANVAS, "w": 0}, {**CANVAS, "mw": 0}, {**CANVAS, "x": -1}, {**CANVAS, "x": 700}, {**CANVAS, "h": "tall"}):
+        assert projects.clean_canvas(bad) is None, bad
+
+
+def test_a_marks_canvas_and_the_hand_setting_are_kept_and_travel(pdir, tmp_path):
+    png = io.BytesIO(); Image.new("RGBA", (40, 40), (0, 0, 0, 255)).save(png, "PNG")
+    edge = io.BytesIO(); im = Image.new("RGBA", (60, 60), (0, 0, 0, 0)); im.paste((0, 0, 0, 255), (10, 10, 50, 50)); im.save(edge, "PNG")
+    p = projects.create({"name": "Walk", "mark_canvas": CANVAS, "frames": True}, edge.getvalue())
+    other = {**CANVAS, "x": 312, "mw": 248}
+    p = projects.save_marks(p["slug"], [{"name": "Two", "canvas": other}], {0: edge.getvalue()})
+    assert p["mark_canvas"] == CANVAS and p["marks"][0]["canvas"] == other and p["frames_hand"] is False
+    pub = projects.public(p)
+    assert pub["mark_canvas"] == CANVAS and pub["marks"][0]["canvas"] == other
+    assert projects.update(p["slug"], {"frames_hand": True})["frames_hand"] is True
+    out = tmp_path / "w.phos"
+    projects.export_zip(p["slug"], out)
+    q = projects.import_zip(out)
+    assert q["mark_canvas"] == CANVAS and q["marks"][0]["canvas"] == other and q["frames_hand"] is True, "a .phos file keeps them"
+    mid = p["marks"][0]["id"]
+    projects.make_default(p["slug"], mid)
+    r = projects.load(p["slug"])
+    assert r["mark_canvas"] == other and r["marks"][0]["canvas"] == CANVAS, "each mark keeps its own place on its file"
+    r = projects.save_marks(p["slug"], [{"id": mid, "canvas": None}], {})
+    assert r["marks"][0]["canvas"] is None, "a new image with no known canvas drops the old one"
+
+
+def test_a_project_from_before_has_no_canvas_and_reads_as_it_did(pdir):
+    png = io.BytesIO(); im = Image.new("RGBA", (60, 60), (0, 0, 0, 0)); im.paste((0, 0, 0, 255), (10, 10, 50, 50)); im.save(png, "PNG")
+    p = projects.create({"name": "Old"}, png.getvalue())
+    assert p["mark_canvas"] is None and p["frames_hand"] is False
+    assert "mark_canvas" not in json.loads((pdir / p["slug"] / "project.json").read_text()), "nothing new written for a mark with no canvas"

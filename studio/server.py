@@ -253,6 +253,50 @@ def _remember_qa(key: str, result: dict, now: bool = False) -> None:
 
 
 
+def sizes_now() -> dict:
+    """Each image that reads its size from its mark (on target, no placement of its own): that size and place, and its check's result as
+    measured, before Project settings change them (hold_sizes). An upload has no mark; Demo has no frames."""
+    if not PROJECT or is_demo():
+        return {}
+    st = load_state()
+    placed, ups, used, out = st.get("placements", {}), set(st.get("uploads", [])), st.get("marks_used", {}), {}
+    with QA_LOCK:
+        for f in PLATES_DIR.glob("*.jpg"):
+            if f.name not in placed and f.name not in ups:
+                seen = projects.with_mark(PROJECT, used.get(f.name))
+                out[f.name] = {"x": seen["mark_x"], "y": seen["mark_y"], "size": seen["mark_size"], "qa": QA_CACHE.get(_plate_key(f, None, used.get(f.name)))}
+    return out
+
+
+def hold_sizes(before: dict) -> None:
+    """Frames of one animation: one slider can move every frame's size, and an image on target reads its size from its mark, so its
+    target and check would move with it. An image whose frame changed keeps the size it was made at, as a placement of its own; its
+    check's result goes with it, nothing measured again."""
+    if not PROJECT or not PROJECT.get("frames") or not before:
+        return
+    with STATE_LOCK:
+        st = load_state()
+        placed, used, changed = st.setdefault("placements", {}), st.get("marks_used", {}), False
+        known = {None} | {m["id"] for m in PROJECT.get("marks") or []}
+        with QA_LOCK:
+            for name, was in before.items():
+                f, mk = PLATES_DIR / name, used.get(name)
+                seen = projects.with_mark(PROJECT, mk)
+                if mk not in known or name in placed or not f.exists() or (seen["mark_size"], seen["mark_x"], seen["mark_y"]) == (was["size"], was["x"], was["y"]):
+                    continue
+                placed[name] = {"kind": "exact", "x": was["x"], "y": was["y"], "size": was["size"], "held": 1}
+                changed = True
+                if was["qa"]:
+                    QA_CACHE[_plate_key(f, placed[name], mk)] = was["qa"]
+            if changed:
+                try:
+                    _flush_qa_cache()
+                except Exception:
+                    pass
+        if changed:
+            save_state(st)
+
+
 def check_new_image(path: Path, pl: dict | None = None, mark_id: str | None = None) -> dict:
     """The logo check on an image not yet among the plates (its result is cached under its final name by the caller)."""
     return evaluate_plate_qa(path, current_mark(pl, mark_id))
@@ -1917,6 +1961,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     apply_project(projects.set_active(p["slug"]))
                 elif action == "update":
                     slug = str(body.get("slug") or "")
+                    made_at = sizes_now() if PROJECT and slug == PROJECT["slug"] else {}
                     p = projects.update(slug, body, mark)
                     if isinstance(body.get("marks"), list):                # the settings form: the other marks as it holds them
                         p = projects.save_marks(slug, body["marks"], mark_images(body["marks"]))
@@ -1948,6 +1993,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         p = projects.load(slug)
                     if PROJECT and p["slug"] == PROJECT["slug"]:
                         apply_project(p)
+                        hold_sizes(made_at)
                 elif action in ("add_mark", "edit_mark", "remove_mark"):   # the project's other marks
                     slug = str(body.get("slug") or "")
                     if action == "add_mark":

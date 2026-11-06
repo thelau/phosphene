@@ -2,6 +2,76 @@ const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg
 register();
 const summary = async () => (await page.locator('#placeName').textContent()).replace(/\u00a0/g, ' ');   // the Mark button: how many first, then where
 
+test('frames on one canvas follow the main one: their sizes and places come from the files, and it can be set by hand', { skip }, async () => {
+  await fresh();
+  // on white (opaque, as a walk's files were) and on one canvas: a wide box, a narrow one, a short one off to the left
+  const add = (list, how, size = 400, clear = false) => page.evaluate(async ([boxes, how, size, clear]) => {
+    const files = await Promise.all(boxes.map(async ([n, x, y, w, h]) => {
+      const c = document.createElement('canvas'); c.width = c.height = size;
+      const g = c.getContext('2d');
+      if (!clear) { g.fillStyle = '#fff'; g.fillRect(0, 0, size, size); }
+      g.fillStyle = '#000'; g.fillRect(x, y, w, h);
+      return new File([await new Promise(r => c.toBlob(r, 'image/png'))], n, { type: 'image/png' });
+    }));
+    await psFilesChosen(files, how);
+  }, [list, how, size, clear]);
+  await page.evaluate(() => openProjectForm('new'));
+  await add([['f1.png', 100, 50, 200, 300], ['f2.png', 150, 50, 100, 300], ['f3.png', 100, 50, 100, 150]], 'new');
+  await page.waitForFunction(() => document.getElementById('psFramesOn'));
+  const row = i => page.locator('#psRail .ps-mark').nth(i);
+  const nums = () => Promise.all(['size', 'x', 'y'].map(k => page.locator(`#psv-${k}`).textContent()));
+  await row(1).click();
+  assert.deepEqual(await nums(), ['18%', '50%', '50%'], 'not frames: every mark as the main one, as ever');
+  assert.equal(await page.locator('#psHandOn').count(), 0, 'no second control until they are frames');
+  await page.check('#psFramesOn');
+  assert.deepEqual(await nums(), ['9%', '50%', '50%'], 'half as wide in the file: half as wide');
+  assert.equal(await page.locator('#psDetail input[type=range]').first().isDisabled(), true, 'a following frame shows its numbers, not a control');
+  assert.match(await text('#psDetail .ps-group-head'), /follows Frame 1/i);
+  assert.match(await text('#psRail .ps-framebox'), /Sizes follow Frame 1/);
+  await shot('frames-follow');
+  await row(2).click();
+  assert.deepEqual(await nums(), ['9%', '45.5%', '46.2%'], 'and where its file has it, against the main one');
+  await row(0).click();
+  assert.equal(await page.locator('#psDetail input[type=range]').first().isDisabled(), false, 'the main frame sets them');
+  await page.locator('#psDetail input[type=range]').first().fill('36');
+  await row(1).click();
+  assert.deepEqual(await nums(), ['18%', '50%', '50%'], 'one slider moves them all, in proportion');
+  await page.check('#psHandOn');
+  assert.equal(await page.locator('#psDetail input[type=range]').first().isDisabled(), false, 'by hand: its own slider again');
+  await page.locator('#psDetail input[type=range]').first().fill('25');
+  assert.equal(await page.locator('#psv-size').textContent(), '25%');
+  await row(0).click();
+  await page.locator('#psDetail input[type=range]').first().fill('30');
+  await row(1).click();
+  assert.equal(await page.locator('#psv-size').textContent(), '25%', 'by hand, the main one moves nothing else');
+  await page.uncheck('#psHandOn');
+  assert.equal(await page.locator('#psv-size').textContent(), '15%', 'and unticked it goes back to the files');
+  await add([['other.png', 10, 10, 50, 50]], 'add', 500);
+  await page.waitForFunction(() => /Different canvas sizes/.test(document.getElementById('psRail').textContent));
+  assert.equal(await page.locator('#psHandOn').count(), 0, 'scale cannot be trusted: nothing follows, and it says so');
+  await shot('frames-different-canvas');
+  await page.evaluate(() => closeProjectForm());
+  assert.deepEqual(consoleErrors, []);
+});
+
+test('a transparent file and a project from before: the canvas is read, and frames with none stay as they are set', { skip }, async () => {
+  await fresh({ setup: st => { st.projects[0].fixed = false; st.projects[0].frames = true; st.projects[0].marks = [{ id: 'n1', name: 'Bar', size: 30, x: 40, y: 60, shape: 'bar', noun: 'bar', ratio: 1, url: '/assets/ai-plates/k1.svg' }]; } });
+  await page.evaluate(() => openProjectForm('edit'));
+  assert.equal(await page.locator('#psHandOn').count(), 0, 'no canvas known: no second control');
+  await page.locator('#psRail .ps-mark').nth(1).click();
+  assert.deepEqual(await Promise.all(['size', 'x', 'y'].map(k => page.locator(`#psv-${k}`).textContent())), ['30%', '40%', '60%'], 'its own numbers, untouched');
+  assert.equal(await page.locator('#psDetail input[type=range]').first().isDisabled(), false);
+  await page.evaluate(() => closeProjectForm());
+  const box = await page.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = c.height = 300;
+    c.getContext('2d').fillRect(40, 60, 100, 50);
+    const f = new File([await new Promise(r => c.toBlob(r, 'image/png'))], 'a.png', { type: 'image/png' });
+    return (await markToPng(f)).canvas;
+  });
+  assert.deepEqual(box, { w: 300, h: 300, x: 40, y: 60, mw: 100, mh: 50 });
+  assert.deepEqual(consoleErrors, []);
+});
+
 test('Settings asks for no image model: only the Krea row, with its connection status', { skip }, async () => {
   await fresh();
   await page.locator('#settingsBtn').click();

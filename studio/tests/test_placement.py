@@ -284,3 +284,10 @@ def test_a_frames_deal_makes_one_image_of_each_listed_mark_in_order(srv, monkeyp
     assert [t["mark"] for t in got] == ["f3", "f3", "f3", "f2"] and [t["rot"] for t in got] == [0, 90, 0, 90] and all(t["path"] is None for t in got)
     plan.take(0)
     assert [t["mark"] for t in plan.peek(3)] == ["f3", "f3", "f2"], "a dropped scene's mark goes to the next one"
+
+
+
+def test_a_held_size_survives_cleaning_and_nothing_else_slips_through():
+    pl = {"kind": "exact", "x": 50.0, "y": 50.0, "size": 18.0, "held": 1}
+    assert placement.clean(pl) == pl, "on target, kept at the size it was made"
+    assert placement.clean({**pl, "held": 0}) is None and placement.clean({**pl, "held": "yes"}) is None

@@ -783,11 +783,11 @@
         return;
       }
       const main = edit && project.has_mark !== false ? { key: 'main', id: 'main', name: project.mark_name || 'Main mark', size: project.mark_size, x: project.mark_x, y: project.mark_y,
-        shape: project.mark_shape, noun: project.mark_noun, url: project.mark_url, ar: project.mark_ratio || 1, locked: !!project.fixed } : null;
+        shape: project.mark_shape, noun: project.mark_noun, url: project.mark_url, ar: project.mark_ratio || 1, locked: !!project.fixed, canvas: project.mark_canvas || null } : null;
       const extras = edit ? (project.marks || []).map(m => ({ key: m.id, id: m.id, name: m.name, size: m.size, x: m.x ?? project.mark_x, y: m.y ?? project.mark_y,
-        shape: m.shape, noun: m.noun, url: m.url, ar: m.ratio || 1, locked: !!m.fixed })) : [];   // Demo's orbital mark: locked wherever it sits
+        shape: m.shape, noun: m.noun, url: m.url, ar: m.ratio || 1, locked: !!m.fixed, canvas: m.canvas || null })) : [];   // Demo's orbital mark: locked wherever it sits
       projectForm = { kind: edit ? 'edit' : 'new', name: edit ? project.name : '', brief: edit ? project.brief : '', palette: edit ? [...(project.palette || [])] : [],
-        marks: main ? [main, ...extras] : [], def: main ? 'main' : null, sel: edit ? 'project' : null, fromKimi: false, typed: new Set(), noMark: !!(edit && !main), frames: !!(edit && project.frames) };
+        marks: main ? [main, ...extras] : [], def: main ? 'main' : null, sel: edit ? 'project' : null, fromKimi: false, typed: new Set(), noMark: !!(edit && !main), frames: !!(edit && project.frames), framesHand: !!(edit && project.frames_hand) };
       document.getElementById('projectTitle').textContent = edit ? `${project.name} · Settings` : 'New project';
       document.getElementById('pfSave').textContent = edit ? 'Save' : 'Create project';
       document.getElementById('pfError').textContent = '';
@@ -827,6 +827,7 @@
     function psReading() { return !!(projectForm && projectForm.marks.some(m => m.reading)); }
     function psFirstPending() { const u = projectForm.marks.filter(m => !m.error); return projectForm.kind === 'new' && !projectForm.noMark && (!u.length || u[0].reading); }
     function renderPS() {
+      psFit();                                                               // the frames, as drawn on their canvas
       if (!projectForm) return;
       const f = projectForm;
       document.getElementById('psSub').textContent = '';
@@ -852,7 +853,7 @@
       const rows = f.marks.map(m => {
         const def = m.key === f.def;
         const fno = f.frames && n > 1 && !m.error ? psUsable().indexOf(m) + 1 : 0;   // frames of one animation: which one, in the rail's order
-        const sub = m.error ? m.error : m.reading ? `Reading · ${psSecs(m)} s` : m.needsWords ? 'Type its words' : def ? `Main · ${+m.size}%` : `${+m.size}% · ${+m.x === 50 && +m.y === 50 ? 'centre' : `${+m.x} / ${+m.y}`}`;
+        const sub = m.error ? m.error : m.reading ? `Reading · ${psSecs(m)} s` : m.needsWords ? 'Type its words' : def ? `Main · ${+m.size}%` : `${+m.size}% · ${+m.x === 50 && +m.y === 50 ? 'centre' : `${Math.round(+m.x)} / ${Math.round(+m.y)}`}`;
         const cls = m.error ? ' error' : m.reading ? ' reading' : m.needsWords ? ' warn' : '';
         const star = m.error ? '' : `<span class="ps-star${def ? ' on' : ''}" role="button" tabindex="0" data-key="${escapeHtml(m.key)}" onclick="psStar(event, this.dataset.key)" aria-pressed="${def}" aria-label="${def ? 'The main mark' : 'Make this the main mark'}" title="${def ? 'The main mark' : 'Make this the main mark'}">${STAR}</span>`;
         return `<div class="ps-row ps-mark${f.sel === m.key ? ' on' : ''}${cls}" role="button" tabindex="0" onclick="psSelect(this.dataset.key)" data-key="${escapeHtml(m.key)}" draggable="${m.locked || m.error ? 'false' : 'true'}">
@@ -864,7 +865,10 @@
         : `<button type="button" class="ps-add" id="psAdd" onclick="psPick('add')"><span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>${psDrag ? `Drop ${psDrag} mark${psDrag > 1 ? 's' : ''} here` : 'Add marks'}</span><small>${psDrag ? `${n} → ${Math.min(PS_MAX, n + psDrag)} of ${PS_MAX}` : `${n} of ${PS_MAX} · drop here or choose`}</small></button>`;
       const rail = document.getElementById('psRail');
       rail.classList.toggle('frames', !!(f.frames && n > 1));                // the grips show: the order is the animation's
-      const frames = n > 1 && !pending ? `<label class="ps-frames"><input type="checkbox" id="psFramesOn"${f.frames ? ' checked' : ''} onchange="psFrames(this.checked)" /><span><b>Animation frames</b><small>Played in this order</small></span></label>` : '';
+      const canvas = f.frames && n > 1 ? psCanvases() : '', main = psUsable()[0] ? psLabel(psDefault()) : '';
+      const hand = canvas === 'same' ? `<label class="ps-frames"><input type="checkbox" id="psHandOn"${f.framesHand ? ' checked' : ''} onchange="psFramesHand(this.checked)" /><span><b>Set each by hand</b><small>${f.framesHand ? 'Your own size and place for each' : `Sizes follow ${escapeHtml(main)}`}</small></span></label>`
+        : canvas === 'different' ? '<span class="ps-frames-note">Different canvas sizes. Set each by hand.</span>' : '';
+      const frames = n > 1 && !pending ? `<div class="ps-framebox"><label class="ps-frames"><input type="checkbox" id="psFramesOn"${f.frames ? ' checked' : ''} onchange="psFrames(this.checked)" /><span><b>Animation frames</b><small>Played in this order</small></span></label>${hand}</div>` : '';
       rail.innerHTML = `<span class="ps-rail-head">Project</span>${projRow}<span class="ps-rail-head"><span>Marks</span><span class="${n >= PS_MAX ? 'ps-count full' : 'ps-count'}">${n ? `${n} of ${PS_MAX}` : `up to ${PS_MAX}`}</span></span>${rows}${frames}${add}`;
       const tile = document.getElementById('psAdd');
       if (tile) tile.classList.toggle('over', !!psDrag);
@@ -925,13 +929,13 @@
           + skel.map(l => `<div class="ps-field"><span>${l}</span><i class="ps-skel"></i></div>`).join('');
         return;
       }
-      const def = m.key === f.def, dis = m.locked ? ' disabled' : '';
-      const slider = (label, key, min, max) => `<label class="ps-slider"><span>${label}</span><input type="range" min="${min}" max="${max}" step="0.5" value="${+m[key]}" oninput="psSetMark('${key}', +this.value)"${dis} /><b id="psv-${key}">${+m[key]}%</b></label>`;
+      const def = m.key === f.def, dis = m.locked ? ' disabled' : '', follows = psFollow() && !def;   // a frame following the main one: its numbers shown, not set here
+      const slider = (label, key, min, max) => `<label class="ps-slider"><span>${label}</span><input type="range" min="${min}" max="${max}" step="0.5" value="${+m[key]}" oninput="psSetMark('${key}', +this.value)"${follows ? ' disabled' : dis} /><b id="psv-${key}">${+m[key]}%</b></label>`;
       d.innerHTML = (m.locked ? `<div class="ps-locked"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>This mark of ${escapeHtml(project ? project.name : '')}'s is fixed: its image, size, place and words, and its own mark check, wherever it sits.</div>` : '')
         + `<div class="ps-mark-head"><div class="ps-big"><span class="ps-big-thumb"><img src="${escapeHtml(m.url)}" alt="${escapeHtml(m.name)}" /></span>${m.locked ? '' : `<button type="button" class="link-btn" onclick="psPick('replace')">Replace…</button>`}</div>
           <div class="ps-mark-name"><label class="ps-field"><span>Name</span><input type="text" id="psMarkName" maxlength="30" value="${escapeHtml(m.name)}" oninput="psSetMark('name', this.value)" autocomplete="off"${dis} /></label>
           <span class="ps-main-note">${def ? '<span class="ps-default">★ The main mark</span>' : '★ sets the main mark.'}</span></div></div>
-        <div class="ps-group"><span class="ps-group-head">Place in the frame</span>${slider('Width', 'size', 4, 60)}${slider('Across', 'x', 10, 90)}${slider('Down', 'y', 10, 90)}</div>
+        <div class="ps-group${follows ? ' following' : ''}"><span class="ps-group-head">Place in the frame${follows ? ` <small>follows ${escapeHtml(psLabel(psDefault()))}</small>` : ''}</span>${slider('Width', 'size', 4, 60)}${slider('Across', 'x', 10, 90)}${slider('Down', 'y', 10, 90)}</div>
         <div class="ps-group"><span class="ps-group-head">In the prompts <small>the words Kimi uses for this mark</small></span>
           <div class="ps-two"><label class="ps-field"><span>Its shape</span><input type="text" maxlength="80" value="${escapeHtml(m.shape || '')}" oninput="psSetMark('shape', this.value)" autocomplete="off"${dis} /></label>
           <label class="ps-field"><span>Called</span><input type="text" maxlength="40" value="${escapeHtml(m.noun || '')}" oninput="psSetMark('noun', this.value)" autocomplete="off"${dis} /></label></div></div>`
@@ -962,10 +966,10 @@
     }
     function psSetProject(field, v) { projectForm[field] = v; projectForm.typed.add(field); renderPSRail(); psSyncSave(); }
     function psSetMark(field, v) {
-      const m = psMark(projectForm.sel);
-      if (!m || m.locked) return;
+      const m = psMark(projectForm.sel), place = ['size', 'x', 'y'].includes(field);
+      if (!m || m.locked || (place && psFollow() && m.key !== projectForm.def)) return;
       m[field] = v;
-      if (['size', 'x', 'y'].includes(field)) { const b = document.getElementById(`psv-${field}`); if (b) b.textContent = `${v}%`; renderPSPreview(); }
+      if (place) { psFit(); const b = document.getElementById(`psv-${field}`); if (b) b.textContent = `${v}%`; renderPSPreview(); }
       else m.typed = (m.typed || new Set()).add(field);
       if (field === 'name') { m.autoName = null; psNumberNames(); }          // yours: never numbered again; the others renumbered (one left alone: no number)
       renderPSRail();
@@ -1008,7 +1012,33 @@
       if (!f.marks.some(x => x.reading || x.error || x.needsWords) && f.sel === 'tiles') f.sel = f.marks.length ? 'project' : null;
       renderPS();
     }
-    function psFrames(on) { projectForm.frames = !!on; renderPSRail(); }                   // the marks are frames of one animation, in the rail's order
+    function psFrames(on) { projectForm.frames = !!on; renderPS(); }                       // the marks are frames of one animation, in the rail's order
+    function psFramesHand(on) { projectForm.framesHand = !!on; renderPS(); }               // off again: back to the proportions of the files
+    const psLabel = m => { const f = projectForm, i = psUsable().indexOf(m); return f.frames && i >= 0 ? `Frame ${i + 1}` : m.name; };
+    // frames drawn on one canvas: 'same' (they can follow the main one), 'different' (their scale can't be trusted), '' (a canvas not known:
+    // marks added before it was kept, which stay as they are set)
+    function psCanvases() {
+      const list = psUsable();
+      if (list.length < 2 || list.some(m => m.locked || !m.canvas)) return '';
+      const a = list[0].canvas;
+      return list.every(m => m.canvas.w === a.w && m.canvas.h === a.h) ? 'same' : 'different';
+    }
+    const psFollow = () => { const f = projectForm; return !!(f && f.frames && !f.framesHand && psCanvases() === 'same'); };
+    // the frames as drawn: one scale for all, from the main frame's width; each sits where its file has it against the main one. Only
+    // Width, Across and Down are written, so everything that reads a mark's size works as ever, and the numbers show in the form
+    function psFit() {
+      if (!psFollow()) return;
+      const main = psDefault(), c = main.canvas, r1 = v => Math.round(v * 10) / 10;
+      const unit = +main.size / c.mw;                                        // % of the frame's width for one pixel of the file
+      const cx = k => k.x + k.mw / 2, cy = k => k.y + k.mh / 2, tall = 1080 / 1920;
+      for (const m of psUsable()) {
+        if (m === main) continue;
+        const k = m.canvas;
+        m.size = r1(Math.min(60, Math.max(4, k.mw * unit)));
+        m.x = r1(Math.min(90, Math.max(10, +main.x + (cx(k) - cx(c)) * unit)));
+        m.y = r1(Math.min(90, Math.max(10, +main.y + (cy(k) - cy(c)) * unit * tall)));
+      }
+    }
     // marks Kimi calls the same (four frames of one striped sphere were all "Striped sphere") are numbered in the rail's order
     function psNumberNames() {
       const auto = projectForm.marks.filter(m => m.autoName && !m.error), by = {};
@@ -1041,7 +1071,8 @@
     async function psFileChosen(file, forWhat = psFileFor) {
       if (!file || !projectForm) return;
       let png;
-      try { png = await markToPng(file); }
+      let canvas = null;
+      try { ({ png, canvas } = await markToPng(file)); }
       catch (err) {
         const why = err.message === 'empty' ? 'An empty image' : 'Not an image';
         if (forWhat === 'replace') { document.getElementById('pfError').textContent = err.message === 'empty' ? 'That image is empty: the mark needs to show on a transparent or plain background.' : 'That file could not be read as an image.'; return; }
@@ -1053,11 +1084,11 @@
       document.getElementById('pfError').textContent = '';
       const f = projectForm, ar = await new Promise(res => { const im = new Image(); im.onload = () => res(im.naturalHeight / im.naturalWidth || 1); im.onerror = () => res(1); im.src = png; });
       let m = forWhat === 'replace' ? psMark(f.sel) : null;
-      if (m) { m.image = png; m.url = png; m.ar = ar; }                       // a new image for a mark: read again, never over what was typed
+      if (m) { m.image = png; m.url = png; m.ar = ar; m.canvas = canvas; }    // a new image for a mark: read again, never over what was typed
       else {
         if (psUsable().length >= PS_MAX) return;
         const base = f.marks.length ? psDefault() : null;
-        m = { key: `new-${++psSeq}`, id: null, name: '', file: file.name || '', size: base ? base.size : 18, x: base ? base.x : 50, y: base ? base.y : 50, shape: '', noun: '', url: png, image: png, ar, typed: new Set() };
+        m = { key: `new-${++psSeq}`, id: null, name: '', file: file.name || '', size: base ? base.size : 18, x: base ? base.x : 50, y: base ? base.y : 50, shape: '', noun: '', url: png, image: png, ar, canvas, typed: new Set() };
         f.marks.push(m);
         if (psUsable().length === 1) { f.def = m.key; }
       }
@@ -1109,7 +1140,20 @@
       f.sel = f.marks.length ? 'project' : null;
       renderPS();
     }
-    // an image file as the mark: drawn into a PNG (an SVG too), at most 1600 px, trimmed to the mark as the server does
+    // where the mark is on its file: its alpha, or on an opaque image what differs from the corners, as the server's mark_alpha reads it
+    function markBounds(px, w, h) {
+      let x0 = w, y0 = h, x1 = -1, y1 = -1, opaque = true;
+      for (let i = 3; i < px.length; i += 4) if (px[i] <= 250) { opaque = false; break; }
+      const bg = [0, 1, 2].map(k => [0, (w - 1) * 4, (h - 1) * w * 4, ((h - 1) * w + w - 1) * 4].reduce((a, i) => a + px[i + k], 0) / 4);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const on = opaque ? Math.abs(px[i] - bg[0]) * 0.299 + Math.abs(px[i + 1] - bg[1]) * 0.587 + Math.abs(px[i + 2] - bg[2]) * 0.114 >= 1 : px[i + 3] > 8;
+        if (on) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      }
+      return x1 < 0 ? null : { w, h, x: x0, y: y0, mw: x1 - x0 + 1, mh: y1 - y0 + 1 };
+    }
+    // an image file as the mark: drawn into a PNG (an SVG too), at most 1600 px, trimmed to the mark as the server does; where it sat on
+    // the file is kept (`canvas`): frames on one canvas keep their sizes and places from it
     async function markToPng(file) {
       const url = URL.createObjectURL(file);
       try {
@@ -1119,7 +1163,7 @@
         w = Math.max(1, Math.round(w * k)); h = Math.max(1, Math.round(h * k));
         let c = document.createElement('canvas'); c.width = w; c.height = h;
         c.getContext('2d').drawImage(im, 0, 0, w, h);
-        const px = c.getContext('2d').getImageData(0, 0, w, h).data;
+        const px = c.getContext('2d').getImageData(0, 0, w, h).data, canvas = markBounds(px, w, h);
         let x0 = w, y0 = h, x1 = -1, y1 = -1;
         for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (px[(y * w + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
         if (x1 < 0) throw new Error('empty');
@@ -1127,7 +1171,7 @@
           const t = document.createElement('canvas'); t.width = x1 - x0 + 1; t.height = y1 - y0 + 1;
           t.getContext('2d').drawImage(c, -x0, -y0); c = t;
         }
-        return c.toDataURL('image/png');
+        return { png: c.toDataURL('image/png'), canvas };
       } finally { URL.revokeObjectURL(url); }
     }
     async function saveProject() {
@@ -1146,15 +1190,15 @@
         cover(null); err.textContent = r.error || 'Could not save the project.'; return;
       }
       const def = psDefault(), others = usable.filter(m => m !== def);
-      const fields = m => ({ name: m.name, size: +m.size, x: +m.x, y: +m.y, shape: m.shape || '', noun: m.noun || '' });
-      const body = { action: f.kind === 'new' ? 'create' : 'update', slug: project && f.kind === 'edit' ? project.slug : undefined, name: f.name, brief: f.brief, palette: f.palette, frames: f.frames && psUsable().length > 1,
-        mark_name: def.name, mark_size: +def.size, mark_x: +def.x, mark_y: +def.y, mark_shape: def.shape || '', mark_noun: def.noun || '',
+      const fields = m => ({ name: m.name, size: +m.size, x: +m.x, y: +m.y, shape: m.shape || '', noun: m.noun || '', canvas: m.canvas || null });
+      const body = { action: f.kind === 'new' ? 'create' : 'update', slug: project && f.kind === 'edit' ? project.slug : undefined, name: f.name, brief: f.brief, palette: f.palette, frames: f.frames && psUsable().length > 1, frames_hand: !!f.framesHand,
+        mark_name: def.name, mark_size: +def.size, mark_x: +def.x, mark_y: +def.y, mark_shape: def.shape || '', mark_noun: def.noun || '', mark_canvas: def.canvas || null,
         ...(def.image ? { mark: def.image } : {}),
         marks: others.map(m => ({ ...(m.id && m.id !== 'main' ? { id: m.id } : {}), ...fields(m), ...(m.image ? { image: m.image } : {}) })) };
       if (f.kind === 'edit' && def.key !== 'main' && usable.some(m => m.key === 'main')) {   // another mark made the main one: its changes go with the list, then it swaps in
         const main = usable.find(m => m.key === 'main');
         const rest = usable.filter(m => m !== main);
-        Object.assign(body, { mark_name: main.name, mark_size: +main.size, mark_x: +main.x, mark_y: +main.y, mark_shape: main.shape || '', mark_noun: main.noun || '', default_index: rest.indexOf(def) });
+        Object.assign(body, { mark_name: main.name, mark_size: +main.size, mark_x: +main.x, mark_y: +main.y, mark_shape: main.shape || '', mark_noun: main.noun || '', mark_canvas: main.canvas || null, default_index: rest.indexOf(def) });
         delete body.mark; if (main.image) body.mark = main.image;
         body.marks = rest.map(m => ({ ...(m.id ? { id: m.id } : {}), ...fields(m), ...(m.image ? { image: m.image } : {}) }));
       }
@@ -5228,7 +5272,7 @@ Object.assign(window, {
   isBusy, setStatus,
   exportProject, importProject, importProjectPath, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
   downloadShown, setThumbSizeAt, openViewer, closeViewer, showRun, makeMissing, viewerStep, toggleTerrMenu, editRefine, clearRefine, closeGroupMenu, showNewGroupForm,
-  openProjectMenu, switchProject, openProjectForm, closeProjectForm, saveProject, psKey, psSelect, psSetProject, psSetMark, psColour, psColourAdd, psColourKey, psStar, psDrop1, psSetWords, psFrames, psRemove, psPick, psFileChosen, psFilesChosen, psCancelRead,
+  openProjectMenu, switchProject, openProjectForm, closeProjectForm, saveProject, psKey, psSelect, psSetProject, psSetMark, psColour, psColourAdd, psColourKey, psStar, psDrop1, psSetWords, psFrames, psFramesHand, psFilesChosen, markToPng, psRemove, psPick, psFileChosen, psFilesChosen, psCancelRead,
   removeChange,
   startAiOrder,
   toggleAiPanel,
