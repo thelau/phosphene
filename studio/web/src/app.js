@@ -866,7 +866,7 @@
       const rail = document.getElementById('psRail');
       rail.classList.toggle('frames', !!(f.frames && n > 1));                // the grips show: the order is the animation's
       const canvas = f.frames && n > 1 ? psCanvases() : '', main = psUsable()[0] ? psLabel(psDefault()) : '';
-      const hand = canvas === 'same' ? `<label class="ps-frames"><input type="checkbox" id="psHandOn"${f.framesHand ? ' checked' : ''} onchange="psFramesHand(this.checked)" /><span><b>Set each by hand</b><small>${f.framesHand ? 'Your own size and place for each' : `Sizes follow ${escapeHtml(main)}`}</small></span></label>`
+      const hand = canvas === 'same' ? `<label class="ps-frames"><input type="checkbox" id="psConsistentOn"${f.framesHand ? '' : ' checked'} onchange="psConsistent(this.checked)" /><span><b>Consistent frame size</b><small>${f.framesHand ? 'Each frame has its own size' : `${escapeHtml(main)} sets the size of all`}</small></span></label>`
         : canvas === 'different' ? '<span class="ps-frames-note">Different canvas sizes. Set each by hand.</span>' : '';
       const frames = n > 1 && !pending ? `<div class="ps-framebox"><label class="ps-frames"><input type="checkbox" id="psFramesOn"${f.frames ? ' checked' : ''} onchange="psFrames(this.checked)" /><span><b>Animation frames</b><small>Played in this order</small></span></label>${hand}</div>` : '';
       rail.innerHTML = `<span class="ps-rail-head">Project</span>${projRow}<span class="ps-rail-head"><span>Marks</span><span class="${n >= PS_MAX ? 'ps-count full' : 'ps-count'}">${n ? `${n} of ${PS_MAX}` : `up to ${PS_MAX}`}</span></span>${rows}${frames}${add}`;
@@ -935,7 +935,7 @@
         + `<div class="ps-mark-head"><div class="ps-big"><span class="ps-big-thumb"><img src="${escapeHtml(m.url)}" alt="${escapeHtml(m.name)}" /></span>${m.locked ? '' : `<button type="button" class="link-btn" onclick="psPick('replace')">Replace…</button>`}</div>
           <div class="ps-mark-name"><label class="ps-field"><span>Name</span><input type="text" id="psMarkName" maxlength="30" value="${escapeHtml(m.name)}" oninput="psSetMark('name', this.value)" autocomplete="off"${dis} /></label>
           <span class="ps-main-note">${def ? '<span class="ps-default">★ The main mark</span>' : '★ sets the main mark.'}</span></div></div>
-        <div class="ps-group${follows ? ' following' : ''}"><span class="ps-group-head">Place in the frame${follows ? ` <small>follows ${escapeHtml(psLabel(psDefault()))}</small>` : ''}</span>${slider('Width', 'size', 4, 60)}${slider('Across', 'x', 10, 90)}${slider('Down', 'y', 10, 90)}</div>
+        <div class="ps-group${follows ? ' following' : ''}"><span class="ps-group-head">Place in the frame${follows ? ` <small>set by ${escapeHtml(psLabel(psDefault()))}</small>` : ''}</span>${slider('Width', 'size', 4, 60)}${slider('Across', 'x', 10, 90)}${slider('Down', 'y', 10, 90)}</div>
         <div class="ps-group"><span class="ps-group-head">In the prompts <small>the words Kimi uses for this mark</small></span>
           <div class="ps-two"><label class="ps-field"><span>Its shape</span><input type="text" maxlength="80" value="${escapeHtml(m.shape || '')}" oninput="psSetMark('shape', this.value)" autocomplete="off"${dis} /></label>
           <label class="ps-field"><span>Called</span><input type="text" maxlength="40" value="${escapeHtml(m.noun || '')}" oninput="psSetMark('noun', this.value)" autocomplete="off"${dis} /></label></div></div>`
@@ -1013,7 +1013,7 @@
       renderPS();
     }
     function psFrames(on) { projectForm.frames = !!on; renderPS(); }                       // the marks are frames of one animation, in the rail's order
-    function psFramesHand(on) { projectForm.framesHand = !!on; renderPS(); }               // off again: back to the proportions of the files
+    function psConsistent(on) { projectForm.framesHand = !on; renderPS(); }                // ticked again: back to the proportions of the files
     const psLabel = m => { const f = projectForm, i = psUsable().indexOf(m); return f.frames && i >= 0 ? `Frame ${i + 1}` : m.name; };
     // frames drawn on one canvas: 'same' (they can follow the main one), 'different' (their scale can't be trusted), '' (a canvas not known:
     // marks added before it was kept, which stay as they are set)
@@ -5272,7 +5272,7 @@ Object.assign(window, {
   isBusy, setStatus,
   exportProject, importProject, importProjectPath, chooseProjectFile, closeProjectMenu, saveSettings, deleteProject,
   downloadShown, setThumbSizeAt, openViewer, closeViewer, showRun, makeMissing, viewerStep, toggleTerrMenu, editRefine, clearRefine, closeGroupMenu, showNewGroupForm,
-  openProjectMenu, switchProject, openProjectForm, closeProjectForm, saveProject, psKey, psSelect, psSetProject, psSetMark, psColour, psColourAdd, psColourKey, psStar, psDrop1, psSetWords, psFrames, psFramesHand, psFilesChosen, markToPng, psRemove, psPick, psFileChosen, psFilesChosen, psCancelRead,
+  openProjectMenu, switchProject, openProjectForm, closeProjectForm, saveProject, psKey, psSelect, psSetProject, psSetMark, psColour, psColourAdd, psColourKey, psStar, psDrop1, psSetWords, psFrames, psConsistent, psFilesChosen, markToPng, psRemove, psPick, psFileChosen, psFilesChosen, psCancelRead,
   removeChange,
   startAiOrder,
   toggleAiPanel,

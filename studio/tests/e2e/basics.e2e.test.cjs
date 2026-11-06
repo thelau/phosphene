@@ -22,12 +22,13 @@ test('frames on one canvas follow the main one: their sizes and places come from
   const nums = () => Promise.all(['size', 'x', 'y'].map(k => page.locator(`#psv-${k}`).textContent()));
   await row(1).click();
   assert.deepEqual(await nums(), ['18%', '50%', '50%'], 'not frames: every mark as the main one, as ever');
-  assert.equal(await page.locator('#psHandOn').count(), 0, 'no second control until they are frames');
+  assert.equal(await page.locator('#psConsistentOn').count(), 0, 'no second control until they are frames');
   await page.check('#psFramesOn');
   assert.deepEqual(await nums(), ['9%', '50%', '50%'], 'half as wide in the file: half as wide');
   assert.equal(await page.locator('#psDetail input[type=range]').first().isDisabled(), true, 'a following frame shows its numbers, not a control');
-  assert.match(await text('#psDetail .ps-group-head'), /follows Frame 1/i);
-  assert.match(await text('#psRail .ps-framebox'), /Sizes follow Frame 1/);
+  assert.match(await text('#psDetail .ps-group-head'), /set by Frame 1/i);
+  assert.equal(await page.locator('#psConsistentOn').isChecked(), true, 'on by itself: the frames share a canvas');
+  assert.match(await text('#psRail .ps-framebox'), /Consistent frame size\s*Frame 1 sets the size of all/);
   await shot('frames-follow');
   await row(2).click();
   assert.deepEqual(await nums(), ['9%', '45.5%', '46.2%'], 'and where its file has it, against the main one');
@@ -36,7 +37,8 @@ test('frames on one canvas follow the main one: their sizes and places come from
   await page.locator('#psDetail input[type=range]').first().fill('36');
   await row(1).click();
   assert.deepEqual(await nums(), ['18%', '50%', '50%'], 'one slider moves them all, in proportion');
-  await page.check('#psHandOn');
+  await page.uncheck('#psConsistentOn');
+  assert.match(await text('#psRail .ps-framebox'), /Each frame has its own size/);
   assert.equal(await page.locator('#psDetail input[type=range]').first().isDisabled(), false, 'by hand: its own slider again');
   await page.locator('#psDetail input[type=range]').first().fill('25');
   assert.equal(await page.locator('#psv-size').textContent(), '25%');
@@ -44,11 +46,11 @@ test('frames on one canvas follow the main one: their sizes and places come from
   await page.locator('#psDetail input[type=range]').first().fill('30');
   await row(1).click();
   assert.equal(await page.locator('#psv-size').textContent(), '25%', 'by hand, the main one moves nothing else');
-  await page.uncheck('#psHandOn');
+  await page.check('#psConsistentOn');
   assert.equal(await page.locator('#psv-size').textContent(), '15%', 'and unticked it goes back to the files');
   await add([['other.png', 10, 10, 50, 50]], 'add', 500);
   await page.waitForFunction(() => /Different canvas sizes/.test(document.getElementById('psRail').textContent));
-  assert.equal(await page.locator('#psHandOn').count(), 0, 'scale cannot be trusted: nothing follows, and it says so');
+  assert.equal(await page.locator('#psConsistentOn').count(), 0, 'scale cannot be trusted: nothing follows, and it says so');
   await shot('frames-different-canvas');
   await page.evaluate(() => closeProjectForm());
   assert.deepEqual(consoleErrors, []);
@@ -57,7 +59,7 @@ test('frames on one canvas follow the main one: their sizes and places come from
 test('a transparent file and a project from before: the canvas is read, and frames with none stay as they are set', { skip }, async () => {
   await fresh({ setup: st => { st.projects[0].fixed = false; st.projects[0].frames = true; st.projects[0].marks = [{ id: 'n1', name: 'Bar', size: 30, x: 40, y: 60, shape: 'bar', noun: 'bar', ratio: 1, url: '/assets/ai-plates/k1.svg' }]; } });
   await page.evaluate(() => openProjectForm('edit'));
-  assert.equal(await page.locator('#psHandOn').count(), 0, 'no canvas known: no second control');
+  assert.equal(await page.locator('#psConsistentOn').count(), 0, 'no canvas known: no second control');
   await page.locator('#psRail .ps-mark').nth(1).click();
   assert.deepEqual(await Promise.all(['size', 'x', 'y'].map(k => page.locator(`#psv-${k}`).textContent())), ['30%', '40%', '60%'], 'its own numbers, untouched');
   assert.equal(await page.locator('#psDetail input[type=range]').first().isDisabled(), false);
