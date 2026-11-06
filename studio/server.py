@@ -406,7 +406,7 @@ def path_runs(st: dict) -> dict:
         every = names or [w for w in worlds.values() if w]                    # unknown: the project's most used territory, never a new one invented
         r["world"] = made.get("world") or (max(set(every), key=every.count) if every else "")
         r["keep"] = bool(made.get("keep"))
-        for k in ("mark", "rot", "scale", "real"):
+        for k in ("mark", "rot", "scale"):
             if made.get(k):
                 r[k] = made[k]
     return runs
@@ -478,30 +478,7 @@ def rot_words(rot) -> str:
     return "upside down (180°)" if r == 180 else f"{abs(r)}° {'clockwise' if r > 0 else 'anticlockwise'}"
 
 
-def clean_real(v, project: dict | None = None) -> str:
-    """Real thing: what the mark becomes, in the user's words; true (no words given) reads it from how the mark was named. Nothing: the mark as a mark."""
-    if v is True:
-        return f"a real {(project or {}).get('mark_noun') or 'thing'}"
-    return re.sub(r"\s+", " ", v).strip()[:120] if isinstance(v, str) else ""
-
-
-def real_prompt(raw_prompt: str, project: dict | None, real: str) -> str:
-    """Real thing: the mark is not shown, its outline is taken by a real thing. The image model sees only a flat shape, so these words say
-    what it is. Tested on Nano Banana 2.1 (a square, a line) and Pro (a walk), 2026-11-06: 25 of 25 real things; the wording against
-    drawing the graphic is needed, or the model copies it."""
-    m = mark_words(project)
-    lead = "" if m["centred"] else f"COMPOSITION: the subject sits in the {m['area']}{'' if 'off the centre' in m['area'] else ', NOT at the centre'}, exactly where the guide's shape is; compose the scene around that spot. "
-    return (
-        f"{lead}The reference image is a shape guide, not a design to reproduce. Photograph a real scene in which one subject, {real}, has exactly the outline and pose of "
-        f"the shape in the guide: the same outline, the same proportions, the same size and the same place in the frame, its edges exactly where the shape's edges are, "
-        f"at the {m['where']} of the 9:16 frame at ~{m['size']}% frame width. The guide's colours mean nothing. Real materials and natural proportions. "
-        f"Never draw the graphic: no flat shape, no pictogram, no white outlines, no cream background, no statue, no mannequin, no silhouette, no text. Scene: {raw_prompt}"
-    )
-
-
-def build_full_prompt(raw_prompt: str, project: dict | None = None, keep: bool = False, real: str = "") -> str:
-    if real:
-        return real_prompt(raw_prompt, project, real)
+def build_full_prompt(raw_prompt: str, project: dict | None = None, keep: bool = False) -> str:
     m = mark_words(project)
     rot = (project or {}).get("mark_rot")
     turned = (f" The {m['noun']} is TURNED {rot_words(rot)} in the frame, exactly as the reference guide image shows it: the whole mark rotated "
@@ -821,7 +798,7 @@ def match_world(st: dict, api_key: str, kimi_model: str, direction: str) -> dict
 BIG_MARK = 30   # % of the width from which Kimi is told the mark is large and needs a subject that big (DEMO, 18%, keeps its words)
 
 
-def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list, target: str = "exact", mark=None, keep: bool = False, rot=None, scale=None, path=None, plan=None, real: str = "") -> tuple[list, dict]:
+def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list, target: str = "exact", mark=None, keep: bool = False, rot=None, scale=None, path=None, plan=None) -> tuple[list, dict]:
     """One Kimi request for up to `count` scenes in territory `w`; `batch` = scenes already collected for this batch (never repeated)."""
     titles = st.get("titles", {})
     prompts = st.get("prompts", {})
@@ -856,15 +833,15 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
             + (f"Subjects already used here recently (never repeat these or close variants): {'; '.join(seen_subjects)}.\n" if seen_subjects else "")
             + "Reach for subjects a design studio would actually photograph, not the first obvious thing for the territory.\n\n"
         )
-    if any(moved) and not real:                                         # Loose: where each shot's mark goes, so the scene is built around it
+    if any(moved):                                                      # Loose: where each shot's mark goes, so the scene is built around it
         shot_lines = "\n".join(f"{line} | the mark: {mark_words(placement.as_project(pj, pl))['at']}, ~{pl['size']:g}% frame width" if pl else line
                                for line, pl, pj in zip(shot_lines.split("\n"), moved, projs))
-    if any(z != 1 for z in scales) and not real:                        # resized on target: each shot says how large
+    if any(z != 1 for z in scales):                                     # resized on target: each shot says how large
         shot_lines = "\n".join(f"{line} | the mark ~{pl['size']:g}% frame width" if pl else line for line, pl in zip(shot_lines.split("\n"), places))
-    if any(rots) and not real:                                          # turned: each shot says how far, so the scene can carry a tilted mark
+    if any(rots):                                                       # turned: each shot says how far, so the scene can carry a tilted mark
         shot_lines = "\n".join(f"{line} | the mark turned {rot_words(r)}" if r else f"{line} | the mark upright"
                                 for line, r in zip(shot_lines.split("\n"), rots))
-    if any(mids) and not real:                                          # several marks: each shot says which one, and its shape
+    if any(mids):                                                       # several marks: each shot says which one, and its shape
         shot_lines = "\n".join(f"{line} | which mark: the {pj['mark_noun']} ({pj['mark_shape']})" for line, pj in zip(shot_lines.split("\n"), projs))
     liked = "\n".join(f"- {t}: {p[:200]}" for t, p in brief["liked"]) or "(none yet)"
     disliked = ", ".join(brief["disliked"]) or "(none yet)"
@@ -886,10 +863,6 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
     if keep:
         where += (". THE MARK IS KEPT EXACTLY AS DESIGNED: its colours, lettering and every detail never change; write scenes where it appears as a "
                   "real applied element (printed, painted, a label, a sticker, a sign, an enamel badge, an emblem), never rebuilt in the scene's material")
-    if real:                                                            # Real thing: the shape comes from a guide image; Kimi says who or what, and where
-        where = (f"the mark is NOT shown: its outline BECOMES a real thing, {real}, a different one in every shot, each photographed for real and filling that outline. "
-                 "A guide image gives the outline, pose, size and place, so never describe them. The guide's colour means nothing: vary colours, materials and places. "
-                 "If the director's words below name who or what it is, they win. Anything below about the mark means this real thing")
     llm_prompt = (
         f"Return ONLY a raw JSON array (no markdown fences) of {n_ask} objects with keys \"title\", \"subject\" (the shot's main subject in 2-6 words), \"idea\", \"guide\" ('dark' or 'light' = whether the frame is mostly dark or mostly light) and \"prompt\". "
         f"They are shots for a 9:16 vertical match-cut film where {where}.\n\n"
@@ -901,20 +874,16 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
            f"(for example if the direction is weather, do not show plants, sand or webs). The world below only supplies the palette, finish and how the mark emerges.\n" if direction else "")
         + f"Palette for this whole batch: {w['palette']}. Every shot lives inside this world and palette so the cut sequence coheres; "
         + (f"vary subject and framing, and light only within what the direction allows, not the world.\n\n" if direction else f"vary subject, framing and light, not the world.\n\n")
-        + (f"For each shot first write \"idea\": ONE line on who or what it is and where. Then write \"prompt\" from that idea.\n\n" if real else
-           f"For each shot first write \"idea\": ONE line on how the mark physically emerges from the scene (inspirations: {'; '.join(w['marks'])}; or something better). "
-           f"Reject gimmicks like 'logo on a thing'. Then write \"prompt\" from that idea.\n\n")
-        + f"Alternate registers: odd-numbered shots are DARK register (mostly black or deep tones, luminous emitted light, \"guide\":\"dark\"); even-numbered shots are LIGHT register (mostly bone or pale tones, soft light, \"guide\":\"light\"). "
+        + f"For each shot first write \"idea\": ONE line on how the mark physically emerges from the scene (inspirations: {'; '.join(w['marks'])}; or something better). "
+        f"Reject gimmicks like 'logo on a thing'. Then write \"prompt\" from that idea.\n\n"
+        f"Alternate registers: odd-numbered shots are DARK register (mostly black or deep tones, luminous emitted light, \"guide\":\"dark\"); even-numbered shots are LIGHT register (mostly bone or pale tones, soft light, \"guide\":\"light\"). "
         + ("BUT if the director's words above set the light, time of day or tone (night, dark, daylight, bright, pale...), they win over this alternation: every shot follows them, "
            "and \"guide\" says which the frame really is. " if direction or w.get("prompt") else "")   # a 'dark night' batch came back half pale: the alternation asked for it
         + f"Each register uses the world's palette for that register.\n\n{avoid_block}Shots:\n{shot_lines}\n\n{quality_bar()}\n\n"
         f"TASTE (learned from what the director kept):\nLiked:\n{liked}\nSteer away from the feel of: {disliked}\n\n"
         f"RULES:\n"
-        + (f"1. Exactly one {real} in each shot, the hero of the frame and truly real: never a sign, a print, a statue or a flat shape.\n"
-           f"2. Each prompt: 2-4 sentences, concrete visual language, name lens/light/material; say who or what it is and the scene, never a pictogram, nor its shape, pose, size or place.\n" if real else
-           f"1. The mark is physically part of the scene (same perspective, light, material). Never a flat sticker, no outer rings, exactly one mark.\n"
-           f"2. Each prompt: 2-4 sentences, concrete visual language, name lens/light/material, end by stating the mark's treatment and {'its position as given for that shot' if any(places) else 'dead-center position'}.\n")
-        +
+        f"1. The mark is physically part of the scene (same perspective, light, material). Never a flat sticker, no outer rings, exactly one mark.\n"
+        f"2. Each prompt: 2-4 sentences, concrete visual language, name lens/light/material, end by stating the mark's treatment and {'its position as given for that shot' if any(places) else 'dead-center position'}.\n"
         f"3. All shots must look clearly different from each other and from these past scenes: [{ban_str}]."
     )
     print(f"[KIMI] world='{w['name']}': asking Kimi for {n_ask} scenes ({count} wanted + {n_ask - count} spare in case some are near-duplicates), model {kimi_model}...", flush=True)
@@ -980,7 +949,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
 
 
 def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4, world: str | None = None, direction: str = "", stats: dict | None = None,
-                         target: str = "exact", mark: str | None = None, keep: bool = False, rot=None, scale=None, path=None, seed=None, fill: dict | None = None, deal=None, real: str = "") -> list[dict]:
+                         target: str = "exact", mark: str | None = None, keep: bool = False, rot=None, scale=None, path=None, seed=None, fill: dict | None = None, deal=None) -> list[dict]:
     """
     One authored territory per batch (shots cohere), idea-first, steered by taste, near-duplicates dropped.
     Returns exactly `count` scenes whenever Kimi can supply them: large batches are asked in chunks of up to 10,
@@ -995,7 +964,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
         count = len(deal_list(deal))
         plan = BatchPlan(target, mark, rot, scale, None, count, seed, deal=deal)
     if world == "__sampler__":
-        return ask_kimi_sampler(st, api_key, kimi_model, count, direction, stats, target, mark, keep, rot, scale, path, seed, plan, real)
+        return ask_kimi_sampler(st, api_key, kimi_model, count, direction, stats, target, mark, keep, rot, scale, path, seed, plan)
     w = chapters.choose_world(st, world or "")
     if direction and not world:
         w = match_world(st, api_key, kimi_model, direction) or invent_world(st, api_key, kimi_model, direction)
@@ -1012,7 +981,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
         if need <= 0:
             break
         try:
-            got, info = _ask_chunk(st, api_key, kimi_model, w, min(need, 10), direction, out, target, keep=keep, plan=plan, real=real)
+            got, info = _ask_chunk(st, api_key, kimi_model, w, min(need, 10), direction, out, target, keep=keep, plan=plan)
         except Exception:
             if not out:
                 raise                                      # nothing at all: let the caller report it
@@ -1031,7 +1000,7 @@ def ask_kimi_for_prompts(st: dict, api_key: str, kimi_model: str, count: int = 4
     return out[:count]
 
 
-def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direction: str = "", stats: dict | None = None, target: str = "exact", mark=None, keep: bool = False, rot=None, scale=None, path=None, seed=None, plan=None, real: str = "") -> list[dict]:
+def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direction: str = "", stats: dict | None = None, target: str = "exact", mark=None, keep: bool = False, rot=None, scale=None, path=None, seed=None, plan=None) -> list[dict]:
     """The Sampler: one scene from each of `count` territories, the ones tried least first (to explore at large). Each territory's
     scene is written by its own Kimi request, 6 at a time, each on a copy of the state; their memory (subjects, territories, axes
     used) is merged back into `st` after, so later batches still avoid repeating them."""
@@ -1045,7 +1014,7 @@ def ask_kimi_sampler(st: dict, api_key: str, kimi_model: str, count: int, direct
         w, t = job
         mine = json.loads(json.dumps(st))
         try:
-            got, info = _ask_chunk(mine, api_key, kimi_model, w, 1, direction, [], target, keep=keep, plan=OneTurn(t, deal), real=real)
+            got, info = _ask_chunk(mine, api_key, kimi_model, w, 1, direction, [], target, keep=keep, plan=OneTurn(t, deal))
             return w, mine, got[:1], info
         except Exception as e:
             print(f"[KIMI] sampler: {w['name']} failed ({str(e)[:120]})", flush=True)
@@ -1676,11 +1645,11 @@ class StudioHandler(SimpleHTTPRequestHandler):
             mark_ids = {m["id"]: m for m in (PROJECT or {}).get("marks") or []}
             used = {k: v for k, v in st.get("marks_used", {}).items() if v in mark_ids}   # a mark since removed: read as the main one
             designed = set(st.get("as_designed", []))
-            uploads, real_made = set(st.get("uploads", [])), st.get("real", {})
+            uploads = set(st.get("uploads", []))
             for p in ordered_plate_files(st):
                 pl, mk = placed.get(p.name), used.get(p.name)
                 up = p.name in uploads                                       # the user's own image: no mark check
-                qa = {"qa_passed": True, "qa_score": None, "issues": []} if up or p.name in real_made or not PROJECT.get("has_mark", True) else get_cached_qa(p, pl, mk)
+                qa = {"qa_passed": True, "qa_score": None, "issues": []} if up or not PROJECT.get("has_mark", True) else get_cached_qa(p, pl, mk)
                 plates.append({
                     "filename": p.name,
                     "url": f"/api/plate?f={quote(p.name)}&t={int(p.stat().st_mtime)}",   # the project's own folder
@@ -1702,7 +1671,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "placement": pl,                                 # its own place and size (a Loose batch), else the project's
                     "mark": mk, "mark_name": mark_ids[mk]["name"] if mk else None,   # made with another of the project's marks
                     "as_designed": p.name in designed,                                # Keep it as designed: its colours and details
-                    "real": real_made.get(p.name),                                    # Real thing: what the mark became
                     "uploaded": up,
                     "box": ({"x": (pl or {}).get("x", (mark_ids[mk] if mk else PROJECT)["mark_x"]), "y": (pl or {}).get("y", (mark_ids[mk] if mk else PROJECT)["mark_y"]),
                              "size": (pl or {}).get("size", mark_ids[mk]["mark_size"] if mk else PROJECT["mark_size"]),
@@ -2193,8 +2161,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 if not fill or not fill["steps"]:
                     self.send_json({"ok": False, "error": "That path has all its steps." if fill else "That path is gone."}, 400)
                     return
-                body = {**body, "world": fill["world"] or "", "count": len(fill["steps"]), "target": "path", "keep": fill["keep"], "real": fill.get("real") or ""}
-            real = clean_real(body.get("real"), PROJECT)
+                body = {**body, "world": fill["world"] or "", "count": len(fill["steps"]), "target": "path", "keep": fill["keep"]}
             try:
                 ideas = ask_kimi_for_prompts(
                     st,
@@ -2213,7 +2180,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     seed=body.get("seed"),
                     fill=fill,
                     deal=None if fill else body.get("deal"),
-                    real=real,
                 )
                 with STATE_LOCK:                               # Kimi took seconds: what changed meanwhile stays; only its titles are added,
                     if PROJECT and PROJECT["slug"] == started_in:   # and never into another project opened meanwhile
@@ -2228,7 +2194,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         if run and not fill:                         # a new Path run: how it was made, so Make N can fill it alike
                             now.setdefault("path_runs", {})[run] = {"at": time.time(), "world": "__sampler__" if body.get("world") == "__sampler__" else ideas[0].get("world", ""),
                                                                     "mark": str(body.get("mark") or "main")[:200], "rot": str(body.get("rot") or "0")[:100],
-                                                                    "scale": str(body.get("scale") or "1")[:100], "keep": bool(body.get("keep")), **({"real": real} if real else {})}
+                                                                    "scale": str(body.get("scale") or "1")[:100], "keep": bool(body.get("keep"))}
                         for k, v in st.items():
                             if k in ("history", "kimi_api_key", "path_runs") or v == before.get(k):
                                 continue
@@ -2240,7 +2206,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         save_state(now)
                 gen_log.record("batch", ok=True, asked=int(body.get("count", 4)), territory_choice=body.get("world") or "mix", direction=direction, kimi_model=kimi_model,
                                seconds=round(time.time() - t_batch, 1), titles=[i.get("title") for i in ideas], **stats)
-                self.send_json({"ok": True, "ideas": ideas, "world": stats.get("world"), **({"keep": fill["keep"], "real": fill.get("real") or ""} if fill else {})})
+                self.send_json({"ok": True, "ideas": ideas, "world": stats.get("world"), **({"keep": fill["keep"]} if fill else {})})
             except Exception as e:
                 print(f"[KIMI] invent-prompts failed: {e!r}", flush=True)
                 gen_log.record("batch", ok=False, asked=int(body.get("count", 4)), territory_choice=body.get("world") or "mix", direction=direction,
@@ -2263,13 +2229,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
             proj = projects.with_mark(PROJECT, mark_id)
             guide_type = projects.guide_kind(proj, guide_type)                # a dark mark: always the light guide, never drawn cream
             pl = placement.clean(body.get("placement")) or placement.choose(body.get("target") or "exact", proj)   # Loose: the place its scene was written for
-            real = clean_real(body.get("real"), PROJECT)                       # Real thing: what the mark becomes; its outline is all that is kept
-            if real:
-                guide_type = "light"                                           # always the shape in ink on cream, as tested
-                fit = projects.frame_fit(PROJECT, mark_id)
-                if fit != 1:
-                    base = pl or {"kind": "exact", "x": proj["mark_x"], "y": proj["mark_y"], "size": proj["mark_size"]}
-                    pl = {**base, "size": round(base["size"] * fit, 1), "fit": fit}
             if pl:
                 guide_kw = {"guide": placement.guide(proj, pl, keep)}
             elif mark_id or keep:                                             # another mark (or the mark as designed) on target: its own guide
@@ -2280,7 +2239,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             after_filename = body.get("after_filename")
 
             seen_as = placement.as_project(proj, pl)                           # the prompt names this image's mark, place and size
-            full_prompt = build_full_prompt(raw_prompt, seen_as, keep, real)
+            full_prompt = build_full_prompt(raw_prompt, seen_as, keep)
             mkey = (PROJECT["slug"] if PROJECT else "", title)
             with MAKING_LOCK:
                 if mkey in MAKING:
@@ -2305,7 +2264,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         if not softened:
                             raise
                         print(f"[GENERATE] moderation rejected '{title}': retrying once with a softened prompt", flush=True)
-                        img_bytes = generate_with_retry(attempts=1, prompt=build_full_prompt(softened, seen_as, keep, real), guide_type=guide_type, model=model, trace=trace, **guide_kw)
+                        img_bytes = generate_with_retry(attempts=1, prompt=build_full_prompt(softened, seen_as, keep), guide_type=guide_type, model=model, trace=trace, **guide_kw)
                         trace[-1]["softened"] = True
                         raw_prompt = softened
                 im = Image.open(io.BytesIO(img_bytes)).convert("RGB").resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
@@ -2314,8 +2273,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 # lock: the logo check takes ~2.5 s an image on a project's own mark, and trash / restore clicks waited for it
                 tmp_img = PLATES_DIR / f".new-{uuid.uuid4().hex}.jpg.part"
                 im.save(tmp_img, "JPEG", quality=95)
-                try:                                                           # Real thing: no mark to find in it, so no mark check (as an upload)
-                    qa = {"qa_passed": True, "qa_score": None, "center_corr": None, "core_asymmetry": None, "issues": []} if real else check_new_image(tmp_img, pl, mark_id)
+                try:
+                    qa = check_new_image(tmp_img, pl, mark_id)
                 except BaseException:
                     tmp_img.unlink(missing_ok=True)
                     raise
@@ -2328,9 +2287,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     save_path = tmp_img.parent / filename
                     os.replace(tmp_img, save_path)
                     qa = {**qa, "filename": filename}
-                    if not real:
-                        with QA_LOCK:
-                            _remember_qa(_plate_key(save_path, pl, mark_id), qa, now=True)
+                    with QA_LOCK:
+                        _remember_qa(_plate_key(save_path, pl, mark_id), qa, now=True)
                     print(
                         f"[QA] {filename} ({model}) -> passed={qa['qa_passed']} score={qa['qa_score']}% "
                         f"corr={qa['center_corr']} asym={qa['core_asymmetry']} issues={qa['issues']}",
@@ -2352,8 +2310,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
                             st.setdefault("marks_used", {})[filename] = mark_id
                         if keep:
                             st["as_designed"] = sorted(set(st.get("as_designed", [])) | {filename})
-                        if real:
-                            st.setdefault("real", {})[filename] = real
                         if title not in st.setdefault("history", []):
                             st["history"].append(title)
                         batch = str(body.get("batch") or "")[:40]      # the last batch's images (Curate's Last batch, after a reload too)
@@ -2377,7 +2333,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         save_state(st)
                 took = round(time.time() - t_start, 1)
                 gen_log.record("image", id=job_id, ok=True, title=title, filename=filename, model=model, guide=guide_type, world=body.get("world"), seconds=took,
-                               attempts=trace, qa_passed=qa["qa_passed"], qa_score=qa["qa_score"], qa_issues=qa.get("issues", []), softened=bool(softened), placement=pl, mark=mark_id, keep=keep, real=real)
+                               attempts=trace, qa_passed=qa["qa_passed"], qa_score=qa["qa_score"], qa_issues=qa.get("issues", []), softened=bool(softened), placement=pl, mark=mark_id, keep=keep)
                 print(f"[GENERATE] OK {filename} ({model}) {took}s, attempt {len(trace)}/3" + ("  (prompt softened after a moderation rejection)" if softened else "") + ("" if qa["qa_passed"] else "  LOGO CHECK FAILED -> trash"), flush=True)
 
                 self.send_json({
@@ -2393,7 +2349,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "placement": pl,
                     "mark": mark_id,
                     "keep": keep,
-                    "real": real,
                 })
             except Exception as e:
                 print(f"[GENERATE] FAILED '{title}' ({model}, guide={guide_type}) after {time.time() - t_start:.0f}s: {str(e)[:300]}", flush=True)

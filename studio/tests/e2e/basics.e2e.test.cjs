@@ -2,34 +2,6 @@ const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg
 register();
 const summary = async () => (await page.locator('#placeName').textContent()).replace(/\u00a0/g, ' ');   // the Mark button: how many first, then where
 
-test('Real thing: chosen under More, Becomes stays in the menu, the batch says it and the images carry it', { skip }, async () => {
-  await fresh();
-  const asked = [];
-  page.on('request', r => { if (/\/api\/(invent-prompts|generate-image)$/.test(r.url())) asked.push([new URL(r.url()).pathname, JSON.parse(r.postData() || '{}')]); });
-  await page.click('#placeBtn');
-  await page.click('#placeMenu .mm-morebtn');
-  assert.equal(await page.locator('#becomesInput').count(), 0, 'Becomes only with Real thing');
-  await page.click('#placeMenu [data-list="use"][data-v="real"]');
-  assert.match(await text('#placeName'), /Real thing/);
-  assert.equal(await page.locator('#placeMenu .mm-morebtn').getAttribute('aria-disabled'), 'true', 'More stays open while it is on');
-  assert.equal(await page.locator('#placeMenu [data-list="angle"]').first().getAttribute('aria-disabled'), 'true', 'Real thing stays upright');
-  await page.click('#becomesInput');
-  await page.keyboard.type('a person walking');
-  assert.equal(await page.locator('#becomesInput').inputValue(), 'a person walking', 'it takes the typing and is not redrawn under it');
-  await shot('real-thing-menu');
-  await page.keyboard.press('Escape');
-  await page.mouse.click(20, 500);
-  await page.click('#generateBtn');
-  await page.waitForFunction(() => !document.getElementById('generateBtn').disabled, null, { timeout: 15000 });
-  const inv = asked.find(x => x[0].endsWith('invent-prompts')), gen = asked.filter(x => x[0].endsWith('generate-image'));
-  assert.equal(inv[1].real, 'a person walking');
-  assert.equal(inv[1].rot, '0');
-  assert.ok(gen.length && gen.every(x => x[1].real === 'a person walking'), 'every image carries it');
-  await page.waitForSelector('.card-made');
-  assert.match(await page.locator('.card-made').last().textContent(), /Real/);
-  assert.deepEqual(consoleErrors, []);
-});
-
 test('Settings asks for no image model: only the Krea row, with its connection status', { skip }, async () => {
   await fresh();
   await page.locator('#settingsBtn').click();
@@ -1458,10 +1430,10 @@ test('several marks: added in Project settings, then the generation row offers w
   await page.click('#placeBtn');
   const heads = () => page.locator('#placeMenu .mm-grid:not(.mm-countrow) > .mm-label > span:first-child').allTextContents();   // the choices (the count's row apart)
   assert.deepEqual(await heads(), ['Position'], 'no Mark row with one mark; Angle and Size wait under More');
-  assert.match(await text('#placeMenu .mm-morebtn'), /More: use, angle and size\s*Upright · its own size/);
+  assert.match(await text('#placeMenu .mm-morebtn'), /More: angle and size\s*Upright · its own size/);
   assert.match(await text('#placeMenu .mm-sharet'), /^Same mark, place/);
   await page.click('#placeMenu .mm-morebtn');
-  assert.deepEqual(await heads(), ['Position', 'Use as', 'Angle', 'Size']);
+  assert.deepEqual(await heads(), ['Position', 'Angle', 'Size']);
   assert.equal(await page.locator('#placeMenu [data-list="angle"]').count(), 8, 'eight angles in one strip');
   assert.deepEqual(await page.locator('#placeMenu [data-list="angle"] > span:last-child').allTextContents(), ['−135°', '−90°', '−45°', '0°', '45°', '90°', '135°', '180°']);
   assert.match(await page.locator('#placeMenu [data-list="angle"][data-v="90"] .mm-level').getAttribute('style'), /rotate\(90deg\)/, 'a level line turned, its notch up at 0°');

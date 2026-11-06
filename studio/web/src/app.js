@@ -258,8 +258,7 @@
       const world = [a && a.world, b && b.world].find(w => w && known.has(w)) || (known.has(row) ? row : [...known][0] || row);
       const shared = (a && b ? (a.look || []).filter(t => (b.look || []).includes(t)) : ((a || b || {}).look || [])).filter(t => LOOK_WORDS[t]);
       const look = currentGroup.startsWith('look:') ? currentGroup.slice(5) : (['dark', 'bright', 'mono', 'warm', 'cold'].find(t => shared.includes(t)) || '');
-      const real = (a && a.real) || (b && b.real) || '';                     // Real thing beside it: made the same way
-      return { world, look, ...(real ? { real } : {}) };
+      return { world, look };
     }
 
     // ---- groups: All, yours (stored), and automatic ones from each image's look and territory. The grid and the film show the group chosen. ----
@@ -421,11 +420,7 @@
     const ROTATIONS = [-135, -90, -45, 0, 45, 90, 135, 180];                // degrees clockwise, as a dial from left to right
     const rotLabel = r => (r === 180 || r === -180 ? '180°' : r < 0 ? `−${-r}°` : `${r}°`);
     // the angles ticked (kept as "0,45" in #rotSelect): one or more, they take turns as the marks do; none known: upright
-    // Real thing: the mark is not shown, its outline becomes what Becomes says (empty: the server reads it from the mark's name)
-    const realOn = () => document.getElementById('useSelect').value === 'real';
-    const realSend = () => (realOn() ? (document.getElementById('becomesVal').value.trim() || true) : undefined);
     function rotTicks() {
-      if (realOn()) return [0];                                              // a person turned on their side is an odd request
       const on = String(document.getElementById('rotSelect').value || '0').split(',').map(Number);
       const out = ROTATIONS.filter(r => on.includes(r));
       return out.length ? out : [0];
@@ -494,8 +489,7 @@
       const siz = st.sizeOff ? '' : st.zs.length > 1 ? (path ? 'pulse' : `${st.zs.length} sizes`) : st.zs[0] !== 1 ? sizeLabel(st.zs[0]) : '';
       const count = path ? `${st.n} steps` : `${st.n} image${st.n === 1 ? '' : 's'}`;   // how many first (the count lives in the menu; Claude Design's review)
       const even = !path && fillOn() ? (currentGroup === 'all' ? 'Fill the gaps' : `Fill the gaps in ${groupLabel()}`) : '';   // "6 images · Fill the gaps in Mono · On target"
-      const use = realOn() ? 'Real thing' : '';
-      return { count, rest: [even, use, pos, ang, siz].filter(Boolean).join(' · '), text: [count, even, use, pos, ang, siz].filter(Boolean).join(' · ') };
+      return { count, rest: [even, pos, ang, siz].filter(Boolean).join(' · '), text: [count, even, pos, ang, siz].filter(Boolean).join(' · ') };
     }
     function showSummary(st) {
       const sm = placeSummary(st);
@@ -642,22 +636,19 @@
       }
       html += '</div></div>';
       // More: angle and size, folded until used (open by itself while either is set)
-      const real = realOn(), moreSet = real || a > 1 || st.rots[0] !== 0 || (!st.sizeOff && (z > 1 || st.zs[0] !== 1)), open = placeMore || moreSet;
+      const moreSet = a > 1 || st.rots[0] !== 0 || (!st.sizeOff && (z > 1 || st.zs[0] !== 1)), open = placeMore || moreSet;
       const pv = Math.min(26, Math.round(16 * (st.sizeOff ? 1 : st.zs[0])));   // the mark once, at the first ticked angle and size
       const angSum = a > 1 ? `${a} angles` : st.rots[0] === 0 ? 'Upright' : rotLabel(st.rots[0]);
       const sizeSum = st.sizeOff ? `size by ${st.t === 'loose' ? 'Loose' : 'Scattered'}` : z > 1 ? `${z} sizes` : st.zs[0] === 1 ? 'its own size' : sizeLabel(st.zs[0]);
-      html += `<div class="mm-more"><button type="button" class="mm-morebtn${moreSet ? ' set' : ''}" data-list="more" data-v="more" aria-expanded="${open}"${moreSet ? ' aria-disabled="true" title="Open while one of these is set"' : ''}><span class="mm-mprev">${img(glyph, `width:${pv}px;height:${pv}px;transform:rotate(${st.rots[0]}deg)`)}</span><span class="mm-moret">More: use, angle and size</span><span class="mm-mores">${real ? 'Real thing · ' : ''}${angSum} · ${sizeSum}</span><span class="mm-fill"></span><svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#A8A390" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.75L5 6.25L7.5 3.75"></path></svg></button>`;
+      html += `<div class="mm-more"><button type="button" class="mm-morebtn${moreSet ? ' set' : ''}" data-list="more" data-v="more" aria-expanded="${open}"${moreSet ? ' aria-disabled="true" title="Open while an angle or a size is set"' : ''}><span class="mm-mprev">${img(glyph, `width:${pv}px;height:${pv}px;transform:rotate(${st.rots[0]}deg)`)}</span><span class="mm-moret">More: angle and size</span><span class="mm-mores">${angSum} · ${sizeSum}</span><span class="mm-fill"></span><svg class="chev" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#A8A390" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.75L5 6.25L7.5 3.75"></path></svg></button>`;
       if (open) {
         // Angle and Size (Claude Design's "angle and size rows", B): each row one segmented strip as wide as Position, the cells sharing it;
         // a glyph says only what changes (a level line with an up notch, a dot), the mark itself once, in the header
         const cells = (list, vals, on, glyphOf, label, name, off) => { const n = vals.filter(on).length; return `<div class="mm-strip2${off ? ' off' : ''}" role="group" aria-label="${list === 'angle' ? 'Angle' : 'Size'}">${vals.map(v =>
-          `<button type="button" class="mm-cell2${on(v) && n === 1 ? ' last' : ''}" data-list="${list}" data-v="${v}" aria-pressed="${on(v)}"${off ? ' aria-disabled="true"' : ''} title="${off ? (list === 'angle' ? 'Real thing stays upright' : `${st.t === 'loose' ? 'Loose' : 'Scattered'} picks its own sizes`) : tickTip(name(v), on(v), n, list)}"><span class="mm-g">${glyphOf(v)}</span><span>${label(v)}</span></button>`).join('')}</div>`; };
-        const angles = cells('angle', ROTATIONS, v => st.rots.includes(v), v => `<span class="mm-level" style="transform:rotate(${v}deg)"><i></i></span>`, rotLabel, v => (v ? rotLabel(v) : 'Upright'), real);
+          `<button type="button" class="mm-cell2${on(v) && n === 1 ? ' last' : ''}" data-list="${list}" data-v="${v}" aria-pressed="${on(v)}"${off ? ' aria-disabled="true"' : ''} title="${off ? `${st.t === 'loose' ? 'Loose' : 'Scattered'} picks its own sizes` : tickTip(name(v), on(v), n, list)}"><span class="mm-g">${glyphOf(v)}</span><span>${label(v)}</span></button>`).join('')}</div>`; };
+        const angles = cells('angle', ROTATIONS, v => st.rots.includes(v), v => `<span class="mm-level" style="transform:rotate(${v}deg)"><i></i></span>`, rotLabel, v => (v ? rotLabel(v) : 'Upright'), false);
         const sizes = cells('size', SIZES, v => st.zs.includes(v) && !st.sizeOff, v => `<span class="mm-dot" style="width:${Math.round(10 * v)}px;height:${Math.round(10 * v)}px"></span>`, sizeLabel, sizeLabel, st.sizeOff);
-        const uses = [['mark', 'Mark', 'Show it as the mark'], ['real', 'Real thing', 'Its outline becomes a real thing']];
-        const useRow = `<div class="mm-grid">${head('Use as', 1)}<div class="mm-seg mm-seg2" role="radiogroup" aria-label="Use as">${uses.map(([v, nm, tip]) => `<button type="button" role="radio" data-list="use" data-v="${v}" aria-checked="${(real ? 'real' : 'mark') === v}" title="${tip}">${nm}</button>`).join('')}</div></div>`;
-        const becomes = real ? `<div class="mm-grid">${head('Becomes', 1)}<input class="mm-becomes" id="becomesInput" maxlength="120" autocomplete="off" spellcheck="false" value="${escapeHtml(document.getElementById('becomesVal').value)}" placeholder="a real ${escapeHtml((project && project.mark_noun) || 'thing')}" aria-label="Becomes" /></div>` : '';
-        html += `<div class="mm-moreb">${useRow}${becomes}<div class="mm-grid">${head('Angle', a)}${angles}</div>
+        html += `<div class="mm-moreb"><div class="mm-grid">${head('Angle', a)}${angles}</div>
           <div class="mm-grid">${head('Size', st.sizeOff ? 1 : z)}<div class="mm-col">${sizes}${st.sizeOff ? `<span class="mm-help">${st.t === 'loose' ? 'Loose' : 'Scattered'} picks its own sizes.</span>` : ''}</div></div></div>`;
       }
       html += '</div>';
@@ -699,10 +690,9 @@
         p[{ pshape: 'shape', pdir: 'dir', plen: 'len', psteps: 'steps', panchor: 'anchor' }[list]] = list === 'pshape' || list === 'panchor' ? v : +v;
         setv('pathSelect', `${p.shape}:${p.dir}:${p.len}:${p.steps}:${p.anchor}`);
       }
-      else if (list === 'use') setv('useSelect', v);
       else if (list === 'more') {
         const st = placeState();
-        if (realOn() || st.rots.length > 1 || st.rots[0] !== 0 || (!st.sizeOff && (st.zs.length > 1 || st.zs[0] !== 1))) return;   // open while one is set
+        if (st.rots.length > 1 || st.rots[0] !== 0 || (!st.sizeOff && (st.zs.length > 1 || st.zs[0] !== 1))) return;   // open while one is set
         placeMore = !placeMore;
         try { localStorage.setItem('studioPlaceMore', placeMore ? '1' : '0'); } catch (e) {}
       }
@@ -713,7 +703,6 @@
         setv('sizeSelect', SIZES.filter(x => on.includes(x)).join(','));
       }
       else if (list === 'angle') {
-        if (realOn()) return;                                                // upright
         const r = +v, t = rotTicks(), on = t.includes(r) ? t.filter(x => x !== r) : [...t, r];
         if (!on.length) return;                                              // one angle at least
         setv('rotSelect', ROTATIONS.filter(x => on.includes(x)).join(','));
@@ -725,8 +714,7 @@
     (() => {
       const m = document.getElementById('placeMenu');
       if (!m || !m.addEventListener) return;
-      m.addEventListener('mousedown', e => { if (!(e.target && e.target.id === 'becomesInput')) e.preventDefault(); });   // Becomes takes the focus; nothing else may
-      m.addEventListener('input', e => { if (e.target.id === 'becomesInput') { setv('becomesVal', e.target.value); saveSettings(); } });
+      m.addEventListener('mousedown', e => e.preventDefault());
       m.addEventListener('click', e => { e.stopPropagation(); const it = e.target.closest('[data-list]'); if (it) choosePlace(it.dataset.list, it.dataset.v); });
       document.addEventListener('click', () => { if (!m.hidden) togglePlaceMenu(null, false); });
     })();
@@ -1320,7 +1308,6 @@
       rot: p => (p.uploaded ? null : String(cardRot(p))),                  // how far its mark was turned
       size: p => (p.uploaded ? null : String(cardScale(p))),               // and at what size
       src: p => (p.uploaded ? 'uploaded' : 'generated'),
-      use: p => (p.uploaded ? null : p.real ? 'real' : 'mark'),            // kept as the mark, or Real thing
       run: p => (p.placement && p.placement.path && p.placement.path.run) || null,   // one Path run (Made with › Path lists them)
     };
     // the members of a group key ('all', 'g:<id>', 'look:<tag>', 'world:<name>', 'mark:<id>', 'pos:<kind>', 'src:<kind>'), or null when there is no such group
@@ -1344,7 +1331,7 @@
       return null;
     }
     // Made with (Claude Design's GroupsMade): a rule {kind: [values]} over how images were made; within a row any value, across rows all
-    const MADE_KINDS = [['mark', 'Mark'], ['use', 'Use as'], ['pos', 'Position'], ['rot', 'Angle'], ['size', 'Size'], ['src', 'Source']];
+    const MADE_KINDS = [['mark', 'Mark'], ['pos', 'Position'], ['rot', 'Angle'], ['size', 'Size'], ['src', 'Source']];
     const madeMatch = rule => p => Object.entries(rule || {}).every(([k, vals]) => { const by = MADE_BY[k], v = by && by(p); return v != null && vals.includes(v); });
     function filterRule(key) { try { const r = JSON.parse(decodeURIComponent(String(key).slice(2))); return r && typeof r === 'object' ? r : null; } catch (e) { return null; } }
     const filterKey = rule => (Object.keys(rule).length ? `f:${encodeURIComponent(JSON.stringify(rule))}` : 'all');
@@ -1355,7 +1342,6 @@
       if (kind === 'pos') return POSITION_NAMES[v] || v;
       if (kind === 'rot') return v === '0' ? 'Upright' : rotLabel(+v);
       if (kind === 'size') return sizeLabel(+v);
-      if (kind === 'use') return v === 'real' ? 'Real thing' : 'Mark';
       return v === 'uploaded' ? 'Uploaded' : 'Made here';
     }
     // what a group shows: All and the automatic groups in the one order of the selection; one of your groups in its OWN order
@@ -1380,10 +1366,8 @@
       // Mark, Position and Source: each only when the selection holds two kinds or more (one mark only: nothing to choose between)
       const marks = new Map(markChoices().map(c => [c[0], c]));
       const names = { mark: v => (marks.get(v) || [v, v === 'main' ? 'Main mark' : v])[1], pos: v => POSITION_NAMES[v], rot: v => (v === '0' ? 'Upright' : `Turned ${rotLabel(+v)}`), size: v => (v === '1' ? 'Its own size' : sizeLabel(+v)), src: v => (v === 'uploaded' ? 'Uploaded' : 'Generated') };
-      const order = { mark: [...marks.keys()], pos: Object.keys(POSITION_NAMES), rot: ['0', ...ROTATIONS.filter(r => r).map(String)], size: SIZES.map(String), src: ['generated', 'uploaded'], use: ['mark', 'real'], run: [] };
-      names.use = v => madeName('use', v); names.run = v => v;
+      const order = { mark: [...marks.keys()], pos: Object.keys(POSITION_NAMES), rot: ['0', ...ROTATIONS.filter(r => r).map(String)], size: SIZES.map(String), src: ['generated', 'uploaded'] };
       Object.entries(MADE_BY).forEach(([kind, by]) => {
-        if (kind === 'run' || kind === 'use') return;                        // Made with's own rows
         const n = {};
         shown.forEach(p => { const v = by(p); if (v) n[v] = (n[v] || 0) + 1; });
         const kinds = Object.keys(n).sort((a, b) => ((order[kind].indexOf(a) + 1) || 99) - ((order[kind].indexOf(b) + 1) || 99));
@@ -1463,7 +1447,7 @@
       return currentGroup.startsWith('f:') ? (filterRule(currentGroup) || {}) : {};
     }
     function madeRows(rule = madeRule()) {
-      const shown = plates.filter(p => !p.trashed), order = { pos: Object.keys(POSITION_NAMES), rot: ['0', ...ROTATIONS.filter(r => r).map(String)], size: SIZES.map(String), src: ['generated', 'uploaded'], use: ['mark', 'real'], mark: markChoices().map(c => c[0]) };
+      const shown = plates.filter(p => !p.trashed), order = { pos: Object.keys(POSITION_NAMES), rot: ['0', ...ROTATIONS.filter(r => r).map(String)], size: SIZES.map(String), src: ['generated', 'uploaded'], mark: markChoices().map(c => c[0]) };
       return MADE_KINDS.map(([kind, label]) => {
         const by = MADE_BY[kind], vals = new Set(shown.map(by).filter(v => v != null)), ticked = rule[kind] || [];
         ticked.forEach(v => vals.add(v));
@@ -1519,7 +1503,7 @@
           body: JSON.stringify({ fill: id, kimi_model: document.getElementById('kimiModelSelect').value }) })).json();
         if (inv.needs_kimi_key) { progStop(''); ensureKimiReady(); return; }
         if (!inv.ok || !inv.ideas) throw new Error(inv.error || 'Prompt generation failed');
-        await runBatch(inv.ideas.map(i => ({ ...i, target: 'path', keep: !!inv.keep, real: inv.real || undefined })));
+        await runBatch(inv.ideas.map(i => ({ ...i, target: 'path', keep: !!inv.keep })));
       } catch (e) {
         progStop(plainError(e));
       } finally {
@@ -2189,14 +2173,14 @@
       const name = framesOn() ? c[1] : c[0] === 'main' ? ((project && project.mark_name) || 'Main mark') : c[1];
       const pos = pl.path ? `${PATH_GLYPH[pl.path.dir] || '→'} ${pl.path.i + 1}/${pl.path.n}` : pl.kind === 'loose' ? 'Loose' : pl.kind === 'scattered' ? 'Scattered' : '';
       const fr = project && project.frames && choices.length > 1 ? `${choices.findIndex(x => x[0] === c[0]) + 1}/${choices.length}` : '';   // frames of one animation: which one
-      const vals = [fr, p.real ? 'Real' : '', pos, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
+      const vals = [fr, pos, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
       if (!choices.length && !vals && !p.as_designed) return null;
       const box = p.box || pl, x = +(box.x != null ? box.x : (project ? project.mark_x : 50)), y = +(box.y != null ? box.y : (project ? project.mark_y : 50));
       const dx = ((x - 50) / 100 * 8).toFixed(1), dy = ((y - 50) / 100 * 14).toFixed(1);
       const frame = `<span class="cm-frame">${c[2] ? `<img class="pm-thumb" src="${escapeHtml(c[2])}" alt="" style="transform:translate(-50%,-50%) translate(${dx}px,${dy}px) rotate(${rot}deg) scale(${k})" />` : ''}</span>`;
       const where = pl.path ? `Path ${PATH_GLYPH[pl.path.dir] || '→'} ${pl.path.i + 1}/${pl.path.n}` : POSITION_NAMES[pl.kind || 'exact'] || 'On target';
-      const tip = [fr ? `Frame ${fr}` : name, p.real ? `Real thing: ${p.real}` : '', where, rot ? rotLabel(rot) : 'upright', k !== 1 ? sizeLabel(k) : 'own size', p.as_designed ? 'exact mark' : ''].filter(Boolean).join(' · ');
-      const words = [fr ? `Frame ${fr}` : choices.length ? name : '', p.real ? `Real thing: ${p.real}` : '', where, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
+      const tip = [fr ? `Frame ${fr}` : name, where, rot ? rotLabel(rot) : 'upright', k !== 1 ? sizeLabel(k) : 'own size', p.as_designed ? 'exact mark' : ''].filter(Boolean).join(' · ');
+      const words = [fr ? `Frame ${fr}` : choices.length ? name : '', where, rot ? rotLabel(rot) : '', k !== 1 ? sizeLabel(k) : ''].filter(Boolean).join(' · ');
       return { frame, vals, tip, words };
     }
     // the mark check's verdict, on the image as one solid pill (a dot at size S): red for QA flagged and Mark check, amber to check
@@ -2213,7 +2197,7 @@
     // (in a group, only those that will belong to it: a territory's own; your groups and the looks get images only once they are made)
     function pendingCards() {
       if (!generating || prog.stage !== 'render') return [];
-      const made = { world: prog.worlds, mark: prog.marks, pos: prog.positions, rot: prog.rots || [], size: prog.sizes || [], src: prog.slots.map(() => 'generated'), use: prog.uses || [] }, kind = currentGroup.slice(0, currentGroup.indexOf(':'));
+      const made = { world: prog.worlds, mark: prog.marks, pos: prog.positions, rot: prog.rots || [], size: prog.sizes || [], src: prog.slots.map(() => 'generated') }, kind = currentGroup.slice(0, currentGroup.indexOf(':'));
       const belongs = i => currentGroup === 'all' || (kind in made && (made[kind] || [])[i] === currentGroup.slice(kind.length + 1));
       return prog.slots.map((st, i) => ((st === 'wait' || st === 'run') && belongs(i) && !(prog.fillAt && prog.fillAt[i] && framesOn() && showMissing && !showTrash)
         ? `<div class="card pending-card" aria-hidden="true"><div class="card-thumb"><div class="pending-ring"></div><span class="pending-label">${st === 'run' ? 'Rendering' : 'Queued'}</span><div class="pending-bar ${st}"><i></i></div></div><div class="card-title">${escapeHtml(prog.titles[i] || '')}</div><div class="card-meta"><span class="card-model-badge">generating…</span></div></div>`
@@ -3079,7 +3063,7 @@
     // Not in it: permanent deletes and generation (they say so when you start them), the mode and the views.
     const history = [], future = [];
     let applyingHistory = false;
-    const NOT_UNDONE = ['targetSelect', 'markSelect', 'framesSelect', 'rotSelect', 'sizeSelect', 'pathSelect', 'useSelect', 'becomesVal', 'batchCountSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
+    const NOT_UNDONE = ['targetSelect', 'markSelect', 'framesSelect', 'rotSelect', 'sizeSelect', 'pathSelect', 'batchCountSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
     function pushStep(step) { if (!step.settings) commitSettings(); history.push(step); if (history.length > 100) history.shift(); future.length = 0; showUndo(); return step; }
     function showUndo() {
       const b = document.getElementById('undoRandomBtn');
@@ -4156,7 +4140,7 @@
     try { if (localStorage.getItem('studioMarkOverlay') === '1') toggleMarkOverlay(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['useSelect', 'becomesVal', 'repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'framesSelect', 'rotSelect', 'sizeSelect', 'pathSelect'];   // keepCheck (Keep the mark exact) was removed on 2026-10-31: the user never used it
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'framesSelect', 'rotSelect', 'sizeSelect', 'pathSelect'];   // keepCheck (Keep the mark exact) was removed on 2026-10-31: the user never used it
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
     // rest is the same everywhere (`studioSettings`: card size, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved
@@ -4204,7 +4188,7 @@
     // the project the server has open: its film in the controls (only when it is another than the one they hold)
     // the Mark menu of a project with nothing saved for it (new, or saved before Angle and Size): on target, its main mark, upright, its
     // own size; never the last project's ticks (opening Halo after Arc Resonance showed Arc's four angles)
-    const PLACE_DEFAULTS = { useSelect: 'mark', becomesVal: '', targetSelect: 'exact', markSelect: 'main', framesSelect: '', rotSelect: '0', sizeSelect: '1', pathSelect: 'line:0:40:12' };
+    const PLACE_DEFAULTS = { targetSelect: 'exact', markSelect: 'main', framesSelect: '', rotSelect: '0', sizeSelect: '1', pathSelect: 'line:0:40:12' };
     function useProjectFilm(slug) {
       if (!slug || slug === filmSlug) return;
       filmSlug = slug;
@@ -4716,7 +4700,6 @@
       prog.world = new Set(ideas.map(i => i.world)).size > 1 ? (prog.filling ? 'Fill the gaps' : 'Sampler') : (ideas[0] && ideas[0].world) || '';   // the Sampler: many territories (a fill across territories says what it is)
       prog.slots = ideas.map(() => 'wait');
       prog.titles = ideas.map(i => i.title);
-      prog.uses = ideas.map(i => (i.real ? 'real' : 'mark'));
       prog.worlds = ideas.map(i => i.world || prog.world);
       prog.marks = ideas.map(i => i.mark || 'main'); prog.positions = ideas.map(i => (i.placement && i.placement.kind) || 'exact'); prog.rots = ideas.map(i => String((i.placement && i.placement.rot) || 0)); prog.sizes = ideas.map(i => String((i.placement && i.placement.scale) || 1));
       prog.why = ideas.map(() => '');
@@ -4735,7 +4718,7 @@
             const genRes = await fetch('/api/generate-image', {
               method: 'POST',
               headers: forProject({'Content-Type': 'application/json'}),
-              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, target: item.target || 'exact', placement: item.placement || null, mark: item.mark || null, keep: !!item.keep, real: item.real || undefined, batch: item.batch || undefined })
+              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, target: item.target || 'exact', placement: item.placement || null, mark: item.mark || null, keep: !!item.keep, batch: item.batch || undefined })
             });
             genData = await genRes.json();
           } catch (e) {
@@ -4862,7 +4845,7 @@
       prog.filling = true;
       try {
         const sets = new Map();
-        plan.gaps.forEach((g, i) => { const k = `${g.world}|${g.look}|${g.real || ''}`; if (!sets.has(k)) sets.set(k, []); sets.get(k).push(i); });
+        plan.gaps.forEach((g, i) => { const k = `${g.world}|${g.look}`; if (!sets.has(k)) sets.set(k, []); sets.get(k).push(i); });
         const ideas = [];
         let stopped = null, left = 0;                                         // Kimi stopping partway: what it wrote is still made
         for (const idx of sets.values()) {
@@ -4871,11 +4854,11 @@
           try {
           const res = await (await fetch('/api/invent-prompts', { method: 'POST', headers: forProject({ 'Content-Type': 'application/json' }), body: JSON.stringify({
             count: idx.length, pair: false, kimi_model: kimiModel, world: g0.world, direction: [refine, LOOK_WORDS[g0.look]].filter(Boolean).join(', '),
-            target, mark: markTicks().join(','), rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed, deal: idx.map(i => plan.ids[i]).join(','), real: g0.real || undefined }) })).json();
+            target, mark: markTicks().join(','), rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed, deal: idx.map(i => plan.ids[i]).join(',') }) })).json();
           if (res.needs_kimi_key) { progStop(''); ensureKimiReady(); return; }
           if (!res.ok || !res.ideas) throw new Error(res.error || 'Prompt generation failed');
           const open = [...idx];                                              // each scene to a gap of its frame, in the gaps' order
-          res.ideas.forEach(it => { it.real = g0.real || undefined; const k = open.findIndex(i => plan.ids[i] === (it.mark || 'main')); if (k >= 0) { it.gap = open[k]; open.splice(k, 1); } ideas.push(it); });
+          res.ideas.forEach(it => { const k = open.findIndex(i => plan.ids[i] === (it.mark || 'main')); if (k >= 0) { it.gap = open[k]; open.splice(k, 1); } ideas.push(it); });
           } catch (e) { stopped = e; left += idx.length; }
         }
         if (!ideas.length) throw stopped || new Error('Prompt generation failed');
@@ -4905,7 +4888,7 @@
       if (project.has_mark === false) { openProjectForm('edit'); return; }   // no mark yet: Project settings, where + Add a mark is
       if (!ensureKimiReady() || !ensureKreaReady()) return;
 
-      const kimiModel = document.getElementById('kimiModelSelect').value, real = realSend();
+      const kimiModel = document.getElementById('kimiModelSelect').value;
       const count = batchCount();
       const worldChoice = document.getElementById('worldSelect').value;
       if (!worldChoice) { setStatus('Choose a territory first.'); toggleTerrMenu(null, true); return; }   // the territories have not loaded yet
@@ -4923,7 +4906,7 @@
         const invRes = await fetch('/api/invent-prompts', {
           method: 'POST',
           headers: forProject({'Content-Type': 'application/json'}),
-          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: rowTarget(false), mark: markTicks().join(','), rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed, real })
+          body: JSON.stringify({ count, pair: false, kimi_model: kimiModel, world: worldChoice, direction, target: rowTarget(false), mark: markTicks().join(','), rot: rotTicks().join(','), scale: sizeTicks().join(','), path: pathSet(), seed: placeSeed })
         });
         const invData = await invRes.json();
         if (invData.needs_kimi_key) {
@@ -4940,7 +4923,7 @@
         ran = true;
         const target = rowTarget(false);                                         // each image keeps the batch's choices and the place its scene was written for (a Resume too)
         const batch = newBatchId();                                              // its images are the Last batch (a Retry or Resume adds to it)
-        await runBatch(invData.ideas.map(i => ({ ...i, target, batch, real })));
+        await runBatch(invData.ideas.map(i => ({ ...i, target, batch })));
         if (worldChoice === '__custom__' && invData.world) {                     // your territory exists now: the next batch carries on in it
           await loadWorlds();
           const sel = document.getElementById('worldSelect');

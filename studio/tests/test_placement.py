@@ -284,11 +284,3 @@ def test_a_frames_deal_makes_one_image_of_each_listed_mark_in_order(srv, monkeyp
     assert [t["mark"] for t in got] == ["f3", "f3", "f3", "f2"] and [t["rot"] for t in got] == [0, 90, 0, 90] and all(t["path"] is None for t in got)
     plan.take(0)
     assert [t["mark"] for t in plan.peek(3)] == ["f3", "f3", "f2"], "a dropped scene's mark goes to the next one"
-
-
-
-def test_a_real_thing_frames_own_size_survives_cleaning():
-    pl = {"kind": "exact", "x": 50.0, "y": 50.0, "size": 10.2, "fit": 0.566}
-    assert placement.clean(pl) == pl, "on target, but sized to the other frames' height"
-    assert placement.clean({"kind": "scattered", "x": 30.0, "y": 40.0, "size": 4.0, "fit": 0.5})["size"] == 4.0, "under Scattered's smallest once fitted"
-    assert placement.clean({**pl, "fit": "x"}) is None and placement.clean({**pl, "fit": 99}) is None

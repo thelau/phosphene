@@ -116,23 +116,6 @@ def with_mark(p: dict, mark_id: str | None) -> dict:
             "qa": m["qa"], "mark_id": m["id"], "mark_name": m["name"]}
 
 
-def frame_fit(p: dict, mark_id: str | None) -> float:
-    """Real thing, frames of one animation: what this frame's size is multiplied by so every frame has one height. A mark's size is its
-    width, and a walk's frames are trimmed to their own widths at one height, so at one size the narrowest stride came out nearly twice
-    as tall as the widest. Only for frames set to one size and drawn at about one height: frames that really change size (a square
-    stretching into a bar) stay as they are."""
-    try:
-        if not p.get("frames") or not p.get("marks"):
-            return 1.0
-        every = [p] + [with_mark(p, m["id"]) for m in p["marks"]]
-        high = [mark_alpha(Image.open(m["mark_file"])).height for m in every]
-        if len({m["mark_size"] for m in every}) > 1 or max(high) > min(high) * 1.1:
-            return 1.0
-        return round(mark_ratio(p) / mark_ratio(with_mark(p, mark_id)), 3)
-    except Exception:
-        return 1.0
-
-
 _RATIO: dict = {}
 
 
@@ -827,10 +810,6 @@ def _clean_state(f: Path) -> None:
         st["uploads"] = [n for n in st["uploads"] if isinstance(n, str) and _bare(n)]
     if isinstance(st.get("as_designed"), list):        # images made with Keep it as designed
         st["as_designed"] = [n for n in st["as_designed"] if isinstance(n, str) and _bare(n)]
-    if isinstance(st.get("real"), dict):               # images made with Real thing: what each mark became
-        st["real"] = {k: v[:120] for k, v in st["real"].items() if _bare(k) and isinstance(v, str) and v}
-    elif "real" in st:
-        del st["real"]
     if isinstance(st.get("marks_used"), dict):        # which images were made with another of the project's marks
         st["marks_used"] = {k: v for k, v in st["marks_used"].items() if _bare(k) and isinstance(v, str) and MARK_ID.match(v)}
     elif "marks_used" in st:
@@ -845,7 +824,7 @@ def _clean_state(f: Path) -> None:
         for k, v in list(st["path_runs"].items())[:500]:
             if isinstance(k, str) and re.fullmatch(r"[0-9a-f]{1,16}", k) and isinstance(v, dict):
                 runs[k] = {"at": float(v["at"]) if isinstance(v.get("at"), (int, float)) else 0.0, "keep": v.get("keep") is True,
-                           **{x: str(v.get(x) or "")[:200] for x in ("world", "mark", "rot", "scale")}, **({"real": str(v["real"])[:200]} if v.get("real") else {})}
+                           **{x: str(v.get(x) or "")[:200] for x in ("world", "mark", "rot", "scale")}}
         st["path_runs"] = runs
     elif "path_runs" in st:
         del st["path_runs"]
