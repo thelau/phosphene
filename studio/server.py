@@ -2229,6 +2229,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             proj = projects.with_mark(PROJECT, mark_id)
             guide_type = projects.guide_kind(proj, guide_type)                # a dark mark: always the light guide, never drawn cream
             pl = placement.clean(body.get("placement")) or placement.choose(body.get("target") or "exact", proj)   # Loose: the place its scene was written for
+            pl = placement.fit_frame(PROJECT, mark_id, pl)                     # frames of a walk: one height, whatever each one's width
             if pl:
                 guide_kw = {"guide": placement.guide(proj, pl, keep)}
             elif mark_id or keep:                                             # another mark (or the mark as designed) on target: its own guide
