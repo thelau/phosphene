@@ -74,3 +74,10 @@ def test_novelty_ignores_stopwords_and_empty():
 def test_novelty_partial_overlap():
     n = taste.novelty("glass cube concrete", ["glass cube marble"])
     assert 0.0 < n < 1.0
+
+
+
+def test_real_thing_images_teach_nothing():
+    st = {**state(trashed=["t.jpg"]), "real": {"k.jpg": "a person", "t.jpg": "a person"}}
+    brief = taste.taste_brief(st, {"k.jpg": "K", "t.jpg": "T", "o.jpg": "O"}, {"k.jpg": "pk", "t.jpg": "pt", "o.jpg": "po"})
+    assert brief == {"liked": [("O", "po")], "disliked": []}

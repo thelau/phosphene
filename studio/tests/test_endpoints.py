@@ -1326,3 +1326,36 @@ def test_generate_image_gives_a_dark_mark_the_light_guide_and_logs_it(live, srv,
     live("POST", "/api/generate-image", {"title": "Black One", "prompt": "p", "guide": "dark", "model": "m"})
     assert seen[-1] == "light", "a black mark: never drawn cream"
     assert [e for e in gen_log.read(None) if e.get("event") == "image_start"][-1]["guide"] == "light"
+
+
+
+def test_real_thing_tells_kimi_and_the_image_model_what_the_mark_becomes_and_skips_the_mark_check(live, srv):
+    status, data = live("POST", "/api/invent-prompts", {"count": 2, "world": "Editorial Print", "real": "a person walking"})
+    assert status == 200 and data["ok"]
+    asked = live.calls["kimi"][-1]
+    assert "BECOMES a real thing, a person walking" in asked and "never a pictogram" in asked
+    assert "physically emerges" not in asked and "Never a flat sticker" not in asked, "not the words for placing a mark"
+    idea = data["ideas"][0]
+    status, res = live("POST", "/api/generate-image", {"title": idea["title"], "prompt": "A rainy street.", "guide": "dark", "world": idea["world"], "real": "a person walking"})
+    assert status == 200 and res["ok"] and res["qa_passed"] and res["real"] == "a person walking"
+    sent = live.calls["krea"][-1]
+    assert "one subject, a person walking" in sent["prompt"] and "Never draw the graphic" in sent["prompt"] and sent["prompt"].endswith("Scene: A rainy street.")
+    assert sent["guide_type"] == "light", "the shape in ink on cream, whatever the scene"
+    st = srv.load_state()
+    assert st["real"] == {res["filename"]: "a person walking"}
+    plate = next(p for p in live("GET", "/api/state")[1]["plates"] if p["filename"] == res["filename"])
+    assert plate["real"] == "a person walking" and plate["qa_passed"] and not plate["qa_issues"], "never measured as a mark"
+
+
+def test_real_thing_with_no_words_reads_them_from_the_marks_name(srv):
+    assert srv.clean_real(True, {"mark_noun": "walking figure"}) == "a real walking figure"
+    assert srv.clean_real("  a   bird  ", {}) == "a bird"
+    assert srv.clean_real(None, {}) == "" and srv.clean_real(False, {}) == "" and srv.clean_real(3, {}) == ""
+    assert len(srv.clean_real("x" * 500, {})) == 120
+
+
+def test_a_plain_batch_keeps_its_words(live, srv):
+    data = live("POST", "/api/invent-prompts", {"count": 1, "world": "Editorial Print"})[1]
+    assert "physically emerges" in live.calls["kimi"][-1] and "BECOMES" not in live.calls["kimi"][-1]
+    res = live("POST", "/api/generate-image", {"title": "Plain", "prompt": "A wall", "guide": "dark", "world": data["ideas"][0]["world"]})[1]
+    assert "real" not in srv.load_state() and res["real"] == ""

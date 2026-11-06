@@ -120,7 +120,12 @@ def clean(pl) -> dict | None:
     if not isinstance(pl, dict) or pl.get("kind") not in KINDS:
         return None
     rot, scale = projects.clean_rot(pl.get("rot")), projects.clean_scale(pl.get("scale"))
-    if pl["kind"] == "exact" and not rot and scale == 1:
+    try:
+        fit = float(pl.get("fit") or 0)                                        # Real thing: frames sized to one height (projects.frame_fit)
+    except (TypeError, ValueError):
+        fit = 0
+    fit = fit if 0.1 <= fit <= 10 else 0
+    if pl["kind"] == "exact" and not rot and scale == 1 and not fit:
         return None
     path = clean_path(pl.get("path")) if pl["kind"] == "path" else None
     if pl["kind"] == "path" and not path:
@@ -129,11 +134,11 @@ def clean(pl) -> dict | None:
         x, y, size = (float(pl[k]) for k in ("x", "y", "size"))
     except (KeyError, TypeError, ValueError):
         return None
-    lo, hi = (2.4, 96.0) if pl["kind"] in ("exact", "path") else SIZE_PCT   # on target or a path: the project's own size (up to 60%), times 0.6 to 1.6
+    lo, hi = (2.4, 96.0) if pl["kind"] in ("exact", "path") or fit else SIZE_PCT   # on target or a path: the project's own size (up to 60%), times 0.6 to 1.6
     if not (0 < x < 100 and 0 < y < 100 and lo <= size <= hi):
         return None
     return {"kind": pl["kind"], "x": round(x, 1), "y": round(y, 1), "size": round(size, 1), **({"rot": rot} if rot else {}),
-            **({"scale": scale} if scale != 1 and pl["kind"] in ("exact", "path") else {}), **({"path": path} if path else {})}
+            **({"scale": scale} if scale != 1 and pl["kind"] in ("exact", "path") else {}), **({"path": path} if path else {}), **({"fit": fit} if fit else {})}
 
 
 def as_project(project: dict, pl: dict | None) -> dict:

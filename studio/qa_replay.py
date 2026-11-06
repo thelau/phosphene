@@ -44,6 +44,8 @@ def jobs(home: Path) -> tuple[list, dict]:
         by_critic = set(st.get("critic_failed", []))
         for img in sorted(p["plates_dir"].glob("*.jpg")):
             n = img.name
+            if n in st.get("real", {}):
+                continue                                                  # Real thing: no mark to find in it
             if n in trashed and n in by_critic and n not in by_check:
                 continue                                                  # the AI critic's call, not the user's
             judged[f"{p['slug']}/{n}"] = ("left" if n in trashed else "restored") if n in by_check else "you trashed" if n in trashed else "kept"

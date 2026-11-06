@@ -57,7 +57,10 @@ def model_stats(st: dict) -> dict:
 def taste_brief(st: dict, titles: dict, prompts: dict, k_pos: int = 6, k_neg: int = 14) -> dict:
     """Titles/prompts of what worked and what to steer away from."""
     pos, neg = [], []
+    real = st.get("real", {})                       # Real thing: a trash there mostly says the shape did not work, not that the scene was disliked
     for filename in prompts:
+        if filename in real:
+            continue
         status = plate_status(st, filename)
         entry = (titles.get(filename, filename), prompts[filename])
         if status == "kept":
