@@ -284,25 +284,3 @@ def test_a_frames_deal_makes_one_image_of_each_listed_mark_in_order(srv, monkeyp
     assert [t["mark"] for t in got] == ["f3", "f3", "f3", "f2"] and [t["rot"] for t in got] == [0, 90, 0, 90] and all(t["path"] is None for t in got)
     plan.take(0)
     assert [t["mark"] for t in plan.peek(3)] == ["f3", "f3", "f2"], "a dropped scene's mark goes to the next one"
-
-
-
-def _walk(tmp_path):
-    files = [tmp_path / "a.png", tmp_path / "b.png"]
-    for f, w in zip(files, (400, 200)):
-        im = Image.new("RGBA", (w + 20, 820), (0, 0, 0, 0))             # on transparency, as a mark is: trimmed to w x 800
-        im.paste((0, 0, 0, 255), (10, 10, w + 10, 810))
-        im.save(f)
-    return {"frames": True, "mark_file": files[0], "mark_size": 18.0, "mark_x": 50.0, "mark_y": 50.0, "mark_shape": "s", "mark_noun": "n", "qa": None, "name": "x",
-            "marks": [{"id": "b", "name": "b", "mark_file": files[1], "mark_size": 18.0, "mark_x": 50.0, "mark_y": 50.0, "mark_shape": "s", "mark_noun": "n", "qa": None}]}
-
-
-def test_a_narrow_frame_on_target_gets_a_placement_at_the_others_height(tmp_path):
-    p = _walk(tmp_path)
-    assert placement.fit_frame(p, None, None) is None, "the main mark: as ever"
-    pl = placement.fit_frame(p, "b", None)
-    assert pl == {"kind": "exact", "x": 50.0, "y": 50.0, "size": 9.0, "fit": 0.5}
-    assert placement.clean(pl) == pl, "it survives a .phos file"
-    assert placement.fit_frame(p, "b", {"kind": "loose", "x": 30.0, "y": 40.0, "size": 20.0})["size"] == 10.0, "a size chosen for it too"
-    assert placement.clean({"kind": "scattered", "x": 30.0, "y": 40.0, "size": 4.0, "fit": 0.5})["size"] == 4.0, "under Scattered's smallest once fitted"
-    assert placement.clean({**pl, "fit": "x"}) is None and placement.clean({**pl, "fit": 99}) is None

@@ -120,12 +120,7 @@ def clean(pl) -> dict | None:
     if not isinstance(pl, dict) or pl.get("kind") not in KINDS:
         return None
     rot, scale = projects.clean_rot(pl.get("rot")), projects.clean_scale(pl.get("scale"))
-    try:
-        fit = float(pl.get("fit") or 0)                                        # a frame sized to the others' height (fit_frame)
-    except (TypeError, ValueError):
-        fit = 0
-    fit = fit if 0.1 <= fit <= 10 else 0
-    if pl["kind"] == "exact" and not rot and scale == 1 and not fit:
+    if pl["kind"] == "exact" and not rot and scale == 1:
         return None
     path = clean_path(pl.get("path")) if pl["kind"] == "path" else None
     if pl["kind"] == "path" and not path:
@@ -134,22 +129,11 @@ def clean(pl) -> dict | None:
         x, y, size = (float(pl[k]) for k in ("x", "y", "size"))
     except (KeyError, TypeError, ValueError):
         return None
-    lo, hi = (2.4, 96.0) if pl["kind"] in ("exact", "path") or fit else SIZE_PCT   # on target or a path: the project's own size (up to 60%), times 0.6 to 1.6
+    lo, hi = (2.4, 96.0) if pl["kind"] in ("exact", "path") else SIZE_PCT   # on target or a path: the project's own size (up to 60%), times 0.6 to 1.6
     if not (0 < x < 100 and 0 < y < 100 and lo <= size <= hi):
         return None
     return {"kind": pl["kind"], "x": round(x, 1), "y": round(y, 1), "size": round(size, 1), **({"rot": rot} if rot else {}),
-            **({"scale": scale} if scale != 1 and pl["kind"] in ("exact", "path") else {}), **({"path": path} if path else {}), **({"fit": fit} if fit else {})}
-
-
-def fit_frame(project: dict, mark_id: str | None, pl: dict | None) -> dict | None:
-    """A new image's placement with its frame sized to the others' height (projects.frame_fit), or `pl` as it was. Kept on the image, so
-    its guide, prompt, mark check and target all read that size, and images made before keep theirs."""
-    fit = projects.frame_fit(project, mark_id)
-    if fit == 1:
-        return pl
-    seen = projects.with_mark(project, mark_id)
-    base = pl or {"kind": "exact", "x": seen["mark_x"], "y": seen["mark_y"], "size": seen["mark_size"]}
-    return {**base, "size": round(base["size"] * fit, 1), "fit": fit}
+            **({"scale": scale} if scale != 1 and pl["kind"] in ("exact", "path") else {}), **({"path": path} if path else {})}
 
 
 def as_project(project: dict, pl: dict | None) -> dict:

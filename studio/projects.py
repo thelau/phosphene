@@ -116,24 +116,6 @@ def with_mark(p: dict, mark_id: str | None) -> dict:
             "qa": m["qa"], "mark_id": m["id"], "mark_name": m["name"]}
 
 
-def frame_fit(p: dict, mark_id: str | None) -> float:
-    """Frames of one animation: what this frame's size is multiplied by so every frame has the main mark's height. A mark's size is its
-    width, and a walk's frames are trimmed to their own widths at one height, so at one size the narrowest stride came out nearly twice as
-    tall as the widest, its feet below the others' (the user, 2026-11-06). Only for frames set to one size and drawn at about one height:
-    frames that really change size (a square stretching into a bar), or sizes set by hand, stay as they are; under 3% is left alone."""
-    try:
-        if not p.get("frames") or not p.get("marks"):
-            return 1.0
-        every = [p] + [with_mark(p, m["id"]) for m in p["marks"]]
-        high = [mark_alpha(Image.open(m["mark_file"])).height for m in every]
-        if len({m["mark_size"] for m in every}) > 1 or max(high) > min(high) * 1.1:
-            return 1.0
-        fit = round(mark_ratio(p) / mark_ratio(with_mark(p, mark_id)), 3)
-        return fit if abs(fit - 1) > 0.03 else 1.0
-    except Exception:
-        return 1.0
-
-
 _RATIO: dict = {}
 
 

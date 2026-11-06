@@ -565,32 +565,3 @@ def test_a_dark_mark_always_gets_the_light_guide_the_others_the_one_their_scene_
     for p in (cream, orange):                                                    # light or coloured marks: as before
         assert projects.guide_kind(p, "dark") == "dark" and projects.guide_kind(p, "light") == "light"
     assert projects.guide_kind({"mark_file": tmp_path / "missing.png"}, "dark") == "dark", "unreadable: as asked"
-
-
-
-def _frame(path, w, h):
-    im = Image.new("RGBA", (w + 20, h + 20), (0, 0, 0, 0))
-    im.paste((0, 0, 0, 255), (10, 10, w + 10, h + 10))
-    im.save(path)
-
-
-def _frames(tmp_path, *sizes, size=18.0):
-    files = [tmp_path / f"f{i}.png" for i in range(len(sizes))]
-    for f, (w, h) in zip(files, sizes):
-        _frame(f, w, h)
-    return {"frames": True, "mark_file": files[0], "mark_size": 18.0, "mark_x": 50, "mark_y": 50, "mark_shape": "s", "mark_noun": "n", "qa": None, "name": "x",
-            "marks": [{"id": f"m{i}", "name": "m", "mark_file": f, "mark_size": size, "mark_x": 50, "mark_y": 50, "mark_shape": "s", "mark_noun": "n", "qa": None} for i, f in enumerate(files[1:], 1)]}
-
-
-def test_frame_fit_gives_a_walks_frames_one_height(tmp_path):
-    p = _frames(tmp_path, (400, 800), (200, 800), (300, 790))
-    assert projects.frame_fit(p, None) == 1
-    assert projects.frame_fit(p, "m1") == 0.5, "half as wide at one height"
-    assert projects.frame_fit(p, "m2") == 0.76
-
-
-def test_frame_fit_leaves_frames_that_really_change_size_or_barely_differ(tmp_path):
-    assert projects.frame_fit(_frames(tmp_path, (400, 400), (800, 100)), "m1") == 1, "a square stretching into a bar"
-    assert projects.frame_fit(_frames(tmp_path, (400, 800), (200, 800), size=10.0), "m1") == 1, "sizes set by hand"
-    assert projects.frame_fit({**_frames(tmp_path, (400, 800), (200, 800)), "frames": False}, "m1") == 1, "not frames"
-    assert projects.frame_fit(_frames(tmp_path, (840, 830), (838, 836)), "m1") == 1, "Strata Sphere's: under 1%, as it was"
