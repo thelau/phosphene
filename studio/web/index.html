@@ -84,7 +84,7 @@
         <p>Keys do nothing while you type in a field.</p>
       </div>
     </div>
-    <button class="icon-btn" onclick="toggleSettings()" id="settingsBtn" title="Settings: models, Krea, Kimi key" aria-label="Settings">
+    <button class="icon-btn" onclick="toggleSettings()" id="settingsBtn" title="Settings: Krea, Kimi key" aria-label="Settings">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
     </button>
 
@@ -111,32 +111,7 @@
       </div>
 
       <div class="setting-row">
-        <div class="setting-label">
-          <span>Krea MCP Image Model</span>
-          <span><span class="dot" id="kreaDot"></span><span id="kreaStatusLabel">Connected</span></span>
-        </div>
-        <select id="modelSelect">
-          <option value="google/nano-banana-2.1">Nano Banana 2.1 · 2K (best keep rate)</option>
-          <option value="google/nano-banana-pro">Nano Banana Pro · 2K (best mark lock)</option>
-          <option value="auto">Auto (2.1 / Pro, learns from kept / trashed)</option>
-          <optgroup label="Experimental (low keep rate)">
-            <option value="openai/gpt-image-2.5-flare">GPT Image 2.5 Flare · 2K</option>
-            <option value="openai/gpt-image-2.5-sunburst">GPT Image 2.5 Sunburst · 2K</option>
-            <option value="openai/gpt-image-2">GPT Image 2 (ChatGPT 2)</option>
-            <option value="google/nano-banana-2">Nano Banana 2 · 2K</option>
-            <option value="krea/krea-3">Krea 3 · 2K</option>
-            <option value="bytedance/seedream-5-pro">Seedream 5 Pro</option>
-            <option value="ideogram/ideogram-4.5">Ideogram 4.5 · 2K</option>
-            <option value="luma/uni-1">Luma UNI-1</option>
-            <option value="meta/muse-image">Meta Muse Image</option>
-            <option value="runway/gen-4-image">Runway Gen-4 Image</option>
-          </optgroup>
-        </select>
-      </div>
-
-
-      <div class="setting-row">
-        <div class="setting-label"><span>Krea</span></div>
+        <div class="setting-label"><span>Krea</span><span><span class="dot" id="kreaDot"></span><span id="kreaStatusLabel">Connected</span></span></div>
         <div class="setting-note">Images use your Krea credits.</div>
         <div class="krea-actions"><button onclick="reconnectKrea()" id="kreaConnectBtn">Connect Krea</button><button onclick="signOutKrea()" id="kreaSignOutBtn" hidden>Sign out of Krea</button></div>
       </div>

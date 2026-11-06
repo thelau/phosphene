@@ -127,7 +127,7 @@ test('changing territory clears the direction text', async () => {
 
 test('setGenerating locks and unlocks all generation controls', () => {
   const { run, $ } = load({ routes: baseRoutes() });
-  const ids = ['worldSelect', 'directionInput', 'batchCountSelect', 'modelSelect', 'generateBtn'];
+  const ids = ['worldSelect', 'directionInput', 'batchCountSelect', 'generateBtn'];
   run('setGenerating(true)');
   ids.forEach(id => assert.equal($(id).disabled, true, id));
   run('setGenerating(false)');
@@ -194,7 +194,7 @@ test('generateImages: success path locks controls, reports progress, then unlock
   h.$('directionInput').value = 'harbour fog';
   await runGenerate(h);
   assert.deepEqual(observed, [true, true, true, true]);                            // locked while running
-  ['worldSelect', 'directionInput', 'batchCountSelect', 'generateBtn', 'modelSelect'].forEach(id => assert.equal(h.$(id).disabled, false, id));
+  ['worldSelect', 'directionInput', 'batchCountSelect', 'generateBtn'].forEach(id => assert.equal(h.$(id).disabled, false, id));
   assert.equal(h.$('directionInput').value, 'harbour fog', 'it stays (shown as "Refine: harbour fog ×") until cleared');
   assert.equal(h.$('refine').dataset.state, 'set');
   assert.deepEqual(JSON.parse(h.run('JSON.stringify(prog.slots)')), ['ok', 'ok', 'ok', 'ok']);
@@ -202,7 +202,7 @@ test('generateImages: success path locks controls, reports progress, then unlock
   assert.equal(h.run('prog.timer'), null);
   const gen = h.calls.filter(c => c.url === '/api/generate-image');
   assert.equal(gen.length, 4);
-  assert.equal(gen[0].body.model, h.$('modelSelect').value);
+  assert.equal('model' in gen[0].body, false, 'the server decides the model');
   assert.equal(gen[0].body.world, 'Harbor & Signal');
 });
 

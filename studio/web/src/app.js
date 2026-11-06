@@ -1494,7 +1494,6 @@
       if (!ensureKimiReady() || !ensureKreaReady()) return;
       const v = runView(r);
       if (!v.missing) return;
-      const model = document.getElementById('modelSelect').value;
       setGenerating(true);
       progStart(v.missing);
       makingRun = { run: id, steps: v.gaps };
@@ -1504,7 +1503,7 @@
           body: JSON.stringify({ fill: id, kimi_model: document.getElementById('kimiModelSelect').value }) })).json();
         if (inv.needs_kimi_key) { progStop(''); ensureKimiReady(); return; }
         if (!inv.ok || !inv.ideas) throw new Error(inv.error || 'Prompt generation failed');
-        await runBatch(inv.ideas.map(i => ({ ...i, target: 'path', keep: !!inv.keep })), model);
+        await runBatch(inv.ideas.map(i => ({ ...i, target: 'path', keep: !!inv.keep })));
       } catch (e) {
         progStop(plainError(e));
       } finally {
@@ -3064,7 +3063,7 @@
     // Not in it: permanent deletes and generation (they say so when you start them), the mode and the views.
     const history = [], future = [];
     let applyingHistory = false;
-    const NOT_UNDONE = ['targetSelect', 'markSelect', 'framesSelect', 'rotSelect', 'sizeSelect', 'pathSelect', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
+    const NOT_UNDONE = ['targetSelect', 'markSelect', 'framesSelect', 'rotSelect', 'sizeSelect', 'pathSelect', 'batchCountSelect', 'worldSelect', 'directionInput', 'soundGroupVal', 'thumbSizeVal', 'characterSelect', 'bpmLock'];
     function pushStep(step) { if (!step.settings) commitSettings(); history.push(step); if (history.length > 100) history.shift(); future.length = 0; showUndo(); return step; }
     function showUndo() {
       const b = document.getElementById('undoRandomBtn');
@@ -4141,12 +4140,12 @@
     try { if (localStorage.getItem('studioMarkOverlay') === '1') toggleMarkOverlay(true); } catch (e) {}
 
     // Remember tempo & generation settings across reloads (per-browser convenience only).
-    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'framesSelect', 'rotSelect', 'sizeSelect', 'pathSelect'];   // keepCheck (Keep the mark exact) was removed on 2026-10-31: the user never used it
+    const PERSISTED = ['repeatSelect', 'rhythmSelect', 'changeFrom', 'changeTo', 'endMsRange', 'curveVal', 'morePoints', 'bpmInput', 'followCuts', 'multSelect', 'musicSelect', 'pulseRange', 'lowRange', 'powerRange', 'spaceRange', 'brightRange', 'widthRange', 'pitchRange', 'chordSelect', 'modeSelect', 'styleSelect', 'styleVal', 'roomSelect', 'progSelect', 'progEverySelect', 'padRange', 'padToneSelect', 'tapeRange',  'movementRange', 'echoRange', 'washRange', 'ringRange', 'shimmerRange', 'choirRange', 'industrialRange', 'subWaveSelect', 'padWaveSelect', 'hitTypeSelect', 'hitRange', 'hitOnSelect', 'arpRange', 'arpMoodSelect', 'arpStepsSelect', 'arpRateSelect', 'bassRange', 'bassPatternSelect', 'bassRateSelect', 'arrangeSelect', 'dynSelect', 'seedVal', 'soundGroupVal', 'characterSelect', 'thumbSizeVal', 'bpmLock', 'invertSelect', 'zoomSelect', 'zoomAmt', 'trailRange', 'batchCountSelect', 'worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'framesSelect', 'rotSelect', 'sizeSelect', 'pathSelect'];   // keepCheck (Keep the mark exact) was removed on 2026-10-31: the user never used it
     // Each project keeps its own film (rhythm, look, sound, Type, territory) on this computer (localStorage `studioFilm:<slug>`); the
-    // rest is the same everywhere (`studioSettings`: card size, image model, batch size, the Sound tab). Opening a project brings its
+    // rest is the same everywhere (`studioSettings`: card size, batch size, the Sound tab). Opening a project brings its
     // film back; one never opened here (new, imported) gets a Random of its own instead of the last project's. The settings saved
     // before this was per project become those of the first project opened after it.
-    const GLOBAL_SETTINGS = ['batchCountSelect', 'modelSelect', 'soundGroupVal', 'thumbSizeVal'];
+    const GLOBAL_SETTINGS = ['batchCountSelect', 'soundGroupVal', 'thumbSizeVal'];
     const FILM_SETTINGS = PERSISTED.filter(id => !GLOBAL_SETTINGS.includes(id));
     const filmKey = slug => `studioFilm:${slug}`;
     let filmSlug = null, legacyFilm = null;
@@ -4568,7 +4567,7 @@
       const T = window.__TAURI__;                                            // (not TAURI: declared further down, and this runs early)
       if (T && T.event && isBusy() !== toldBusy) { toldBusy = isBusy(); T.event.emit('page-busy', toldBusy).catch(() => {}); }   // the Mac app asks before quitting mid-job
       const lockGen = generating || aiRunning;
-      ['worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'placeBtn', 'batchCountSelect', 'modelSelect', 'generateBtn', 'refineOpen', 'refineSet', 'refineClear'].forEach(id => { document.getElementById(id).disabled = lockGen; });
+      ['worldSelect', 'directionInput', 'targetSelect', 'markSelect', 'placeBtn', 'batchCountSelect', 'generateBtn', 'refineOpen', 'refineSet', 'refineClear'].forEach(id => { document.getElementById(id).disabled = lockGen; });
       document.getElementById('countField').setAttribute('aria-disabled', String(!!lockGen));
       document.getElementById('terrBtn').disabled = lockGen || fillOn();     // Fill the gaps: each gap its own territory (renderTerrBtn)
       genRunningLabel();
@@ -4674,8 +4673,8 @@
     //    offers "N images weren't made · Resume · Discard" the next time
     let batchStop = false, pausedWait = null, stopWake = () => {};
     const pendingKey = () => `studioPending:${filmSlug || ''}`;
-    function savePending(items, model) {
-      try { if (items.length) localStorage.setItem(pendingKey(), JSON.stringify({ items, model, at: Date.now() })); else localStorage.removeItem(pendingKey()); } catch (e) {}
+    function savePending(items) {
+      try { if (items.length) localStorage.setItem(pendingKey(), JSON.stringify({ items, at: Date.now() })); else localStorage.removeItem(pendingKey()); } catch (e) {}
     }
     function readPending() { try { const p = JSON.parse(localStorage.getItem(pendingKey()) || 'null'); return p && Array.isArray(p.items) && p.items.length ? p : null; } catch (e) { return null; } }
     const pause = ms => (ms ? new Promise(r => setTimeout(r, ms)) : Promise.resolve());
@@ -4692,7 +4691,7 @@
       return pausedWait;
     }
     function batchActions(list) { prog.actions = list; progRender(); }
-    async function runBatch(ideas, model, onMade) {                          // onMade(item, filename): each image kept (Fill the gaps places them)
+    async function runBatch(ideas, onMade) {                          // onMade(item, filename): each image kept (Fill the gaps places them)
       batchStop = false;
       let added = 0, trashedByQa = 0, authFailed = false, creditsOut = false;
       const failedItems = [], left = new Map(ideas.map((it, i) => [i, it]));
@@ -4704,8 +4703,8 @@
       prog.worlds = ideas.map(i => i.world || prog.world);
       prog.marks = ideas.map(i => i.mark || 'main'); prog.positions = ideas.map(i => (i.placement && i.placement.kind) || 'exact'); prog.rots = ideas.map(i => String((i.placement && i.placement.rot) || 0)); prog.sizes = ideas.map(i => String((i.placement && i.placement.scale) || 1));
       prog.why = ideas.map(() => '');
-      prog.note = `${formatModelShort(model)} · 3 at a time`;
-      const keep = () => savePending([...failedItems, ...left.values()], model);
+      prog.note = '3 at a time';
+      const keep = () => savePending([...failedItems, ...left.values()]);
       keep();
       batchActions([{ label: 'Stop', run: () => { batchStop = true; stopWake(); prog.note = 'Stopping after the images in progress…'; batchActions([]); } }]);
       const runOne = async (item, idx) => {
@@ -4719,7 +4718,7 @@
             const genRes = await fetch('/api/generate-image', {
               method: 'POST',
               headers: forProject({'Content-Type': 'application/json'}),
-              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, target: item.target || 'exact', placement: item.placement || null, mark: item.mark || null, keep: !!item.keep, model, batch: item.batch || undefined })
+              body: JSON.stringify({ title: item.title, prompt: item.prompt, guide: item.guide || 'dark', world: item.world, idea: item.idea, target: item.target || 'exact', placement: item.placement || null, mark: item.mark || null, keep: !!item.keep, batch: item.batch || undefined })
             });
             genData = await genRes.json();
           } catch (e) {
@@ -4786,19 +4785,19 @@
       prog.run = lost.length ? { id: pr.run, text: `Path ${PATH_GLYPH[pr.dir] || '→'} ${pr.len}%: ${pv.kept} of ${pr.n} steps` } : null;
       progStop(`${batchStop && notMade ? 'Stopped' : 'Done'} · ${parts.join(' · ')}`);
       batchActions([...(again.length ? [
-        { label: `Retry ${again.length}`, run: () => retryBatch(again, model) },
-        { label: 'Discard', run: () => { savePending([], model); batchActions([]); } },
+        { label: `Retry ${again.length}`, run: () => retryBatch(again) },
+        { label: 'Discard', run: () => { savePending([]); batchActions([]); } },
       ] : [])]);
     }
-    async function retryBatch(items, model) {
+    async function retryBatch(items) {
       if (isBusy()) { setStatus('Wait until the running job ends.'); return; }
       const made = new Set([...plates.map(p => p.title), ...making]);       // made meanwhile, or being made now (a reload let them go on on the server): not again
       items = items.filter(it => !made.has(it.title));
-      if (!items.length) { savePending([], model); batchActions([]); setStatus('Those images were made after all.'); return; }
+      if (!items.length) { savePending([]); batchActions([]); setStatus('Those images were made after all.'); return; }
       if (!ensureKreaReady()) return;
       setGenerating(true);
       progStart(items.length);
-      try { await runBatch(items, model); } catch (e) { progStop(plainError(e)); } finally { setGenerating(false); }
+      try { await runBatch(items); } catch (e) { progStop(plainError(e)); } finally { setGenerating(false); }
     }
     // opening the page: a batch left unfinished (Stop, a reload, a quit, a crash) is offered again
     function offerPending() {
@@ -4806,13 +4805,13 @@
       if (!p || generating) return;
       const made = new Set([...plates.map(x => x.title), ...making]);       // being made now on the server: not offered again
       const items = p.items.filter(it => !made.has(it.title));
-      if (!items.length) { savePending([], p.model); return; }
+      if (!items.length) { savePending([]); return; }
       document.getElementById('statusText').dataset.idle = '';
       prog.stage = 'render'; prog.world = items[0].world || 'Unfinished batch'; prog.slots = items.map(() => 'wait'); prog.titles = items.map(i => i.title); prog.worlds = items.map(i => i.world || prog.world); prog.marks = items.map(i => i.mark || 'main'); prog.positions = items.map(i => (i.placement && i.placement.kind) || 'exact'); prog.rots = items.map(i => String((i.placement && i.placement.rot) || 0)); prog.sizes = items.map(i => String((i.placement && i.placement.scale) || 1)); prog.why = items.map(() => '');
       prog.total = items.length; prog.summary = `${items.length} image${items.length === 1 ? '' : 's'} of the last batch ${items.length === 1 ? 'wasn\'t' : 'weren\'t'} made`;
       batchActions([
-        { label: 'Resume', run: () => retryBatch(items, p.model) },
-        { label: 'Discard', run: () => { savePending([], p.model); batchActions([]); prog.summary = ''; document.getElementById('statusText').dataset.idle = '1'; refreshIdle(); } },
+        { label: 'Resume', run: () => retryBatch(items) },
+        { label: 'Discard', run: () => { savePending([]); batchActions([]); prog.summary = ''; document.getElementById('statusText').dataset.idle = '1'; refreshIdle(); } },
       ]);
     }
     // Fill the gaps, after its batch: each new image into a gap of its frame, in the gaps' order, just before the image its ghost stood
@@ -4838,7 +4837,7 @@
     async function makeFill(plan) {
       if (!plan || !plan.gaps.length || blockedByAi()) return;
       if (!ensureKimiReady() || !ensureKreaReady()) return;
-      const model = document.getElementById('modelSelect').value, kimiModel = document.getElementById('kimiModelSelect').value;
+      const kimiModel = document.getElementById('kimiModelSelect').value;
       const refine = document.getElementById('directionInput').value.trim();     // shown as Refine while filling, Describe's words too
       const ownId = manualGroup() && manualGroup().id, target = rowTarget(true), made = [];
       setGenerating(true);
@@ -4866,7 +4865,7 @@
         placeSeed = newSeed();
         prog.fillAt = ideas.map(it => (it.gap !== undefined ? `${plan.ids[it.gap]}|${plan.gaps[it.gap].before}` : null));   // each one shows in its gap while made
         const batch = newBatchId();
-        await runBatch(ideas.map(i => ({ ...i, target, batch })), model, (item, filename) => { if (item.gap !== undefined) made.push({ filename, gi: item.gap }); });
+        await runBatch(ideas.map(i => ({ ...i, target, batch })), (item, filename) => { if (item.gap !== undefined) made.push({ filename, gi: item.gap }); });
         await placeFilled(plan, made, ownId);
         if (stopped) {                                                         // the gaps Kimi did not get to stay ghosts: say so, offer the rest
           progStop(`${prog.summary || 'Done'} · ${left} gap${left === 1 ? '' : 's'} left: ${plainError(stopped)}`);
@@ -4889,7 +4888,6 @@
       if (project.has_mark === false) { openProjectForm('edit'); return; }   // no mark yet: Project settings, where + Add a mark is
       if (!ensureKimiReady() || !ensureKreaReady()) return;
 
-      const model = document.getElementById('modelSelect').value;
       const kimiModel = document.getElementById('kimiModelSelect').value;
       const count = batchCount();
       const worldChoice = document.getElementById('worldSelect').value;
@@ -4925,7 +4923,7 @@
         ran = true;
         const target = rowTarget(false);                                         // each image keeps the batch's choices and the place its scene was written for (a Resume too)
         const batch = newBatchId();                                              // its images are the Last batch (a Retry or Resume adds to it)
-        await runBatch(invData.ideas.map(i => ({ ...i, target, batch })), model);
+        await runBatch(invData.ideas.map(i => ({ ...i, target, batch })));
         if (worldChoice === '__custom__' && invData.world) {                     // your territory exists now: the next batch carries on in it
           await loadWorlds();
           const sel = document.getElementById('worldSelect');
@@ -5177,7 +5175,7 @@
     try { toggleMini(localStorage.getItem('studioMini') !== '0'); } catch (e) { toggleMini(true); }
     setThumbSize(document.getElementById('thumbSizeVal').value);
     settled = settingsSnap(); showUndo();                                    // the history starts here
-    ['batchCountSelect', 'modelSelect', 'worldSelect', 'directionInput', 'targetSelect'].forEach(id => document.getElementById(id).addEventListener('change', saveSettings));
+    ['batchCountSelect', 'worldSelect', 'directionInput', 'targetSelect'].forEach(id => document.getElementById(id).addEventListener('change', saveSettings));
     document.getElementById('worldSelect').addEventListener('change', () => { document.getElementById('directionInput').value = ''; saveSettings(); updateDirectionHint(); });
     loadWorlds();
     (async () => {

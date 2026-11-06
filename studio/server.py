@@ -2217,7 +2217,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/generate-image":
             auth = get_krea_oauth_token()
             if not auth.get("connected") or auth.get("expired"):
-                gen_log.record("image", ok=False, title=body.get("title"), model=body.get("model"), seconds=0, error="Krea login needed", needs_auth=True)
+                gen_log.record("image", ok=False, title=body.get("title"), model=taste.IMAGE_MODEL, seconds=0, error="Krea login needed", needs_auth=True)
                 self.send_json({"ok": False, "needs_auth": True, "error": "Connect Krea first (Settings › Connect Krea)."})
                 return
 
@@ -2235,10 +2235,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 guide_kw = {"guide": placement.guide(proj, {"kind": "exact", "x": proj["mark_x"], "y": proj["mark_y"], "size": proj["mark_size"]}, keep)}
             else:
                 guide_kw = {"guide": current_guide()} if current_guide() else {}   # another project: its own guide image
-            model = body.get("model", "google/nano-banana-pro")
-            if model == "auto":
-                model = taste.pick_model(load_state())
-                print(f"[TASTE] auto-picked model {model}", flush=True)
+            model = taste.IMAGE_MODEL                                          # never the request's: a batch resumed from before keeps its old choice
             after_filename = body.get("after_filename")
 
             seen_as = placement.as_project(proj, pl)                           # the prompt names this image's mark, place and size

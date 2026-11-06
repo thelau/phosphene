@@ -85,7 +85,7 @@ page, `PAGE_BUSY`, `ask_before_quitting`: "Quit anyway" / "Keep working").
 - **Copy in the app is plain, never AI-sounding** (the user, 2026-11-01): labels 1-3 words; a tooltip says what the control does in about 6 words or fewer; a key in brackets only for its shortcut "(T)"; no colon that explains ("Sign in: images are made with…"), no aside in brackets, no "its…" fragments, no poetic verbs (breathes, lingers, drifting), no names of reference films (Soiltone, Moverunion); one sentence where two say the same. Rewritten on these lines across Curate, the Mark menu, New project, Settings, Film and Sound (2026-11-01).
 - Prompts must keep the logo at dead-center, 18% width, with no extra rings or duplicate logos.
 - Brand palette: orange #EC540C, pink #F64570, blue #5D8FF4, oxblood #381313, ink #1A1A1A, cream #FEFFE7.
-- Default image model is `google/nano-banana-pro`; other Krea models are built in `build_model_input`.
+- Images are made with one model, `taste.IMAGE_MODEL` (`google/nano-banana-2.1`), set by the server: nobody picks one and the page sends none (the user, 2026-11-06: Settings' model menu and Auto are gone; on Demo, the one project that tried them all, 2.1 kept 18% of 719, Pro 10% of 320, the eight others 3% of 308; at 2K 2.1 is 44 Krea units an image, Pro 111). Images made before keep their model's name on the card; `build_model_input` and `bench.py` still reach the others.
 - Use `AGENTS.md` for agent instructions; do not add a `CLAUDE.md`.
 
 ## Two modes (studio/web)

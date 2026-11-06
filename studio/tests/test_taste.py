@@ -41,23 +41,8 @@ def test_model_stats_unknown_models_are_included():
     assert "weird/model" in taste.model_stats(state(models={"a": "weird/model"}))
 
 
-def test_pick_model_only_returns_auto_models():
-    random.seed(1)
-    picks = {taste.pick_model(state(models={"a": "krea/krea-3"}), explore=0.5) for _ in range(200)}
-    assert picks <= set(taste.AUTO_MODELS)
-    assert picks == set(taste.AUTO_MODELS)
-
-
-def test_pick_model_exploits_best_score_when_not_exploring():
-    st = state(models={f"k{i}": "google/nano-banana-2.1" for i in range(20)})
-    assert all(taste.pick_model(st, explore=0.0) == "google/nano-banana-2.1" for _ in range(20))
-
-
-def test_pick_model_explore_favors_undersampled():
-    random.seed(0)
-    st = state(models={f"k{i}": "google/nano-banana-pro" for i in range(300)})
-    picks = [taste.pick_model(st, explore=1.0) for _ in range(300)]
-    assert picks.count("google/nano-banana-2.1") > picks.count("google/nano-banana-pro")
+def test_one_image_model():
+    assert taste.IMAGE_MODEL == "google/nano-banana-2.1"
 
 
 def test_taste_brief_newest_first_and_capped():

@@ -7,7 +7,6 @@ Signals: kept (in the grid) = liked, trashed = disliked / doesn't work. Plates t
 no taste signal for prompts. Restoring a plate from trash makes it "kept".
 """
 
-import random
 import re
 
 WEIGHTS = {"kept": 1.0, "trashed": -1.0, "qa_failed": -0.5, "critic_failed": -0.25}
@@ -26,8 +25,9 @@ CANDIDATE_MODELS = [
     "runway/gen-4-image",
 ]
 
-# Auto only chooses among models that have earned it (keep rate: 2.1 ~23%, Pro ~15%, everything else <=9%).
-AUTO_MODELS = ["google/nano-banana-2.1", "google/nano-banana-pro"]
+# The one model the app makes images with: nobody picks one (2026-11-06). On Demo, the one project that tried them all, 2.1 kept 18%,
+# Pro 10% and the others 3%, and at 2K it costs 44 Krea units an image against Pro's 111.
+IMAGE_MODEL = "google/nano-banana-2.1"
 
 
 def plate_status(st: dict, filename: str) -> str:
@@ -52,15 +52,6 @@ def model_stats(st: dict) -> dict:
         s["score"] = round(total / (s["n"] + 3), 3)  # +3 pseudo-observations at 0 shrinks small samples
         s["keep_rate"] = round(s["kept"] / s["n"], 3) if s["n"] else None
     return stats
-
-
-def pick_model(st: dict, explore: float = 0.35) -> str:
-    """Epsilon-greedy over smoothed score; exploration favors under-sampled models."""
-    stats = model_stats(st)
-    if random.random() < explore:
-        weights = [1.0 / (1 + stats[m]["n"]) for m in AUTO_MODELS]
-        return random.choices(AUTO_MODELS, weights=weights, k=1)[0]
-    return max(AUTO_MODELS, key=lambda m: stats[m]["score"])
 
 
 def taste_brief(st: dict, titles: dict, prompts: dict, k_pos: int = 6, k_neg: int = 14) -> dict:

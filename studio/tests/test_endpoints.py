@@ -294,6 +294,19 @@ def test_a_retry_that_works_is_recorded_as_one_ok_image_with_two_attempts(live, 
     assert done["ok"] and [a["ok"] for a in done["attempts"]] == [False, True] and gen_log.summarize(gen_log.read(None))["retried"] == 1
 
 
+def test_every_image_is_made_with_the_one_model_whatever_the_request_says(live, srv, monkeypatch):
+    # a batch saved before the menu went still carries its old choice; Resume sends nothing, but nothing may bring a model back
+    real, asked = srv.generate_plate_via_krea_mcp, []
+    def spy(**kw):
+        asked.append(kw["model"])
+        return real(**kw)
+    monkeypatch.setattr(srv, "generate_plate_via_krea_mcp", spy)
+    for title, extra in (("Old Choice", {"model": "openai/gpt-image-2"}), ("Old Auto", {"model": "auto"}), ("No Choice", {})):
+        assert live("POST", "/api/generate-image", {"title": title, "prompt": "p", **extra})[1]["ok"]
+    assert asked == ["google/nano-banana-2.1"] * 3
+    assert set(srv.load_state()["models"].values()) == {"google/nano-banana-2.1"}
+
+
 def test_an_image_already_being_made_is_not_made_twice_and_the_page_is_told(live, srv, monkeypatch):
     # the page reloaded mid-batch; Resume asked again for the images still being made, and each came out twice
     started, release = threading.Event(), threading.Event()

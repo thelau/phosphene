@@ -2,6 +2,18 @@ const { test, assert, register, fresh, shot, text, names, seg, enabled, clickSeg
 register();
 const summary = async () => (await page.locator('#placeName').textContent()).replace(/\u00a0/g, ' ');   // the Mark button: how many first, then where
 
+test('Settings asks for no image model: only the Krea row, with its connection status', { skip }, async () => {
+  await fresh();
+  await page.locator('#settingsBtn').click();
+  assert.equal(await page.locator('#modelSelect').count(), 0, 'nobody picks a model');
+  const pop = await page.locator('#settingsPopover').textContent();
+  assert.ok(!/image model|nano banana|experimental/i.test(pop), 'no word about models for images');
+  assert.ok(await page.locator('#kreaStatusLabel').isVisible(), 'the Krea status stays');
+  await shot('settings-no-model');
+  await page.locator('#settingsBtn').click();
+  assert.deepEqual(consoleErrors, []);
+});
+
 test('page loads without errors: Curate first, generation in one tidy row, no status bar while idle', { skip }, async () => {
   const ctx = await fresh();
   assert.deepEqual(consoleErrors, []);
