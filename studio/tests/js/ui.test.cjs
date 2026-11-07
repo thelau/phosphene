@@ -2113,7 +2113,7 @@ test('each project keeps its own film and sound; one never opened here gets its 
   const demo = { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m' };
   const nike = { ...demo, slug: 'nike', name: 'Nike' };
   const plates = Array.from({ length: 12 }, (_, i) => mkPlate('p' + i));
-  // on DEMO: a film is made, it is saved as DEMO's
+  // on Demo: a film is made, it is saved as Demo's
   let r = baseRoutes(); r['/api/state'] = { plates, project: demo, krea_connected: true, kimi_configured: true };
   let h = load({ routes: r, storage: { studioProject: 'demo' } }); await settle(); await settle();
   h.$('bpmInput').value = '97'; h.$('echoRange').value = '31'; h.$('worldSelect').value = '';
@@ -2121,15 +2121,15 @@ test('each project keeps its own film and sound; one never opened here gets its 
   const store = { ...h.store };
   assert.equal(JSON.parse(store['studioFilm:demo']).bpmInput, '97');
   assert.equal(JSON.parse(store.studioSettings).bpmInput, undefined, 'the shared settings hold no film');
-  // the server opens Nike, never opened here: a Random of its own, not DEMO's film
+  // the server opens Nike, never opened here: a Random of its own, not Demo's film
   r = baseRoutes(); r['/api/state'] = { plates, project: nike, krea_connected: true, kimi_configured: true };
   h = load({ routes: r, storage: store }); await settle(); await settle();
   const nikeFilm = JSON.parse(h.store['studioFilm:nike']);
   assert.ok(nikeFilm.bpmInput !== '97' || nikeFilm.echoRange !== '31', 'its own Random');
   assert.equal(h.store.studioProject, 'nike');
-  assert.equal(h.run('history.length'), 0, 'Undo does not go back to DEMO\'s film');
+  assert.equal(h.run('history.length'), 0, 'Undo does not go back to Demo\'s film');
   h.$('bpmInput').value = '144'; h.run('updateTempo(); saveSettings()');
-  // back on DEMO: DEMO's film as it was left
+  // back on Demo: Demo's film as it was left
   r = baseRoutes(); r['/api/state'] = { plates, project: demo, krea_connected: true, kimi_configured: true };
   const h2 = load({ routes: r, storage: { ...h.store } }); await settle(); await settle();
   assert.equal(h2.$('bpmInput').value, '97'); assert.equal(h2.$('echoRange').value, '31');

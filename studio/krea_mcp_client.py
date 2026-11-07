@@ -217,7 +217,7 @@ def init_mcp_session() -> str:
         {
             "protocolVersion": "2025-03-26",
             "capabilities": {},
-            "clientInfo": {"name": "Demo-studio", "version": "1.0.0"},
+            "clientInfo": {"name": "phosphene", "version": "1.0.0"},
         },
     )
     return sid

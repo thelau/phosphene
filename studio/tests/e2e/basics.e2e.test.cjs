@@ -2471,7 +2471,7 @@ test('Film: no Trash button; the group is chosen from a dropdown above the film 
 test('a dark mark shows as a light silhouette in the top bar and the project menu; a light one as it is', { skip }, async () => {
   let ctx = await fresh({ width: 1512, height: 945 });
   await page.waitForFunction(() => document.getElementById('projectMark').complete);
-  assert.equal(await page.locator('#projectMark.mark-dark').count(), 0, 'DEMO\'s cream mark as it is');
+  assert.equal(await page.locator('#projectMark.mark-dark').count(), 0, 'a cream mark as it is');
   await ctx.close();
   api.state.markColour = '#111111';
   ctx = await fresh({ width: 1512, height: 945, setup: st => { st.markColour = '#111111'; } });

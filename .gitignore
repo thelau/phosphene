@@ -26,3 +26,7 @@ studio/.no-project/
 studio/tests/.qa_shapes_passed
 
 assets/ai-plates/
+
+# kept on this machine, never published: reference films, a music track
+inspiration/
+studio/.tracks/

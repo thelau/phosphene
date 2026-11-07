@@ -113,8 +113,7 @@ def ell(srv, tmp_path, monkeypatch):
     d.rectangle((0, 0, 90, 299), fill=(20, 20, 20, 255))
     d.rectangle((0, 210, 399, 299), fill=(20, 20, 20, 255))
     im.save(f)
-    p = {**demo(srv), "mark_file": f, "qa": None, "mark_size": 24.0, "mark_x": 50.0, "mark_y": 50.0, "marks": []}
-    p.pop("demo", None)
+    p = {**demo(srv), "mark_file": f, "mark_size": 24.0, "mark_x": 50.0, "mark_y": 50.0, "marks": []}
     monkeypatch.setattr(srv, "PROJECT", p)
     monkeypatch.setattr(placement, "GUIDE_DIR", tmp_path / "guides")
     return p
