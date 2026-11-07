@@ -15,7 +15,7 @@ from PIL import Image
 
 import server
 from krea_mcp_client import generate_plate_via_krea_mcp
-from qa_engine import PLATES_DIR, TARGET_H, TARGET_W
+from qa_engine import TARGET_H, TARGET_W
 from taste import CANDIDATE_MODELS
 
 DEFAULT_BENCH_MODELS = [
@@ -27,14 +27,15 @@ lock = threading.Lock()
 
 
 def runway_prompt(raw: str) -> str:
-    return (raw[:620] + ". 9:16. The single circular mark of the guide image at exact dead-center, ~18% width, integrated into the scene, no extra rings.")[:1000]
+    w = server.mark_words()
+    return (raw[:620] + f". 9:16. The single {w['noun']} of the guide image at {w['at']}, ~{w['size']}% width, integrated into the scene, no extra rings.")[:1000]
 
 
 def run_one(job):
     title, raw, guide, model, world, idea = job
     full = runway_prompt(raw) if model.startswith("runway/") else server.build_full_prompt(raw)
     try:
-        img_bytes = generate_plate_via_krea_mcp(prompt=full, guide_type=guide, model=model)
+        img_bytes = generate_plate_via_krea_mcp(prompt=full, guide_type=guide, model=model, guide=server.current_guide())
     except Exception as e:
         print(f"[BENCH] FAIL {model} {title}: {str(e)[:160]}", flush=True)
         return
@@ -43,7 +44,7 @@ def run_one(job):
         n = server.next_plate_number(server.load_state())
         slug = "".join(c if c.isalnum() else "_" for c in f"{title}_{model.split('/')[-1]}".lower()).strip("_")[:26]
         filename = f"{n:02d}_{slug}.jpg"
-        path = PLATES_DIR / filename
+        path = server.PLATES_DIR / filename
         im.save(path, quality=95)
         qa = server.get_cached_qa(path)
         st = server.load_state()
@@ -73,6 +74,9 @@ if __name__ == "__main__":
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
+    server.open_first_project()                       # the project open last time: its mark, guides and library
+    if not server.PROJECT:
+        ap.error("no project: make one in the app first")
     if not (a.worlds or a.world_names):
         ap.error("pass --worlds N or --world-names")
     jobs = []

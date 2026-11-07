@@ -757,9 +757,9 @@ def test_ai_reorder_of_a_group_moves_only_its_images_among_their_own_places(live
     assert [p["filename"] for p in state["plates"] if not p["trashed"]][:3] == [names[2], names[1], names[0]], "n1 kept its place; the group swapped"
 
 
-def test_projects_over_http_a_new_brand_generates_into_its_own_folder_and_cos_comes_back(live, srv):
+def test_projects_over_http_a_new_brand_generates_into_its_own_folder_and_the_first_comes_back(live, srv):
     """Make a project from a mark (sent as a PNG data URL), it becomes the open one, its images and curation are its own; the
-    prompt names its mark, size and place; Krea gets its guide; switching back brings DEMO's library back."""
+    prompt names its mark, size and place; Krea gets its guide; switching back brings Demo's library back."""
     import base64
     from test_projects import star_png
     _three_plates(live)
@@ -786,7 +786,7 @@ def test_projects_over_http_a_new_brand_generates_into_its_own_folder_and_cos_co
     status, res = live("POST", "/api/projects", {"action": "switch", "slug": "demo"})
     assert status == 200 and res["active"] == "demo"
     _, state = live("GET", "/api/state")
-    assert state["project"]["name"] == "Demo" and sorted(p["filename"] for p in state["plates"]) == demo_names, "DEMO's library is back as it was"
+    assert state["project"]["name"] == "Demo" and sorted(p["filename"] for p in state["plates"]) == demo_names, "Demo's library is back as it was"
     assert live("POST", "/api/projects", {"action": "switch", "slug": "nope"})[0] == 404
     assert live("POST", "/api/projects", {"action": "create", "name": "x", "mark": "data:image/png;base64,AAAA"})[0] == 400
 
@@ -848,7 +848,7 @@ def test_project_export_and_import_over_http_and_kimi_reads_a_mark(live, srv, mo
     status, data = live("GET", res["url"])
     assert status == 200 and data[:2] == b"PK"
     status, imp = live("POST", "/api/project-import", raw=data)
-    assert status == 200 and imp["active"] == "Demo-2" and imp["project"]["name"] == "Demo 2", "a copy, opened, numbered (a Demo is already here)"
+    assert status == 200 and imp["active"] == "demo-2" and imp["project"]["name"] == "Demo 2", "a copy, opened, numbered (a Demo is already here)"
     _, state = live("GET", "/api/state")
     assert len([p for p in state["plates"] if not p["trashed"]]) == 3, "with its images"
     assert live("POST", "/api/project-import", raw=b"nope, not a zip at all")[0] == 400
@@ -1152,9 +1152,9 @@ def test_a_project_with_several_marks_makes_each_image_with_its_own(live, srv, m
     monkeypatch.setattr(srv.placement, "GUIDE_DIR", tmp_path / "guides")
     url = lambda b: "data:image/png;base64," + base64.b64encode(b).decode()
     live("POST", "/api/projects", {"action": "create", "name": "Kestrel", "mark": url(star_png()), "mark_shape": "oval badge", "mark_noun": "badge"})
-    status, res = live("POST", "/api/projects", {"action": "add_mark", "slug": "Kestrel", "name": "Bird", "mark": url(ring_png()), "size": 14, "shape": "a flying bird", "noun": "bird symbol"})
+    status, res = live("POST", "/api/projects", {"action": "add_mark", "slug": "kestrel", "name": "Bird", "mark": url(ring_png()), "size": 14, "shape": "a flying bird", "noun": "bird symbol"})
     assert status == 200 and [m["id"] for m in res["project"]["marks"]] == ["bird"], res
-    assert live("GET", "/api/project-mark?p=Kestrel&m=bird")[0] == 200
+    assert live("GET", "/api/project-mark?p=kestrel&m=bird")[0] == 200
     checked = []
     monkeypatch.setattr(srv, "check_new_image", lambda p, pl=None, mark_id=None: checked.append(mark_id) or {"qa_passed": True, "qa_score": 90, "issues": [], "center_corr": 0.9, "core_asymmetry": 0.2})
     _, main = live("POST", "/api/generate-image", {"title": "Main One", "prompt": "a tin", "model": "m"})
@@ -1174,7 +1174,7 @@ def test_a_project_with_several_marks_makes_each_image_with_its_own(live, srv, m
     assert sorted(str(i["mark"]) for i in both["ideas"]) == ["None", "bird"], "two marks ticked: they take turns"
     _, one = live("POST", "/api/invent-prompts", {"count": 2, "world": "Editorial Print"})
     assert all(i["mark"] is None for i in one["ideas"]) and "which mark:" not in live.calls["kimi"][-1], "the main mark: as before"
-    live("POST", "/api/projects", {"action": "remove_mark", "slug": "Kestrel", "mark_id": "bird"})
+    live("POST", "/api/projects", {"action": "remove_mark", "slug": "kestrel", "mark_id": "bird"})
     plates = {p["filename"]: p for p in live("GET", "/api/state")[1]["plates"]}
     assert plates[bird["filename"]]["mark"] is None, "a mark since removed: its images read as the main one's"
 

@@ -39,9 +39,9 @@ It runs on your own computer. You sign in with your own Krea account (images use
 **Projects** — one per mark. A project can hold several marks (a symbol, a wordmark, a badge), each with its own place and size and
 the words the prompts use for it; colours belong to the project. Projects travel as `.phos` files (Export / Import project…).
 
-| Project settings | Sound, the Notes tab |
+| Project settings | Frames of one animation |
 |---|---|
-| ![](docs/screenshots/project-settings.jpg) | ![](docs/screenshots/film-notes.jpg) |
+| ![](docs/screenshots/project-settings.jpg) | ![](docs/screenshots/frames.jpg) |
 
 ## The Mac app (easiest)
 
@@ -52,7 +52,7 @@ and it updates itself: when a new version is out it says so, and **Restart to up
 
 - Your projects are in **Documents › Phosphene**, one folder each. Updates never touch them, and deleting the app leaves them.
   Back them up like any document. The app starts with none: make one (New project…) or open a project file you were sent
-  (Demo comes as one: double-click it, or Import project…).
+  (double-click it, or Import project…).
 - To send a project to someone: the project menu (next to Phosphene) › **Export project…**; they use **Import project…**.
 - Needs a Mac with Apple silicon (M1 or newer).
 
@@ -63,8 +63,8 @@ You need a Mac (or Linux) with [Homebrew](https://brew.sh), and Git.
 ```sh
 git clone <this repository> phosphene
 cd phosphene
-npm run setup        # checks Python 3.10+, Node 20+, ffmpeg and git-lfs (offers to install what is missing),
-                     # downloads the Demo images and installs the app's packages
+npm run setup        # checks Python 3.10+, Node 20+ and ffmpeg (offers to install what is missing),
+                     # and installs the app's packages
 ```
 
 If `npm` itself is missing: `brew install node`, then run the line again.
@@ -85,9 +85,6 @@ The first time:
 
 A project is one brand mark. The name next to **Phosphene** (top left) switches between them.
 
-- **Demo** is shared through this repository: its images, groups and snapshots come with `git pull`.
-  If two people curate it at the same time, the curation file (`studio/curation_state.json`) will conflict when you pull:
-  agree who curates it, or make your own project.
 - **New project…** takes your mark (a PNG or SVG with a transparent background works best), its size and place in the frame,
   how the image prompts should describe it, one line about the brand, and its colours. A new project stays on your computer
   (`projects/<name>/`, not committed).
@@ -127,7 +124,7 @@ node --test studio/tests/e2e/*.e2e.test.cjs              # the real page in head
 
 Run the tests of what you change while you work, the fast suite before each commit (`--ignore=studio/tests/test_e2e.py`), and
 everything before a release. Screenshots of a test run: `E2E_SHOTS=/some/folder`. The screenshots above were taken from a copy of
-Demo on a separate server.
+the projects on a separate server.
 
 ## Releasing the Mac app
 
@@ -145,7 +142,7 @@ publishing, open the built app (`app/src-tauri/target/release/bundle/macos/Phosp
       Import project… opens the same dialog; Export project… saves a `.phos` file to Downloads.
 - [ ] **A `.phos` file double-clicked in Finder** opens as a project.
 - [ ] **Settings › Connect Krea** opens Krea's sign-in in your browser and comes back connected.
-- [ ] **Generate** a small batch (2 images): they arrive with the logo check's badges.
+- [ ] **Generate** a small batch (2 images): they arrive with the mark check's badges.
 - [ ] **Drag a card** to another place in Curate: it moves (the window's file-drop handler used to take every drag).
 - [ ] **Fastest cuts**: Film, the tempo at the top with Multiple ×1, sound on, play for 20 s: no visible hiccups (in headless WebKit ~2% of
       cuts last two refreshes instead of one; Chrome none; the test cannot tell whether the real window does).

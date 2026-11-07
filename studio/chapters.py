@@ -1,8 +1,7 @@
 """
-Creative worlds for the Demo film.
+Creative worlds for a project's films.
 
-Demo is a creative toolkit for creatives at an agency group, so the range of worlds is the point:
-every discipline a creative works in. But each world is authored like a design-studio identity (think Pentagram):
+The range of worlds is the point: every discipline a creative works in. But each world is authored like a design-studio identity (think Pentagram):
 one idea, a restrained palette, rigorous type and grid, one bold gesture, and the mark behaving intelligently in application.
 
 A batch commits to ONE world so shots inside it cohere (like Moverunion: one palette, one material language),

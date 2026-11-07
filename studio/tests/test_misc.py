@@ -127,8 +127,7 @@ def png(color):
 
 @pytest.fixture
 def bench_env(srv, monkeypatch):
-    monkeypatch.setattr(bench, "PLATES_DIR", srv.PLATES_DIR)
-    return srv
+    return srv                                       # bench writes into the open project's plates (srv's, in tmp)
 
 
 def test_bench_run_one_saves_plate_and_state(bench_env, monkeypatch):
@@ -195,7 +194,7 @@ def test_export_filename_is_descriptive_and_unique_per_second(srv):
 def test_prune_exports_keeps_newest_and_ignores_other_files(srv, tmp_path):
     import os, time as _t
     for i in range(5):
-        f = tmp_path / f"Demo-{i}.mp4"
+        f = tmp_path / f"Demo-120bpm-x1-20261020-10000{i}.mp4"
         f.write_bytes(b"x")
         os.utime(f, (_t.time() + i, _t.time() + i))
     for i, name in enumerate(["Phosphene-120bpm-x2-20261027-100000.mp4", "Night-strobe-120bpm-x2-20261027-100001.mp4"]):
@@ -205,7 +204,7 @@ def test_prune_exports_keeps_newest_and_ignores_other_files(srv, tmp_path):
     other = tmp_path / "keepme.mp4"
     other.write_bytes(b"x")
     srv.prune_exports(tmp_path, keep=3)
-    assert sorted(p.name for p in tmp_path.glob("*.mp4")) == ["Demo-4.mp4", "Night-strobe-120bpm-x2-20261027-100001.mp4", "Phosphene-120bpm-x2-20261027-100000.mp4", "keepme.mp4"]
+    assert sorted(p.name for p in tmp_path.glob("*.mp4")) == ["Demo-120bpm-x1-20261020-100004.mp4", "Night-strobe-120bpm-x2-20261027-100001.mp4", "Phosphene-120bpm-x2-20261027-100000.mp4", "keepme.mp4"]
 
 
 def test_exports_have_no_audio_options_left(srv):

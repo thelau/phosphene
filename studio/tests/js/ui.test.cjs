@@ -4,7 +4,7 @@ const { load, WEB } = require('./harness.cjs');
 const fs = require('fs');
 
 const baseRoutes = () => ({
-  '/api/state': { plates: [], krea_connected: true, kimi_configured: true, project: { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', round: true, fixed: true } },
+  '/api/state': { plates: [], krea_connected: true, kimi_configured: true, project: { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m' } },
   '/api/worlds': { worlds: [{ name: 'Editorial Print', brief: 'Swiss grid.', examples: ['poster', 'open magazine spread'], n: 21, kept: 2, wildcard: false }, { name: 'Harbor & Signal', brief: 'Ports.', n: 0, kept: 0, wildcard: true }] },
 });
 const settle = () => new Promise(r => setImmediate(r));
@@ -2013,7 +2013,7 @@ test('Trail: the same opacity curve as the export (shared vectors), and the stag
 });
 
 test('Generate without Krea or Kimi opens Settings on what is missing; without a project, the project menu', async () => {
-  const demo = { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', round: true, fixed: true };
+  const demo = { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m' };
   const r = baseRoutes();
   r['/api/state'] = { plates: [], krea_connected: false, kimi_configured: true, project: demo };
   const h = load({ routes: r });
@@ -2110,8 +2110,8 @@ test('the film strip and ← →: every image can be reached, at any tempo (a cu
 });
 
 test('each project keeps its own film and sound; one never opened here gets its own Random; Undo never crosses projects', async () => {
-  const demo = { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m', round: true, fixed: true };
-  const nike = { ...cos, slug: 'nike', name: 'Nike', fixed: false };
+  const demo = { slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_url: '/m' };
+  const nike = { ...demo, slug: 'nike', name: 'Nike' };
   const plates = Array.from({ length: 12 }, (_, i) => mkPlate('p' + i));
   // on DEMO: a film is made, it is saved as DEMO's
   let r = baseRoutes(); r['/api/state'] = { plates, project: demo, krea_connected: true, kimi_configured: true };
@@ -2141,7 +2141,7 @@ test('a project opens with its own Mark menu: a new one, or one saved before ang
   const plates = [mkPlate('a'), mkPlate('b')];
   const turned = JSON.stringify({ targetSelect: 'loose', rotSelect: '-135,-90,-45,0', sizeSelect: '1,1.25', keepCheck: true });
   for (const [slug, saved] of [['nike', undefined], ['halo', JSON.stringify({ markSelect: 'main', bpmInput: '120' })]]) {
-    const r = baseRoutes(); r['/api/state'] = { plates, project: { ...cos, slug, name: slug }, krea_connected: true, kimi_configured: true };
+    const r = baseRoutes(); r['/api/state'] = { plates, project: { ...demo, slug, name: slug }, krea_connected: true, kimi_configured: true };
     const h = load({ routes: r, storage: { studioProject: 'demo', 'studioFilm:demo': turned, ...(saved ? { [`studioFilm:${slug}`]: saved } : {}) } });
     await settle(); await settle();
     assert.deepEqual(['targetSelect', 'rotSelect', 'sizeSelect'].map(id => h.$(id).value), ['exact', '0', '1'], `${slug}: not Demo's four angles`);

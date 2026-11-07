@@ -785,7 +785,7 @@
       const main = edit && project.has_mark !== false ? { key: 'main', id: 'main', name: project.mark_name || 'Main mark', size: project.mark_size, x: project.mark_x, y: project.mark_y,
         shape: project.mark_shape, noun: project.mark_noun, url: project.mark_url, ar: project.mark_ratio || 1, locked: !!project.fixed, canvas: project.mark_canvas || null } : null;
       const extras = edit ? (project.marks || []).map(m => ({ key: m.id, id: m.id, name: m.name, size: m.size, x: m.x ?? project.mark_x, y: m.y ?? project.mark_y,
-        shape: m.shape, noun: m.noun, url: m.url, ar: m.ratio || 1, locked: !!m.fixed, canvas: m.canvas || null })) : [];   // Demo's orbital mark: locked wherever it sits
+        shape: m.shape, noun: m.noun, url: m.url, ar: m.ratio || 1, locked: !!m.fixed, canvas: m.canvas || null })) : [];
       projectForm = { kind: edit ? 'edit' : 'new', name: edit ? project.name : '', brief: edit ? project.brief : '', palette: edit ? [...(project.palette || [])] : [],
         marks: main ? [main, ...extras] : [], def: main ? 'main' : null, sel: edit ? 'project' : null, fromKimi: false, typed: new Set(), noMark: !!(edit && !main), frames: !!(edit && project.frames), framesHand: !!(edit && project.frames_hand) };
       document.getElementById('projectTitle').textContent = edit ? `${project.name} · Settings` : 'New project';
@@ -913,7 +913,7 @@
       if (f.sel === 'project') {
         const tag = t => f.fromKimi ? ` <span class="ps-tag">${t}</span>` : '';
         d.innerHTML = `<label class="ps-field"><span>Name</span><input type="text" id="psName" maxlength="60" value="${escapeHtml(f.name)}" oninput="psSetProject('name', this.value)" autocomplete="off" /></label>
-          <label class="ps-field"><span>About${tag('From Kimi')}</span><input type="text" id="psBrief" maxlength="200" value="${escapeHtml(f.brief)}" oninput="psSetProject('brief', this.value)" placeholder="Who or what these films are for: a brand, a project, an event… e.g. Kestrel Air, the Hong Kong airline" autocomplete="off" /></label>
+          <label class="ps-field"><span>About${tag('From Kimi')}</span><input type="text" id="psBrief" maxlength="200" value="${escapeHtml(f.brief)}" oninput="psSetProject('brief', this.value)" placeholder="Who or what these films are for: a brand, a project, an event… e.g. Nordlicht, a Berlin record label" autocomplete="off" /></label>
           <div class="ps-field"><span>Colours${tag('Suggested')}</span><div class="ps-colours">${f.palette.map((c, i) => `<span class="ps-chip"><i style="background:${escapeHtml(c)}"></i>${escapeHtml(c)}<button type="button" aria-label="Remove ${escapeHtml(c)}" onclick="psColour(${i})">×</button></span>`).join('')}
             <input type="text" id="psColourNew" class="ps-chip-add" maxlength="7" placeholder="+ #hex" aria-label="Add a colour" onkeydown="psColourKey(event, this)" onblur="psColourAdd(this)" autocomplete="off" /></div>
             <small>${f.paletteNote ? `${escapeHtml(f.paletteNote)}. ` : ''}Kimi colours the scenes with these. Every mark shares them.</small></div>`;
@@ -983,7 +983,7 @@
       const next = document.getElementById('psColourNew'); if (next) next.focus();
     }
     function psColourKey(e, input) { if (e.key === 'Enter') { e.preventDefault(); psColourAdd(input); } }
-    // the star: that mark becomes the main one and moves to the top (Demo's orbital mark keeps its check and words wherever it sits)
+    // the star: that mark becomes the main one and moves to the top
     function psStar(e, key) {
       if (e && e.stopPropagation) e.stopPropagation();
       const f = projectForm, m = psMark(key);
@@ -5184,7 +5184,7 @@
         if (data.ok) {
           const link = document.getElementById('downloadLink');
           link.href = data.video_url;
-          link.setAttribute('download', data.filename || 'Demo.mp4');
+          link.setAttribute('download', data.filename || 'Phosphene.mp4');
           document.getElementById('exportFile').textContent = data.filename || 'MP4';
           link.click();                                                  // the file saves itself (to Downloads)
           ok = true;

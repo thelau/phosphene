@@ -1,4 +1,4 @@
-"""Projects: one per brand mark. A new project keeps its mark, guides, plates and curation in its own folder; DEMO stays as it was."""
+"""Projects: one per brand mark. A new project keeps its mark, guides, plates and curation in its own folder."""
 
 import io
 import json
@@ -25,19 +25,24 @@ def star_png(size=(200, 120), fill=(240, 60, 20, 255)) -> bytes:
 def pdir(tmp_path, monkeypatch):
     monkeypatch.setattr(projects, "PROJECTS_DIR", tmp_path / "projects")
     monkeypatch.setattr(projects, "LOCAL_FILE", tmp_path / ".local.json")
-    import shutil
-    from pathlib import Path
-    shutil.copytree(Path(projects.__file__).resolve().parent.parent / "projects" / "demo", tmp_path / "projects" / "demo")
+    (tmp_path / "projects").mkdir()
     return tmp_path / "projects"
 
 
-def test_cos_is_a_project_with_its_old_places(pdir):
-    p = projects.load("demo")
-    assert p["name"] == "Demo" and p["mark_size"] == 18 and (p["mark_x"], p["mark_y"]) == (50, 50)
-    assert p["plates_dir"] == projects.ROOT_DIR / "assets" / "ai-plates" and p["state_file"] == projects.ROOT_DIR / "studio" / "curation_state.json"
-    assert p["mark_file"].is_file() and p["guides"]["dark"].is_file()
-    assert projects.active_slug() == "demo", "the default, before anything was chosen"
-    assert [x["slug"] for x in projects.all_projects()] == ["demo"]
+def far_project(pdir, tmp_path, slug="far"):
+    """A project whose files live outside its folder (`paths`): it opens, but is never deleted or re-homed from the app."""
+    folder = pdir / slug
+    folder.mkdir()
+    (folder / "mark.png").write_bytes(ring_png())
+    (folder / "project.json").write_text(json.dumps({"name": "Far", "paths": {"plates": str(tmp_path / "far-plates"), "state": str(tmp_path / "far-state.json")}}))
+    return projects.load(slug)
+
+
+def test_with_no_project_nothing_is_open_and_the_list_is_empty(pdir):
+    assert projects.active_slug() is None and projects.all_projects() == []
+    p = projects.create({"name": "Owl"}, star_png())
+    assert projects.active_slug() == "owl", "the first there is, before anything was chosen"
+    assert p["mark_size"] == 18 and (p["mark_x"], p["mark_y"]) == (50, 50), "dead centre, 18% wide by default"
 
 
 def test_a_new_project_gets_its_folder_mark_and_guides_with_the_mark_at_its_size_and_place(pdir):
@@ -70,7 +75,7 @@ def test_an_opaque_mark_is_read_from_its_background(pdir):
     assert a.size == (61, 41), "trimmed to the dark shape on white"
 
 
-def test_changing_the_size_remakes_the_guides_and_forgets_krea_copies_cos_keeps_its_mark(pdir):
+def test_changing_the_size_remakes_the_guides_and_forgets_krea_copies(pdir):
     p = projects.create({"name": "Owl"}, star_png())
     p["guide_cache_file"].write_text('{"dark:1": {"url": "x"}}')
     before = p["guides"]["dark"].read_bytes()
@@ -78,27 +83,23 @@ def test_changing_the_size_remakes_the_guides_and_forgets_krea_copies_cos_keeps_
     assert p["mark_size"] == 12 and p["brief"] == "a bar"
     assert p["guides"]["dark"].read_bytes() != before and not p["guide_cache_file"].exists()
     assert projects.update("owl", {"mark_size": 999})["mark_size"] == 60, "kept inside what makes sense"
-    with pytest.raises(ValueError):
-        projects.update("demo", {}, star_png())
-    demo = projects.update("demo", {"name": "DEMO", "brief": "Demo, a toolkit", "mark_size": 30, "mark_shape": "square", "palette": ["#111111"]})
-    assert (demo["name"], demo["brief"], demo["palette"]) == ("DEMO", "Demo, a toolkit", ["#111111"])
-    assert (demo["mark_size"], demo["mark_shape"]) == (18, "circular orbital logo"), "DEMO keeps its size and the words of its prompt sentence"
     with pytest.raises(FileNotFoundError):
         projects.load("../etc")
 
 
-def test_switching_is_remembered_and_an_unknown_one_falls_back_to_cos(pdir):
+def test_switching_is_remembered_and_an_unknown_one_falls_back_to_the_first(pdir):
     projects.create({"name": "Owl"}, star_png())
+    projects.create({"name": "Bat"}, star_png())
     projects.set_active("owl")
     assert projects.active_slug() == "owl"
     projects.LOCAL_FILE.write_text('{"project": "gone"}')
-    assert projects.active_slug() == "demo"
+    assert projects.active_slug() == "bat", "the first by name"
+    projects.LOCAL_FILE.write_text('{"project": "../etc"}')
+    assert projects.active_slug() == "bat"
 
 
-def test_rebrand_turns_cos_colours_into_the_project_palette_and_leaves_cos_alone(pdir):
-    demo = projects.load("demo")
+def test_rebrand_turns_the_built_in_colours_into_the_project_palette(pdir):
     text = "warm cream (#FEFFE7) and burnt orange (#EC540C); oxblood #381313"
-    assert projects.rebrand(text, demo) == text
     p = projects.create({"name": "Owl", "palette": ["#112233", "#445566"]}, star_png())
     assert projects.rebrand(text, p) == "brand colour #445566 and brand colour #112233; brand colour #445566"
     bare = projects.create({"name": "Bare"}, star_png())
@@ -121,8 +122,6 @@ def test_the_logo_check_finds_a_projects_own_mark_where_it_should_be(pdir, tmp_p
     assert good["qa_passed"] and good["center_corr"] > 0.6, good
     moved = qa_engine.evaluate_plate_qa(plate("moved.jpg", (left, top + 500)), spec)
     assert not moved["qa_passed"], moved
-    as_demo = qa_engine.evaluate_plate_qa(tmp_path / "good.jpg")
-    assert not as_demo["qa_passed"], "DEMO's check does not take another mark for its own"
 
 
 def test_export_then_import_brings_the_project_back_as_it_was_and_never_carries_the_kimi_key(pdir, tmp_path):
@@ -147,10 +146,11 @@ def test_export_then_import_brings_the_project_back_as_it_was_and_never_carries_
     got = json.loads(q["state_file"].read_text())
     assert (got["order"], got["trashed"], got["groups"], got["edits"], got["skips"], got["last_batch"]) == (state["order"], state["trashed"], state["groups"], state["edits"], state["skips"], state["last_batch"]), "as it was, Skip in film per group and the last batch too"
     assert sorted(f.name for f in q["plates_dir"].iterdir()) == ["00_shot.jpg", "01_shot.jpg", "02_shot.jpg"]
-    demo_out = tmp_path / "demo.zip"
-    projects.export_zip("demo", demo_out)
-    raw = json.loads(zipfile.ZipFile(demo_out).read("Demo/project.json"))
-    assert "Demo/mark.png" in zipfile.ZipFile(demo_out).namelist() and "paths" not in raw and raw["format"] == 1, "DEMO travels with its files inside, and says its format"
+    far = far_project(pdir, tmp_path)
+    far_out = tmp_path / "far.zip"
+    projects.export_zip("far", far_out)
+    raw = json.loads(zipfile.ZipFile(far_out).read("far/project.json"))
+    assert "far/mark.png" in zipfile.ZipFile(far_out).namelist() and "paths" not in raw and raw["format"] == 1, "one whose files live elsewhere travels with them inside, and says its format"
     newer = tmp_path / "newer.phosphene"
     with zipfile.ZipFile(out) as src, zipfile.ZipFile(newer, "w") as dst:
         for n in src.namelist():
@@ -196,7 +196,7 @@ def test_an_imported_curation_brings_no_key_and_no_odd_entries_and_its_settings_
                                  {"kimi_api_key": "sk-theirs", "trashed": ["01_a.jpg", {"x": 1}, ["y"], 5, "../evil.jpg"], "order": [None, "02_b.jpg"], "history": ["Shot", 3]}))
     st = json.loads(p["state_file"].read_text())
     assert "kimi_api_key" not in st and st["trashed"] == ["01_a.jpg"] and st["order"] == ["02_b.jpg"] and st["history"] == ["Shot"]
-    assert (p["mark_size"], p["mark_x"], p["palette"], p["qa"]) == (60, 10, ["#112233"], "mark"), "in the ranges New project allows"
+    assert (p["mark_size"], p["mark_x"], p["palette"]) == (60, 10, ["#112233"]) and "qa" not in json.loads((pdir / "odd" / "project.json").read_text()), "in the ranges New project allows"
     assert p["plates_dir"] == pdir / "odd" / "plates", "never someone else's places"
     with pytest.raises(ValueError, match="damaged"):
         projects.import_zip(phos("b", {"name": "Bad", "mark_size": "big"}, {}))
@@ -207,15 +207,15 @@ def test_the_sample_is_copied_in_once_and_never_over_a_project(pdir, tmp_path, m
     import shutil
     monkeypatch.setattr(projects.places, "SUPPORT_DIR", tmp_path)
     examples = tmp_path / "examples"
-    shutil.copytree(pdir / "demo", examples / "Demo")
-    shutil.rmtree(pdir / "demo")
-    assert projects.seed_examples(examples) == ["Demo"]
-    assert (pdir / "Demo" / "project.json").is_file() and projects.active_slug() == "Demo", "Demo opens when there is no demo"
-    shutil.rmtree(pdir / "Demo")
+    projects.create({"name": "Sample"}, star_png())
+    shutil.move(str(pdir / "sample"), str(examples / "sample"))
+    assert projects.seed_examples(examples) == ["sample"]
+    assert (pdir / "sample" / "project.json").is_file() and projects.active_slug() == "sample", "the sample opens"
+    shutil.rmtree(pdir / "sample")
     projects.create({"name": "Owl"}, star_png())
     assert projects.seed_examples(examples) == [], "deleted later: it does not come back"
     shutil.rmtree(pdir / "owl")
-    assert projects.seed_examples(examples) == ["Demo"], "with no project left at all, the sample comes back"
+    assert projects.seed_examples(examples) == ["sample"], "with no project left at all, the sample comes back"
 
 
 def test_a_marks_own_colours(pdir):
@@ -272,8 +272,9 @@ def test_delete_project_moves_its_folder_to_the_trash_and_refuses_one_whose_file
     assert json.loads(projects.LOCAL_FILE.read_text()).get("project") is None, "no longer the open one"
     projects.create({"name": "Night Owl"}, star_png())
     assert projects.trash("night-owl").name == "Night Owl (Phosphene project) 2", "never over another"
+    far_project(pdir, tmp_path)
     with pytest.raises(ValueError, match="outside its folder"):
-        projects.trash("demo")                        # the repository's DEMO: its plates are committed, elsewhere
+        projects.trash("far")
 
 
 def test_the_replay_measures_the_users_curation_again_and_says_where_the_check_disagrees(pdir, tmp_path):
@@ -290,18 +291,18 @@ def test_the_replay_measures_the_users_curation_again_and_says_where_the_check_d
     # the check trashed the moved one and the user put it back; the right one was trashed by hand
     p["state_file"].write_text(json.dumps({"trashed": ["16_right.jpg"], "qa_failed": ["17_moved.jpg"]}))
     todo, judged = qa_replay.jobs(projects.PROJECTS_DIR)
-    assert judged == {"owl/16_right.jpg": "you trashed", "owl/17_moved.jpg": "restored"}, "DEMO is left out"
+    assert judged == {"owl/16_right.jpg": "you trashed", "owl/17_moved.jpg": "restored"}
     got = {k: v for k, v, _ in map(qa_replay._measure, todo)}
     assert got == {"owl/16_right.jpg": "pass", "owl/17_moved.jpg": "trash"}
 
 
-def test_importing_the_server_pairs_demos_places_with_cos_whatever_was_open_last(srv, tmp_path):
+def test_importing_the_server_opens_no_project(tmp_path):
     # from a review: bench.py (and the tests) import the server; PROJECT came from the last project opened while the paths stayed
-    # DEMO's, so good DEMO plates were checked against another mark and trashed
-    import projects as P
-    P.create({"name": "Owl"}, star_png())
-    P.set_active("owl")
-    assert srv._first_project()["slug"] == "demo", "the start (open_first_project) opens the last one; importing does not"
+    # another's, so good plates were checked against another mark and trashed. Importing opens nothing; the start opens the last one
+    import subprocess, sys
+    from pathlib import Path
+    out = subprocess.run([sys.executable, "-c", "import server; print(server.PROJECT)"], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=60)
+    assert out.stdout.strip().splitlines()[-1] == "None", out.stderr[-300:]
 
 
 def test_a_second_server_on_the_same_projects_folder_says_so_and_stops(tmp_path):
@@ -345,23 +346,21 @@ def ring_png(size=(160, 160)) -> bytes:
 def test_a_project_holds_other_marks_besides_its_main_one(pdir):
     p = projects.create({"name": "Kestrel", "mark_size": 22, "mark_shape": "oval badge", "mark_noun": "badge"}, star_png())
     assert p["marks"] == [], "a project starts with its one mark, as before"
-    p = projects.add_mark("Kestrel", {"name": "Bird", "shape": "a flying bird", "noun": "bird symbol"}, ring_png())
+    p = projects.add_mark("kestrel", {"name": "Bird", "shape": "a flying bird", "noun": "bird symbol"}, ring_png())
     (bird,) = p["marks"]
     assert (bird["id"], bird["name"], bird["mark_size"], bird["mark_noun"]) == ("bird", "Bird", 22.0, "bird symbol"), "the main mark's size until changed"
-    assert bird["mark_file"] == pdir / "Kestrel" / "mark-bird.png" and bird["mark_file"].is_file()
-    p = projects.add_mark("Kestrel", {"name": "Bird"}, ring_png())
+    assert bird["mark_file"] == pdir / "kestrel" / "mark-bird.png" and bird["mark_file"].is_file()
+    p = projects.add_mark("kestrel", {"name": "Bird"}, ring_png())
     assert [m["id"] for m in p["marks"]] == ["bird", "bird-2"], "two with one name: told apart"
-    p = projects.edit_mark("Kestrel", "bird", {"size": 30, "name": "The bird"})
+    p = projects.edit_mark("kestrel", "bird", {"size": 30, "name": "The bird"})
     assert (p["marks"][0]["mark_size"], p["marks"][0]["name"]) == (30.0, "The bird")
     q = projects.with_mark(p, "bird")
-    assert (q["mark_file"], q["mark_size"], q["mark_x"], q["mark_noun"], q["qa"]) == (bird["mark_file"], 30.0, 50.0, "bird symbol", "mark"), "at the main mark's place"
+    assert (q["mark_file"], q["mark_size"], q["mark_x"], q["mark_noun"]) == (bird["mark_file"], 30.0, 50.0, "bird symbol"), "at the main mark's place"
     assert projects.with_mark(p, None) is p and projects.with_mark(p, "gone") is p, "the main mark, or one that is gone: the project itself"
     pub = projects.public(p)
     assert [m["id"] for m in pub["marks"]] == ["bird", "bird-2"] and "m=bird" in pub["marks"][0]["url"]
-    p = projects.remove_mark("Kestrel", "bird-2")
-    assert [m["id"] for m in p["marks"]] == ["bird"] and not (pdir / "Kestrel" / "mark-bird-2.png").exists()
-    demo = projects.add_mark("demo", {"name": "Other"}, ring_png())               # Demo too: its main mark stays as it is
-    assert [m["id"] for m in demo["marks"]] == ["other"] and demo["qa"] == "demo-tuned" and demo["mark_size"] == 18
+    p = projects.remove_mark("kestrel", "bird-2")
+    assert [m["id"] for m in p["marks"]] == ["bird"] and not (pdir / "kestrel" / "mark-bird-2.png").exists()
 
 
 def test_a_project_takes_six_marks_and_one_made_before_with_more_keeps_them(pdir):
@@ -399,11 +398,11 @@ def test_a_project_from_before_marks_still_opens_as_it_was(pdir):
 
 def test_export_and_import_carry_the_other_marks(pdir, tmp_path):
     projects.create({"name": "Kestrel"}, star_png())
-    projects.add_mark("Kestrel", {"name": "Bird", "size": 26, "noun": "bird"}, ring_png())
+    projects.add_mark("kestrel", {"name": "Bird", "size": 26, "noun": "bird"}, ring_png())
     out = tmp_path / "c.phos"
-    projects.export_zip("Kestrel", out)
+    projects.export_zip("kestrel", out)
     p = projects.import_zip(out)
-    assert p["slug"] == "Kestrel-2" and [(m["id"], m["mark_size"], m["mark_noun"]) for m in p["marks"]] == [("bird", 26.0, "bird")]
+    assert p["slug"] == "kestrel-2" and [(m["id"], m["mark_size"], m["mark_noun"]) for m in p["marks"]] == [("bird", 26.0, "bird")]
     assert p["marks"][0]["mark_file"].is_file()
     import zipfile                                                            # a file from before marks: one mark, as it was
     old = tmp_path / "old.phos"
@@ -458,79 +457,29 @@ def test_an_imported_curation_keeps_only_a_sound_last_batch(pdir, tmp_path):
 
 def test_the_settings_form_saves_every_mark_at_once_each_with_its_own_place(pdir):
     projects.create({"name": "Kestrel", "mark_name": "Badge"}, star_png())
-    assert projects.load("Kestrel")["mark_name"] == "Badge"
-    p = projects.save_marks("Kestrel", [{"name": "Bird", "size": 14, "x": 30, "y": 70, "noun": "bird"}, {"name": "Word"}], {0: ring_png(), 1: ring_png()})
+    assert projects.load("kestrel")["mark_name"] == "Badge"
+    p = projects.save_marks("kestrel", [{"name": "Bird", "size": 14, "x": 30, "y": 70, "noun": "bird"}, {"name": "Word"}], {0: ring_png(), 1: ring_png()})
     assert [(m["id"], m["mark_size"], m["mark_x"], m["mark_y"]) for m in p["marks"]] == [("bird", 14.0, 30.0, 70.0), ("word", 18.0, 50.0, 50.0)]
     q = projects.with_mark(p, "bird")
     assert (q["mark_x"], q["mark_y"]) == (30.0, 70.0), "each mark its own place"
-    p = projects.save_marks("Kestrel", [{"id": "word", "name": "Wordmark", "x": 5}], {})
+    p = projects.save_marks("kestrel", [{"id": "word", "name": "Wordmark", "x": 5}], {})
     assert [(m["id"], m["name"], m["mark_x"]) for m in p["marks"]] == [("word", "Wordmark", 10.0)], "changed, kept inside the frame; the one not listed is gone"
-    assert not (pdir / "Kestrel" / "mark-bird.png").exists()
-    assert projects.save_marks("Kestrel", [{"name": "No image"}], {})["marks"] == [], "a new one without its image is not added"
+    assert not (pdir / "kestrel" / "mark-bird.png").exists()
+    assert projects.save_marks("kestrel", [{"name": "No image"}], {})["marks"] == [], "a new one without its image is not added"
 
 
 def test_make_default_swaps_the_mark_into_the_main_slot_and_every_image_keeps_its_mark(pdir):
     import json
     projects.create({"name": "Kestrel", "mark_name": "Badge", "mark_noun": "badge", "mark_size": 22}, star_png())
-    projects.save_marks("Kestrel", [{"name": "Bird", "size": 14, "x": 30, "noun": "bird"}], {0: ring_png()})
-    main_before = (pdir / "Kestrel" / "mark.png").read_bytes()
-    mid = projects.make_default("Kestrel", "bird")
-    p = projects.load("Kestrel")
+    projects.save_marks("kestrel", [{"name": "Bird", "size": 14, "x": 30, "noun": "bird"}], {0: ring_png()})
+    main_before = (pdir / "kestrel" / "mark.png").read_bytes()
+    mid = projects.make_default("kestrel", "bird")
+    p = projects.load("kestrel")
     assert (p["mark_name"], p["mark_noun"], p["mark_size"], p["mark_x"]) == ("Bird", "bird", 14, 30), "the bird is the default now"
     assert [(m["id"], m["name"], m["mark_noun"], m["mark_size"]) for m in p["marks"]] == [("bird", "Badge", "badge", 22.0)], "the badge in the list, under the id"
-    assert (pdir / "Kestrel" / f"mark-{mid}.png").read_bytes() == main_before
+    assert (pdir / "kestrel" / f"mark-{mid}.png").read_bytes() == main_before
     st = projects.swap_marks_used({"marks_used": {"b.jpg": "bird"}}, mid, ["a.jpg", "b.jpg"])
     assert st["marks_used"] == {"a.jpg": "bird"}, "a.jpg was the badge's (now under 'bird'); b.jpg was the bird's (now the default)"
-
-
-def test_Demo_can_make_another_mark_default_and_its_orbital_mark_keeps_its_check_words_and_lock_wherever_it_sits(pdir):
-    """The user's yes (2026-10-30): what made Demo special hung on the project; it now goes with its orbital mark."""
-    import json
-    orbital = projects.load("demo")["mark_file"]
-    orbital_bytes, repo_guide = orbital.read_bytes(), projects.load("demo")["guides"]["dark"]
-    guide_bytes = repo_guide.read_bytes()
-    projects.add_mark("demo", {"name": "Wordmark", "shape": "wordmark", "noun": "wordmark", "size": 30}, ring_png())
-    mid = projects.make_default("demo", "wordmark")
-    p = projects.load("demo")
-    assert (p["qa"], p["demo"], p["mark_name"], p["mark_noun"], p["mark_size"]) == ("mark", True, "Wordmark", "wordmark", 30), "the wordmark leads, with the general check"
-    assert p["mark_file"] == pdir / "demo" / "mark.png" and p["mark_file"].read_bytes() == ring_png()
-    (orb,) = p["marks"]
-    assert (orb["id"], orb["qa"], orb["mark_size"], orb["mark_x"], orb["mark_shape"], orb["mark_noun"]) == (mid, "demo-tuned", 18, 50, "circular orbital logo", "circular mark")
-    assert orb["mark_file"].read_bytes() == orbital_bytes and orbital.read_bytes() == orbital_bytes, "copied in; the repository's original never moved"
-    assert repo_guide.read_bytes() == guide_bytes and p["guides"]["dark"].parent == pdir / "demo", "the wordmark's guides in its folder, never over the originals"
-    assert p["plates_dir"] == projects.ROOT_DIR / "assets" / "ai-plates", "its images stay where they always were"
-    q = projects.with_mark(p, mid)
-    assert q["qa"] == "demo-tuned" and projects.mark_ratio(q) == 1.0, "its own check and round box, as a mark of the list"
-    pub = projects.public(p)
-    assert pub["fixed"] is False and pub["marks"][0]["fixed"] is True, "the lock goes with it"
-    assert projects.rebrand("orange (#EC540C)", p) == "orange (#EC540C)", "still Demo: its colours stay"
-    # locked: the form cannot change, replace or remove it
-    p = projects.save_marks("demo", [{"id": mid, "name": "X", "size": 40, "x": 20, "noun": "ring"}], {0: star_png()})
-    assert [(m["id"], m["name"], m["mark_size"], m["mark_x"], m["mark_noun"]) for m in p["marks"]] == [(mid, "Main mark", 18, 50, "circular mark")]
-    assert p["marks"][0]["mark_file"].read_bytes() == orbital_bytes
-    assert [m["id"] for m in projects.save_marks("demo", [], {})["marks"]] == [mid], "never removed"
-    with pytest.raises(ValueError):
-        projects.edit_mark("demo", mid, {"size": 30})
-    with pytest.raises(ValueError):
-        projects.remove_mark("demo", mid)
-    # and back: the orbital mark is the default again, exactly as it was
-    back = projects.make_default("demo", mid)
-    p = projects.load("demo")
-    assert (p["qa"], p["mark_size"], p["mark_shape"], p["mark_noun"]) == ("demo-tuned", 18, "circular orbital logo", "circular mark")
-    assert p["mark_file"].read_bytes() == orbital_bytes and projects.public(p)["fixed"] is True
-    assert [(m["id"], m["qa"], m["mark_noun"]) for m in p["marks"]] == [(back, "mark", "wordmark")]
-    raw = json.loads((pdir / "demo" / "project.json").read_text())
-    assert raw["paths"]["state"] == "studio/curation_state.json" and "guide_dark" not in raw["paths"]
-
-
-def test_a_Demo_file_with_its_orbital_mark_in_the_list_travels_and_opens_so(pdir, tmp_path):
-    from pathlib import Path
-    projects.add_mark("demo", {"name": "Wordmark"}, ring_png())
-    mid = projects.make_default("demo", "wordmark")
-    out = tmp_path / "demo.phos"
-    projects.export_zip("demo", out)
-    p = projects.import_zip(out)
-    assert p["qa"] == "mark" and p["demo"] and [(m["id"], m["qa"]) for m in p["marks"]] == [(mid, "demo-tuned")]
 
 
 def test_a_projects_marks_can_be_frames_of_one_animation_and_it_travels(pdir, tmp_path):

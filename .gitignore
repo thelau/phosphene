@@ -16,9 +16,8 @@ studio/generation_log.jsonl*
 studio/.thumbs/
 studio/.export/
 studio/.local.json
-# projects: new ones stay on this machine; Demo is shared (its plates and curation live where they always did)
+# projects stay on the machine that made them
 projects/*
-!projects/demo/
 studio/.krea_auth.json
 app/build/
 app/src-tauri/target/
@@ -26,5 +25,4 @@ app/src-tauri/gen/
 studio/.no-project/
 studio/tests/.qa_shapes_passed
 
-# Demo lives in ~/Documents/Phosphene (the app); the repo no longer keeps its plates (2026-10-31)
 assets/ai-plates/

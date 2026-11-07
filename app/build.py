@@ -5,7 +5,7 @@ Everything the Mac app carries, gathered in app/build/resources (what Tauri bund
   web/       the built page (npm run build)
   bin/ffmpeg a self-contained ffmpeg (from imageio-ffmpeg: only macOS's own frameworks), for the MP4 export
   (licenses/ comes straight from app/licenses, in tauri.conf.json: it exists without a build, so app:live runs)
-  No project: the app is the tool, projects are documents (Demo travels as a .phosphene file: Export project / Import)
+  No project: the app is the tool, projects are documents (a project travels as a .phos file: Export project / Import)
 
 Run: .venv/bin/python app/build.py   (then: cd app && npx tauri build)
 """
@@ -47,7 +47,7 @@ def main() -> None:
     shutil.copy2(ff, OUT / "bin" / "ffmpeg")
 
     size = sum(f.stat().st_size for f in OUT.rglob("*") if f.is_file()) / 1e6
-    print(f"   everything the app carries: {size:.0f} MB (no project: Demo travels as a .phosphene file)")
+    print(f"   everything the app carries: {size:.0f} MB (no project: projects travel as .phos files)")
 
 
 if __name__ == "__main__":

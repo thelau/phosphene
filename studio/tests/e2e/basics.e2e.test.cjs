@@ -626,14 +626,14 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   await page.waitForSelector('#projectMenu:not([hidden])');
   assert.deepEqual(await page.locator('#projectMenu .gm-item').allTextContents(), ['Demo', 'New project…', 'Project settings…', 'Export project…', 'Import project…', 'Delete project…']);
   assert.equal(await page.locator('#projectMenu .gm-item.on').textContent(), 'Demo');
-  await page.locator('#projectMenu .gm-item', { hasText: 'Project settings' }).click();       // DEMO: name, brand and colours; its main mark locked
+  await page.locator('#projectMenu .gm-item', { hasText: 'Project settings' }).click();
   assert.equal(await page.locator('#projectModal').isVisible(), true);
   assert.equal(await text('#projectTitle'), 'Demo · Settings');
   assert.deepEqual(await page.locator('.ps-rail-head').allTextContents(), ['Project', 'Marks1 of 6']);
   assert.equal(await page.locator('.ps-proj.on').count(), 1, 'the project first');
   await page.click('.ps-mark[data-key="main"]');
-  assert.match(await text('.ps-locked'), /mark of Demo.s is fixed/);
-  for (const sel of ['#psMarkName', '.ps-slider input', '.ps-two input']) assert.equal(await page.locator(sel).first().isDisabled(), true, sel);
+  assert.equal(await page.locator('.ps-locked').count(), 0, 'no mark is locked');
+  for (const sel of ['#psMarkName', '.ps-slider input', '.ps-two input']) assert.equal(await page.locator(sel).first().isDisabled(), false, sel);
   assert.equal(await page.locator('.ps-remove').count(), 0, 'the default mark is never removed');
   await page.click('.ps-proj');
   await page.fill('#psBrief', 'Demo, a toolkit');
@@ -641,7 +641,7 @@ test('projects: the header shows the brand; New project takes a mark (drawn to a
   for (let i = 0; i < 50 && !api.state.calls.some(c => c.path === '/api/projects' && c.body && c.body.action === 'update'); i++) await page.waitForTimeout(100);
   await page.waitForSelector('#loader', { state: 'detached' });
   const upd = api.state.calls.filter(c => c.path === '/api/projects' && c.body && c.body.action === 'update').pop().body;
-  assert.deepEqual([upd.brief, upd.marks, upd.default_index], ['Demo, a toolkit', [], undefined], 'the server keeps DEMO\'s main mark as it is');
+  assert.deepEqual([upd.brief, upd.marks, upd.default_index], ['Demo, a toolkit', [], undefined], 'nothing else changed');
   await page.click('#projectBtn');
   await page.locator('#projectMenu .gm-item', { hasText: 'New project' }).click();
   assert.equal(await page.locator('#projectModal').isVisible(), true);

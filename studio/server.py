@@ -49,7 +49,6 @@ from krea_mcp_client import (
     start_login as krea_start_login,
 )
 from qa_engine import (
-    DEMO_MARK,
     PLATES_DIR,
     ROOT_DIR,
     TARGET_H,
@@ -64,7 +63,7 @@ THUMB_WIDTHS = (360, 540)
 EXPORT_DIR = places.SUPPORT_DIR / ".export"  # the drone and the frames the page made for the next export, zips (gitignored)
 WEB_DIST = places.WEB_DIST              # built page (npm run build, or inside the Mac app); in dev Vite serves it instead
 OUTPUTS_DIR = places.OUTPUTS_DIR
-CURATION_FILE = STUDIO_DIR / "curation_state.json"
+CURATION_FILE = places.SUPPORT_DIR / ".no-project" / "state.json"   # until a project is open
 SECRETS_FILE = places.SUPPORT_DIR / ".secrets.json"  # gitignored; holds kimi_api_key
 
 if not places.APP:                                                          # in the app this would be inside Phosphene.app (read-only from a DMG)
@@ -88,16 +87,7 @@ except Exception:
     QA_CACHE = {}
 
 # ---- the project the server works on (projects.py): its plates, curation, caches, mark and words ----
-def _first_project():
-    # DEMO, whose places the paths above are: importing the server (bench, the tests) never pairs DEMO's plates with another
-    # project's mark; the server's start opens the project open last time (open_first_project)
-    try:
-        return projects.load(projects.DEFAULT)
-    except Exception:                                                        # the app before its first launch copied the sample in
-        return None
-
-
-PROJECT: dict = _first_project()
+PROJECT: dict | None = None        # importing the server (bench, the tests) opens nothing; its start opens the project open last time (open_first_project)
 
 
 def apply_project(p: dict) -> None:
@@ -111,9 +101,6 @@ def apply_project(p: dict) -> None:
     except Exception:
         QA_CACHE = {}
     features.use_cache(p["features_file"])
-    orbital = p["mark_file"] if p.get("qa") == "demo-tuned" else next((m["mark_file"] for m in p.get("marks") or [] if m.get("qa") == "demo-tuned"), None)
-    if orbital:                                                              # DEMO's logo check reads its orbital mark from the project, wherever it sits
-        qa_engine.LOGO_CREAM_PATH = orbital
 
 
 def apply_no_project() -> None:
@@ -152,31 +139,24 @@ def open_first_project() -> None:
 NEEDS_PROJECT = {"/api/upload-image", "/api/generate-image", "/api/invent-prompts", "/api/order-ai", "/api/export-video", "/api/download-zip", "/api/reorder", "/api/trash", "/api/purge", "/api/groups", "/api/edits", "/api/sequence"}
 
 
-def is_demo() -> bool:
-    return bool(PROJECT) and PROJECT.get("qa") == "demo-tuned"
-
-
 def current_mark(pl: dict | None = None, mark_id: str | None = None):
-    """What the logo check looks for in this project: DEMO's orbital mask, or the project's own mark at its size and place.
-    An image with its own placement (a Loose batch): the mark at that size and place, DEMO's too (the general check).
+    """What the mark check looks for in this project: its mark at its size and place.
+    An image with its own placement (a Loose batch): the mark at that size and place.
     An image made with another of the project's marks: that mark, at its size (or its placement's)."""
     proj = projects.with_mark(PROJECT, mark_id) if mark_id else PROJECT
     if pl:
         seen = placement.as_project(proj, pl)          # a turned mark: its turned file, at its box's width
         return mark_spec(seen["mark_file"], seen["mark_size"], pl["x"], pl["y"])
-    if proj is not PROJECT:                        # another mark; Demo's orbital one keeps its tuned check wherever it sits
-        return DEMO_MARK if proj.get("qa") == "demo-tuned" else mark_spec(proj["mark_file"], proj["mark_size"], proj["mark_x"], proj["mark_y"])
-    return DEMO_MARK if is_demo() else mark_spec(PROJECT["mark_file"], PROJECT["mark_size"], PROJECT["mark_x"], PROJECT["mark_y"])
+    return mark_spec(proj["mark_file"], proj["mark_size"], proj["mark_x"], proj["mark_y"])
 
 
 def current_guide():
-    """The guide image Krea draws from: None for DEMO (its originals, one pre-uploaded), else this project's, uploaded once and cached."""
-    original = PROJECT["guides"]["dark"] == ROOT_DIR / "assets" / "logo-guides" / "guide_dark_1080x1920.png"
-    return None if is_demo() and original else {"files": PROJECT["guides"], "cache": PROJECT["guide_cache_file"]}
+    """The guide image Krea draws from: this project's, uploaded once and cached."""
+    return {"files": PROJECT["guides"], "cache": PROJECT["guide_cache_file"]}
 
 
 def mark_words(p: dict | None = None) -> dict:
-    """The words the prompts use for the mark, its size and its place. DEMO: exactly the words it has always had."""
+    """The words the prompts use for the mark, its size and its place."""
     p = p or PROJECT
     size, x, y = p["mark_size"], p["mark_x"], p["mark_y"]
     centred = abs(x - 50) < 0.01 and abs(y - 50) < 0.01
@@ -203,18 +183,16 @@ def frame_area(x: float, y: float) -> str:
 
 
 def _plate_key(path: Path, pl: dict | None = None, mark_id: str | None = None) -> str:
-    # size, not mtime: git checkouts rewrite mtimes and used to invalidate every cached result. Another project's mark: the check's
-    # version too (2: fitted at other sizes and by its outline), so results from an older check are measured again; DEMO's keys stay
-    # and the mark's size and place: changed in Project settings, every image is measured again against the new ones
+    # size, not mtime: git checkouts rewrite mtimes and used to invalidate every cached result. The check's version too (2: fitted at
+    # other sizes and by its outline), so results from an older check are measured again, and the mark's size and place: changed in
+    # Project settings, every image is measured again against the new ones
     proj = projects.with_mark(PROJECT, mark_id) if mark_id else PROJECT
     mark = f":mark:{proj['mark_id']}" if proj is not PROJECT else ""   # another of its marks: measured against that one
     if pl:                                         # its own placement: measured there
         return f"{path.name}:{path.stat().st_size}:{qa_engine.OWN_CHECK_VERSION}:at:{pl['size']:g}:{pl['x']:g}:{pl['y']:g}{mark}" + (f":rot:{pl['rot']}" if pl.get("rot") else "")
-    if mark and proj.get("qa") == "demo-tuned":   # Demo's orbital mark, not its default: its own check, which has no version
-        return f"{path.name}:{path.stat().st_size}{mark}"
     if mark:
         return f"{path.name}:{path.stat().st_size}:{qa_engine.OWN_CHECK_VERSION}{mark}:{proj['mark_size']:g}:{proj['mark_x']:g}:{proj['mark_y']:g}"
-    return f"{path.name}:{path.stat().st_size}" + ("" if is_demo() else f":{qa_engine.OWN_CHECK_VERSION}:{PROJECT['mark_size']:g}:{PROJECT['mark_x']:g}:{PROJECT['mark_y']:g}")
+    return f"{path.name}:{path.stat().st_size}:{qa_engine.OWN_CHECK_VERSION}:{PROJECT['mark_size']:g}:{PROJECT['mark_x']:g}:{PROJECT['mark_y']:g}"
 
 
 QA_LOCK = threading.Lock()
@@ -255,8 +233,8 @@ def _remember_qa(key: str, result: dict, now: bool = False) -> None:
 
 def sizes_now() -> dict:
     """Each image that reads its size from its mark (on target, no placement of its own): that size and place, and its check's result as
-    measured, before Project settings change them (hold_sizes). An upload has no mark; Demo has no frames."""
-    if not PROJECT or is_demo():
+    measured, before Project settings change them (hold_sizes). An upload has no mark."""
+    if not PROJECT:
         return {}
     st = load_state()
     placed, ups, used, out = st.get("placements", {}), set(st.get("uploads", [])), st.get("marks_used", {}), {}
@@ -768,11 +746,11 @@ def call_kimi_llm(prompt: str, api_key: str, preferred_model: str = "kimi-k3", i
 
 
 def quality_bar() -> str:
-    return QUALITY_BAR.replace("Demo, a creative toolkit for creatives at an agency group", PROJECT["brief"], 1)
+    return QUALITY_BAR.replace("{about}", PROJECT["brief"], 1)
 
 
 QUALITY_BAR = (
-    "QUALITY BAR: this is for Demo, a creative toolkit for creatives at an agency group, and it must look like a top design studio's identity reel "
+    "QUALITY BAR: this is for {about}, and it must look like a top design studio's identity reel "
     "(Pentagram-level): one idea per frame, one hero subject, restrained composition with confident negative space, a disciplined palette (max 3 colors), "
     "believable tactile materials, photoreal studio/CGI craft, razor-sharp edges. The mark may be subtle or bold, but it is deliberate, "
     "physically part of the scene, and never lost. If any type appears it is intentional, rigorous grotesk typography (huge crop or tiny micro-type), never gibberish; "
@@ -839,7 +817,7 @@ def match_world(st: dict, api_key: str, kimi_model: str, direction: str) -> dict
     return None
 
 
-BIG_MARK = 30   # % of the width from which Kimi is told the mark is large and needs a subject that big (DEMO, 18%, keeps its words)
+BIG_MARK = 30   # % of the width from which Kimi is told the mark is large and needs a subject that big
 
 
 def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, direction: str, batch: list, target: str = "exact", mark=None, keep: bool = False, rot=None, scale=None, path=None, plan=None) -> tuple[list, dict]:
@@ -931,7 +909,7 @@ def _ask_chunk(st: dict, api_key: str, kimi_model: str, w: dict, count: int, dir
         f"3. All shots must look clearly different from each other and from these past scenes: [{ban_str}]."
     )
     print(f"[KIMI] world='{w['name']}': asking Kimi for {n_ask} scenes ({count} wanted + {n_ask - count} spare in case some are near-duplicates), model {kimi_model}...", flush=True)
-    llm_prompt = projects.rebrand(llm_prompt, PROJECT)                       # another brand: DEMO's colours in the worlds become its own
+    llm_prompt = projects.rebrand(llm_prompt, PROJECT)                       # the colours the built-in worlds name become the project's own
     out = call_kimi_llm(llm_prompt, api_key=api_key, preferred_model=kimi_model)
     s_idx, e_idx = out.find("["), out.rfind("]")
     if s_idx == -1 or e_idx == -1:
@@ -1245,12 +1223,12 @@ SOFTEN_ASK = (
     "An image model's content moderation rejected the prompt below without saying why. Rewrite it so the same composition, subject type and mood survive, "
     "but anything a moderation system could object to is removed or made generic: real place names and landmarks, brand names and trademarks, named people, "
     "readable text or slogans on signs, political or religious symbols, violence, weapons, drugs, nudity, anything involving children. "
-    "Keep the sentence about the single circular mark at the exact dead-center untouched. Return ONLY the rewritten prompt, no commentary.\n\nPROMPT:\n"
+    "Keep the sentence about the single {noun} and where it sits untouched. Return ONLY the rewritten prompt, no commentary.\n\nPROMPT:\n"
 )
 
 
 def soften_ask() -> str:
-    return SOFTEN_ASK if is_demo() else SOFTEN_ASK.replace("single circular mark at the exact dead-center", f"single {PROJECT['mark_noun']} and where it sits")
+    return SOFTEN_ASK.replace("{noun}", PROJECT["mark_noun"])
 
 
 def soften_prompt(raw_prompt: str, api_key: str, model: str, call_llm=None) -> str | None:
@@ -1375,7 +1353,7 @@ DESCRIBE_MARK = (
     "you are certain whose mark this is (as above), else false, \"name\": \"if recognised, the brand or project's name; else a short fitting project name "
     "made up from what the mark looks like, never a real brand's name\", \"brand\": \"if recognised, one line on who it is for, e.g. Nike, a global sportswear "
     "brand; else empty\", \"shape\": \"3-10 words naming exactly what it is made of, with counts where they matter, e.g. sphere of 9 horizontal black "
-    "stripes, circular orbital logo, angular two-letter monogram\", \"noun\": \"1-3 words to call it in a sentence, e.g. striped sphere, monogram, wordmark\", "
+    "stripes, ring of three overlapping circles, angular two-letter monogram\", \"noun\": \"1-3 words to call it in a sentence, e.g. striped sphere, monogram, wordmark\", "
     "\"palette\": [\"3 or 4 hex colours for the films' scenes (the mark keeps its own colours): if recognised, the brand's own colour system, its primary and "
     "secondary colours as the brand uses them around its mark; else colours chosen with care for what this mark is and how it looks, a mood that suits its "
     "shape and character, your own choice for this mark, not its own black, white or grey again\"], \"palette_note\": \"a few words on why: for a "
@@ -1446,7 +1424,7 @@ def export_filename(bpm: float, multiple: float, ts: float, invert_mode: str = "
     return f"{head}-{pace}{fx}-{time.strftime('%Y%m%d-%H%M%S', time.localtime(ts))}.mp4"
 
 
-EXPORT_NAME = re.compile(r"(^Demo-|-\d{8}-\d{6}\.mp4$)")   # what the studio wrote (older ones began with Demo-), not files of yours
+EXPORT_NAME = re.compile(r"-\d{8}-\d{6}\.mp4$")   # what the studio wrote, not files of yours
 
 
 def prune_exports(folder: Path, keep: int = 12) -> None:
@@ -2561,7 +2539,7 @@ if __name__ == "__main__":
     except OSError:
         print(f"Phosphene is already open on {places.PROJECTS_DIR} (the installed app, or app:live): quit it first.", flush=True)
         sys.exit(3)
-    if os.environ.get("PHOSPHENE_EXAMPLES"):                                 # the Mac app's first launch: Demo, the sample, copied in once
+    if os.environ.get("PHOSPHENE_EXAMPLES"):                                 # the Mac app's first launch: a sample, copied in once
         projects.seed_examples(Path(os.environ["PHOSPHENE_EXAMPLES"]))
     open_first_project()
     if places.APP:                                                           # the Mac app quit (even forced): the server goes too

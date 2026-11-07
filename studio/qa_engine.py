@@ -1,78 +1,32 @@
 #!/usr/bin/env python3
 """
-Demo Match-Cut Studio — Automated Logo QA & Diegetic Vector Lock Engine
-Performs strict self-QA on generated 9:16 plates to catch:
-  1. Distorted / symmetricized inner orbital curves
-  2. "Logo-in-logo" concentric double rings outside the 18% center mark
-  3. Wrong logo scale (too large / too small) or off-center drift
+Phosphene's mark check: is the project's mark in a generated 9:16 image, at its place and its size?
+The mark is fitted at its own size and at sizes around it (flat either way round, or its outline for an emboss); a mark that fits
+sharply at exactly its size passes, one that is missing or clearly another size is trashed, the doubtful are flagged for the user.
 """
 
-import json
 import math
-import os
 from operator import mul
 from pathlib import Path
-from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageOps, ImageStat
+from PIL import Image, ImageFilter
+
+import places
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-LOGO_CREAM_PATH = ROOT_DIR / "demo-info" / "design-system" / "logo-cream.png"
-PLATES_DIR = ROOT_DIR / "assets" / "ai-plates"
+PLATES_DIR = places.SUPPORT_DIR / ".no-project" / "plates"     # until a project is open (the server points it at the project's)
 
 TARGET_W = 1080
 TARGET_H = 1920
-CENTER_X = 540
-CENTER_Y = 960
-LOGO_DIAM = 190  # 17.6% of 1080px width
-
-
-def load_clean_orbital_mask(size: int = LOGO_DIAM) -> Image.Image:
-    """
-    Loads the authentic Demo circular orbital logo alpha mask,
-    removing the small TM mark in top-right (x>405, y<68 on 480x480)
-    and cropping tightly to the 438x438 globe centered at (239, 239).
-    """
-    im = Image.open(LOGO_CREAM_PATH).convert("RGBA")
-    alpha = im.split()[3]
-    # Mask out TM in top-right
-    draw = ImageDraw.Draw(alpha)
-    draw.rectangle([405, 0, 480, 68], fill=0)
-    # Crop globe bounding box (20, 20, 458, 458) -> 438x438
-    globe = alpha.crop((20, 20, 458, 458))
-    return globe.resize((size, size), Image.Resampling.LANCZOS)
-
-
-def make_symmetric_impostor_mask(size: int = LOGO_DIAM) -> Image.Image:
-    """
-    Creates a symmetricized concentric-ring version of the mask by averaging
-    the mask with its 180-degree rotated and mirrored copies.
-    If a generated logo correlates higher with this symmetric impostor than with
-    the true asymmetric Demo mask, the AI distorted the inner orbital curves.
-    """
-    true_mask = load_clean_orbital_mask(size)
-    rot180 = true_mask.rotate(180)
-    flip_h = ImageOps.mirror(true_mask)
-    flip_v = ImageOps.flip(true_mask)
-    b1 = Image.blend(true_mask, rot180, 0.5)
-    b2 = Image.blend(flip_h, flip_v, 0.5)
-    return Image.blend(b1, b2, 0.5)
 
 
 class MarkSpec:
-    """What the logo check looks for: the mark as a mask at a given width (`mask(w)`, its height in proportion), the width it
-    should have, and its centre in the 1080 x 1920 frame. DEMO is its orbital mask at 190 px, at (540, 960)."""
+    """What the mark check looks for: the mark as a mask at a given width (`mask(w)`, its height in proportion), the width it
+    should have, and its centre in the 1080 x 1920 frame."""
 
-    def __init__(self, mask, width: int, center: tuple, impostor=None, size_pct: float = 18):
+    def __init__(self, mask, width: int, center: tuple, size_pct: float = 18):
         self.mask, self.width, self.center, self.size_pct = mask, width, center, size_pct
-        self.impostor = impostor or (lambda w: _symmetric(mask(w)))
 
 
-def _symmetric(m: Image.Image) -> Image.Image:
-    b1 = Image.blend(m, m.rotate(180), 0.5)
-    b2 = Image.blend(ImageOps.mirror(m), ImageOps.flip(m), 0.5)
-    return Image.blend(b1, b2, 0.5)
-
-
-DEMO_MARK = MarkSpec(load_clean_orbital_mask, LOGO_DIAM, (CENTER_X, CENTER_Y), make_symmetric_impostor_mask, 18)
 _SPECS: dict = {}
 
 
@@ -122,141 +76,22 @@ def normalized_corr(patch_l: Image.Image, ref_l) -> float:
     return num / math.sqrt(den_p * den_r)
 
 
-def evaluate_plate_qa(image_path: Path, mark: MarkSpec | None = None) -> dict:
-    """
-    Evaluates a 9:16 plate for the project's mark (DEMO by default: its orbital mask, 190 px at the dead centre):
-      - Asymmetry & shape fidelity against ground-truth logo-cream.png
-      - Detection of 'logo-in-logo' outer rings or oversized logo scale
-      - Center lock accuracy at (50%, 50%)
-    """
+def evaluate_plate_qa(image_path: Path, mark: MarkSpec) -> dict:
+    """Checks a 9:16 image for the project's mark (`mark_spec`: its file, size and place)."""
     im = Image.open(image_path).convert("RGB")
-    im_std = im.resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS)
-    gray = im_std.convert("L")
-    if mark is not None and mark is not DEMO_MARK:
-        return _check_project_mark(image_path, im, gray, mark)
-
-    # 1. Multi-scale search around dead-center (540, 960) for best match to true mask
-    best_corr = -1.0
-    best_sym_corr = -1.0
-    mark = mark or DEMO_MARK
-    W = mark.width
-    best_diam = W
-    best_polarity = "light_on_dark"
-
-    # Check luminance, RGB channels, color-difference channels, and edge magnitude
-    # so logos of ANY color (orange, pink, blue, black, oxblood, cream, chrome, or carved relief) pass QA based on SHAPE.
-    r_ch, g_ch, b_ch = im_std.split()
-    warm_ch = ImageChops.subtract(r_ch, ImageChops.multiply(b_ch, Image.new("L", im_std.size, 128)))
-    cool_ch = ImageChops.subtract(b_ch, ImageChops.multiply(r_ch, Image.new("L", im_std.size, 128)))
-    pink_ch = ImageChops.subtract(r_ch, ImageChops.multiply(g_ch, Image.new("L", im_std.size, 128)))
-    edge_ch = gray.filter(ImageFilter.FIND_EDGES)
-
-    channels = (
-        ("luma", gray),
-        ("warm", warm_ch),
-        ("cool", cool_ch),
-        ("edge", edge_ch),
-    )
-    best_ch_img = gray
-
-    for diam in [int(round(W * d / LOGO_DIAM)) for d in (176, 190, 215, 250, 290)]:   # a little smaller to half as big again
-        true_m = mark.mask(diam)
-        sym_m = mark.impostor(diam)
-        box = _box(mark.center, true_m)
-
-        for ch_name, ch_img in channels:
-            patch = ch_img.crop(box)
-            c_pos = normalized_corr(patch, true_m)
-            c_neg = -c_pos
-            s_pos = normalized_corr(patch, sym_m)
-            s_neg = -s_pos
-
-            if c_pos > best_corr:
-                best_corr = c_pos
-                best_sym_corr = s_pos
-                best_diam = diam
-                best_polarity = f"light_on_dark ({ch_name})"
-                best_ch_img = ch_img
-            if c_neg > best_corr:
-                best_corr = c_neg
-                best_sym_corr = s_neg
-                best_diam = diam
-                best_polarity = f"dark_on_light ({ch_name})"
-                best_ch_img = ch_img
-
-    # 2. Check asymmetry preservation: true Demo mask has a distinct diagonal swoosh
-    # Compare correlation inside the inner core (r < 68px) where the asymmetric swoosh lives
-    true_full = mark.mask(best_diam)
-    sym_full = mark.impostor(best_diam)
-    core_w, core_h = int(true_full.width * 0.68), int(true_full.height * 0.68)
-    c_x, c_y = (true_full.width - core_w) // 2, (true_full.height - core_h) // 2
-    true_core = true_full.crop((c_x, c_y, c_x + core_w, c_y + core_h))
-    sym_core = sym_full.crop((c_x, c_y, c_x + core_w, c_y + core_h))
-
-    core_patch = best_ch_img.crop(_box(mark.center, true_core))
-
-    sign = 1.0 if best_polarity.startswith("light") else -1.0
-    core_true_corr = sign * normalized_corr(core_patch, true_core)
-    core_sym_corr = sign * normalized_corr(core_patch, sym_core)
-    asymmetry_advantage = core_true_corr - core_sym_corr
-
-    # 3. Check for oversized logo (>40% width) or "logo-in-logo" outer concentric ring
-    outer_max_corr = 0.0
-    outer_best_diam = 0
-    for big_diam in [int(round(W * d / LOGO_DIAM)) for d in (420, 480, 540, 600)]:
-        big_m = mark.mask(big_diam)
-        b_box = _box(mark.center, big_m)
-        b_patch = gray.crop(b_box)
-        b_corr = abs(normalized_corr(b_patch, big_m))
-        b_warm_corr = abs(normalized_corr(warm_ch.crop(b_box), big_m))
-        m_corr = max(b_corr, b_warm_corr)
-        if m_corr > outer_max_corr:
-            outer_max_corr = m_corr
-            outer_best_diam = big_diam
-
-    issues = []
-    # Allow slightly angled 3D perspective logos, CAD wireframes, and nature reliefs
-    if best_corr < 0.14:
-        if outer_max_corr > 0.38:
-            issues.append(f"Wrong mark size (~{int(outer_best_diam / TARGET_W * 100)}% width instead of {mark.size_pct:g}%)")
-        else:
-            issues.append(f"The mark at the centre is unclear (corr={best_corr:.2f})")
-
-    if outer_max_corr > 0.40 and best_corr < 0.22:
-        issues.append(f"Oversized outer ring (d={outer_best_diam}px, corr={outer_max_corr:.2f})")
-
-    qa_score = max(0, min(100, int(round(
-        (min(best_corr, 0.70) / 0.70) * 80
-        + 20
-        - (40 if issues else 0)
-    ))))
-
-    passed = len(issues) == 0 and qa_score >= 55
-
-    return {
-        "filename": image_path.name,
-        "width": im.width,
-        "height": im.height,
-        "qa_passed": passed,
-        "qa_score": qa_score,
-        "center_corr": round(best_corr, 3),
-        "core_asymmetry": round(asymmetry_advantage, 3),
-        "outer_ring_corr": round(outer_max_corr, 3),
-        "detected_diam_px": best_diam,
-        "polarity": best_polarity,
-        "issues": issues,
-    }
+    gray = im.resize((TARGET_W, TARGET_H), Image.Resampling.LANCZOS).convert("L")
+    return _check_project_mark(image_path, im, gray, mark)
 
 
 # ---- a project's own mark (any shape): how sharply it fits at exactly its size ----
-# The DEMO check (tuned on its orbital mark) was wrong on another mark, seen on Nike's swoosh: a mark drawn too big or too small still
+# An overlap check tuned on one round mark was wrong on another mark, seen on Nike's swoosh: a mark drawn too big or too small still
 # covers the target with mark-like strokes and passed; an embossed one (cream on cream: only its edges show) failed. What tells them
 # apart, on the user's own keep / trash of 22 Nike images: a mark at its size fits SHARPLY at exactly 1.0x (clearly better than at 0.8x
 # and 1.2x: +0.07 to +0.24 on every kept one), a mark of another size fits about as well at the sizes around it (+0.04 or less on every
 # trashed one). The fit is the flat mark either way round, or its outline against the image's edges (what an emboss or a carving shows),
 # a little off its place included.
 OWN_CHECK_VERSION = 4       # in the QA cache's keys: a new version measures the images again
-# Two outcomes, from the user's own keep / trash of Nike, a triangle, McDonald's and Kestrel: on simple solid shapes no overlap
+# Two outcomes, from the user's own keep / trash of Nike, a triangle, McDonald's and an airline's mark: on simple solid shapes no overlap
 # measure tells "right size" from "a bit too big" for sure (a kept triangle and a trashed one scored the same), so only the clearly
 # wrong is trashed by itself; the doubtful stays in the selection with a "Check the mark" note (qa_doubt) for the user to judge
 OWN_ABSENT = 0.33           # the fit at its size under this: the mark is not there (trashed)
@@ -325,11 +160,3 @@ def _check_project_mark(image_path: Path, im: Image.Image, gray: Image.Image, ma
         "detected_diam_px": int(round(mark.width * best)), "polarity": fit[1.0][1], "issues": issues,
     }
 
-
-if __name__ == "__main__":
-    results = []
-    for p in sorted(PLATES_DIR.glob("*.jpg")):
-        res = evaluate_plate_qa(p)
-        results.append(res)
-        status = "PASS" if res["qa_passed"] else "FAIL"
-        print(f"[{status:4s} | {res['qa_score']:3d}%] {res['filename']:28s} corr={res['center_corr']:.2f} asym={res['core_asymmetry']:+.2f} outer={res['outer_ring_corr']:.2f} issues={res['issues']}")

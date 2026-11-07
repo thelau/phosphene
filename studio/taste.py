@@ -25,7 +25,7 @@ CANDIDATE_MODELS = [
     "runway/gen-4-image",
 ]
 
-# The one model the app makes images with: nobody picks one (2026-11-06). On Demo, the one project that tried them all, 2.1 kept 18%,
+# The one model the app makes images with: nobody picks one (2026-11-06). On the one project that tried them all, 2.1 kept 18%,
 # Pro 10% and the others 3%, and at 2K it costs 44 Krea units an image against Pro's 111.
 IMAGE_MODEL = "google/nano-banana-2.1"
 
@@ -70,7 +70,7 @@ def taste_brief(st: dict, titles: dict, prompts: dict, k_pos: int = 6, k_neg: in
 
 _STOP = set(
     "the a an of and in on at with to for by from its it is as into over under "
-    "Demo circular orbital logo frame center dead exact width vertical".split()
+    "circular mark logo frame center dead exact width vertical".split()
 )
 
 

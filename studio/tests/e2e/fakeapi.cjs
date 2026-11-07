@@ -24,8 +24,8 @@ function makeState() {
     genCount: 0,
     groups: [],
     edits: [],
-    projects: [{ slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_shape: 'circular orbital logo', mark_noun: 'circular mark',
-      brief: 'Demo, a creative toolkit for creatives at an agency group', palette: ['#EC540C'], mark_ratio: 1, round: true, fixed: true, mark_url: '/api/project-mark?p=demo' }],
+    projects: [{ slug: 'demo', name: 'Demo', mark_size: 18, mark_x: 50, mark_y: 50, mark_shape: 'ring with a notch', mark_noun: 'ring',
+      brief: 'Demo, a test project', palette: ['#EC540C'], mark_ratio: 1, mark_url: '/api/project-mark?p=demo' }],
     project: 'demo',
   };
 }

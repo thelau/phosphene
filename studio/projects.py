@@ -2,11 +2,10 @@
 Projects: one per brand mark. A project is a folder under projects/ with a project.json: the mark (an image, its size and place
 in the frame), the words the prompts use for it, the brand (one line for the quality bar), its palette, and where its plates,
 curation, caches and guide images live. New projects keep everything inside their folder (gitignored, so they stay on this
-machine); Demo ("demo") is committed and points at the files it has always used, so nothing of it moved.
+machine).
 
 The server works on one project at a time (the active one, remembered in studio/.local.json, gitignored): `apply` points its
-paths at that project. A project's settings never change DEMO's numbers: DEMO is 18% wide at (50%, 50%), and its logo check keeps
-its own orbital mask (qa_engine).
+paths at that project.
 """
 
 import io
@@ -24,10 +23,9 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 STUDIO_DIR = ROOT_DIR / "studio"
 PROJECTS_DIR = places.PROJECTS_DIR                 # the repo's projects/, or ~/Documents/Phosphene in the Mac app
 LOCAL_FILE = places.SUPPORT_DIR / ".local.json"          # this machine's choices: which project is open (gitignored)
-DEFAULT = "demo"
 FRAME_W, FRAME_H = 1080, 1920
 GUIDE_DARK, GUIDE_LIGHT = "#141416", "#FEFFE7"    # the guide images: the mark in cream on near-black, and in ink on cream
-DEMO_PALETTE = ["#EC540C", "#F64570", "#5D8FF4", "#381313", "#1A1A1A", "#FEFFE7"]
+BUILTIN_PALETTE = ["#EC540C", "#F64570", "#5D8FF4", "#381313", "#1A1A1A", "#FEFFE7"]
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 MARK_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,29}$")   # an extra mark's id: its file is mark-<id>.png in the project's folder
 MAX_MARKS = 8                                      # extra marks besides the main one that a project can hold (read and kept: older projects)
@@ -71,7 +69,7 @@ def load(slug: str) -> dict:
     raw = json.loads(_project_file(slug).read_text())
     base = PROJECTS_DIR / slug
     paths = raw.get("paths") or {}
-    at = lambda key, default: (ROOT_DIR / paths[key]) if key in paths else base / default   # DEMO: its old places, from the repo root
+    at = lambda key, default: (ROOT_DIR / paths[key]) if key in paths else base / default   # a project whose files live elsewhere: from the repo root
     mark = raw.get("mark") or "mark.png"
     p = {
         "slug": slug,
@@ -83,12 +81,11 @@ def load(slug: str) -> dict:
         "mark_size": float(raw.get("mark_size", 18)),          # % of the frame's width
         "mark_x": float(raw.get("mark_x", 50)),                # % from the left
         "mark_y": float(raw.get("mark_y", 50)),                # % from the top
-        "mark_shape": raw.get("mark_shape") or "logo mark",    # what the prompts call its shape ("circular orbital logo")
-        "mark_noun": raw.get("mark_noun") or "mark",           # and the mark itself ("circular mark")
+        "mark_shape": raw.get("mark_shape") or "logo mark",    # what the prompts call its shape ("ring of three stripes")
+        "mark_noun": raw.get("mark_noun") or "mark",           # and the mark itself ("ring")
         "mark_name": str(raw.get("mark_name") or "Main mark")[:30],   # its name in the list of marks
         "brief": raw.get("brief") or raw.get("name") or slug,  # who it is for, one line, in the quality bar
         "palette": [c for c in (clean_hex(x) for x in raw.get("palette") or []) if c],
-        "qa": raw.get("qa") or "mark",                         # "demo-tuned": DEMO's own logo check
         "plates_dir": at("plates", "plates"),
         "state_file": at("state", "state.json"),
         "qa_cache_file": at("qa_cache", ".qa_cache.json"),
@@ -114,30 +111,25 @@ def load(slug: str) -> dict:
         at = lambda k, d: min(90.0, max(10.0, float(m[k]))) if isinstance(m.get(k), (int, float)) else d   # its own place (the default's, before)
         p["marks"].append({"id": m["id"], "name": str(m.get("name") or m["id"])[:30], "mark_file": base / f"mark-{m['id']}.png", "mark_size": size,
                            "mark_x": at("x", p["mark_x"]), "mark_y": at("y", p["mark_y"]), "canvas": clean_canvas(m.get("canvas")),
-                           "mark_shape": str(m.get("shape") or "logo mark")[:80], "mark_noun": str(m.get("noun") or "mark")[:40],
-                           # Demo's orbital mark when another mark is its default: its tuned check, words and lock go with it
-                           "qa": "demo-tuned" if m.get("qa") == "demo-tuned" and p["qa"] != "demo-tuned" else "mark"})
-    p["demo"] = p["qa"] == "demo-tuned" or any(m["qa"] == "demo-tuned" for m in p["marks"])   # Demo, whichever mark leads
+                           "mark_shape": str(m.get("shape") or "logo mark")[:80], "mark_noun": str(m.get("noun") or "mark")[:40]})
     return p
 
 
 def with_mark(p: dict, mark_id: str | None) -> dict:
-    """The project as an image made with one of its marks sees it: that mark's image, size, place and words (the general logo check;
-    Demo's orbital mark keeps its own wherever it sits). The main mark, or one that is gone: the project itself."""
+    """The project as an image made with one of its marks sees it: that mark's image, size, place and words.
+    The main mark, or one that is gone: the project itself."""
     m = next((m for m in p.get("marks") or [] if m["id"] == mark_id), None)
     if not m:
         return p
     return {**p, "mark_file": m["mark_file"], "mark_size": m["mark_size"], "mark_x": m["mark_x"], "mark_y": m["mark_y"], "mark_shape": m["mark_shape"], "mark_noun": m["mark_noun"],
-            "qa": m["qa"], "mark_id": m["id"], "mark_name": m["name"]}
+            "mark_id": m["id"], "mark_name": m["name"]}
 
 
 _RATIO: dict = {}
 
 
 def mark_ratio(p: dict) -> float:
-    """Height / width of the mark as drawn (trimmed); 1 for DEMO's round mark. Cached while the file is unchanged."""
-    if p.get("qa") == "demo-tuned":
-        return 1.0
+    """Height / width of the mark as drawn (trimmed). Cached while the file is unchanged."""
     try:
         key = (str(p["mark_file"]), p["mark_file"].stat().st_mtime)
         if key not in _RATIO:
@@ -151,11 +143,11 @@ def mark_ratio(p: dict) -> float:
 def public(p: dict) -> dict:
     """What the page needs to know about a project."""
     mtime = int(p["mark_file"].stat().st_mtime) if p["mark_file"].exists() else 0
-    marks = [{"id": m["id"], "name": m["name"], "size": m["mark_size"], "x": m["mark_x"], "y": m["mark_y"], "canvas": m.get("canvas"), "shape": m["mark_shape"], "noun": m["mark_noun"], "ratio": mark_ratio(with_mark(p, m["id"])), "fixed": m["qa"] == "demo-tuned",
+    marks = [{"id": m["id"], "name": m["name"], "size": m["mark_size"], "x": m["mark_x"], "y": m["mark_y"], "canvas": m.get("canvas"), "shape": m["mark_shape"], "noun": m["mark_noun"], "ratio": mark_ratio(with_mark(p, m["id"])),
               "url": f"/api/project-mark?p={p['slug']}&m={m['id']}&t={int(m['mark_file'].stat().st_mtime) if m['mark_file'].exists() else 0}"} for m in p.get("marks") or []]
     return {"slug": p["slug"], "marks": marks, "mark_name": p["mark_name"], "has_mark": p.get("has_mark", True), "name": p["name"], "mark_size": p["mark_size"], "mark_x": p["mark_x"], "mark_y": p["mark_y"],
             "mark_shape": p["own"]["mark_shape"], "mark_noun": p["own"]["mark_noun"], "brief": p["own"]["brief"], "palette": p["palette"], "frames": p.get("frames", False), "frames_hand": p.get("frames_hand", False), "mark_canvas": p.get("mark_canvas"),
-            "mark_ratio": mark_ratio(p), "round": p.get("qa") == "demo-tuned", "fixed": p.get("qa") == "demo-tuned",
+            "mark_ratio": mark_ratio(p),
             "mark_url": f"/api/project-mark?p={p['slug']}&t={mtime}"}
 
 
@@ -166,19 +158,17 @@ def all_projects() -> list[dict]:
             out.append(load(f.parent.name))
         except Exception:
             continue
-    return sorted(out, key=lambda p: (p["slug"] != DEFAULT, p["name"].lower()))
+    return sorted(out, key=lambda p: p["name"].lower())
 
 
 def active_slug() -> str:
-    """The project open last time; else Demo; else the first there is (None when there are none)."""
+    """The project open last time; else the first there is (None when there are none)."""
     try:
-        slug = json.loads(LOCAL_FILE.read_text()).get("project") or DEFAULT
+        slug = json.loads(LOCAL_FILE.read_text()).get("project") or ""
     except Exception:
-        slug = DEFAULT
-    if _project_file(slug).exists():
+        slug = ""
+    if SLUG.match(slug) and _project_file(slug).exists():
         return slug
-    if _project_file(DEFAULT).exists():
-        return DEFAULT
     first = all_projects()
     return first[0]["slug"] if first else None
 
@@ -188,7 +178,7 @@ TRASH_DIR = Path.home() / ".Trash"                    # macOS's Trash: a deleted
 
 def trash(slug: str) -> Path:
     """Delete project…: its whole folder goes to the Trash (images, groups, snapshots, mark), recoverable until the Trash is
-    emptied. Refused for a project whose files live outside its folder (the repository's Demo: its plates are committed)."""
+    emptied. Refused for a project whose files live outside its folder."""
     p = load(slug)
     folder = (PROJECTS_DIR / slug).resolve()
     for key in ("plates_dir", "state_file", "mark_file"):
@@ -450,21 +440,16 @@ def create(body: dict, mark_png: bytes) -> dict:
 def update(slug: str, body: dict, mark_png: bytes | None = None) -> dict:
     """Change a project's settings (and its mark). The guides are made again and Krea's copies forgotten when the mark moves."""
     raw = json.loads(_project_file(slug).read_text())
-    if raw.get("qa") == "demo-tuned":                 # DEMO: its mark, size, place and the words of its fixed prompt sentence stay
-        body = {k: v for k, v in body.items() if k in ("name", "brief", "palette")}
     before = {k: raw.get(k) for k in ("mark_size", "mark_x", "mark_y")}
     raw = _fields(body, raw)
     p = load(slug)
     if mark_png is not None:
-        if raw.get("qa") == "demo-tuned":
-            raise ValueError("Demo keeps its own mark: make a new project to use another one.")
         img = Image.open(io.BytesIO(mark_png)); img.load(); mark_alpha(img)
         img.convert("RGBA").save(p["mark_file"], "PNG")
     _write(slug, raw)
     p = load(slug)
     if p["has_mark"] and (mark_png is not None or any(raw.get(k) != v for k, v in before.items())):
-        if raw.get("qa") != "demo-tuned":           # DEMO's guides are its originals
-            make_guides(p)
+        make_guides(p)
         p["guide_cache_file"].unlink(missing_ok=True)
     return p
 
@@ -481,7 +466,7 @@ def _mark_image(mark_png: bytes) -> Image.Image:
 
 def add_mark(slug: str, body: dict, mark_png: bytes) -> dict:
     """Another mark for this project (at the main mark's place, its own size and words). Returns the project."""
-    raw = json.loads(_project_file(slug).read_text())               # (Demo too: its main mark, words and check stay as they are)
+    raw = json.loads(_project_file(slug).read_text())
     marks = [m for m in raw.get("marks") or [] if isinstance(m, dict)]
     if len(marks) >= ADD_MARKS:
         raise ValueError(f"A project holds up to {ADD_MARKS + 1} marks.")
@@ -535,9 +520,6 @@ def save_marks(slug: str, marks: list, images: dict) -> dict:
         if not isinstance(item, dict):
             continue
         mid = str(item.get("id") or "")
-        if mid in have and have[mid].get("qa") == "demo-tuned":    # Demo's orbital mark: as it is (its size, place, words and image are fixed)
-            taken.add(mid); out.append(dict(have[mid]))
-            continue
         if mid in have:
             m = _mark_fields(item, dict(have[mid]))
         else:                                          # a new one: its image is required, and room for it
@@ -553,7 +535,6 @@ def save_marks(slug: str, marks: list, images: dict) -> dict:
         if i in images:
             _mark_image(images[i]).convert("RGBA").save(PROJECTS_DIR / slug / f"mark-{mid}.png", "PNG")
         out.append(m)
-    out += [dict(m) for k, m in have.items() if m.get("qa") == "demo-tuned" and k not in {x["id"] for x in out}][:max(0, MAX_MARKS - len(out))]   # never removed
     for gone in set(have) - {m["id"] for m in out}:
         if MARK_ID.match(gone):
             (PROJECTS_DIR / slug / f"mark-{gone}.png").unlink(missing_ok=True)
@@ -568,7 +549,7 @@ def save_marks(slug: str, marks: list, images: dict) -> dict:
 def make_default(slug: str, mark_id: str) -> str:
     """Another of its marks becomes the default: it takes the main slot (the one every part of the app reads first) and the old
     default takes its place in the list, under its id. Returns that id: the images made with either one are told apart by it
-    (the caller swaps them in the curation). Demo too: its orbital mark takes its tuned check, words and lock with it."""
+    (the caller swaps them in the curation)."""
     raw = json.loads(_project_file(slug).read_text())
     marks = [m for m in raw.get("marks") or [] if isinstance(m, dict)]
     m = next((x for x in marks if x.get("id") == mark_id), None)
@@ -578,11 +559,8 @@ def make_default(slug: str, mark_id: str) -> str:
     folder = PROJECTS_DIR / slug
     main_file, other = p["mark_file"], folder / f"mark-{mark_id}.png"
     if folder.resolve() not in main_file.resolve().parents:
-        if raw.get("qa") != "demo-tuned":
-            raise ValueError("This project's main mark lives outside its folder: it stays the default.")
-        shutil.copy2(main_file, folder / "mark.png")   # the repository's Demo: its orbital mark copied in, the original never moved
-        raw["mark"], main_file = "mark.png", folder / "mark.png"
-    paths = dict(raw.get("paths") or {})              # the guides a new default gets are drawn in the folder, never over the repository's originals
+        raise ValueError("This project's main mark lives outside its folder: it stays the default.")
+    paths = dict(raw.get("paths") or {})              # the guides a new default gets are drawn in the folder, never over files outside it
     for k in ("guide_dark", "guide_light", "guide_cache"):
         if k in paths and folder.resolve() not in (ROOT_DIR / paths[k]).resolve().parents:
             paths.pop(k)
@@ -594,9 +572,7 @@ def make_default(slug: str, mark_id: str) -> str:
     shutil.move(str(main_file), str(tmp)); shutil.move(str(other), str(main_file)); shutil.move(str(tmp), str(other))
     old = {"id": mark_id, "name": raw.get("mark_name") or "Main mark", "size": raw.get("mark_size", 18), "x": raw.get("mark_x", 50),
            "y": raw.get("mark_y", 50), "shape": raw.get("mark_shape"), "noun": raw.get("mark_noun"),
-           **({"canvas": raw["mark_canvas"]} if raw.get("mark_canvas") else {}),
-           **({"qa": "demo-tuned"} if raw.get("qa") == "demo-tuned" else {})}
-    raw["qa"] = "demo-tuned" if m.get("qa") == "demo-tuned" else "mark"
+           **({"canvas": raw["mark_canvas"]} if raw.get("mark_canvas") else {})}
     raw.update({"mark_name": m.get("name"), "mark_size": m.get("size", raw.get("mark_size", 18)), "mark_x": m.get("x", raw.get("mark_x", 50)),
                 "mark_y": m.get("y", raw.get("mark_y", 50)), "mark_shape": m.get("shape"), "mark_noun": m.get("noun")})
     raw.pop("mark_canvas", None)
@@ -628,8 +604,6 @@ def edit_mark(slug: str, mark_id: str, body: dict) -> dict:
     m = next((m for m in marks if m.get("id") == mark_id), None)
     if not m:
         raise FileNotFoundError(mark_id)
-    if m.get("qa") == "demo-tuned":
-        raise ValueError("Demo's orbital mark keeps its size, place and words.")
     _mark_fields(body, m)
     raw["marks"] = marks
     _write(slug, raw)
@@ -642,8 +616,6 @@ def remove_mark(slug: str, mark_id: str) -> dict:
     marks = [m for m in raw.get("marks") or [] if isinstance(m, dict)]
     if not any(m.get("id") == mark_id for m in marks):
         raise FileNotFoundError(mark_id)
-    if any(m.get("id") == mark_id and m.get("qa") == "demo-tuned" for m in marks):
-        raise ValueError("Demo's orbital mark stays in the project.")
     raw["marks"] = [m for m in marks if m.get("id") != mark_id]
     _write(slug, raw)
     if MARK_ID.match(mark_id):
@@ -651,18 +623,16 @@ def remove_mark(slug: str, mark_id: str) -> dict:
     return load(slug)
 
 
-# ---- the brand in the words: DEMO's colours in the worlds and colour ideas become this project's ----
-DEMO_COLOUR = re.compile(r"(?:(?:warm |burnt |electric[- ]|hot |deep )?(?:cream|orange|blue|pink|oxblood|ink)\s*)?\(?(#EC540C|#F64570|#5D8FF4|#381313|#1A1A1A|#FEFFE7)\)?", re.I)
+# ---- the brand in the words: the colours the built-in worlds and colour ideas name become this project's ----
+BUILTIN_COLOUR = re.compile(r"(?:(?:warm |burnt |electric[- ]|hot |deep )?(?:cream|orange|blue|pink|oxblood|ink)\s*)?\(?(#EC540C|#F64570|#5D8FF4|#381313|#1A1A1A|#FEFFE7)\)?", re.I)
 
 
 def rebrand(text: str, p: dict) -> str:
-    """DEMO's brand colours named in a world or a colour idea, as this project's (by position in the palette). DEMO: unchanged."""
-    if p.get("demo") or p.get("qa") == "demo-tuned" or p["slug"] == DEFAULT:
-        return text
+    """The built-in colours named in a world or a colour idea, as this project's (by position in the palette)."""
     pal = p["palette"]
     if not pal:
-        return DEMO_COLOUR.sub("one brand colour", text)
-    return DEMO_COLOUR.sub(lambda m: f"brand colour {pal[DEMO_PALETTE.index(m.group(1).upper()) % len(pal)]}", text)
+        return BUILTIN_COLOUR.sub("one brand colour", text)
+    return BUILTIN_COLOUR.sub(lambda m: f"brand colour {pal[BUILTIN_PALETTE.index(m.group(1).upper()) % len(pal)]}", text)
 
 
 # ---- a project as one file, NAME.phos (.phosphene before 2026-10-27, still opened): its folder zipped (mark, guides, curation, images), to send to someone or keep. An open
@@ -736,7 +706,7 @@ def import_zip(path: Path) -> dict:
             raise ValueError("That project was made by a newer Phosphene: update the app (it offers it when it opens), then open it again.")
         try:                                          # the fields as create / update take them: numbers in their ranges, words, colours
             raw = _fields({k: raw[k] for k in ("name", "mark_size", "mark_x", "mark_y", "mark_shape", "mark_noun", "mark_name", "brief", "palette", "frames", "frames_hand", "mark_canvas") if k in raw},
-                          {"v": 1, "qa": raw.get("qa") if raw.get("qa") == "demo-tuned" else "mark",
+                          {"v": 1,
                            **({"created": str(raw["created"])[:30]} if raw.get("created") else {})})
         except (TypeError, ValueError, AttributeError):
             raise ValueError("That project file is damaged (its settings cannot be read).")
@@ -746,8 +716,7 @@ def import_zip(path: Path) -> dict:
         for m in (json.loads(z.read(f"{top}/project.json")).get("marks") or [])[:MAX_MARKS]:   # the other marks, checked as add_mark checks them
             if isinstance(m, dict) and MARK_ID.match(str(m.get("id") or "")) and m["id"] != "main" and f"{top}/mark-{m['id']}.png" in names:
                 try:
-                    extra.append(_mark_fields({k: m[k] for k in ("name", "size", "x", "y", "shape", "noun", "canvas") if k in m}, {"id": m["id"], "name": m["id"], "size": raw["mark_size"],
-                                                                                                                        **({"qa": "demo-tuned"} if m.get("qa") == "demo-tuned" and raw.get("qa") != "demo-tuned" and not any(x.get("qa") for x in extra) else {})}))
+                    extra.append(_mark_fields({k: m[k] for k in ("name", "size", "x", "y", "shape", "noun", "canvas") if k in m}, {"id": m["id"], "name": m["id"], "size": raw["mark_size"]}))
                 except ValueError:
                     pass
         if extra:
@@ -876,7 +845,7 @@ def _clean_state(f: Path) -> None:
 
 
 def seed_examples(examples: Path) -> list[str]:
-    """First launch of the app: the projects that come with it (Demo, the sample) are copied in, once. A project folder
+    """First launch of the app: the projects that come with it (a sample) are copied in, once. A project folder
     that exists is never touched, and one deleted later does not come back, unless no project is left at all."""
     marker = places.SUPPORT_DIR / ".examples_copied"
     if not examples or not Path(examples).is_dir():

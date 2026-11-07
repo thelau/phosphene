@@ -1,5 +1,5 @@
 """
-The logo check replayed on the user's own curation: every image of every project (not DEMO: its check is fixed), measured again with
+The logo check replayed on the user's own curation: every image of every project, measured again with
 the check as it is now, against what the user did with it. The regression test for any change to the check (qa_engine.py).
 
   kept           in the selection                        the check should pass it (a "Check the mark" note is fine)
@@ -37,7 +37,7 @@ def jobs(home: Path) -> tuple[list, dict]:
     todo, judged = [], {}
     for f in sorted(home.glob("*/project.json")):
         p = projects.load(f.parent.name)
-        if p.get("demo") or not p["state_file"].exists():
+        if not p["state_file"].exists():
             continue
         st = json.loads(p["state_file"].read_text())
         trashed, by_check = set(st.get("trashed", [])), set(st.get("qa_failed", []))

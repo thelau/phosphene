@@ -253,14 +253,18 @@ def test_upload_failures(tmp_path, monkeypatch):
         k.upload_file_to_krea_mcp(f, sid="S")
 
 
-def test_dark_guide_is_preuploaded_and_light_is_cached(tmp_path, monkeypatch):
-    monkeypatch.setattr(k, "GUIDE_CACHE_FILE", tmp_path / "g.json")
-    assert k.get_or_upload_guide_url("dark") == k.PREUPLOADED_DARK
+def test_the_projects_guides_are_uploaded_once_each_and_there_is_none_without_a_project(tmp_path, monkeypatch):
+    for kind in ("dark", "light"):
+        (tmp_path / f"guide_{kind}.png").write_bytes(b"png")
+    guide = {"files": {"dark": tmp_path / "guide_dark.png", "light": tmp_path / "guide_light.png"}, "cache": tmp_path / "g.json"}
     ups = []
-    monkeypatch.setattr(k, "upload_file_to_krea_mcp", lambda path, sid=None: ups.append(path) or "https://light/1")
-    assert k.get_or_upload_guide_url("light") == "https://light/1"
-    assert k.get_or_upload_guide_url("light") == "https://light/1"
-    assert len(ups) == 1 and "guide_light" in str(ups[0])
+    monkeypatch.setattr(k, "upload_file_to_krea_mcp", lambda path, sid=None: ups.append(path) or f"https://up/{len(ups)}")
+    assert k.get_or_upload_guide_url("light", guide=guide) == "https://up/1"
+    assert k.get_or_upload_guide_url("light", guide=guide) == "https://up/1"
+    assert k.get_or_upload_guide_url("dark", guide=guide) == "https://up/2"
+    assert [p.name for p in ups] == ["guide_light.png", "guide_dark.png"], "each uploaded once, then from the cache"
+    with pytest.raises(ValueError, match="No guide"):
+        k.get_or_upload_guide_url("dark")
 
 
 # ---------- generate ----------

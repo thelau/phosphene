@@ -13,7 +13,6 @@ have() { command -v "$1" >/dev/null 2>&1; }
 if have python3 && python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; then ok "Python $(python3 -c 'import platform; print(platform.python_version())')"; else bad "Python 3.10 or newer"; missing+=(python); fi
 if have node && node -e 'process.exit(+process.versions.node.split(".")[0] >= 20 ? 0 : 1)'; then ok "Node $(node -v)"; else bad "Node 20 or newer"; missing+=(node); fi
 if have ffmpeg; then ok "ffmpeg"; else bad "ffmpeg (makes the video files)"; missing+=(ffmpeg); fi
-if have git-lfs || git lfs version >/dev/null 2>&1; then ok "git-lfs"; else bad "git-lfs (the Demo images)"; missing+=(git-lfs); fi
 
 if [ ${#missing[@]} -gt 0 ]; then
   if have brew; then
@@ -27,11 +26,6 @@ if [ ${#missing[@]} -gt 0 ]; then
     exit 1
   fi
 fi
-
-note "The Demo images (Git LFS)"
-git lfs install --local >/dev/null
-git lfs pull
-ok "images downloaded"
 
 note "Python packages (in .venv, only for this app)"
 # A .venv made in another folder (the repo was moved) has scripts pointing there: make it again.
@@ -48,6 +42,6 @@ note "Ready"
 cat <<'MSG'
   Start it:   npm run dev     then open http://localhost:5173
   First time: Settings (top right) › Connect Krea, and paste your Kimi key.
-  Projects:   the name next to Phosphene, top left: Demo, or New project… for another mark.
+  Projects:   the name next to Phosphene, top left: New project… for a mark.
   Update:     git pull, then npm run setup again if it says something changed.
 MSG

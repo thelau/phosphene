@@ -198,7 +198,7 @@ def test_a_loose_batch_tells_kimi_where_each_shots_mark_goes(srv, fake_llm):
 
 def test_a_big_mark_asks_kimi_for_subjects_that_can_carry_it(srv, fake_llm, monkeypatch):
     srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=2, world="Editorial Print")
-    assert "one small" in fake_llm[-1] and "the mark is big" not in fake_llm[-1]       # Demo at 18%: its words as they were
+    assert "one small" in fake_llm[-1] and "the mark is big" not in fake_llm[-1]       # a mark at 18%: "one small"
     monkeypatch.setitem(srv.PROJECT, "mark_size", 50.0)                                # Halo's ring: half the frame's width
     srv.ask_kimi_for_prompts(srv.load_state(), "k", "kimi-k3", count=2, world="Editorial Print")
     assert "one large" in fake_llm[-1] and "one small" not in fake_llm[-1]

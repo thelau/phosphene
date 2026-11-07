@@ -26,10 +26,6 @@ KREA_MCP_URL = "https://api.krea.ai/mcp"
 KREA_AUTHORIZE_URL = "https://www.krea.ai/auth/v1/oauth/authorize"     # from https://www.krea.ai/.well-known/oauth-authorization-server
 KREA_TOKEN_URL = "https://www.krea.ai/auth/v1/oauth/token"
 KREA_REGISTER_URL = "https://www.krea.ai/auth/v1/oauth/clients/register"
-ROOT_DIR = Path(__file__).resolve().parent.parent
-GUIDE_CACHE_FILE = Path(__file__).resolve().parent / "krea_guide_urls.json"
-
-PREUPLOADED_DARK = "https://app-uploads.krea.ai/abe41024-3231-495a-9044-e48d99c94a02/1792760523391-a0895499-4248-4797-b22c-a19852d69a2a-guide_dark_1080x1920.png"
 
 
 def _read_auth() -> dict:
@@ -259,41 +255,20 @@ def upload_file_to_krea_mcp(file_path: Path, sid: str = None) -> str:
 
 
 def get_or_upload_guide_url(guide_type: str = "dark", sid: str = None, guide: dict | None = None) -> str:
-    """The guide image's Krea URL. `guide` (another project): {"files": {"dark": path, "light": path}, "cache": path}, uploaded once
-    and remembered in its cache (a guide made again after the mark changed is forgotten there). None: Demo's own."""
-    if guide:
-        cache_file, f = Path(guide["cache"]), Path(guide["files"]["light" if guide_type == "light" else "dark"])
-        try:
-            cache = json.loads(cache_file.read_text()) if cache_file.exists() else {}
-        except Exception:
-            cache = {}
-        key = f"{guide_type}:{f.stat().st_mtime}"
-        if not (cache.get(key) or {}).get("url"):
-            cache = {key: {"url": upload_file_to_krea_mcp(f, sid=sid), "ts": time.time()}} | {k: v for k, v in cache.items() if not k.startswith(guide_type + ":")}
-            cache_file.write_text(json.dumps(cache, indent=2))
-        return cache[key]["url"]
-    if guide_type == "dark":
-        return PREUPLOADED_DARK
-    cache = {}
-    if GUIDE_CACHE_FILE.exists():
-        try:
-            cache = json.loads(GUIDE_CACHE_FILE.read_text())
-        except Exception:
-            cache = {}
-
-    entry = cache.get(guide_type)
-    if entry and entry.get("url"):
-        return entry["url"]
-
-    guide_file = (
-        ROOT_DIR / "assets" / "logo-guides" / "guide_light_1080x1920.png"
-        if guide_type == "light"
-        else ROOT_DIR / "assets" / "logo-guides" / "guide_dark_1080x1920.png"
-    )
-    url = upload_file_to_krea_mcp(guide_file, sid=sid)
-    cache[guide_type] = {"url": url, "ts": time.time()}
-    GUIDE_CACHE_FILE.write_text(json.dumps(cache, indent=2))
-    return url
+    """The guide image's Krea URL. `guide`, the project's: {"files": {"dark": path, "light": path}, "cache": path}, uploaded once
+    and remembered in its cache (a guide made again after the mark changed is forgotten there)."""
+    if not guide:
+        raise ValueError("No guide image: open a project with a mark first.")
+    cache_file, f = Path(guide["cache"]), Path(guide["files"]["light" if guide_type == "light" else "dark"])
+    try:
+        cache = json.loads(cache_file.read_text()) if cache_file.exists() else {}
+    except Exception:
+        cache = {}
+    key = f"{guide_type}:{f.stat().st_mtime}"
+    if not (cache.get(key) or {}).get("url"):
+        cache = {key: {"url": upload_file_to_krea_mcp(f, sid=sid), "ts": time.time()}} | {k: v for k, v in cache.items() if not k.startswith(guide_type + ":")}
+        cache_file.write_text(json.dumps(cache, indent=2))
+    return cache[key]["url"]
 
 
 class KreaError(RuntimeError):
@@ -439,7 +414,7 @@ def generate_plate_via_krea_mcp(
     guide: dict | None = None,
 ) -> bytes:
     """
-    Generates a 9:16 image via Krea MCP using the project's guide image (the mark at its size and place; Demo's by default)
+    Generates a 9:16 image via Krea MCP using the project's guide image (the mark at its size and place)
     and returns the raw image bytes.
     """
     sid = init_mcp_session()
