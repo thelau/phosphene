@@ -1,6 +1,7 @@
 {
   "name": "phosphene",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "setup": "bash scripts/setup.sh",

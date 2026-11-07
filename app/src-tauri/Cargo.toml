@@ -3,6 +3,7 @@ name = "phosphene"
 version = "0.1.8"
 description = "Phosphene: match-cut films around a brand mark"
 edition = "2021"
+license = "MIT"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -153,3 +153,7 @@ publishing, open the built app (`app/src-tauri/target/release/bundle/macos/Phosp
 - [ ] **Update** (from the previous version installed): the "Restart to update" bar appears and the app comes back as the new version.
 
 Keep the update signing key (`~/.tauri/phosphene.key`) backed up: without it, installed apps can never update again.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The Mac app also bundles FFmpeg (GPL-2.0) and fonts under the OFL: their licences are in `app/licenses/`.
